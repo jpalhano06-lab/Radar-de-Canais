@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "Radar de Canais",
-  "version": "0.10.0",
-  "description": "Lê os vídeos do YouTube enquanto você navega (sem gastar a cota) e guarda no Radar os que estouraram; resumo da busca e filtros dos vídeos da página.",
+  "version": "0.11.0",
+  "description": "Lê os vídeos do YouTube enquanto você navega (sem gastar a cota) e guarda no Radar os que estouraram; resumo da busca e filtros dos vídeos da página; ajuda para publicar no YouTube Studio.",
   "icons": {
     "16": "icones/16.png",
     "48": "icones/48.png",
@@ -61,7 +61,8 @@
         "https://studio.youtube.com/*"
       ],
       "js": [
-        "studio-ponte.js"
+        "studio-ponte.js",
+        "publicar.js"
       ],
       "run_at": "document_idle"
     },
