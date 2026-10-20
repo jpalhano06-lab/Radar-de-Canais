@@ -9,7 +9,8 @@ from . import banco, gosto, ia, metricas, perfil
 # ---------------------------------------------------------------- ideias de um canal, com filtros
 
 def ideias(usuario: dict, canal: dict, filtros: dict) -> list[dict]:
-    lista = gosto.por_lingua(gosto.ideias_para(usuario, canal, limite=400), filtros.get("lingua", ""))
+    lista = gosto.por_lingua(gosto.ideias_para(usuario, canal, limite=400, formato=filtros.get("formato") or "todos"),
+                             filtros.get("lingua", ""))
     nota_min = float(filtros.get("nota_min") or 3)
     dias = filtros.get("publicado_dias")
     corte = (datetime.now(timezone.utc) - timedelta(days=int(dias))).isoformat() if dias else ""

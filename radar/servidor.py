@@ -17,7 +17,7 @@ from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 
-from . import alertas, alvos, banco, canal_painel, custos, diagnostico, fabrica_api, fila, garimpo, gosto, ia, integracoes, medir, metricas, pagina, perfil, producao, publicar, radar_paises, roteiro_claude, studio, tempo, thumb, trabalho, treinamento, youtube
+from . import alertas, alvos, banco, canal_painel, custos, diagnostico, fabrica_api, fila, garimpo, gosto, ia, integracoes, medir, mercado, metricas, pagina, perfil, producao, publicar, radar_paises, roteiro_claude, studio, tempo, thumb, trabalho, treinamento, youtube
 from .config import NOME, PLANOS, RAIZ, pode
 
 WEB = RAIZ / "radar" / "web"
@@ -591,7 +591,9 @@ def filtros(u: dict = Depends(exigir("radar"))):
     contar = lambda campo: banco.todos(  # noqa: E731
         f"SELECT {campo} AS valor, COUNT(*) AS canais FROM canais WHERE no_radar=1 AND {campo}<>'' "
         f"GROUP BY {campo} ORDER BY canais DESC")
-    return {"nichos": contar("nicho"), "subnichos": contar("subnicho"), "paises": contar("pais"),
+    # nicho que paga pouco não aparece em nenhuma lista: na escolha ele só dava tela vazia
+    nichos = [n for n in contar("nicho") if not mercado.irrelevante(n["valor"])]
+    return {"nichos": nichos, "subnichos": contar("subnicho"), "paises": contar("pais"),
             "fases": contar("fase")}
 
 
@@ -609,6 +611,8 @@ def grupos(nicho: str = "", u: dict = Depends(exigir("radar"))):
         onde += " AND nicho=?"; args.append(nicho)
     por_grupo: dict[str, list] = {}
     for c in banco.todos(f"SELECT * FROM canais WHERE {onde} ORDER BY base_longos DESC", *args):
+        if mercado.irrelevante(c["nicho"], c["subnicho"]):
+            continue
         por_grupo.setdefault(c["subnicho"], []).append(c)
     saida = []
     for nome, canais in por_grupo.items():
@@ -635,7 +639,8 @@ def ranking(nicho: str = "", u: dict = Depends(exigir("ranking"))):
     onde, args = "no_radar=1 AND fase NOT IN ('parado','caindo')", []
     if nicho:
         onde += " AND nicho=?"; args.append(nicho)
-    candidatos = banco.todos(f"SELECT * FROM canais WHERE {onde} ORDER BY base_longos DESC LIMIT 400", *args)
+    candidatos = [c for c in banco.todos(f"SELECT * FROM canais WHERE {onde} ORDER BY base_longos DESC LIMIT 400", *args)
+                  if not mercado.irrelevante(c["nicho"], c["subnicho"])]
     pontos = sorted(candidatos, key=lambda c: -metricas.pontos_do_ranking(
         c["base_longos"], metricas.meses_postando(c["primeiro_video"]), c["fase"]))
     return {"canais": [_vitrine(c, u["id"]) for c in pontos[:30]]}
@@ -682,9 +687,9 @@ def outliers(request: Request, u: dict = Depends(exigir("outliers"))):
         f"ORDER BY {ORDENS_OUTLIERS.get(q.get('ordem'), ORDENS_OUTLIERS['nota'])}", *args)
     # os bloqueios e as respostas da primeira vez (língua, rosto, o que nunca mostrar) valem aqui também
     filtro = gosto.Filtro(u)
-    if q.get("tipo") in ("longo", "curto"):
-        filtro.sem_shorts = q.get("tipo") == "longo"
-        filtro.p = filtro.p | {"formato": "curto" if q.get("tipo") == "curto" else "todos"}
+    # o formato é o da tela: "Longos e Shorts" (vazio) mostra os dois, mesmo que a pergunta da primeira vez diga "só longos"
+    filtro.sem_shorts = q.get("tipo") == "longo"
+    filtro.p = filtro.p | {"formato": "curto" if q.get("tipo") == "curto" else "todos"}
     filtro.linguas = {"outras"}
     linhas = gosto.por_lingua([l for l in linhas if filtro.aceita(l)], q.get("lingua", ""))
     por = min(60, max(1, int(_numero(q, "por") or 60)))   # Vídeos que estouraram pede de 10 em 10

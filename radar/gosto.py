@@ -227,12 +227,16 @@ def explorar(usuario: dict, nicho: str = "", quantos: int = 24, semente: int | N
     return aceitos[:quantos]
 
 
-def ideias_para(usuario: dict, canal: dict, limite: int = 24) -> list[dict]:
+def ideias_para(usuario: dict, canal: dict, limite: int = 24, formato: str | None = None) -> list[dict]:
     """Ideias para um canal: vídeos que estouraram e falam do mesmo assunto que os vídeos dele.
 
-    Antes era só "mesmo subnicho", e canal sem subnicho certo ganhava ideias de qualquer coisa."""
+    Antes era só "mesmo subnicho", e canal sem subnicho certo ganhava ideias de qualquer coisa.
+    Com `formato` (o filtro da tela: "longo", "curto" ou "todos"), ele manda no lugar da pergunta da primeira vez."""
     filtro = Filtro(usuario)
     filtro.linguas = {"outras"}           # a língua é a do filtro da tela (trabalho.ideias)
+    if formato is not None:
+        filtro.sem_shorts = formato == "longo"
+        filtro.p = filtro.p | {"formato": "curto" if formato == "curto" else "todos"}
     alvo = set()
     for v in banco.todos("SELECT titulo FROM videos WHERE canal_id=? ORDER BY views DESC LIMIT 30", canal["id"]):
         alvo |= chaves(v["titulo"])

@@ -286,6 +286,12 @@ function grafico(pontos, campo) {
 
 // cada filtro: [chave, texto da opção "qualquer" (vazio = sem essa opção), [[valor, texto]...]]
 function selects(defs, f) {
+  // um valor guardado que não está mais entre as opções (nicho que sumiu, opção tirada) aparecia como "Todos" mas
+  // continuava filtrando: volta para o "qualquer" (ou a primeira opção), o mesmo que a tela mostra
+  defs.forEach(([k, vazio, ops]) => {
+    const vale = (f[k] === "" || f[k] == null) ? !!vazio : ops.some(([v]) => String(v) === String(f[k]));
+    if (!vale) f[k] = vazio ? "" : String(ops[0]?.[0] ?? "");
+  });
   return `<div class="selects">${defs.map(([k, vazio, ops]) => `<select data-f="${k}" class="${f[k] !== "" && f[k] != null && k !== "ordem" && vazio ? "ligado" : ""}">
     ${vazio ? `<option value="">${vazio}</option>` : ""}${ops.map(([v, t]) => `<option value="${esc(v)}" ${String(f[k]) === String(v) ? "selected" : ""}>${esc(t)}</option>`).join("")}</select>`).join("")}
     <button class="limpar" type="button">limpar</button></div>`;
@@ -2830,10 +2836,12 @@ async function alta() {
 
 async function grupos() {
   const filtro = { nicho: "", min: "", ...guardado("filtro-grupos", {}) };
-  const [{ grupos: lista }, o] = await Promise.all([api("/api/grupos?" + consulta({ nicho: filtro.nicho })), opcoes()]);
+  const o = await opcoes();
+  if (!o.nichos.some((n) => n.valor === filtro.nicho)) filtro.nicho = "";   // nicho guardado que não está mais na lista
+  const { grupos: lista } = await api("/api/grupos?" + consulta({ nicho: filtro.nicho }));
   const mostrar = lista.filter((g) => g.canais >= (+filtro.min || 1));
   tela.innerHTML = titulo("Grupos de canais" + botaoAleatorio(".grade-grupos"), "Canais que fazem o mesmo tipo de vídeo. Poucos canais e muita view: nicho aberto. Clique num grupo para ver os canais.") +
-    selects([["nicho", "Todos os nichos", o.nichos.map((n) => [n.valor, n.valor])], ["min", "Qualquer tamanho", [[2, "2 canais ou mais"], [3, "3 ou mais"], [5, "5 ou mais"]]]], filtro) + `
+    selects([["nicho", "Todos os nichos", o.nichos.map((n) => [n.valor, n.valor])], ["min", "Qualquer número de canais", [[2, "2 canais ou mais"], [3, "3 ou mais"], [5, "5 ou mais"]]]], filtro) + `
     <div class="grade-grupos">${mostrar.map((g) => {
       const leitura = g.canais <= 2 ? "nicho aberto" : g.canais >= 8 ? "concorrido" : "em formação";
       return `<div class="grupo" data-sub="${esc(g.subnicho)}">
@@ -2847,7 +2855,9 @@ async function grupos() {
 
 async function ranking() {
   const f = { nicho: guardado("nicho-ranking", "") };
-  const [{ canais }, o] = await Promise.all([api("/api/ranking?" + consulta(f)), opcoes()]);
+  const o = await opcoes();
+  if (!o.nichos.some((n) => n.valor === f.nicho)) f.nicho = "";   // nicho guardado que não está mais na lista
+  const { canais } = await api("/api/ranking?" + consulta(f));
   tela.innerHTML = titulo("Top 30" + botaoAleatorio(".lista-canais"), "Muita view por vídeo, com peso para canal novo e crescendo. Canal parado ou caindo fica de fora.") +
     selects([["nicho", "Todos os nichos", o.nichos.map((n) => [n.valor, n.valor])]], f) +
     `<div class="lista-canais">${canais.map((c, i) => cartaoCanal(c, { posicao: "#" + (i + 1) })).join("") || '<div class="vazio">Ainda vazio.</div>'}</div>`;
@@ -2866,7 +2876,7 @@ async function ideias() {
     selects([
       ["lingua", "", [["ptenes", "Português, inglês e espanhol"], ["pt", "Só português"], ["en", "Só inglês"], ["es", "Só espanhol"], ["todas", "Todas as línguas"]]],
       ["nota_min", "", [[3, "3x o normal ou mais"], [5, "5x ou mais"], [10, "10x ou mais"], [20, "20x ou mais"]]],
-      ["publicado_dias", "Qualquer data", [[7, "Últimos 7 dias"], [30, "Últimos 30 dias"], [90, "Últimos 3 meses"]]],
+      ["publicado_dias", "Qualquer data", [[7, "Últimos 7 dias"], [30, "Últimos 30 dias"], [90, "Últimos 3 meses"], [365, "Último ano"]]],
       ["tipo", "Longos e Shorts", [["longo", "Só vídeos longos"], ["curto", "Só Shorts"]]],
     ], f) + `<div class="contagem" id="contagem"></div><div class="grade-videos grandes" id="lista"></div>
     <div class="paginas" id="paginas" hidden><button class="botao sec" id="anterior">← Anterior</button><span id="pagina-n"></span><button class="botao sec" id="proximo">Próximo →</button></div>`;
