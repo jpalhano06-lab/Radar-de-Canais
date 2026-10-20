@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Radar de Canais",
-  "version": "0.12.0",
+  "version": "0.12.1",
   "description": "Lê os vídeos do YouTube enquanto você navega (sem gastar a cota) e guarda no Radar os que estouraram; resumo da busca e filtros dos vídeos da página; ajuda para publicar no YouTube Studio.",
   "icons": {
     "16": "icones/16.png",

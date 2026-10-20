@@ -89,6 +89,8 @@
   raiz.innerHTML = `<style>
     :host { all: initial; }
     * { box-sizing: border-box; }
+    /* o display: flex do .painel passava por cima do hidden: a caixa vazia ficava aberta em todas as telas do Studio */
+    [hidden] { display: none !important; }
     .lancador { position: fixed; right: 18px; bottom: 18px; z-index: 2147483646; border: 0; border-radius: 999px; padding: 10px 16px;
       background: #b6f23a; color: #10160a; font: 700 13px Roboto, Arial, sans-serif; cursor: pointer; box-shadow: 0 6px 20px rgba(0,0,0,.35); }
     .painel { position: fixed; right: 16px; top: 72px; bottom: 16px; width: 380px; z-index: 2147483647; display: flex; flex-direction: column;
