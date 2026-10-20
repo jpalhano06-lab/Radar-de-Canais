@@ -1,0 +1,110 @@
+{
+  "manifest_version": 3,
+  "name": "Radar de Canais",
+  "version": "0.10.0",
+  "description": "Lê os vídeos do YouTube enquanto você navega (sem gastar a cota) e guarda no Radar os que estouraram; resumo da busca e filtros dos vídeos da página.",
+  "icons": {
+    "16": "icones/16.png",
+    "48": "icones/48.png",
+    "128": "icones/128.png"
+  },
+  "action": {
+    "default_popup": "popup.html",
+    "default_icon": {
+      "16": "icones/16.png",
+      "48": "icones/48.png"
+    }
+  },
+  "background": {
+    "service_worker": "background.js"
+  },
+  "permissions": [
+    "storage"
+  ],
+  "host_permissions": [
+    "http://127.0.0.1/*",
+    "http://localhost/*",
+    "https://www.youtube.com/*",
+    "https://studio.youtube.com/*",
+    "https://chatgpt.com/*",
+    "https://gemini.google.com/*",
+    "https://i.ytimg.com/*"
+  ],
+  "optional_host_permissions": [
+    "https://*/*",
+    "http://*/*"
+  ],
+  "content_scripts": [
+    {
+      "matches": [
+        "https://www.youtube.com/*"
+      ],
+      "js": [
+        "ler.js",
+        "leitor.js"
+      ],
+      "run_at": "document_start",
+      "world": "MAIN"
+    },
+    {
+      "matches": [
+        "https://studio.youtube.com/*"
+      ],
+      "js": [
+        "studio.js"
+      ],
+      "run_at": "document_idle",
+      "world": "MAIN"
+    },
+    {
+      "matches": [
+        "https://studio.youtube.com/*"
+      ],
+      "js": [
+        "studio-ponte.js"
+      ],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": [
+        "https://www.youtube.com/*"
+      ],
+      "js": [
+        "ler.js",
+        "content.js"
+      ],
+      "css": [
+        "content.css"
+      ],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": [
+        "https://chatgpt.com/*",
+        "https://gemini.google.com/*"
+      ],
+      "js": [
+        "colar.js"
+      ],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": [
+        "http://127.0.0.1/*",
+        "http://localhost/*"
+      ],
+      "js": [
+        "site.js"
+      ],
+      "run_at": "document_start"
+    }
+  ],
+  "commands": {
+    "salvar-canal": {
+      "suggested_key": {
+        "default": "Alt+S"
+      },
+      "description": "Salvar no Radar o canal do vídeo aberto ou da página do canal"
+    }
+  }
+}

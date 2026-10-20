@@ -1,0 +1,26 @@
+# Segredos (chaves de API) — nunca subir
+.env
+.env.*
+
+# Links de convite dos sócios
+convites-socios.txt
+
+# Dados locais: banco, logs e roteiros gerados
+dados/
+*.db
+*.db-shm
+*.db-wal
+*.log
+
+# Pacotes prontos
+entrega/
+*.zip
+
+# Ambiente Python e caches
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# Configuração local do Claude
+.claude/
