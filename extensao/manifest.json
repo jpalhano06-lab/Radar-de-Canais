@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Radar de Canais",
-  "version": "0.10.0",
+  "version": "0.11.0",
   "description": "Lê os vídeos do YouTube enquanto você navega (sem gastar a cota) e guarda no Radar os que estouraram; resumo da busca e filtros dos vídeos da página.",
   "icons": {
     "16": "icones/16.png",
@@ -71,10 +71,12 @@
       ],
       "js": [
         "ler.js",
-        "content.js"
+        "content.js",
+        "claude.js"
       ],
       "css": [
-        "content.css"
+        "content.css",
+        "claude.css"
       ],
       "run_at": "document_idle"
     },
@@ -105,6 +107,12 @@
         "default": "Alt+S"
       },
       "description": "Salvar no Radar o canal do vídeo aberto ou da página do canal"
+    },
+    "abrir-claude": {
+      "suggested_key": {
+        "default": "Alt+C"
+      },
+      "description": "Abrir ou fechar o painel do Claude no YouTube (o mesmo que dois cliques com o botão direito)"
     }
   }
 }

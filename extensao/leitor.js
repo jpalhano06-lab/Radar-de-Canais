@@ -33,6 +33,7 @@
       if (/\/youtubei\/v1\/get_transcript\b/.test(url) && esperandoTranscricao) {
         resposta.clone().json().then((j) => esperandoTranscricao && esperandoTranscricao(j)).catch(() => {});
       }
+      if (/\/api\/timedtext/.test(url)) resposta.clone().text().then((t) => guardarLegenda(url, t)).catch(() => {});
     } catch { /* nada */ }
     return resposta;
   };
@@ -67,17 +68,82 @@
     return linhas;
   };
 
-  // A transcrição vem do botão "Mostrar transcrição" do próprio YouTube: pedir direto ao /get_transcript é recusado
-  // (400) e a legenda do player vem vazia. O clique abre o painel do YouTube; a resposta é lida no fetch acima e o
-  // painel é fechado em seguida.
-  async function transcricao(id) {
+  // A transcrição vem da legenda do próprio player (2026-10-20: o YouTube passou a recusar o /get_transcript com 400 e
+  // o botão "Mostrar transcrição" sumiu da descrição). Pedir a legenda direto vem vazio (falta o token que só o player
+  // tem), então a legenda é ligada por um instante, a resposta que o player baixa é lida e a legenda volta como estava.
+  // O player não baixa de novo uma legenda que já baixou: toda legenda que passa fica guardada por vídeo.
+  let esperandoLegenda = null;
+  const legendas = new Map();        // id do vídeo -> [{ lingua, kind, dados }]
+  function guardarLegenda(url, texto) {
+    try {
+      const u = new URL(url, location.href), dados = JSON.parse(texto);
+      if (!dados || !dados.events) return;
+      const id = u.searchParams.get("v");
+      legendas.set(id, [...(legendas.get(id) || []), { lingua: u.searchParams.get("lang") || "", kind: u.searchParams.get("kind") || "", dados }]);
+      if (esperandoLegenda) esperandoLegenda(id);
+    } catch { /* não era a legenda em JSON */ }
+  }
+  const abrirXhr = XMLHttpRequest.prototype.open;
+  XMLHttpRequest.prototype.open = function (metodo, url) {
+    if (/\/api\/timedtext/.test(String(url))) this.addEventListener("load", () => guardarLegenda(String(url), this.responseText));
+    return abrirXhr.apply(this, arguments);
+  };
+  const guardada = (id, t) => {
+    const lista = legendas.get(id) || [];
+    return (lista.find((l) => l.lingua === t.languageCode && l.kind === (t.kind || "")) || lista[0] || {}).dados || null;
+  };
+
+  // a legenda feita à mão na língua do vídeo; senão a automática; senão a primeira que houver
+  function trilha(r) {
+    const trilhas = (r && r.captions && r.captions.playerCaptionsTracklistRenderer
+      && r.captions.playerCaptionsTracklistRenderer.captionTracks) || [];
+    const auto = trilhas.find((t) => t.kind === "asr");
+    return (auto && trilhas.find((t) => t.kind !== "asr" && t.languageCode.split("-")[0] === auto.languageCode.split("-")[0]))
+      || auto || trilhas[0] || null;
+  }
+
+  async function legendaDoPlayer(id) {
+    const p = document.getElementById("movie_player"), r = resposta();
+    const t = trilha(r);
+    if (!p || !p.setOption || !t || !r.videoDetails || r.videoDetails.videoId !== id) return [];
+    let j = guardada(id, t);
+    if (!j) {
+      const antes = p.getOption && p.getOption("captions", "track");
+      await new Promise((ok) => {
+        esperandoLegenda = (vid) => { if (vid === id) ok(); };
+        if (p.loadModule) p.loadModule("captions");
+        p.setOption("captions", "track", { languageCode: t.languageCode, kind: t.kind || "" });
+        setTimeout(ok, 10000);
+      });
+      esperandoLegenda = null;
+      if (antes && antes.languageCode) p.setOption("captions", "track", antes);
+      else { p.setOption("captions", "track", {}); if (p.unloadModule) p.unloadModule("captions"); }
+      j = guardada(id, t);
+    }
+    const linhas = [];
+    for (const ev of (j && j.events) || []) {
+      const texto = (ev.segs || []).map((s) => s.utf8 || "").join("").replace(/\s+/g, " ").trim();
+      if (texto) linhas.push({ ms: +ev.tStartMs || 0, texto });
+    }
+    return linhas;
+  }
+
+  // o jeito antigo (o botão da descrição), se o YouTube ainda mostrar o botão e a legenda do player falhar
+  async function painelDoYoutube(id) {
     const botao = document.querySelector("ytd-video-description-transcript-section-renderer button");
-    if (!botao || new URLSearchParams(location.search).get("v") !== id) return { linhas: [] };
+    if (!botao || new URLSearchParams(location.search).get("v") !== id) return [];
     const j = await new Promise((ok) => { esperandoTranscricao = ok; botao.click(); setTimeout(() => ok(null), 12000); });
     esperandoTranscricao = null;
     const fechar = document.querySelector('ytd-engagement-panel-section-list-renderer[target-id*="transcript"] #visibility-button button');
     if (fechar) fechar.click();
-    return { linhas: segmentos(j) };
+    return segmentos(j);
+  }
+
+  async function transcricao(id) {
+    let linhas = [];
+    try { linhas = await legendaDoPlayer(id); } catch { /* tenta o outro jeito */ }
+    if (!linhas.length) linhas = await painelDoYoutube(id);
+    return { linhas };
   }
 
   window.addEventListener("message", async (e) => {

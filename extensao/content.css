@@ -353,6 +353,11 @@ html[dark] .radar-fantasma-aviso { color: #aaa; }
 .radar-fantasma-janela[hidden] { display: none; }
 @keyframes radar-abre { from { opacity: 0; transform: translateY(-6px) scale(.97); } to { opacity: 1; transform: none; } }
 html[dark] .radar-fantasma-janela { background: #1c1c1c; color: #f1f1f1; border: 1px solid rgba(57,255,136,.25); }
+.radar-transcricao-janela { position: fixed; z-index: 2400; width: min(460px, calc(100vw - 16px)); padding: 12px; border-radius: 16px;
+  display: grid; gap: 8px; background: #fff; color: #0f0f0f; box-shadow: 0 10px 34px rgba(0,0,0,.35); font: 14px/1.4 Roboto, Arial, sans-serif;
+  animation: radar-abre .2s ease-out; }
+.radar-transcricao-janela .radar-transcricao { max-height: min(420px, 55vh); }
+html[dark] .radar-transcricao-janela { background: #1c1c1c; color: #f1f1f1; border: 1px solid rgba(255,255,255,.12); }
 .radar-janela-cab { display: flex; align-items: center; gap: 8px; }
 .radar-janela-cab b { flex: 1; font-size: 15px; }
 .radar-janela-ic { width: 30px; height: 30px; border-radius: 50%; display: grid; place-items: center; color: #39ff88; background: #0f1a13;

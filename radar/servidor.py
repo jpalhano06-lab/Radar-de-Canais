@@ -1233,7 +1233,7 @@ async def thumb_claude(request: Request, u: dict = Depends(usuario)):
 
 @app.post("/api/assistente")
 async def assistente(request: Request, u: dict = Depends(usuario)):
-    """A janela de IA ao lado do Roteiro e da Thumbnail (o Claude, pela assinatura)."""
+    """A janela de IA ao lado do Roteiro e da Thumbnail e o painel do Claude no YouTube (o Claude, pela assinatura)."""
     d = await request.json()
     canal_id = str(d.get("canal_id", ""))
     if canal_id:
@@ -1242,7 +1242,8 @@ async def assistente(request: Request, u: dict = Depends(usuario)):
     if not mensagens:
         raise HTTPException(400, "Escreva uma mensagem.")
     try:
-        return {"resposta": await run_in_threadpool(producao.assistente, u["id"], canal_id, mensagens)}
+        pagina = d.get("pagina") if isinstance(d.get("pagina"), dict) else None
+        return {"resposta": await run_in_threadpool(producao.assistente, u["id"], canal_id, mensagens, pagina)}
     except RuntimeError as erro:
         raise HTTPException(503, str(erro))
 

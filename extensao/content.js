@@ -625,6 +625,7 @@
     const vista = vistaFantasma(painel, true);
     const rodarFantasma = (e) => { metodoFantasma(e.currentTarget); abrir("lingua"); };
     const abaLingua = () => [vista];
+    painel.radarTranscricao = abaTranscricao;   // a janelinha da Transcrição (menu Radar) usa a mesma aba
     painel.replaceChildren(
       h("div", { class: "radar-abas" }, botoesAba), corpo,
       h("div", { class: "radar-acoes radar-acoes-2" },
@@ -1202,6 +1203,25 @@
     ["copiar-capa", "capa", "Copiar a capa", "a imagem, para colar onde quiser"],
   ];
 
+  // a Transcrição numa janelinha presa embaixo do botão Radar (fecha no × ou trocando de vídeo)
+  function janelaTranscricao(botao, aba) {
+    document.querySelectorAll(".radar-transcricao-janela").forEach((j) => j.remove());
+    const janela = h("div", { class: "radar-transcricao-janela" },
+      h("div", { class: "radar-janela-cab" }, h("span", { class: "radar-janela-ic" }, icone("transcricao")), h("b", {}, "Transcrição"),
+        h("button", { class: "radar-janela-fechar", title: "Fechar", onclick: () => janela.remove() }, "×")),
+      ...aba());
+    document.body.append(janela);
+    const prender = () => {
+      if (!janela.isConnected) return removeEventListener("scroll", prender);
+      const r = botao.getBoundingClientRect(), largura = janela.offsetWidth;
+      janela.style.left = `${Math.min(Math.max(8, r.left), innerWidth - largura - 8)}px`;
+      janela.style.top = `${Math.max(8, Math.min(r.bottom + 8, innerHeight - 200))}px`;
+    };
+    prender();
+    addEventListener("scroll", prender, { passive: true });
+    document.addEventListener("yt-navigate-start", () => janela.remove(), { once: true });
+  }
+
   function menuDoVideo() {
     if (location.pathname !== "/watch") return;
     // ficam grandes no meio da fileira de baixo do título (entre o canal e o curtir), onde sobra espaço; sem essa
@@ -1220,6 +1240,8 @@
       e.stopPropagation(); fechar();
       const painel = document.querySelector(".radar-painel");
       if (!painel) return avisoRapido("Radar: o painel do vídeo ainda está carregando.");
+      // a Transcrição abre logo abaixo do botão (no painel ao lado ela ficava lá embaixo quando a coluna desce)
+      if (k === "transcricao" && painel.radarTranscricao) return janelaTranscricao(botao, painel.radarTranscricao);
       painel.scrollIntoView({ behavior: "smooth", block: "start" });
       const aba = painel.querySelector(`.radar-aba[data-aba="${k}"]`);
       if (aba) return aba.click();

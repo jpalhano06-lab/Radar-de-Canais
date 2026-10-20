@@ -72,9 +72,11 @@ async function binario(caminho) {
   }
 }
 
-// Alt+S (chrome://extensions/shortcuts): o content.js da aba aberta salva o canal do vídeo ou da página do canal
+// Alt+S (chrome://extensions/shortcuts): o content.js da aba aberta salva o canal do vídeo ou da página do canal;
+// Alt+C: o claude.js abre ou fecha o painel do Claude
 chrome.commands.onCommand.addListener(async (comando) => {
-  if (comando !== "salvar-canal") return;
+  const tipo = { "salvar-canal": "salvar-canal", "abrir-claude": "claude" }[comando];
+  if (!tipo) return;
   const [aba] = await chrome.tabs.query({ active: true, currentWindow: true });
-  if (aba && /^https:\/\/www\.youtube\.com\//.test(aba.url || "")) chrome.tabs.sendMessage(aba.id, { tipo: "salvar-canal" }).catch(() => {});
+  if (aba && /^https:\/\/www\.youtube\.com\//.test(aba.url || "")) chrome.tabs.sendMessage(aba.id, { tipo }).catch(() => {});
 });

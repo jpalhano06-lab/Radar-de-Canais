@@ -92,20 +92,25 @@ def prompt_da_thumb(usuario_id: int, projeto_id: int | None, pedido: str, titulo
 # ---------------------------------------------------------------- o Assistente (a janela da direita)
 
 SISTEMA_ASSISTENTE = """Você é o assistente de um produtor de canais dark do YouTube (vídeos narrados, sem rosto),
-numa janela ao lado do Roteiro e da Thumbnail. Ajuda com títulos (regionalizar para outro país ou língua, deixar mais
-chamativo sem enganar), descrições, ganchos, ideias e ajustes no texto. Responda em português, curto e direto, a não
-ser que a pessoa peça outra língua. Quando der opções, numere. Não invente fatos sobre pessoas reais."""
+numa janela ao lado do Roteiro e da Thumbnail ou num painel dentro do YouTube. Ajuda com títulos (regionalizar para
+outro país ou língua, deixar mais chamativo sem enganar), descrições, ganchos, ideias e ajustes no texto. Responda em
+português, curto e direto, a não ser que a pessoa peça outra língua. Quando der opções, numere. Não invente fatos sobre
+pessoas reais."""
 
 
-def assistente(usuario_id: int, canal_id: str, mensagens: list[dict]) -> str:
+def assistente(usuario_id: int, canal_id: str, mensagens: list[dict], pagina: dict | None = None) -> str:
     contexto = ""
+    if pagina:      # o painel do Claude dentro do YouTube manda o que está aberto na aba
+        contexto += (f"A pessoa está no YouTube, nesta página: {str(pagina.get('titulo', ''))[:300]}"
+                     f"{' (canal ' + str(pagina['canal'])[:100] + ')' if pagina.get('canal') else ''} — "
+                     f"{str(pagina.get('url', ''))[:300]}\n\n")
     if canal_id:
         c = banco.um("SELECT titulo, nicho, subnicho, pais, inscritos FROM canais WHERE id=?", canal_id) or {}
         cfg = config(usuario_id, canal_id)
         titulos = [v["titulo"] for v in banco.todos("SELECT titulo FROM videos WHERE canal_id=? ORDER BY views DESC LIMIT 8", canal_id)]
-        contexto = (f"Canal em foco: {c.get('titulo', '')} (nicho {c.get('nicho') or '?'}, {c.get('subnicho') or ''}; "
-                    f"país {c.get('pais') or '?'}; língua dos vídeos: {cfg['lingua']}).\n"
-                    f"Títulos que mais deram view no canal: {' | '.join(titulos) or '(nenhum ainda)'}\n\n")
+        contexto += (f"Canal em foco: {c.get('titulo', '')} (nicho {c.get('nicho') or '?'}, {c.get('subnicho') or ''}; "
+                     f"país {c.get('pais') or '?'}; língua dos vídeos: {cfg['lingua']}).\n"
+                     f"Títulos que mais deram view no canal: {' | '.join(titulos) or '(nenhum ainda)'}\n\n")
     conversa = "\n\n".join(f"{'Pessoa' if m.get('papel') == 'pessoa' else 'Assistente'}: {str(m.get('texto', ''))[:4000]}"
                            for m in mensagens[-12:])
     return roteiro_claude._claude(SISTEMA_ASSISTENTE, contexto + "Conversa até agora:\n\n" + conversa
