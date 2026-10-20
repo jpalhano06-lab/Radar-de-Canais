@@ -17,7 +17,7 @@ from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 
-from . import alertas, alvos, banco, canal_painel, custos, diagnostico, fabrica_api, fila, garimpo, gosto, ia, integracoes, medir, metricas, pagina, perfil, producao, radar_paises, roteiro_claude, studio, tempo, thumb, trabalho, treinamento, youtube
+from . import alertas, alvos, banco, canal_painel, custos, diagnostico, fabrica_api, fila, garimpo, gosto, ia, integracoes, medir, metricas, pagina, perfil, producao, publicar, radar_paises, roteiro_claude, studio, tempo, thumb, trabalho, treinamento, youtube
 from .config import NOME, PLANOS, RAIZ, pode
 
 WEB = RAIZ / "radar" / "web"
@@ -385,6 +385,32 @@ async def ext_radar_preparar(request: Request, u: dict = Depends(usuario)):
 async def ext_radar_julgar(request: Request, u: dict = Depends(usuario)):
     d = await request.json()
     return radar_paises.julgar(d.get("preparo") or {}, d.get("resultados") or {}, str(d.get("video_id", "")))
+
+
+@app.get("/api/ext/publicar")
+def ext_publicar(arquivo: str = "", u: dict = Depends(exigir("extensao"))):
+    """O painel de ajuda do upload no YouTube Studio: o kit do vídeo achado pelo nome do arquivo e, se não achar, a
+    lista para escolher. Lê o publicacao.json da pasta do projeto (não precisa da fábrica ligada)."""
+    raiz = roteiro_claude.FABRICA / "projetos"
+    nome = publicar.achar(raiz, arquivo[:300])
+    return {"kit": publicar.kit(raiz / nome) if nome else None, "opcoes": publicar.opcoes(raiz)}
+
+
+@app.get("/api/ext/publicar/{nome}")
+def ext_publicar_projeto(nome: str, u: dict = Depends(exigir("extensao"))):
+    pasta = _projeto_fabrica(nome)
+    if not (pasta / "publicacao.json").exists():
+        raise HTTPException(404, "A fábrica ainda não montou o título, a descrição e as tags deste vídeo.")
+    return publicar.kit(pasta)
+
+
+@app.get("/api/ext/publicar/{nome}/legenda")
+def ext_publicar_legenda(nome: str, u: dict = Depends(exigir("extensao"))):
+    pasta = _projeto_fabrica(nome)
+    arquivo = next((pasta / f for f in ("legendas_final.srt", "legendas.srt") if (pasta / f).exists()), None)
+    if not arquivo:
+        raise HTTPException(404, "Este vídeo não tem legenda.")
+    return FileResponse(arquivo, media_type="application/x-subrip", filename=f"{nome}.srt")
 
 
 @app.get("/api/ext/linguas/{video_id}")

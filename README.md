@@ -854,6 +854,30 @@ organização, código e estilo nossos.
   fica numa linha própria embaixo do "Últimas 48 horas" (no canto de cima ficava em cima do "Hoje" do Dotti). O
   Chrome precisa liberar o acesso da extensão ao studio.youtube.com (site novo na 0.10.0).
 
+## Extensão 0.12.0: ajuda para publicar no YouTube Studio (2026-10-20)
+
+Pedido do usuário: "adicionar a extensão na hora de postar o vídeo com anúncios e tudo". Combinado: **só um painel de
+ajuda** (a extensão não clica, não preenche e não publica nada), com título, descrição, tags, monetização e anúncios,
+questionário de anunciantes, público e visibilidade, achando o vídeo **pelo nome do arquivo**.
+
+- **`extensao/publicar.js`** (no studio.youtube.com, num shadow root para o CSS do Studio não entrar): na tela de
+  upload (`?d=ud`, `ytcp-uploads-dialog`) ou de edição do vídeo aparece o botão **Radar · ajuda para publicar**. Ao
+  escolher ou arrastar o arquivo, o painel abre sozinho. Ele mostra o título (com a contagem de 100), os títulos do
+  teste A/B, a descrição (5.000), as hashtags que faltam na descrição, as tags separadas por vírgula até caber nos 500
+  caracteres, o comentário fixado e **Baixar a legenda (.srt)**. Embaixo vem a lista do que marcar em cada etapa
+  (Detalhes, Monetização e anúncios, Adequação para anunciantes, Elementos, Verificações e Visibilidade), com caixinhas
+  de feito. O mid-roll usa a duração do vídeo (só a partir de 8 min) e sugere as viradas de capítulo. O "Conteúdo
+  alterado ou sintético" segue o `sintetico` da fábrica. O questionário diz para marcar "Nenhuma das opções acima" só
+  se for verdade.
+- **O vídeo pelo nome do arquivo** (`radar/publicar.py`): compara o nome sem acento nem extensão com o .mp4 da entrega
+  (`entrega_pc.json`, que usa o título), o título do kit, o `titulo_entrega` e o nome da pasta. Primeiro procura um
+  nome igual e depois um que contenha o outro. Com `final.mp4` ou um nome que não diz qual é o vídeo, ele não chuta:
+  mostra a lista dos vídeos da fábrica com kit (ou deixa digitar o nome).
+- **Rotas**: `GET /api/ext/publicar?arquivo=` (kit e lista), `GET /api/ext/publicar/{nome}` e
+  `GET /api/ext/publicar/{nome}/legenda`. Leem o `publicacao.json` da pasta do projeto, então funcionam com a fábrica
+  desligada.
+- Para usar: em `chrome://extensions`, clique no ↻ do Radar de Canais e recarregue a aba do Studio (F5).
+
 ## Nova produção em passos, também no alto do YouTube (2026-10-19)
 
 - **No site** (`novaProducao` em `radar/web/app.js`): o passo **1 · O vídeo** tem só o título, o vídeo de
