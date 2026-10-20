@@ -3,6 +3,21 @@ import argparse
 import json
 
 
+def _sem_selecao_rapida():
+    """No console do Windows, um clique na janela preta entra no modo "Selecionar" e o Radar congela no próximo log
+    até alguém apertar uma tecla: a janela fica aberta, mas o navegador não abre ou não carrega. Desliga esse modo."""
+    import sys
+    if sys.platform != "win32":
+        return
+    import ctypes
+    k = ctypes.windll.kernel32
+    k.GetStdHandle.restype = ctypes.c_void_p
+    entrada = ctypes.c_void_p(k.GetStdHandle(-10))                # STD_INPUT_HANDLE
+    modo = ctypes.c_uint32()
+    if k.GetConsoleMode(entrada, ctypes.byref(modo)):             # sem console (saída redirecionada) não faz nada
+        k.SetConsoleMode(entrada, (modo.value & ~0x0040) | 0x0080)   # tira QUICK_EDIT, liga EXTENDED_FLAGS
+
+
 def main():
     p = argparse.ArgumentParser(prog="radar")
     sub = p.add_subparsers(dest="comando", required=True)
@@ -19,6 +34,7 @@ def main():
     if a.comando == "servidor":
         import uvicorn
         from .config import PORTA
+        _sem_selecao_rapida()
         if a.publico:
             import os
             os.environ["RADAR_ABERTO"] = "0"     # aberto para a rede: a senha volta
