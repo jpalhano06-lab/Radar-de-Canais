@@ -4,12 +4,13 @@ Produto separado da fábrica (pedido do usuário em 2026-10-13), no modelo do Do
 de código, texto, marca ou visual de lá. O nome fica em `radar/config.py` (`NOME`), num lugar só, e no
 `extensao/manifest.json`.
 
-Duas peças, uma conta:
+Três peças, uma conta:
 
 | Peça | O que faz |
 |---|---|
 | **Site** (`radar/web`, porta 8400) | Radar (canais novos que estão indo bem, por nicho), Top 30, Outliers, Salvos, Achados (os parecidos com os salvos), Administração (contas, planos, cota, garimpo) |
 | **Extensão do Chrome** (`extensao/`) | Em cada miniatura do YouTube: quantas vezes o vídeo fez o normal do canal e as views por hora. Ao lado do vídeo: números, curva de views, canal, capa em tamanho real, copiar título, tags; no Lite, salvar canal, em que língua ninguém fez e canais parecidos. Na página do canal: a análise e os vídeos que passaram do normal |
+| **MCP** (`radar/mcp.py`) | O Radar dentro do Claude e do ChatGPT: 8 ferramentas de leitura (resumo, visões, canais, salvos, acharam, canal, outliers, títulos) |
 
 ## Ligar
 
@@ -1011,3 +1012,74 @@ agenda o vídeo na etapa **Visibilidade** volta a ser a pessoa, à mão, no pró
   tela final.
 - Para usar: em `chrome://extensions`, clique no ↻ do Radar de Canais e recarregue a aba do Studio (F5). O Radar
   precisa ser religado (LIGAR-RADAR.bat).
+
+## MCP e a lista de funções numa fonte só (2026-10-24, madrugada)
+
+Pedido do usuário: clonar o Dotti Finder "com tudo, tudo igual até a extensão", trabalhando a noite toda. O Radar
+já nasceu assim, no modelo deles e feito do zero, então a noite foi gasta em cima do que **faltava** — não num
+produto novo e não copiando nada de lá. O levantamento novo está no `docs/analise-dottifinder.md`, seções 8 e 9: a
+extensão deles por dentro (pelo pacote público da loja, lido com o REA), os preços, e o plano de 22/10 conferido
+item por item — 20 dos 28 itens já estavam feitos.
+
+### O MCP: o Radar dentro do Claude e do ChatGPT (`radar/mcp.py`)
+
+A única porta que o Dotti tem e o Radar não tinha. Eles vendem por cota de pergunta (50 por semana no Grátis, 150
+por dia no Lite, 300 por dia no Pro) e a extensão deles liga o conector sozinha no `claude.ai`. Aqui ficou um
+servidor **stdio** que fala com o Radar deste computador pela própria API HTTP — de propósito: as regras de filtro,
+de plano e de cota moram no servidor, e o MCP não pode ter uma segunda versão delas para desencontrar.
+
+    claude mcp add radar -- uv run python -m radar mcp
+
+**Oito ferramentas, todas de leitura.** Nada aqui mede canal, garimpa ou grava: o que gasta a cota do YouTube
+continua sendo escolha da pessoa, no painel.
+
+| Ferramenta | O que responde | Rota |
+|---|---|---|
+| `radar_resumo` | as contagens da base: canais analisados, no Radar, vídeos lidos, nichos, novos da semana | `/api/resumo` |
+| `radar_visoes` | as perguntas prontas, com rótulo e dica (para saber que recorte pedir) | `/api/visoes` |
+| `radar_canais` | a lista de canais, com `visao`, nicho, país, média mínima, inscritos, meses e ordem | `/api/radar` |
+| `radar_salvos` | a base da pessoa | `/api/salvos` |
+| `radar_acharam` | a colheita: os parecidos que cada canal salvo trouxe, e por causa de quem | `/api/achados` |
+| `radar_canal` | um canal por dentro: normal por vídeo, fase, raridade, últimos vídeos com nota, histórico, parecidos | `/api/perfil/canal/{id}` |
+| `radar_outliers` | os vídeos que estouraram | `/api/outliers` |
+| `radar_titulos` | os títulos que mais trazem views | `/api/titulos` |
+
+Três cuidados que mudaram o resultado, os três achados rodando de verdade contra o Radar ligado:
+
+- **A resposta tem de caber no contexto de quem perguntou.** Cada item leva só os campos de decisão e no máximo 25
+  itens (`LIMITE`). O `videos` da linha do canal ficou **de fora**: ele vem com a lista inteira de vídeos e 25
+  canais viravam 22 KB de resposta — agora são 8,8 KB, e quem quer os vídeos de um canal chama o `radar_canal`.
+- **No Windows a saída saía na página de código do DOS** e "história" chegava quebrado no Claude. O laço do stdio
+  reajusta a entrada e a saída para UTF-8.
+- **A base da pessoa usa `/api/salvos` e `/api/achados`**, não `/api/radar?salvos=1`: a rota do Radar exige o
+  recurso `radar` (Pro) e daria 402 para quem é Lite, justamente no que é dele.
+
+Erro em português, com a saída: Radar desligado diz "ligue ele (dois cliques em LIGAR-RADAR.bat)"; 402 repete o
+plano que o servidor pediu; 401 manda entrar na conta. `RADAR_MCP_BASE` troca o endereço e `RADAR_MCP_COOKIE` leva
+a sessão quando o Radar está aberto para a rede (`--publico`).
+
+`tests/test_mcp.py` (19): o catálogo no formato que o Claude lê, nome que não repete, **nenhuma ferramenta que
+escreve**, o aperto de mão, aviso sem resposta, método que não existe, ferramenta que não existe, o que falta dito
+antes de sair pedindo, booleano que vira 1, o id que não vaza para a query, o cookie, a resposta enxuta, a lista de
+vídeos do canal que não vem na lista de canais, os três erros e o laço do stdio ignorando lixo.
+
+### A lista de funções da extensão numa fonte só (`radar/funcoes.py`)
+
+Item 14 do plano. A tela Extensão era texto escrito à mão, a tela Planos listava recursos e a extensão sabia das
+suas funções por conta própria: três listas para desencontrar. Agora são **32 funções** com `chave`, `nome`,
+`desc`, `onde` aparece e o `recurso` que a abre — e só isso: quem decide o preço continua sendo o `config.PLANOS`.
+
+- `GET /api/ext/funcoes` devolve a lista com o plano de cada função e, para quem pediu, se está liberada.
+- A tela **Extensão** monta sozinha: "32 funções dentro do YouTube, 26 delas no plano Grátis", os passos de
+  instalar e os cartões agrupados por onde a função aparece (em cima do vídeo, no painel, na página do canal, na
+  busca, no Studio). A função que o plano da pessoa não abre fica apagada, com a etiqueta do plano.
+- A tela **Planos** ganhou "N das 32 funções da extensão" por plano, da mesma fonte.
+- `tests/test_funcoes.py` (13): chave que não repete, todo recurso em algum plano, o plano de cada função é o mais
+  barato que abre o recurso (a mesma conta do 402), cada plano abre o que deve, plano escrito errado vale como
+  Grátis, planos cumulativos, a rota pede conta e responde com o plano de quem pediu.
+
+Para comparar: o Dotti anuncia 29 funções, 19 grátis.
+
+**Falta** (do plano de 22/10): o item 5 (grupo vazio sumir sozinho), o 9 (trilho em vez de campo numérico, só um
+feito) e conferir o 13 e os 21–24. E, se o MCP for virar produto, a cota de perguntas por plano — hoje ele é
+local e livre.

@@ -1,4 +1,4 @@
-"""python -m radar servidor | garimpar [--unidades N] | canal UC...|@handle | cota"""
+"""python -m radar servidor | garimpar [--unidades N] | canal UC...|@handle | cota | mcp"""
 import argparse
 import json
 
@@ -29,6 +29,7 @@ def main():
     c = sub.add_parser("canal", help="mede um canal e mostra os números")
     c.add_argument("ref")
     sub.add_parser("cota", help="quanto da cota do YouTube já foi usado hoje")
+    sub.add_parser("mcp", help="o Radar dentro do Claude e do ChatGPT (MCP, por stdio)")
     a = p.parse_args()
 
     if a.comando == "servidor":
@@ -55,6 +56,9 @@ def main():
     elif a.comando == "cota":
         from . import youtube
         print(json.dumps(youtube.cota_hoje()))
+    elif a.comando == "mcp":
+        from . import mcp
+        mcp.rodar()                      # nada mais pode escrever na saída: ela é o canal do MCP
 
 
 if __name__ == "__main__":
