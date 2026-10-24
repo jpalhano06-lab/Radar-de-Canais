@@ -318,3 +318,124 @@ por hora).
 - O código da extensão: a Chrome Web Store não abre no navegador embutido. A lista de 30 funções
   veio da API pública deles, não do código da extensão.
 - Preços: só aparecem depois do cadastro.
+
+> **Resolvido na segunda leva (24/10), na seção 8:** o código da extensão (pelo pacote público da
+> loja), os preços (agora abertos na `/extensao`) e o MCP como produto com cota. Continua sem ver:
+> as telas por dentro do painel e as regras numéricas das visões e dos filtros, que precisam de
+> sessão.
+
+---
+
+## 8. Segunda leva (2026-10-24): a extensão por dentro, os preços e o MCP
+
+A primeira leva não conseguiu ver o código da extensão ("a Chrome Web Store não abre no navegador
+embutido") nem os preços. Nesta leva os dois apareceram.
+
+**Como foi levantado.** O pacote público da extensão (`.crx`) vem do endpoint de atualização da
+própria loja, pelo id `lpnjnahgabpibeaeocmflhdfhocpdkmi`: 551 KB, formato CRX3, 74 arquivos,
+2,0 MB abertos. Foi aberto e lido com o REA, instalado nesta máquina na mesma noite. **Só foram
+lidos o `manifest.json`, a lista de arquivos e os endereços que a extensão chama** — o que diz o
+que o produto faz e onde ele encosta. Nenhuma linha de implementação, texto ou visual de lá foi
+lida para escrever código: a regra do Radar continua a mesma do primeiro dia.
+
+### 8.1 A extensão
+
+**v3.2.21** (na primeira leva era v2.68.0, dois dias antes: eles publicam rápido). MV3.
+
+- **Permissões:** `unlimitedStorage`, `tabs`, `storage`, `scripting`, `notifications`,
+  `declarativeNetRequestWithHostAccess`. Hosts fixos: `dottifinder.com`, `www.youtube.com`,
+  `studio.youtube.com`. Opcionais: `chatgpt.com`, `claude.ai`. Um atalho de teclado só:
+  `salvar-canal`.
+- **Quatro grupos de script.** No YouTube, dois arquivos no `document_start` e no mundo `MAIN`
+  (`leitor_numeros.js`, `leitor.js`) — é a leitura dos dados da própria página antes de ela rodar,
+  o mesmo que o Radar faz com `ler.js`/`leitor.js`. Depois, **39 arquivos** no `document_idle`. No
+  Studio, o leitor no start e **12 arquivos**. No site deles, um só: `ponte_painel.js`, a ponte
+  entre o site e a extensão.
+- **Um arquivo por função.** A lista de módulos é, na prática, o mapa de funções deles:
+  `regra_outlier`, `regra_tipo`, `regra_raridade`, `regra_monetizacao`, `regra_linguas` (as cinco
+  regras, cada uma num arquivo), `cracha` (o número em cima da capa), `lente` (o painel grande),
+  `lateral`, `numeros`, `grafico`, `tags`, `capa`, `capas_parecidas`, `transcricao`, `outralingua`,
+  `malandro`, `parecidos`, `nicho`, `videos`, `filtro`, `menu`, `modelar`, `provar`, `salvar`,
+  `salvos_estouraram`, `prateleira`, `medidor`, `pedidos_publico`, `som`, `movimento`, `peso`,
+  `vigia`, `venda`, `ia`, `foto`, `rapidas`, `botao_dotti`, `dotti_studio`.
+- **No Studio:** `studio`, `studio_foto`, `studio_ia`, `studio_envio`, `anuncios`, `hoje`,
+  `engajadas`, `perde_gente`, `foto`, `numeros`. As duas últimas novidades para nós são
+  **`engajadas`** e **`perde_gente`** — eles também entraram na área de métricas do dono, que até
+  agora era só do Radar.
+- **O `venda.js` roda dentro da extensão.** O paywall não está só no site: a extensão sabe o plano
+  e vende ali mesmo, em cima do YouTube.
+- **O tamanho conta uma história:** `lente.css` tem 455 KB e `cracha.js` 149 KB. O painel e o
+  número em cima da capa é onde eles põem o dinheiro.
+- **Onde a extensão encosta** (endereços citados nos arquivos): `youtubei/v1/player`,
+  `youtubei/v1/search`, `youtubei/v1/browse`, `youtubei/v1/navigation/resolve_url`,
+  `youtube.com/feeds/videos` (o RSS do canal), `i.ytimg.com`, e — para o Método Malandro —
+  `translate.googleapis.com` e `api.mymemory.translated.net`.
+
+### 8.2 O MCP é produto, e a extensão instala ele
+
+Dentro do pacote há `mcp_ponte.js`, `chat_claude.js`, `chat_chatgpt.js` e `chat_comum.js`, e o
+`claude.ai/customize/connectors` aparece citado. Ou seja: **a própria extensão leva a pessoa até a
+tela de conectores do Claude e liga o Dotti lá**, e também encosta no ChatGPT. O
+`optional_host_permissions` existe só para isso.
+
+E o MCP é vendido **por cota de pergunta**, não por função:
+
+| Plano | Ferramentas | MCP |
+| --- | --- | --- |
+| Grátis — R$ 0 | 2 | até **50 perguntas por semana** |
+| Lite — R$ 97/mês | 5 | até **150 por dia** |
+| Pro — R$ 197/mês | 6 | até **300 por dia** |
+
+### 8.3 Os preços, que antes só apareciam depois do cadastro
+
+Agora estão abertos na `/extensao`: **Grátis R$ 0** · **Lite R$ 97/mês** · **Pro R$ 197/mês**, ou
+12x de R$ 154,82, ou **R$ 1.497 à vista** (de R$ 2.364, −37%). O Pro mensal é o "mais escolhido".
+
+### 8.4 O que apareceu de novo no site
+
+- **Grupos de Canais**, marcado "Novo" — os canais que fazem o mesmo tipo de vídeo, juntos.
+- **Área VIP de aluno**: quem compra o Dotti Growth ou a Mentoria cria a conta com o e-mail da
+  compra e ganha 1 ano de nichos selecionados, canais recomendados pelos professores e alertas
+  deles — enquanto for assinante do Pro. O produto puxa o curso e o curso puxa o produto.
+- Na `/extensao`: **29 funções, 19 grátis e 10 Pro**, nota 5,0 e 911 usuários na loja, com as
+  avaliações reais copiadas para a página.
+- Números da home nesta noite: **212.765 canais analisados**, 1.640 nichos, 2.134.949 vídeos lidos,
+  +1.065 canais novos na semana. O cartão do Pro fala de **294.352 canais analisados** — o número
+  do painel é maior que o da vitrine.
+
+---
+
+## 9. O plano de 22/10, dois dias depois
+
+Conferido item por item contra o código de hoje. A maior parte já foi feita nesses dois dias.
+
+| # | Item | Situação | Onde |
+| --- | --- | --- | --- |
+| 1 | Filtro na URL | **feito** | `location.hash` (30 usos em `app.js`) |
+| 2 | Voltar ao padrão | **feito** | `app.js` |
+| 3 | Visões prontas | **feito** | `tests/test_visoes.py` |
+| 4 | Menu que o usuário reordena | **feito** | `ORGANIZANDO`, `app.js` |
+| 5 | Grupo vazio some sozinho | **falta** | — |
+| 6 | Seus canais acharam | **feito** | aba "Acharam para você", `acharam=1` |
+| 7 | Mostrar o que o filtro cortou | **feito** | `cortados`, `servidor.py` |
+| 8 | Piso automático de views | **feito** | `garimpo.MINIMO_POR_VIDEO` |
+| 9 | Trilho em vez de campo numérico | **parcial** | um `type="range"` em `app.js` |
+| 10 | Marcador "só crescendo" | **feito** | visão `novo_crescendo` |
+| 11 | Esteira de modelagem | **feito** | tabela `modelar`, `/api/modelar` |
+| 12 | Pastas na base | **feito** | `tests/test_painel_pastas.py` |
+| 13 | Paginação por levas | **não conferido** | — |
+| 14 | Lista de funções vinda da API | **falta** | a tela `extensao` é escrita à mão |
+| 15 | Selo de raridade | **feito** | `content.js` |
+| 16 | Reação do público | **feito** | `tests/test_reacao.py` |
+| 17 | Prateleira de canais novos na home | **feito** | `/api/ext/em-alta`, `content.js` |
+| 18 | Provar a capa e o título | **feito** | `content.js` |
+| 19 | Print do cartão | **feito** | `manifest.json` |
+| 20 | Pacote de abertura | **feito** | `/api/abertura` |
+| 21–24 | Cache, erros, faixa de atualizando, telemetria | **não conferido** | — |
+| 25 | Endpoint de vitrine | **parcial** | `/api/abertura` é de dentro, não de vitrine |
+| 26–27 | Extensão como isca, preço depois do cadastro | decisão de produto | README: "ainda não é para vender" |
+| 28 | Depoimento com print | **feito** | `/api/depoimentos` e a tela da administração |
+
+**Sobra, em ordem:** o item 14 (uma fonte só para as funções), o 5 e o 9, conferir 13 e 21–24 — e o
+alvo novo, que não estava na lista de 22/10: **o MCP**. Eles transformaram o painel em ferramenta
+de IA e cobram por pergunta. O Radar tem 237 rotas e os dados todos; não tem a porta.
