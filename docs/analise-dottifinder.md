@@ -415,7 +415,7 @@ Conferido item por item contra o código de hoje. A maior parte já foi feita ne
 | 2 | Voltar ao padrão | **feito** | `app.js` |
 | 3 | Visões prontas | **feito** | `tests/test_visoes.py` |
 | 4 | Menu que o usuário reordena | **feito** | `ORGANIZANDO`, `app.js` |
-| 5 | Grupo vazio some sozinho | **falta** | — |
+| 5 | Grupo vazio some sozinho | **feito** | `if (!itens.length) return ""` em `menu()` |
 | 6 | Seus canais acharam | **feito** | aba "Acharam para você", `acharam=1` |
 | 7 | Mostrar o que o filtro cortou | **feito** | `cortados`, `servidor.py` |
 | 8 | Piso automático de views | **feito** | `garimpo.MINIMO_POR_VIDEO` |
@@ -423,19 +423,31 @@ Conferido item por item contra o código de hoje. A maior parte já foi feita ne
 | 10 | Marcador "só crescendo" | **feito** | visão `novo_crescendo` |
 | 11 | Esteira de modelagem | **feito** | tabela `modelar`, `/api/modelar` |
 | 12 | Pastas na base | **feito** | `tests/test_painel_pastas.py` |
-| 13 | Paginação por levas | **não conferido** | — |
-| 14 | Lista de funções vinda da API | **falta** | a tela `extensao` é escrita à mão |
+| 13 | Paginação por levas | **feito** | `_lista_de_canais(..., limite, pagina)` e o botão Carregar mais |
+| 14 | Lista de funções vinda da API | **feito em 24/10** | `radar/funcoes.py`, `/api/ext/funcoes` |
 | 15 | Selo de raridade | **feito** | `content.js` |
 | 16 | Reação do público | **feito** | `tests/test_reacao.py` |
 | 17 | Prateleira de canais novos na home | **feito** | `/api/ext/em-alta`, `content.js` |
 | 18 | Provar a capa e o título | **feito** | `content.js` |
 | 19 | Print do cartão | **feito** | `manifest.json` |
 | 20 | Pacote de abertura | **feito** | `/api/abertura` |
-| 21–24 | Cache, erros, faixa de atualizando, telemetria | **não conferido** | — |
+| 21 | Cache curto no front | **feito** | a memória curta do `api()` |
+| 22 | Erros em português, com a saída | **feito** | `porque()`: 404 manda religar pelo LIGAR-RADAR.bat |
+| 23 | Faixa de "atualizando" com nova tentativa | **falta** | só há o ↻ à mão, na fila |
+| 24 | Telemetria por tela | só se virar multiusuário | — |
 | 25 | Endpoint de vitrine | **parcial** | `/api/abertura` é de dentro, não de vitrine |
 | 26–27 | Extensão como isca, preço depois do cadastro | decisão de produto | README: "ainda não é para vender" |
 | 28 | Depoimento com print | **feito** | `/api/depoimentos` e a tela da administração |
 
-**Sobra, em ordem:** o item 14 (uma fonte só para as funções), o 5 e o 9, conferir 13 e 21–24 — e o
-alvo novo, que não estava na lista de 22/10: **o MCP**. Eles transformaram o painel em ferramenta
-de IA e cobram por pergunta. O Radar tem 237 rotas e os dados todos; não tem a porta.
+**Feito na madrugada de 24/10:** o item 14 (uma fonte só para as funções, `radar/funcoes.py`) e **o MCP**,
+que não estava na lista de 22/10 — eles transformaram o painel em ferramenta de IA e cobram por
+pergunta, e era a única porta que o Radar não tinha. Oito ferramentas de leitura em `radar/mcp.py`,
+`python -m radar mcp`. Os detalhes estão no README.
+
+**Sobra:** o item 9 (trilho em vez de campo numérico, só um feito), o 23 (nova tentativa sozinha
+quando o servidor volta 5xx) e o 24 (só se o Radar virar multiusuário). Na conferência, o 5, o 13,
+o 21 e o 22 já estavam prontos — a lista de 22/10 está, na prática, cumprida.
+
+O que falta agora não é mais código de paridade, é **decisão de produto**: preço, pagamento (Kiwify
+ou outro), entrar com o Google e publicar a extensão na Chrome Web Store. A lista de funções já
+mostra 32 contra as 29 anunciadas por eles.

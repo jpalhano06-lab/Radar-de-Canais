@@ -57,6 +57,19 @@ def test_o_nome_de_cada_ferramenta_nao_repete():
     assert "radar_resumo" in nomes and "radar_canais" in nomes
 
 
+def test_cada_ferramenta_aponta_para_uma_rota_que_existe():
+    """O `radar_canal` nasceu apontando para `/api/canal-painel/{id}`, que é dos canais DA PESSOA, e respondia
+    "Esse canal não está em Meus canais" para todo canal do Radar. Só rodando apareceu — então fica um teste."""
+    import re
+
+    from radar import servidor
+
+    padroes = [re.compile(re.sub(r"\{[^}]+\}", "[^/]+", r.path) + "$") for r in servidor.app.routes]
+    for f in mcp.FERRAMENTAS:
+        caminho, _ = f["caminho"]({"canal_id": "UC1"})
+        assert any(p.match(caminho) for p in padroes), f'{f["nome"]} pede {caminho}, que não é rota do Radar'
+
+
 def test_nenhuma_ferramenta_escreve():
     """O MCP é só de leitura: nada aqui pode gastar cota do YouTube nem gravar na base."""
     for f in mcp.FERRAMENTAS:
