@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Radar de Canais",
-  "version": "0.24.0",
+  "version": "0.25.0",
   "description": "Escreve em cima de cada vídeo quantas vezes ele passou do normal do canal, o selo do canal raro e a reação do público; lê os vídeos do YouTube enquanto você navega (sem gastar a cota) e guarda no Radar os que estouraram; resumo da busca, filtros dos vídeos da página e print do cartão; preenche sozinha a publicação no YouTube Studio (detalhes, anúncios e questionário).",
   "icons": {
     "16": "icones/16.png",

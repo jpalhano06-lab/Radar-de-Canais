@@ -1088,3 +1088,34 @@ Para comparar: o Dotti anuncia 29 funções, 19 grátis.
 **Falta** (do plano de 22/10): o item 5 (grupo vazio sumir sozinho), o 9 (trilho em vez de campo numérico, só um
 feito) e conferir o 13 e os 21–24. E, se o MCP for virar produto, a cota de perguntas por plano — hoje ele é
 local e livre.
+
+## Niche Finder numa caixa só, o painel de cota fora e as tags que faltavam (2026-10-25)
+
+Quatro pedidos do usuário, com as telas na mão.
+
+- **O painel de créditos da direita saiu.** Ele repetia o quadro que já existe na barra lateral e comia 290 px de
+  largura em toda tela do Niche Finder (`.com-cota` era uma grade de `1fr 290px`). Saíram o `painelCota`, o
+  `GASTOS`, a `atualizarCota` e o CSS deles. Quanto custa cada coisa continua na **Administração**, em
+  "Onde foi hoje", que é onde ficam os números de verdade — o painel só repetia a tabela de preços.
+- **A busca virou uma caixa.** As visões, o campo de procurar, os filtros, os trilhos e as marcas moravam soltos
+  na página, cada tela espaçando de um jeito. Agora vão todos dentro de `.busca-caixa`: fundo de painel, borda,
+  cantos arredondados e 18–22 px de ar nas laterais. Dentro dela o campo e os selects ficam um tom acima
+  (`--painel2`), senão sumiriam no fundo da própria caixa. Está nas quatro telas do Niche Finder que têm filtro —
+  **Canais** (visões + procura + filtros + trilhos), **Faceless Outliers** (procura + filtros + trilho + marcas),
+  **Grupos de canais** e **Títulos**. A aba **Acharam para você** não tem filtro nenhum hoje, então não ganhou
+  caixa: ela é só a lista do que chegou.
+- **No Perfil, "Roteiro" virou "Produzir"**, que é o nome do botão que a tela já usa ("▶ Produzir"). O botão
+  **Levar ao Roteiro** dos vídeos continua com esse nome: ele fala do que você vai fazer lá, não da aba.
+- **Extensão 0.25.0 — as tags.** As tags moram atrás do "Mostrar mais" dos Detalhes, e eram o campo que mais
+  falhava: o painel clicava uma vez, esperava 700 ms fixos e **desistia calado** se o Studio ainda estivesse
+  desenhando a seção. Agora `abrirAsTags()` insiste até o campo aparecer (de 150 em 150 ms, até 5 s) e o rótulo
+  tem as quatro formas que a tela usa conforme a conta: Mostrar mais, Mais opções, Show more, More options.
+  Quando ainda assim não dá, ele **diz**: "não abriu o Mostrar mais a tempo" ou "a fábrica não mandou nenhuma
+  para este vídeo" — antes, tags sem campo e vídeo sem tags davam no mesmo silêncio.
+- **O recado virou lista.** Em vez de uma frase corrida, o painel mostra o que marcou e o que não marcou:
+  `✓ título · ✓ descrição · ✓ não é para crianças · ✓ 15 tags · ✓ uso de IA: sim`, e o que está com ✗ fica com
+  você. É o "assinalar" do pedido: a pessoa confere a tela batendo o olho.
+
+Conferido com o Radar ligado, no navegador: as quatro telas montam a `.busca-caixa` com os filhos certos, nenhuma
+tem mais o `#painel-cota`, e o menu do Perfil mostra Produzir. Para a extensão: `chrome://extensions` → ↻ no Radar
+de Canais → F5 na aba do Studio.

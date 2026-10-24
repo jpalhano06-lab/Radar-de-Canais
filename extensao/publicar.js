@@ -126,6 +126,21 @@
   const campoDescricao = () => naTela("#description-textarea #textbox, ytcp-social-suggestions-textbox#description-textarea #textbox, ytcp-video-description #textbox, #description-container #textbox");
   const campoTags = () => naTela("#tags-container input, ytcp-form-input-container#tags-container input, #tags-container #text-input");
 
+  // As tags moram atrás do "Mostrar mais" dos Detalhes, e era o campo que mais falhava: o painel clicava uma vez,
+  // esperava 700 ms fixos e desistia calado se o Studio ainda estivesse desenhando a seção. Agora ele insiste até o
+  // campo aparecer, conferindo de 150 em 150 ms, e o rótulo tem as quatro formas que a tela usa conforme a conta.
+  // Clicar de novo com a seção já aberta não faz mal: aberto, o rótulo vira "Mostrar menos" e o clique não acha nada.
+  const MAIS_OPCOES = /^(Mostrar mais|Mais opções|Show more|More options)$/i;
+  async function abrirAsTags(ate = 5000) {
+    const fim = Date.now() + ate;
+    for (;;) {
+      const tg = campoTags();
+      if (tg || Date.now() >= fim) return tg;
+      clicar(MAIS_OPCOES);
+      await esperar(150);
+    }
+  }
+
   // a seção do Studio em volta de um texto: sobe do rótulo até o bloco que tem o controle procurado
   function secaoDe(re, achar) {
     for (const alvo of folhas(re)) {
@@ -167,11 +182,12 @@
         .map((e) => e.closest("tp-yt-paper-radio-button")).filter(Boolean)[0];
     if (naoCriancas) { marcar(naoCriancas); feitos.push("não é para crianças"); } else faltou.push("público (crianças)");
 
-    if (!campoTags()) { clicar(/^(Mostrar mais|Show more)$/i); await esperar(700); }
-    const tg = campoTags();
-    if (k && (k.tags || []).length) {
-      if (digitar(tg, tagsQueCabem(k.tags).join(", "))) { tg.blur(); feitos.push("tags"); } else faltou.push("tags");
-    }
+    const tg = await abrirAsTags();
+    const tags = k ? tagsQueCabem(k.tags || []) : [];
+    if (!tags.length) faltou.push(k ? "tags (a fábrica não mandou nenhuma para este vídeo)" : "tags");
+    else if (!tg) faltou.push("tags (não abriu o Mostrar mais a tempo — abra e aperte de novo)");
+    else if (digitar(tg, tags.join(", "))) { tg.blur(); feitos.push(`${tags.length} tags`); }
+    else faltou.push("tags");
 
     await esperar(300);
     if (marcarIA()) feitos.push("uso de IA: sim");
@@ -181,7 +197,9 @@
     const daDescricao = !k ? ` Não achei este vídeo na fábrica${estado.arquivo ? ` (${estado.arquivo})` : ""}: título e descrição ficam com você.`
       : k.modelo === "padrao" ? " A descrição está no modelo padrão do Radar: para mudar, escreva o modelo deste canal no Radar."
         : k.modelo ? "" : " A descrição veio da fábrica: para padronizar, escreva o modelo do canal no Radar.";
-    recado(`Preenchido: ${feitos.join(", ") || "nada"}.${faltou.length ? ` Confira à mão: ${faltou.join(", ")}.` : ""}${daDescricao}`, !k);
+    // a lista do que o painel marcou e do que ficou para a pessoa: ela confere a tela batendo o olho, sem ler frase
+    const lista = [...feitos.map((t) => `✓ ${t}`), ...faltou.map((t) => `✗ ${t}`)].join(" · ");
+    recado(`${lista || "nada a preencher"}${faltou.length ? " — o que está com ✗ fica com você." : ""}${daDescricao}`, !k);
     if (avancar) { await esperar(600); proximaEtapa(); }
   }
 

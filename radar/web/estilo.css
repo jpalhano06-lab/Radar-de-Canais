@@ -1293,17 +1293,9 @@ nav .subs a.ativo { transform: none; }
 .selects .limpar { min-height: 50px; border: 1px dashed var(--linha); border-radius: 12px; font-size: 15px; }
 .selects .limpar:hover { background: var(--acento); text-decoration: none; }
 :root[data-tema="pb"] .selects .limpar:hover { color: #000; }
-.com-cota { display: grid; grid-template-columns: minmax(0, 1fr) 290px; gap: 24px; align-items: start; }
-.corpo-descobrir { min-width: 0; }
-#painel-cota { position: sticky; top: 64px; margin-top: 56px; background: var(--painel); border: 1px solid var(--linha); border-radius: var(--raio); padding: 18px; display: grid; gap: 18px; }
-#painel-cota h3 { margin: 0 0 10px; font-size: 15px; }
-#painel-cota .sub { font-size: 13px; margin: 10px 0 0; }
 .barra-cota { height: 12px; border-radius: 99px; background: var(--linha); overflow: hidden; }
 .barra-cota i { display: block; height: 100%; background: var(--acento); }
 .cota-livre { font-size: 15px; margin: 8px 0; } .cota-livre b { font-size: 26px; }
-#painel-cota .gastos { display: grid; gap: 6px; font-size: 14px; }
-#painel-cota .gastos div { display: flex; justify-content: space-between; gap: 10px; border-bottom: 1px solid var(--linha); padding-bottom: 6px; }
-#painel-cota .gastos b { white-space: nowrap; }
 .grade-videos.grandes { grid-template-columns: repeat(auto-fill, minmax(min(100%, 290px), 1fr)); gap: 28px 20px; }
 .grade-videos.grandes .video.yt { background: none; border: 0 !important; padding: 0; gap: 10px; align-content: start; }
 .video.yt .capa { border-radius: 12px; }
@@ -1318,18 +1310,11 @@ nav .subs a.ativo { transform: none; }
 .pilulas span { background: var(--painel2); border: 1px solid var(--linha); border-radius: 6px; padding: 2px 8px; font-size: 13px; font-weight: 600; }
 .paginas { display: flex; justify-content: center; align-items: center; gap: 16px; margin: 26px 0; font-size: 15px; }
 @media (min-width: 1001px) {   /* no PC fica preso embaixo à direita, abaixo do painel dos créditos */
-  .com-cota .paginas { position: fixed; right: 40px; bottom: 28px; margin: 0; z-index: 20; background: var(--painel);
     border: 1px solid var(--linha); border-radius: 14px; padding: 10px 12px; box-shadow: 0 8px 24px rgba(0,0,0,.35); }
-  .com-cota .paginas .botao { font-size: 15px; padding: 10px 16px; }
 }
 @media (max-width: 1000px) {   /* sem coluna ao lado: o painel entra logo depois do título */
-  .com-cota { display: flex; flex-direction: column; align-items: stretch; }
-  .corpo-descobrir { display: contents; }
-  .corpo-descobrir > .cab-tela, .corpo-descobrir > .ajuda { order: -2; }
-  #painel-cota { position: static; order: -1; margin: 0 0 12px; padding: 14px; grid-template-columns: 1fr 1fr; }
 }
 @media (max-width: 640px) { .selects { grid-template-columns: 1fr 1fr; } .selects select { font-size: 14px; }
-  #painel-cota { grid-template-columns: 1fr; gap: 10px; } #cota-numeros .gastos, #painel-cota > div > .sub { display: none; }
   .grade-videos.grandes { grid-template-columns: 1fr; } }
 
 .lateral #quadro-cota { margin-top: auto; padding: 12px 6px 0; }
@@ -1719,6 +1704,18 @@ nav .subs a .olho svg { width: 15px; height: 15px; }
   border: 2px solid var(--painel); }
 .trilho input[type=range]:focus-visible { outline: 2px solid var(--acento); outline-offset: 4px; border-radius: 999px; }
 .trilho-piso { color: var(--fraco); font-size: 12px; line-height: 1.35; }
+
+/* a caixa da busca: as visões, o procurar, os filtros e os trilhos num bloco só, com ar nas laterais.
+   Antes eles flutuavam soltos na página e cada tela do Niche Finder espaçava de um jeito. */
+.busca-caixa { background: var(--painel); border: 1px solid var(--linha); border-radius: var(--raio);
+  padding: 18px 22px 20px; margin: 16px 0 22px; display: grid; gap: 14px; }
+.busca-caixa > * { margin: 0; }
+.busca-caixa .visoes, .busca-caixa .selects, .busca-caixa .trilhos, .busca-caixa .marcas { margin: 0; }
+.busca-caixa .trilhos { padding-top: 2px; }
+/* dentro da caixa o campo e os selects precisam de um tom a mais, senão somem no fundo dela */
+.busca-caixa .procura input, .busca-caixa .selects select { background: var(--painel2); }
+.busca-caixa .procura input:focus { border-color: var(--verde); }
+@media (max-width: 720px) { .busca-caixa { padding: 14px; margin: 12px 0 16px; } }
 
 /* A faixa de "o Radar está voltando" (2026-10-23): aparece sozinha quando o servidor responde 5xx e some ao voltar */
 #faixa-voltando { position: fixed; inset: 0 0 auto 0; z-index: 9000; padding: 10px 16px; text-align: center;

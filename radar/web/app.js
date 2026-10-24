@@ -180,7 +180,7 @@ const icone = (n, classe = "") => `<svg ${classe ? `class="${classe}"` : ""} vie
 // A terceira posição de uma aba é o endereço dela, quando não é só "#/rota": serve para a mesma tela entrar no
 // menu com um recorte pronto (Entraram hoje é a lista de canais com a visão já ligada).
 const MENU = [
-  ["perfil", "Perfil", [["inicio", "Início"], ["trabalho", "Roteiro"], ["acompanhar", "Acompanhar"], ["resultados", "Resultados"], ["custos", "Custos"]]],
+  ["perfil", "Perfil", [["inicio", "Início"], ["trabalho", "Produzir"], ["acompanhar", "Acompanhar"], ["resultados", "Resultados"], ["custos", "Custos"]]],
   ["descobrir", "Niche Finder", [["base", "Canais"], ["entraram", "Entraram hoje", "#/base?visao=entraram_hoje"],
     ["videos", "Faceless Outliers"], ["titulos", "Títulos"], ["grupos", "Grupos de canais"], ["acharam", "Acharam para você"]]],
   ["ferramentas", "Ferramentas", [["extensao", "Extensão"], ["medir", "Medir canal"], ["bloqueados", "Bloqueados"], ["planos", "Planos"], ["admin", "Administração"], ["integracoes", "Integrações"]]],
@@ -3220,6 +3220,7 @@ async function baseCanais() {
   // o select de tamanho virou trilho: um link antigo com ?tamanho=pequeno continua abrindo a lista certa
   if (f.tamanho) { f.inscritos_max = String((TAMANHOS[f.tamanho] || {}).inscritos_max || ""); f.tamanho = ""; }
   tela.innerHTML = titulo("Canais", "Todos os canais do Radar. Escolha uma pergunta pronta, ou monte o filtro.") + `
+    <div class="busca-caixa">
     <div class="visoes" id="visoes"></div>
     <div class="procura"><input id="busca" placeholder="Ex.: cobras, história de Roma, custo de vida" value="${esc(f.busca)}"><button class="botao vermelho" id="ir">Procurar</button></div>
     <div class="filtra">${selects([
@@ -3235,6 +3236,7 @@ async function baseCanais() {
     <div class="trilhos">
       ${trilho("inscritos_max", "Inscritos", degrausDe("inscritos_max"), f)}
       ${trilho("media_min", "Views por vídeo, a partir de", degrausDe("media_min"), f)}
+    </div>
     </div>
     <div id="youtube"></div>
     <div class="contagem" id="contagem"></div><div class="lista-canais" id="lista"></div>
@@ -3256,7 +3258,7 @@ async function baseCanais() {
     caixa.innerHTML = `<p class="linha-sub">Achei <b style="color:var(--verde)">${novos} canais novos</b> e ${r.canais.length - novos} que já estavam no Radar.</p>
       <div class="lista-canais">${r.canais.map((c) => cartaoCanal(c)).join("") || '<div class="vazio">Nenhum canal novo desta vez.</div>'}</div>
       <div class="chamada"><span class="texto">Não era isso? Procuro de outro jeito (outro período, outro formato ou em inglês).</span><button class="botao" id="de-novo">Procurar de novo</button></div>`;
-    ligarCartoes(caixa); esquecer("/api/filtros", "/api/visoes"); atualizarCota();
+    ligarCartoes(caixa); esquecer("/api/filtros", "/api/visoes");
     document.getElementById("de-novo").onclick = (e) => noYoutube(e.currentTarget);
   });
   const carregar = async (mais = false) => {
@@ -3319,6 +3321,7 @@ async function videosLista() {
   const [o, p] = await Promise.all([opcoes(), pastas()]);
   tela.innerHTML = titulo("Vídeos", "Todos os vídeos que fizeram muitas vezes o normal do próprio canal: o assunto já provou que dá view.") + `
     <div class="grande-acao"><button class="botao" id="mais-youtube">Buscar vídeos novos no YouTube</button></div>
+    <div class="busca-caixa">
     <div class="procura"><input id="busca" placeholder="Procurar no título do vídeo ou do canal" value="${esc(f.busca)}"><button class="botao vermelho" id="ir">Procurar</button></div>
     <div class="filtra">${selects([
       ["base", "Todos os canais", [["salvos", "Só os que eu salvei"], ["acharam", "Só os que acharam para mim"]]],
@@ -3338,6 +3341,7 @@ async function videosLista() {
       ["so_crescendo", "Só de canal crescendo", "O canal está acelerando agora, não é um acerto antigo"],
       ["com_cortados", "Mostrar o que foi cortado", "Inclui o que as suas respostas e os seus bloqueios estavam escondendo"],
     ], f)}
+    </div>
     <div class="contagem" id="contagem"></div><div class="grade-videos grandes" id="lista"></div>
     <div class="mais"><button class="botao sec" id="mais" hidden>Carregar mais</button></div>`;
   const POR = 24;
@@ -3382,7 +3386,7 @@ async function videosLista() {
   document.getElementById("mais-youtube").onclick = (e) => carregando(e.currentTarget, "Procurando no YouTube…", async () => {
     const r = await api("/api/explorar/mais", { method: "POST" });
     aviso(`Procurei "${r.termo}" (${r.nicho}): ${r.novos} canais novos.`);
-    esquecer("/api/filtros", "/api/visoes"); atualizarCota(); await carregar();
+    esquecer("/api/filtros", "/api/visoes"); await carregar();
   });
   sincronizar();
   carregar();
@@ -3408,7 +3412,7 @@ async function grupos() {
   const { grupos: lista } = await api("/api/grupos?" + consulta({ nicho: filtro.nicho }));
   const mostrar = lista.filter((g) => g.canais >= (+filtro.min || 1));
   tela.innerHTML = titulo("Grupos de canais" + botaoAleatorio(".grade-grupos"), "Canais que fazem o mesmo tipo de vídeo. Poucos canais e muita view: nicho aberto. Clique num grupo para ver os canais.") +
-    selects([["nicho", "Todos os nichos", o.nichos.map((n) => [n.valor, n.valor])], ["min", "Qualquer número de canais", [[2, "2 canais ou mais"], [3, "3 ou mais"], [5, "5 ou mais"]]]], filtro) + `
+    `<div class="busca-caixa">${selects([["nicho", "Todos os nichos", o.nichos.map((n) => [n.valor, n.valor])], ["min", "Qualquer número de canais", [[2, "2 canais ou mais"], [3, "3 ou mais"], [5, "5 ou mais"]]]], filtro)}</div>` + `
     <div class="grade-grupos">${mostrar.map((g) => {
       const leitura = g.canais <= 2 ? "nicho aberto" : g.canais >= 8 ? "concorrido" : "em formação";
       return `<div class="grupo" data-sub="${esc(g.subnicho)}">
@@ -3446,10 +3450,10 @@ async function titulos() {
       <div id="tit-saida"></div>
     </div>
     <h2 style="margin-top:26px">Banco de títulos que estouraram</h2>
-    ${selects([["nicho", "Todos os nichos", o.nichos.map((n) => [n.valor, n.valor])],
+    <div class="busca-caixa">${selects([["nicho", "Todos os nichos", o.nichos.map((n) => [n.valor, n.valor])],
       ["nota_min", "", [["3", "3x o normal ou mais"], ["5", "5x ou mais"], ["10", "10x ou mais"]]],
       ["publicado_dias", "De qualquer data", [["7", "Da última semana"], ["30", "Do último mês"], ["365", "Do último ano"]]]], filtro)}
-    <div class="procura" style="margin:0 0 12px"><input id="tit-busca" placeholder="Procurar no título" value="${esc(filtro.busca)}"></div>
+    <div class="procura"><input id="tit-busca" placeholder="Procurar no título" value="${esc(filtro.busca)}"></div></div>
     <div id="tit-banco" class="lista-titulos"><div class="vazio">Carregando…</div></div>`;
 
   const banco = async () => {
@@ -3695,7 +3699,6 @@ async function quadroCota() {
     <span class="sub auto-garimpo" data-dica="Todo dia, sozinho, o Radar procura canais novos e mede de novo os seus com 60% da cota livre. Só roda com o Radar ligado: com o PC desligado ele não roda e não recupera o dia. O próximo é 23 h depois do último. A cota volta às 5 h e o que sobrar se perde; por isso o Gastar tudo antes de desligar.">🕑 Garimpo automático: ${c.garimpando ? "rodando agora" : quando} <u>?</u></span>${botao}</div>`;
   const b = document.getElementById("gastar-tudo");
   if (b) b.onclick = () => janelaGastar(c);
-  if (c.garimpando) atualizarCota();
   relogioCota = setTimeout(quadroCota, c.garimpando ? 5000 : 60000);
 }
 
@@ -3726,24 +3729,9 @@ function janelaGastar(c) {
 // ---------------------------------------------------------------- Descobrir: o painel com os créditos do YouTube
 
 // quanto cada ação da página gasta da cota (busca na API = 100; medir canal ≈ 3; ver 50 vídeos = 1)
-const GASTOS = {
-  base: [["Filtrar, ordenar e trocar de visão", "0"], ["Procurar no YouTube", "100 a 250"], ["Procurar de novo", "100 a 250"], ["Salvar canal", "0"]],
-  videos: [["Filtrar, ordenar e carregar mais", "0"], ["Buscar vídeos novos no YouTube", "100 a 250"], ["Salvar ideia", "0"], ["Levar ao Roteiro", "0"]],
-  acharam: [["Ver os canais que chegaram", "0"], ["Salvar canal", "0"], ["Procura semanal (sozinha)", "do garimpo"]],
-};
-function painelCota(nome) {
-  const corpo = document.createElement("div");
-  corpo.className = "corpo-descobrir";
-  corpo.append(...tela.childNodes);
-  const lado = document.createElement("aside");
-  lado.id = "painel-cota";
-  lado.innerHTML = `<div><h3>Créditos do YouTube hoje</h3><div id="cota-numeros" class="sub">Carregando…</div></div>
-    <div><h3>Nesta página</h3><div class="gastos">${GASTOS[nome].map(([a, v]) => `<div><span>${a}</span><b>${v}</b></div>`).join("")}</div>
-    <p class="sub">Busca no YouTube = 100 · medir 1 canal ≈ 3 · ver 50 vídeos = 1. A cota volta às 5 h (Brasília).</p></div>`;
-  tela.classList.add("com-cota");
-  tela.append(corpo, lado);
-  atualizarCota();
-}
+// O painel de cota que ficava à direita saiu (pedido do usuário em 2026-10-25): ele repetia o quadro da barra
+// lateral e comia 290px da largura em todas as telas do Niche Finder. Quanto custa cada coisa continua na
+// Administração, em "Onde foi hoje".
 // em que a cota de hoje foi gasta: o servidor conta cada pedido ao YouTube no motivo de quem pediu
 function ondeFoiACota(c) {
   const lista = (c.motivos || []).filter((m) => m.unidades > 0);
@@ -3753,20 +3741,6 @@ function ondeFoiACota(c) {
     <p class="sub">${lista.reduce((s, m) => s + m.chamadas, 0)} pedidos ao YouTube hoje.</p>`;
 }
 
-async function atualizarCota() {
-  const caixa = document.getElementById("cota-numeros");
-  if (!caixa) return;
-  try {
-    const c = await api("/api/cota");
-    const pct = c.total ? Math.min(100, Math.round(c.usado / c.total * 100)) : 0;
-    caixa.className = "";
-    caixa.innerHTML = `<div class="barra-cota"><i style="width:${pct}%"></i></div>
-      <div class="cota-livre"><b>${num(c.livre)}</b> livres de ${num(c.total)}</div>
-      <div class="gastos"><div><span>Usado</span><b>${num(c.usado)}</b></div><div><span>Total</span><b>${num(c.total)}</b></div>
-      <div><span>Chaves</span><b>${c.chaves}</b></div></div>
-      ${ondeFoiACota(c)}`;
-  } catch (e) { caixa.textContent = e.message; }
-}
 
 // ---------------------------------------------------------------- rotas
 
@@ -3796,10 +3770,9 @@ async function rota() {
   if (EU && (!ROTAS[nome] || nome === "entrar" || nome === "criar")) { location.hash = "#/inicio"; return; }
   menu(nome);
   tela.innerHTML = '<div class="vazio">Carregando…</div>';
-  tela.classList.remove("com-cota");
   window.scrollTo(0, 0);
   painel();
-  try { await ROTAS[nome](param, extra); if (GASTOS[nome]) painelCota(nome); }
+  try { await ROTAS[nome](param, extra); }
   catch (e) { tela.innerHTML = `<div class="vazio">${esc(porque(e))}</div>`; }
 }
 
