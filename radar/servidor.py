@@ -19,7 +19,7 @@ from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 
-from . import alvos, banco, canal_painel, custos, diagnostico, fabrica_api, fila, garimpo, gosto, ia, integracoes, medir, mercado, metricas, pagina, perfil, producao, publicar, radar_paises, roteiro_claude, studio, tempo, thumb, trabalho, treinamento, youtube
+from . import alvos, banco, canal_painel, custos, diagnostico, fabrica_api, fila, funcoes, garimpo, gosto, ia, integracoes, medir, mercado, metricas, pagina, perfil, producao, publicar, radar_paises, roteiro_claude, studio, tempo, thumb, trabalho, treinamento, youtube
 from .config import DADOS, NOME, PLANOS, RAIZ, pode
 
 WEB = RAIZ / "radar" / "web"
@@ -423,6 +423,14 @@ def ext_em_alta(u: dict = Depends(exigir("extensao"))):
 @app.get("/api/ext/hoje")
 def ext_hoje(u: dict = Depends(exigir("extensao"))):
     return pagina.hoje()
+
+
+@app.get("/api/ext/funcoes")
+def ext_funcoes(u: dict = Depends(exigir("extensao"))):
+    """As funções da extensão, numa fonte só: a tela de ajuda, a tela de planos e a extensão leem daqui.
+
+    Cada função já vem com o plano que a abre e, para quem está pedindo, se está liberada."""
+    return {"funcoes": funcoes.lista(_plano(u)), "onde": funcoes.ONDE, "contagem": funcoes.contagem()}
 
 
 @app.get("/api/ext/video/{video_id}")

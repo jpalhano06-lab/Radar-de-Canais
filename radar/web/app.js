@@ -3582,7 +3582,10 @@ const O_QUE_ABRE = {
 };
 
 async function telaPlanos() {
-  const { planos, meu } = await api("/api/planos");
+  // a contagem de funções é um extra: se ela falhar, a tela de planos (que é por onde se assina) continua de pé
+  const [{ planos, meu }, ext] = await Promise.all([api("/api/planos"), api("/api/ext/funcoes").catch(() => null)]);
+  const ordem = Object.keys(planos);
+  const quantas = (k) => !ext ? null : ext.funcoes.filter((f) => ordem.indexOf(f.plano) <= ordem.indexOf(k)).length;
   const chaves = Object.keys(planos);
   tela.innerHTML = titulo("Planos", "O que cada plano abre no Radar.") + `
     <div class="planos">${chaves.map((k) => {
@@ -3593,22 +3596,33 @@ async function telaPlanos() {
         <div class="preco">${p.preco ? `R$ ${num(p.preco)}<small>/mês</small>` : "grátis"}</div>
         ${k === meu ? '<span class="tag">o seu plano</span>' : ""}
         <ul>${novos.map((r) => `<li>${esc(O_QUE_ABRE[r] || r)}</li>`).join("")}</ul>
+        ${ext ? `<p class="linha-sub" style="margin-bottom:0">${quantas(k)} das ${ext.contagem.total} funções da extensão.</p>` : ""}
         ${antes ? `<p class="linha-sub">Tudo do ${esc(planos[antes].nome)}, e mais.</p>` : ""}
       </article>`;
     }).join("")}</div>`;
 }
 
-function extensao() {
-  tela.innerHTML = titulo("Extensão do Chrome", "Garimpa enquanto você usa o YouTube: lê os vídeos da tela, sem gastar a cota, e guarda no Radar os que estouraram.") + `
-    <div class="explica"><div><b>🌍 Oportunidade por país (só na extensão):</b> abra um vídeo no YouTube e clique no botão no painel ao lado.
-      A extensão procura o título, sem os números e traduzido, na busca do YouTube de 8 países (EUA, Brasil, Espanha, França, Alemanha, Itália, Polônia e Turquia)
-      e diz onde ninguém fez ainda. Ela lê a busca como você leria: <b>não gasta a cota do YouTube</b> e funciona mesmo quando a cota do dia acabou.</div></div>
+// A lista de funcoes vem do servidor (radar/funcoes.py), numa fonte so: a tela de ajuda, a tela de planos e a
+// propria extensao leem daqui. Antes eram tres listas escritas a mao, e quem mexia numa esquecia as outras.
+async function extensao() {
+  const { funcoes, onde, contagem } = await api("/api/ext/funcoes");
+  const grupos = Object.keys(onde).filter((g) => funcoes.some((f) => f.onde === g));
+  const cartao = (f) => `
+    <article class="plano${f.liberada === false ? " trancada" : ""}">
+      <h3>${esc(f.nome)}${f.plano === "gratis" ? "" : ` <span class="tag">${esc(f.plano_nome)}</span>`}</h3>
+      <p class="sub">${esc(f.desc)}</p>
+      ${f.atalho ? `<p class="linha-sub" style="margin-bottom:0">Atalho: <b>${esc(f.atalho)}</b></p>` : ""}
+    </article>`;
+  tela.innerHTML = titulo("Extensão do Chrome",
+    `${contagem.total} funções dentro do YouTube, ${contagem.gratis} delas no plano Grátis. Enquanto você navega, a extensão lê os vídeos da tela — sem gastar a cota — e guarda no Radar os que estouraram.`) + `
     <div class="cartao"><p style="margin-top:0"><a class="botao" href="/api/extensao.zip">Baixar a extensão</a></p>
     <ol style="margin:0;padding-left:20px;display:grid;gap:8px">
     <li>Descompacte o zip numa pasta que não vai apagar (Documentos).</li>
     <li>Abra <b>chrome://extensions</b> e ligue o <b>Modo do desenvolvedor</b>.</li>
     <li>Clique em <b>Carregar sem compactação</b> e escolha a pasta <b>radar-extensao</b>.</li>
-    <li>Já tem a extensão? Em <b>chrome://extensions</b>, clique no ↻ dela para carregar a versão nova.</li></ol></div>`;
+    <li>Já tem a extensão? Em <b>chrome://extensions</b>, clique no ↻ dela para carregar a versão nova.</li></ol></div>
+    ${grupos.map((g) => `<h3 style="margin:22px 0 0">${esc(onde[g])}</h3>
+      <div class="planos">${funcoes.filter((f) => f.onde === g).map(cartao).join("")}</div>`).join("")}`;
 }
 
 async function admin() {
