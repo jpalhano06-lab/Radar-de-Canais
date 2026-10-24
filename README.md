@@ -1112,6 +1112,15 @@ Quatro pedidos do usuário, com as telas na mão.
   tem as quatro formas que a tela usa conforme a conta: Mostrar mais, Mais opções, Show more, More options.
   Quando ainda assim não dá, ele **diz**: "não abriu o Mostrar mais a tempo" ou "a fábrica não mandou nenhuma
   para este vídeo" — antes, tags sem campo e vídeo sem tags davam no mesmo silêncio.
+
+**E nada disso apareceu na tela.** As quatro mudanças estavam no disco e o servidor as mandava, mas o
+`index.html` pede `/web/app.js?v=104` — um número escrito à mão. O `app.js` mudou três vezes sem que o 104
+subisse, então o navegador continuou usando o arquivo que já tinha guardado: a tela de ontem, sem erro nenhum
+na cara de quem usa. O `/web` também não manda `Cache-Control`, então o navegador decide sozinho quanto tempo
+guardar e nem pergunta ao Radar. Agora a rota `/` monta o index na hora e põe no `?v=` o minuto em que o
+`app.js` ou o `estilo.css` mudou — mexer no painel já é subir a versão, não existe mais número para esquecer —
+e o index vai com `no-store`, senão ele mesmo ficaria guardado e a versão nova não chegaria a ninguém. Dois
+testes no `test_abertura.py` cobram as duas coisas.
 - **O recado virou lista.** Em vez de uma frase corrida, o painel mostra o que marcou e o que não marcou:
   `✓ título · ✓ descrição · ✓ não é para crianças · ✓ 15 tags · ✓ uso de IA: sim`, e o que está com ✗ fica com
   você. É o "assinalar" do pedido: a pessoa confere a tela batendo o olho.
