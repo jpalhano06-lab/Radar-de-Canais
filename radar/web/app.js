@@ -3582,8 +3582,10 @@ const O_QUE_ABRE = {
 };
 
 async function telaPlanos() {
-  const [{ planos, meu }, ext] = await Promise.all([api("/api/planos"), api("/api/ext/funcoes")]);
-  const quantas = (k) => ext.funcoes.filter((f) => Object.keys(planos).indexOf(f.plano) <= Object.keys(planos).indexOf(k)).length;
+  // a contagem de funções é um extra: se ela falhar, a tela de planos (que é por onde se assina) continua de pé
+  const [{ planos, meu }, ext] = await Promise.all([api("/api/planos"), api("/api/ext/funcoes").catch(() => null)]);
+  const ordem = Object.keys(planos);
+  const quantas = (k) => !ext ? null : ext.funcoes.filter((f) => ordem.indexOf(f.plano) <= ordem.indexOf(k)).length;
   const chaves = Object.keys(planos);
   tela.innerHTML = titulo("Planos", "O que cada plano abre no Radar.") + `
     <div class="planos">${chaves.map((k) => {
@@ -3594,7 +3596,7 @@ async function telaPlanos() {
         <div class="preco">${p.preco ? `R$ ${num(p.preco)}<small>/mês</small>` : "grátis"}</div>
         ${k === meu ? '<span class="tag">o seu plano</span>' : ""}
         <ul>${novos.map((r) => `<li>${esc(O_QUE_ABRE[r] || r)}</li>`).join("")}</ul>
-        <p class="linha-sub" style="margin-bottom:0">${quantas(k)} das ${ext.contagem.total} funções da extensão.</p>
+        ${ext ? `<p class="linha-sub" style="margin-bottom:0">${quantas(k)} das ${ext.contagem.total} funções da extensão.</p>` : ""}
         ${antes ? `<p class="linha-sub">Tudo do ${esc(planos[antes].nome)}, e mais.</p>` : ""}
       </article>`;
     }).join("")}</div>`;
