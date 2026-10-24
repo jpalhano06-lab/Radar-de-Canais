@@ -16,7 +16,7 @@ from urllib.parse import quote_plus
 
 from starlette.concurrency import run_in_threadpool
 from fastapi import Depends, FastAPI, HTTPException, Request
-from fastapi.responses import FileResponse, JSONResponse, Response
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 
 from . import alvos, banco, canal_painel, custos, diagnostico, fabrica_api, fila, funcoes, garimpo, gosto, ia, integracoes, medir, mercado, metricas, pagina, perfil, producao, publicar, radar_paises, roteiro_claude, studio, tempo, thumb, trabalho, treinamento, youtube
@@ -2740,4 +2740,14 @@ app.mount("/web", StaticFiles(directory=WEB), name="web")
 
 @app.get("/")
 def inicio():
-    return FileResponse(WEB / "index.html")
+    """O index com a versão dos arquivos do painel colada na hora.
+
+    O `?v=` do `app.js` e do `estilo.css` existe para o navegador buscar o arquivo novo em vez do guardado.
+    Escrito à mão, ele fica para trás: mexer no painel e esquecer de subir o número faz a pessoa continuar
+    vendo a tela velha, sem erro nenhum na cara — e o `/web` não manda `Cache-Control`, então o navegador
+    decide sozinho e nem pergunta. Aqui o número é o minuto em que o arquivo mudou, então ele nunca atrasa.
+    """
+    pagina = (WEB / "index.html").read_text(encoding="utf-8")
+    versao = int(max((WEB / n).stat().st_mtime for n in ("app.js", "estilo.css")))
+    pagina = re.sub(r"(/web/(?:app\.js|estilo\.css)\?v=)[^\"']*", rf"\g<1>{versao}", pagina)
+    return HTMLResponse(pagina, headers={"Cache-Control": "no-store"})

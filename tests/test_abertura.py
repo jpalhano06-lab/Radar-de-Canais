@@ -98,3 +98,23 @@ def test_a_vitrine_comeca_sem_depoimento_nenhum():
 
 def test_o_preco_so_aparece_para_quem_tem_conta():
     assert cliente.get("/api/planos").status_code == 401
+
+
+# ---------------------------------------------------------------- a versão dos arquivos do painel
+
+def test_o_index_pede_a_versao_do_arquivo_que_esta_no_disco():
+    """O `?v=` escrito à mão ficou em 104 enquanto o `app.js` mudou três vezes: o navegador guardou a tela velha
+    e a pessoa viu o Radar de ontem, sem erro nenhum. Agora o número é a hora do arquivo, e este teste cobra isso."""
+    import re
+
+    html = cliente.get("/").text
+    pedidos = re.findall(r"/web/(app\.js|estilo\.css)\?v=(\d+)", html)
+    assert len(pedidos) == 2, f"o index tem de pedir os dois arquivos com versão: {pedidos}"
+    for nome, versao in pedidos:
+        hora = int((servidor.WEB / nome).stat().st_mtime)
+        assert int(versao) >= hora, f"{nome} pede v={versao}, mais velho que o arquivo ({hora})"
+
+
+def test_o_index_nao_fica_guardado_no_navegador():
+    """Se o próprio index ficasse no cache, subir a versão dos arquivos não chegaria a ninguém."""
+    assert cliente.get("/").headers["cache-control"] == "no-store"
