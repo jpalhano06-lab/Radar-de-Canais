@@ -419,7 +419,7 @@ Conferido item por item contra o código de hoje. A maior parte já foi feita ne
 | 6 | Seus canais acharam | **feito** | aba "Acharam para você", `acharam=1` |
 | 7 | Mostrar o que o filtro cortou | **feito** | `cortados`, `servidor.py` |
 | 8 | Piso automático de views | **feito** | `garimpo.MINIMO_POR_VIDEO` |
-| 9 | Trilho em vez de campo numérico | **parcial** | um `type="range"` em `app.js` |
+| 9 | Trilho em vez de campo numérico | **feito** | `trilho()` + `DEGRAUS`, em views_min, inscritos_max e media_min |
 | 10 | Marcador "só crescendo" | **feito** | visão `novo_crescendo` |
 | 11 | Esteira de modelagem | **feito** | tabela `modelar`, `/api/modelar` |
 | 12 | Pastas na base | **feito** | `tests/test_painel_pastas.py` |
@@ -433,7 +433,7 @@ Conferido item por item contra o código de hoje. A maior parte já foi feita ne
 | 20 | Pacote de abertura | **feito** | `/api/abertura` |
 | 21 | Cache curto no front | **feito** | a memória curta do `api()` |
 | 22 | Erros em português, com a saída | **feito** | `porque()`: 404 manda religar pelo LIGAR-RADAR.bat |
-| 23 | Faixa de "atualizando" com nova tentativa | **falta** | só há o ↻ à mão, na fila |
+| 23 | Faixa de "atualizando" com nova tentativa | **feito** | `ESPERAS` e a faixa `#faixa-voltando`, no `api()` |
 | 24 | Telemetria por tela | só se virar multiusuário | — |
 | 25 | Endpoint de vitrine | **parcial** | `/api/abertura` é de dentro, não de vitrine |
 | 26–27 | Extensão como isca, preço depois do cadastro | decisão de produto | README: "ainda não é para vender" |
@@ -444,9 +444,13 @@ que não estava na lista de 22/10 — eles transformaram o painel em ferramenta 
 pergunta, e era a única porta que o Radar não tinha. Oito ferramentas de leitura em `radar/mcp.py`,
 `python -m radar mcp`. Os detalhes estão no README.
 
-**Sobra:** o item 9 (trilho em vez de campo numérico, só um feito), o 23 (nova tentativa sozinha
-quando o servidor volta 5xx) e o 24 (só se o Radar virar multiusuário). Na conferência, o 5, o 13,
-o 21 e o 22 já estavam prontos — a lista de 22/10 está, na prática, cumprida.
+**Sobra só o item 24**, e ele é condicional: telemetria por tela faz sentido se o Radar virar
+multiusuário. Os itens 9 e 23 também já estavam feitos — a primeira conferência procurou pelas
+palavras do plano ("range", "tentativa", "atualizando") e não pelas do código: o trilho é um
+`trilho()` reusado em três filtros, e a nova tentativa se chama `ESPERAS` + `#faixa-voltando`. Os
+dois passaram a ter teste (`tests/app_js.test.mjs`), que é como isso não se repete.
+
+**A lista de 22/10 está cumprida.**
 
 O que falta agora não é mais código de paridade, é **decisão de produto**: preço, pagamento (Kiwify
 ou outro), entrar com o Google e publicar a extensão na Chrome Web Store. A lista de funções já
