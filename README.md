@@ -63,6 +63,11 @@ Os preços são provisórios. A administração troca o plano e o vencimento de 
 
 `uv run python -m pytest tests`: as contas, sem rede.
 
+`node tests/app_js.test.mjs`: o `api()` do painel — a memória curta, a espera para o Radar voltar
+(2s, 4s, 8s, 15s, 30s) e os trilhos de views e inscritos. Sem navegador e sem instalar nada: o trecho do
+`app.js` roda com o `fetch`, o `document` e o `setTimeout` de mentira, então o teste mede quanto ele
+esperaria em vez de esperar.
+
 ## Visual do painel
 
 Pedido do usuário em 2026-10-13: abas à esquerda (Descobrir: Radar, Top 30, Outliers; Minha base: Salvos, Achados;
