@@ -16,7 +16,17 @@ import re
 from . import banco, roteiro_claude, thumb
 
 PADRAO = {"perfil": "", "projeto_roteiro_id": "", "minutos": 8, "lingua": "", "thumb_projeto_id": "", "ia_imagem": "gemini",
-          "agenda": None, "concorrentes": None}
+          "agenda": None, "concorrentes": None,
+          # o texto que a extensão cola na descrição do Studio, igual em todo vídeo do canal (pedido do usuário em
+          # 2026-10-22: "mais padronizado, só mudando para o tema do vídeo, sem spoilers, apenas uma sinopse")
+          # o modelo da descrição: vazio = o modelo padrão do Radar na língua do canal (publicar.modelo_padrao).
+          # `marcas` é o que muda de canal para canal dentro do modelo pronto (as redes que o canal cita).
+          "modelo_tipo": "geral", "marcas": "",
+          # o padrão da publicação deste canal, que a extensão lê no Studio: de quantos em quantos minutos entra
+          # anúncio e que tela final montar ("melhor" = vídeo melhor para o espectador + inscrever-se)
+          "anuncio_cada": 1, "tela_final": "melhor"}
+TELAS_FINAIS = {"melhor": "Vídeo (melhor para o espectador) + inscrever-se",
+                "ultimo": "Copiar a tela final do último vídeo", "nenhuma": "Não mexer"}
 IAS_IMAGEM = {"gemini": ("Gemini", "https://gemini.google.com/app"), "chatgpt": ("ChatGPT", "https://chatgpt.com/")}
 
 
@@ -32,6 +42,52 @@ def _perfil(nome: str) -> dict:
             "idioma_da_voz": achar("idioma_da_voz"), "provedor": achar("provedor")}
 
 
+# ---------------------------------------------------------------- o rodapé da descrição, no perfil da fábrica
+# Quem escreve a descrição é a fábrica, no publicacao.json de cada projeto: ela põe o resumo, os capítulos, os
+# créditos e, no fim, o rodapé do canal (apresentação e aviso legal). O rodapé mora no perfil da fábrica, e o
+# Radar edita de lá — assim existe UM lugar só, e o vídeo já sai do projeto com a descrição pronta.
+# (pedido do usuário em 2026-10-24: "quero algo já automático direto na fábrica").
+RODAPE_MAXIMO = 3000
+_MARCA_RODAPE = "  rodape: |"
+
+
+def _arquivo_do_perfil(nome: str):
+    arquivo = roteiro_claude.FABRICA / "perfis" / f"{nome}.yaml"
+    return arquivo if re.fullmatch(r"[\w.-]+", nome or "") and arquivo.exists() else None
+
+
+def rodape_do_perfil(nome: str) -> str:
+    """O texto que fecha a descrição de todo vídeo do canal. "" quando o canal ainda não tem um."""
+    arquivo = _arquivo_do_perfil(nome)
+    if not arquivo:
+        return ""
+    linhas = arquivo.read_text(encoding="utf-8", errors="ignore").split("\n")
+    if _MARCA_RODAPE not in linhas:
+        return ""
+    saida = []
+    for linha in linhas[linhas.index(_MARCA_RODAPE) + 1:]:
+        if linha.strip() and not linha.startswith("    "):
+            break                      # saiu do bloco indentado
+        saida.append(linha[4:] if linha.startswith("    ") else "")
+    return "\n".join(saida).strip()
+
+
+def salvar_rodape(nome: str, texto: str) -> str:
+    """Põe (ou troca) o bloco publicacao.rodape do perfil, sem encostar no resto do arquivo."""
+    arquivo = _arquivo_do_perfil(nome)
+    if not arquivo:
+        raise ValueError("Este canal não tem perfil na fábrica.")
+    texto = (texto or "").strip()[:RODAPE_MAXIMO]
+    atual = arquivo.read_text(encoding="utf-8", errors="ignore")
+    sem_bloco = re.sub(r"(?ms)^publicacao:\n(?:[ \t].*\n|\n(?=[ \t]))*", "", atual).rstrip("\n")
+    if not texto:
+        arquivo.write_text(sem_bloco + "\n", encoding="utf-8")
+        return ""
+    corpo = "".join(f"    {l}\n" if l.strip() else "\n" for l in texto.split("\n"))
+    arquivo.write_text(f"{sem_bloco}\n\npublicacao:\n{_MARCA_RODAPE}\n{corpo}", encoding="utf-8")
+    return rodape_do_perfil(nome)
+
+
 def perfis() -> list[dict]:
     return [_perfil(p) | {"perfil": p} for p in roteiro_claude.perfis_da_fabrica()]
 
@@ -42,6 +98,23 @@ def _perfil_do_canal(titulo: str) -> str:
         if p.get("canal") and p["canal"].strip().lower() == (titulo or "").strip().lower():
             return p["perfil"]
     return ""
+
+
+def canal_do_perfil(usuario_id: int, perfil: str) -> tuple[str, str]:
+    """(id, título) do canal da pessoa que usa esse perfil da fábrica, pelo que está salvo ou pelo nome do canal."""
+    if not perfil:
+        return "", ""
+    meus = banco.todos("""SELECT c.id, c.titulo FROM meus_canais m JOIN canais c ON c.id = m.canal_id
+                           WHERE m.usuario_id=?""", usuario_id)
+    for c in meus:
+        salvo = banco.um("SELECT dados FROM canais_config WHERE usuario_id=? AND canal_id=?", usuario_id, c["id"])
+        if salvo and (json.loads(salvo["dados"]).get("perfil") or "") == perfil:
+            return c["id"], c["titulo"]
+    nome = (_perfil(perfil).get("canal") or "").strip().lower()
+    for c in meus:
+        if nome and c["titulo"].strip().lower() == nome:
+            return c["id"], c["titulo"]
+    return "", ""
 
 
 def config(usuario_id: int, canal_id: str) -> dict:
@@ -62,6 +135,10 @@ def salvar(usuario_id: int, canal_id: str, dados: dict) -> dict:
         limpo["minutos"] = max(1, min(60, int(limpo["minutos"] or 8)))
     if limpo.get("ia_imagem") not in IAS_IMAGEM:
         limpo["ia_imagem"] = "gemini"
+    if "anuncio_cada" in limpo:
+        limpo["anuncio_cada"] = max(1, min(60, int(limpo["anuncio_cada"] or 1)))
+    if limpo.get("tela_final") not in TELAS_FINAIS:
+        limpo["tela_final"] = "melhor"
     banco.executar("INSERT OR REPLACE INTO canais_config (usuario_id, canal_id, dados, criado) VALUES (?,?,?,?)",
                    usuario_id, canal_id, json.dumps(limpo, ensure_ascii=False), banco.agora())
     return config(usuario_id, canal_id)
@@ -98,8 +175,14 @@ português, curto e direto, a não ser que a pessoa peça outra língua. Quando 
 pessoas reais."""
 
 
-def assistente(usuario_id: int, canal_id: str, mensagens: list[dict], pagina: dict | None = None) -> str:
+def assistente(usuario_id: int, canal_id: str, mensagens: list[dict], pagina: dict | None = None,
+               projeto_id: str = "") -> str:
     contexto = ""
+    if projeto_id:  # o agente escolhido no painel do YouTube: as mesmas instruções que o Roteiro usa (2026-10-22)
+        ag = banco.um("SELECT nome, instrucoes FROM projetos_roteiro WHERE id=? AND usuario_id=?", projeto_id, usuario_id)
+        if ag and ag["instrucoes"]:
+            contexto += (f"Instruções do agente \"{ag['nome']}\" (o jeito de trabalhar que a pessoa escolheu; valem "
+                         f"por cima das regras gerais quando conflitarem):\n{ag['instrucoes'][:8000]}\n\n")
     if pagina:      # o painel do Claude dentro do YouTube manda o que está aberto na aba
         contexto += (f"A pessoa está no YouTube, nesta página: {str(pagina.get('titulo', ''))[:300]}"
                      f"{' (canal ' + str(pagina['canal'])[:100] + ')' if pagina.get('canal') else ''} — "

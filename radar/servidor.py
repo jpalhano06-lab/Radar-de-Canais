@@ -1,6 +1,8 @@
 """O servidor do Radar: contas, a API da extensão, o painel dos canais e a administração.
 
 Rodar: python -m radar servidor (porta 8400) ou LIGAR-RADAR.bat."""
+import base64
+import binascii
 import httpx
 import json
 import os
@@ -17,8 +19,8 @@ from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 
-from . import alertas, alvos, banco, canal_painel, custos, diagnostico, fabrica_api, fila, garimpo, gosto, ia, integracoes, medir, mercado, metricas, pagina, perfil, producao, publicar, radar_paises, roteiro_claude, studio, tempo, thumb, trabalho, treinamento, youtube
-from .config import NOME, PLANOS, RAIZ, pode
+from . import alvos, banco, canal_painel, custos, diagnostico, fabrica_api, fila, garimpo, gosto, ia, integracoes, medir, mercado, metricas, pagina, perfil, producao, publicar, radar_paises, roteiro_claude, studio, tempo, thumb, trabalho, treinamento, youtube
+from .config import DADOS, NOME, PLANOS, RAIZ, pode
 
 WEB = RAIZ / "radar" / "web"
 COOKIE = "radar_sessao"
@@ -225,8 +227,133 @@ def eu(u: dict = Depends(usuario)):
 
 
 @app.get("/api/planos")
-def planos():
-    return {"nome": NOME, "planos": PLANOS}
+def planos(u: dict = Depends(usuario)):
+    """Os planos e o preço de cada um. Pede conta de propósito: o preço aparece depois do cadastro, quando a
+    pessoa já viu o Radar funcionando, e não antes de ela saber o que é."""
+    return {"nome": NOME, "planos": PLANOS, "meu": _plano(u)}
+
+
+# ---------------------------------------------------------------- depoimentos: quem usou, com o print do Studio
+# Guardados aqui para a vitrine mostrar. Entram só pela administração, com o print que a pessoa mandou: o Radar
+# não inventa depoimento nenhum, e enquanto ninguém gravar um a vitrine simplesmente não tem essa parte.
+
+DEPOIMENTOS_PASTA = DADOS / "depoimentos"
+PRINT_MAXIMO = 4 * 1024 * 1024
+PRINT_TIPOS = {"image/jpeg": "jpg", "image/png": "png", "image/webp": "webp"}
+
+
+def _depoimento_publico(d: dict) -> dict:
+    return {"id": d["id"], "nome": d["nome"], "canal": d["canal"], "resultado": d["resultado"],
+            "texto": d["texto"], "quando": d["quando"],
+            "print": f"/api/depoimentos/{d['id']}/print" if d["print"] else ""}
+
+
+@app.get("/api/depoimentos")
+def depoimentos():
+    """Os depoimentos que a administração marcou para mostrar. Público: é o que a vitrine exibe."""
+    linhas = banco.todos("SELECT * FROM depoimentos WHERE mostrar=1 ORDER BY quando DESC LIMIT 24")
+    return {"depoimentos": [_depoimento_publico(d) for d in linhas]}
+
+
+@app.get("/api/depoimentos/{dep_id}/print")
+def depoimento_print(dep_id: int):
+    d = banco.um("SELECT print, mostrar FROM depoimentos WHERE id=?", dep_id)
+    if not d or not d["print"] or not d["mostrar"]:
+        raise HTTPException(404, "Sem print.")
+    arquivo = DEPOIMENTOS_PASTA / d["print"]          # o nome é gerado aqui, nunca vem de fora
+    if not arquivo.is_file():
+        raise HTTPException(404, "Sem print.")
+    return FileResponse(arquivo)
+
+
+@app.get("/api/admin/depoimentos")
+def depoimentos_todos(u: dict = Depends(admin)):
+    return {"depoimentos": [_depoimento_publico(d) | {"mostrar": bool(d["mostrar"])}
+                            for d in banco.todos("SELECT * FROM depoimentos ORDER BY quando DESC")]}
+
+
+@app.post("/api/admin/depoimentos")
+async def depoimento_novo(request: Request, u: dict = Depends(admin)):
+    """Um depoimento de verdade, com o print do Studio em base64 (data URL), se houver."""
+    d = await request.json()
+    nome = str(d.get("nome", "")).strip()[:80]
+    if not nome:
+        raise HTTPException(400, "Diga o nome de quem está falando.")
+    dep_id = banco.executar(
+        "INSERT INTO depoimentos (nome, canal, resultado, texto, print, quando, mostrar) VALUES (?,?,?,?,'',?,1)",
+        nome, str(d.get("canal", "")).strip()[:80], str(d.get("resultado", "")).strip()[:120],
+        str(d.get("texto", "")).strip()[:1200], banco.agora())
+    nome_arquivo = _guardar_print(dep_id, str(d.get("print", "")))
+    if nome_arquivo:
+        banco.executar("UPDATE depoimentos SET print=? WHERE id=?", nome_arquivo, dep_id)
+    _VITRINE["dados"] = None
+    return {"ok": True, "id": dep_id}
+
+
+def _guardar_print(dep_id: int, data_url: str) -> str:
+    """A imagem que veio como data URL. Só os tipos da lista e até 4 MiB; o nome do arquivo é nosso."""
+    if not data_url.startswith("data:"):
+        return ""
+    cabeca, _, corpo = data_url.partition(",")
+    tipo = cabeca[5:].split(";")[0].strip().lower()
+    if tipo not in PRINT_TIPOS or ";base64" not in cabeca:
+        raise HTTPException(400, "O print precisa ser uma imagem JPEG, PNG ou WebP.")
+    try:
+        bytes_ = base64.b64decode(corpo, validate=True)
+    except (ValueError, binascii.Error):
+        raise HTTPException(400, "Não consegui ler a imagem do print.") from None
+    if len(bytes_) > PRINT_MAXIMO:
+        raise HTTPException(400, f"O print passa de {PRINT_MAXIMO // (1024 * 1024)} MB.")
+    DEPOIMENTOS_PASTA.mkdir(parents=True, exist_ok=True)
+    nome = f"{dep_id}.{PRINT_TIPOS[tipo]}"
+    (DEPOIMENTOS_PASTA / nome).write_bytes(bytes_)
+    return nome
+
+
+@app.post("/api/admin/depoimentos/{dep_id}")
+async def depoimento_mostrar(dep_id: int, request: Request, u: dict = Depends(admin)):
+    mostrar = 1 if (await request.json()).get("mostrar") else 0
+    if not banco.mudou("UPDATE depoimentos SET mostrar=? WHERE id=?", mostrar, dep_id):
+        raise HTTPException(404, "Depoimento não encontrado.")
+    _VITRINE["dados"] = None
+    return {"ok": True, "mostrar": bool(mostrar)}
+
+
+@app.delete("/api/admin/depoimentos/{dep_id}")
+def depoimento_apagar(dep_id: int, u: dict = Depends(admin)):
+    d = banco.um("SELECT print FROM depoimentos WHERE id=?", dep_id)
+    if not d:
+        raise HTTPException(404, "Depoimento não encontrado.")
+    banco.executar("DELETE FROM depoimentos WHERE id=?", dep_id)
+    if d["print"]:
+        (DEPOIMENTOS_PASTA / d["print"]).unlink(missing_ok=True)
+    _VITRINE["dados"] = None
+    return {"ok": True}
+
+
+@app.get("/api/abertura")
+def abertura(request: Request):
+    """Tudo o que a primeira tela precisa, numa chamada só, em vez das oito que o painel fazia ao abrir.
+
+    Cada chave é o caminho que o painel pediria: o `api()` do front serve a resposta daqui na primeira vez que
+    aquele caminho for pedido e depois volta a falar com o servidor. Sem sessão vem só o que é público — a tela
+    de entrar não precisa de mais nada —, e o que o plano não abre fica de fora em vez de dar erro."""
+    pacote = {"resumo": resumo()}
+    u = _usuario_do_pedido(request)
+    if not u:
+        pacote["vitrine"] = vitrine_publica()   # a tela de entrar é a única que ele vai ver: já vai com ela
+        return {"pacote": pacote}
+    plano = _plano(u)
+    pacote["eu"] = _publico(u) | {"livre": aberto()}
+    pacote["prefs"] = ver_prefs(u)
+    pacote["painel"] = ver_painel(u)
+    pacote["alvos"] = alvos_lista(u)
+    if pode(plano, "radar"):
+        pacote["filtros"] = filtros(u)
+        pacote["visoes"] = visoes(u)
+    if pode(plano, "salvar"):
+        pacote["pastas"] = pastas(u)
+    return {"pacote": pacote}
 
 
 # ---------------------------------------------------------------- extensão
@@ -318,7 +445,8 @@ def ext_video(video_id: str, u: dict = Depends(exigir("extensao"))):
 def ext_canal(ref: str, u: dict = Depends(exigir("extensao"))):
     try:
         if ref.startswith("@"):
-            achado = youtube.canal_por_handle(ref)
+            with youtube.gastando("medir"):
+                achado = youtube.canal_por_handle(ref)
             if not achado:
                 raise HTTPException(404, "Canal não encontrado.")
             ref = achado["id"]
@@ -343,6 +471,71 @@ def salvar(canal_id: str, u: dict = Depends(exigir("salvar"))):
 def tirar(canal_id: str, u: dict = Depends(exigir("salvar"))):
     banco.executar("DELETE FROM salvos WHERE usuario_id=? AND canal_id=?", u["id"], canal_id)
     return {"ok": True, "salvo": False}
+
+
+# ---------------------------------------------------------------- pastas: a base organizada por projeto
+# Uma pasta por canal salvo. O nome é a pasta: não há tabela de pastas, a lista delas sai de quem está guardado,
+# então renomear é só trocar o nome nos canais e a pasta vazia some sozinha.
+
+PASTA_MAX = 40
+
+
+@app.get("/api/pastas")
+def pastas(u: dict = Depends(exigir("salvar"))):
+    """As pastas da pessoa, com quantos canais tem cada uma, e quantos salvos ainda estão fora de pasta."""
+    linhas = banco.todos("SELECT pasta AS nome, COUNT(*) AS canais FROM salvos WHERE usuario_id=? AND pasta<>'' "
+                         "GROUP BY pasta ORDER BY pasta COLLATE NOCASE", u["id"])
+    soltos = banco.um("SELECT COUNT(*) AS n FROM salvos WHERE usuario_id=? AND pasta=''", u["id"])["n"]
+    return {"pastas": linhas, "sem_pasta": soltos}
+
+
+@app.post("/api/salvos/{canal_id}/pasta")
+async def pasta_do_canal(canal_id: str, request: Request, u: dict = Depends(exigir("salvar"))):
+    """Põe o canal numa pasta. Pasta em branco tira ele da pasta, sem tirar da base."""
+    nome = str((await request.json()).get("pasta", "")).strip()[:PASTA_MAX]
+    mudou = banco.mudou("UPDATE salvos SET pasta=? WHERE usuario_id=? AND canal_id=?", nome, u["id"], canal_id)
+    if not mudou:
+        raise HTTPException(404, "Este canal não está na sua base: salve ele antes de pôr numa pasta.")
+    return {"ok": True, "pasta": nome}
+
+
+@app.post("/api/pastas/renomear")
+async def renomear_pasta(request: Request, u: dict = Depends(exigir("salvar"))):
+    d = await request.json()
+    de, para = str(d.get("de", "")).strip(), str(d.get("para", "")).strip()[:PASTA_MAX]
+    if not de:
+        raise HTTPException(400, "Diga qual pasta renomear.")
+    n = banco.mudou("UPDATE salvos SET pasta=? WHERE usuario_id=? AND pasta=?", para, u["id"], de)
+    return {"ok": True, "canais": n}
+
+
+# ---------------------------------------------------------------- a esteira: o que eu vou modelar e o que já modelei
+
+ESTEIRA = ("fila", "feito")
+
+
+@app.get("/api/modelar")
+def esteira(u: dict = Depends(exigir("outliers"))):
+    contas = {e: 0 for e in ESTEIRA}
+    for l in banco.todos("SELECT estado, COUNT(*) AS n FROM modelar WHERE usuario_id=? GROUP BY estado", u["id"]):
+        if l["estado"] in contas:
+            contas[l["estado"]] = l["n"]
+    return {"contas": contas}
+
+
+@app.post("/api/modelar/{video_id}")
+async def marcar_modelar(video_id: str, request: Request, u: dict = Depends(exigir("outliers"))):
+    """`fila` = vou modelar, `feito` = já modelei, vazio = tira o marcador."""
+    estado = str((await request.json()).get("estado", ""))
+    if estado and estado not in ESTEIRA:
+        raise HTTPException(400, "Estado desconhecido para a esteira.")
+    if estado:
+        banco.executar("INSERT INTO modelar (usuario_id, video_id, estado, quando) VALUES (?,?,?,?) "
+                       "ON CONFLICT(usuario_id, video_id) DO UPDATE SET estado=excluded.estado, quando=excluded.quando",
+                       u["id"], video_id, estado, banco.agora())
+    else:
+        banco.executar("DELETE FROM modelar WHERE usuario_id=? AND video_id=?", u["id"], video_id)
+    return {"ok": True, "estado": estado}
 
 
 @app.get("/api/ext/parecidos/{canal_id}")
@@ -387,13 +580,32 @@ async def ext_radar_julgar(request: Request, u: dict = Depends(usuario)):
     return radar_paises.julgar(d.get("preparo") or {}, d.get("resultados") or {}, str(d.get("video_id", "")))
 
 
+def _kit_com_modelo(usuario_id: int, pasta) -> dict:
+    """O kit do vídeo como a fábrica escreveu, mais o padrão de publicação do canal.
+
+    A descrição NÃO é remontada aqui (mudança de 2026-10-24): quem escreve é a fábrica, que já põe o resumo, os
+    capítulos, os créditos e o rodapé do canal no publicacao.json. Remontar aqui jogava fora os capítulos e os
+    créditos do vídeo, e deixava duas descrições diferentes para o mesmo projeto."""
+    k = publicar.kit(pasta)
+    perfil = publicar.perfil_do_projeto(pasta)
+    canal_id, canal = producao.canal_do_perfil(usuario_id, perfil)
+    cfg = producao.config(usuario_id, canal_id) if canal_id else {}
+    k["canal"] = canal
+    k["modelo"] = "rodape" if producao.rodape_do_perfil(perfil) else "fabrica"
+    # o padrão de publicação do canal: a extensão não precisa perguntar nada no Studio, já vem decidido daqui
+    k["padrao"] = {"anuncio_cada": cfg.get("anuncio_cada") or 1,
+                   "tela_final": cfg.get("tela_final") or "melhor",
+                   "tela_final_nome": producao.TELAS_FINAIS.get(cfg.get("tela_final") or "melhor", "")}
+    return k
+
+
 @app.get("/api/ext/publicar")
 def ext_publicar(arquivo: str = "", u: dict = Depends(exigir("extensao"))):
     """O painel de ajuda do upload no YouTube Studio: o kit do vídeo achado pelo nome do arquivo e, se não achar, a
     lista para escolher. Lê o publicacao.json da pasta do projeto (não precisa da fábrica ligada)."""
     raiz = roteiro_claude.FABRICA / "projetos"
     nome = publicar.achar(raiz, arquivo[:300])
-    return {"kit": publicar.kit(raiz / nome) if nome else None, "opcoes": publicar.opcoes(raiz)}
+    return {"kit": _kit_com_modelo(u["id"], raiz / nome) if nome else None, "opcoes": publicar.opcoes(raiz)}
 
 
 @app.get("/api/ext/publicar/{nome}")
@@ -401,7 +613,7 @@ def ext_publicar_projeto(nome: str, u: dict = Depends(exigir("extensao"))):
     pasta = _projeto_fabrica(nome)
     if not (pasta / "publicacao.json").exists():
         raise HTTPException(404, "A fábrica ainda não montou o título, a descrição e as tags deste vídeo.")
-    return publicar.kit(pasta)
+    return _kit_com_modelo(u["id"], pasta)
 
 
 @app.get("/api/ext/publicar/{nome}/legenda")
@@ -439,18 +651,92 @@ def ext_linguas(video_id: str, linguas: str = "", u: dict = Depends(exigir("ling
 
 # ---------------------------------------------------------------- painel
 
+# A ordem da lista de canais: a conta, e para que lado ela vai quando a pessoa não escolhe. O sentido é da tela
+# (toda ordem pode ser virada), como no painel que serviu de referência.
 ORDENS = {
-    "media": "c.base_longos DESC",                 # mais views por vídeo
-    "alta": "c.velocidade DESC",                   # em alta: views por dia dos vídeos do último mês
-    "ganho": "c.ganho_7d DESC",                    # mais inscritos ganhos na semana
-    "novos": "c.descoberto DESC",                  # achados mais recentes
-    "jovens": "c.primeiro_video DESC",             # começaram a postar há menos tempo
-    "inscritos": "c.inscritos DESC",
-    "pequenos": "c.inscritos ASC",
-    "estourando": "(c.base_longos * 1.0 / MAX(c.inscritos, 100)) DESC",   # muita view para o tamanho
-    "recente": "c.ultimo_video DESC",              # postaram por último
-    "aleatorio": "RANDOM()",                       # o botão Aleatório de todas as telas
+    "media": ("c.base_longos", "desc"),                 # mais views por vídeo
+    "alta": ("c.velocidade", "desc"),                   # em alta: views por dia dos vídeos do último mês
+    "ganho": ("c.ganho_7d", "desc"),                    # mais inscritos ganhos na semana
+    "novos": ("c.descoberto", "desc"),                  # achados mais recentes
+    "jovens": ("c.primeiro_video", "desc"),             # começaram a postar há menos tempo
+    "inscritos": ("c.inscritos", "desc"),
+    "estourando": ("c.base_longos * 1.0 / MAX(c.inscritos, 100)", "desc"),   # muita view para o tamanho
+    "recente": ("c.ultimo_video", "desc"),              # postaram por último
+    # a hora de copiar: views por vídeo, com peso para canal novo e crescendo. É a conta do
+    # metricas.pontos_do_ranking escrita em SQL, para a lista inteira poder ser ordenada por ela.
+    "pontos": ("c.base_longos / sqrt(MAX(1.0, (julianday('now') - julianday(c.primeiro_video)) / 30.44)) * "
+               "CASE c.fase WHEN 'crescendo' THEN 1.4 WHEN 'nascendo' THEN 1.2 WHEN 'estavel' THEN 1.0 "
+               "WHEN 'caindo' THEN 0.5 WHEN 'parado' THEN 0.2 ELSE 0.8 END", "desc"),
+    "aleatorio": ("RANDOM()", ""),                      # o botão Aleatório de todas as telas
 }
+
+
+def _ordem_sql(chave: str, sentido: str = "") -> str:
+    """A ordem pedida, no sentido pedido. Sentido em branco: o natural daquela ordem."""
+    conta, padrao = ORDENS.get(chave) or ORDENS["media"]
+    if not padrao:
+        return conta                                     # o aleatório não tem lado
+    lado = sentido if sentido in ("asc", "desc") else padrao
+    return f"{conta} {lado.upper()}"
+
+
+# As visões: as perguntas prontas da lista de canais (2026-10-22). Em vez de a pessoa montar o filtro, cada visão é
+# uma pergunta já feita. A regra mora aqui, no servidor: o painel só manda o nome dela. A `ordem` vai junto para a
+# tela acender o select certo — depois de escolher a visão, a pessoa pode trocar a ordem e apertar os filtros, que
+# o que ela pedir vale por cima da visão.
+VISOES = {
+    "novo_crescendo": {
+        "rotulo": "Novo e crescendo",
+        "dica": "Começou a postar há até 6 meses e os vídeos do último mês fazem 10 mil views por dia ou mais.",
+        "filtros": {"idade_max": "6", "alta_min": "10000"},
+        "ordem": "alta",
+    },
+    "entraram_hoje": {
+        "rotulo": "Entraram hoje",
+        "dica": "Canais que o garimpo achou nas últimas 24 horas, os mais novos em cima.",
+        "filtros": {"achado_dias": "1"},
+        "ordem": "novos",
+    },
+    "media_alta": {
+        "rotulo": "Média alta",
+        "dica": "O vídeo típico do canal passa de 100 mil views.",
+        "filtros": {"media_min": "100000"},
+        "ordem": "media",
+    },
+    "virou_a_chave": {
+        "rotulo": "Virou a chave",
+        "dica": "Os 10 últimos vídeos fazem pelo menos 1,5 vez o que os 20 anteriores faziam (a fase crescendo).",
+        "filtros": {"fase": "crescendo"},
+        "ordem": "alta",
+    },
+    "views_poucos_subs": {
+        "rotulo": "Muita view, poucos inscritos",
+        "dica": "O vídeo típico faz 5 vezes o número de inscritos do canal.",
+        "filtros": {"estourando_min": "5", "media_min": "10000"},
+        "ordem": "estourando",
+    },
+    "outliers": {
+        "rotulo": "Com vídeo que estourou",
+        "dica": "Tem pelo menos um vídeo com 10 vezes o normal do próprio canal.",
+        "filtros": {"com_outlier": "10"},
+        "ordem": "media",
+    },
+    "sem_concorrencia": {
+        "rotulo": "Sem concorrência",
+        "dica": "O subnicho dele tem no máximo 2 canais no Radar: ninguém disputando ainda.",
+        "filtros": {"subnicho_ate": "2"},
+        "ordem": "media",
+    },
+}
+
+
+def _com_a_visao(q: dict) -> dict:
+    """Os filtros da visão escolhida, com o que a pessoa pediu por cima."""
+    visao = VISOES.get(str(q.get("visao", "")))
+    if not visao:
+        return q
+    pedido = {k: v for k, v in q.items() if v not in ("", None)}
+    return {**visao["filtros"], **pedido}
 
 
 def _corte(dias: float) -> str:
@@ -504,6 +790,20 @@ def _filtro_canais(q: dict) -> tuple[list[str], list]:
         dias = _numero(q, nome)
         if dias is not None:
             onde.append(f"{coluna} >= ?"); args.append(_corte(dias))
+    # quantas vezes o vídeo típico rende o tamanho do canal (a mesma conta da ordem "estourando")
+    razao = _numero(q, "estourando_min")
+    if razao is not None:
+        onde.append("c.base_longos * 1.0 / MAX(c.inscritos, 100) >= ?"); args.append(razao)
+    # canal que tem vídeo com pelo menos esta nota de outlier
+    nota = _numero(q, "com_outlier")
+    if nota is not None:
+        onde.append("c.id IN (SELECT canal_id FROM outliers WHERE nota >= ?)"); args.append(nota)
+    # canal de subnicho com até tantos canais no Radar: o grupo que ainda não tem fila
+    quantos = _numero(q, "subnicho_ate")
+    if quantos is not None:
+        onde.append("c.subnicho <> '' AND c.subnicho IN (SELECT subnicho FROM canais WHERE no_radar=1 "
+                    "AND subnicho <> '' GROUP BY subnicho HAVING COUNT(*) <= ?)")
+        args.append(quantos)
     for nome, coluna, operador, sufixo in (("inicio_de", "c.primeiro_video", ">=", ""),
                                            ("inicio_ate", "c.primeiro_video", "<=", "T23:59:59"),
                                            ("achado_de", "c.descoberto", ">=", ""),
@@ -522,8 +822,9 @@ def _vitrine(c: dict, usuario_id: int | None = None, com_videos: bool = True) ->
                              "ORDER BY views DESC LIMIT 3", c["id"], metricas.CURTO_ATE_S)
         publico["videos"] = [v | {"nota": metricas.nota_outlier(v["views"], c["base_longos"])} for v in videos]
     if usuario_id is not None:
-        publico["salvo"] = bool(banco.um("SELECT 1 AS x FROM salvos WHERE usuario_id=? AND canal_id=?",
-                                         usuario_id, c["id"]))
+        meu = banco.um("SELECT pasta FROM salvos WHERE usuario_id=? AND canal_id=?", usuario_id, c["id"])
+        publico["salvo"] = meu is not None
+        publico["pasta"] = (meu or {}).get("pasta", "")
     return publico
 
 
@@ -537,6 +838,61 @@ def _lista_de_canais(onde: str, args: list, ordem: str, limite: int, pagina: int
 @app.get("/api/resumo")
 def resumo():
     return {"nome": NOME, **_numeros()}
+
+
+# ---------------------------------------------------------------- a vitrine: a porta do Radar, sem conta
+# Os números e alguns canais de exemplo para quem ainda não entrou. Nada daqui é de ninguém: são canais públicos
+# do YouTube, escolhidos pela mesma régua do "na hora de copiar" — não a dedo —, e nenhum dado de usuário entra
+# (sem salvos, sem pastas, sem contagem de gente). As contas são caras para refazer a cada visita, então ficam
+# guardadas alguns minutos.
+
+VITRINE_QUANTOS = 8
+VITRINE_CAPAS = 4
+VITRINE_MINUTOS = 10
+_VITRINE: dict = {"quando": 0.0, "dados": None}
+
+
+def _canais_da_vitrine() -> list[dict]:
+    linhas = banco.todos(
+        f"SELECT c.id, c.titulo, c.foto, c.handle, c.nicho, c.subnicho, c.inscritos, c.base_longos, c.primeiro_video, "
+        f"c.raridade FROM canais c WHERE c.no_radar=1 AND c.base_longos >= ? AND c.foto <> '' "
+        f"AND c.nicho NOT IN ({','.join('?' * len(mercado.IRRELEVANTES))}) "
+        f"ORDER BY {_ordem_sql('pontos', '')} LIMIT ?",
+        garimpo.MINIMO_POR_VIDEO, *sorted(mercado.IRRELEVANTES), VITRINE_QUANTOS * 2)
+    saida = []
+    for c in linhas:
+        if mercado.irrelevante(c["nicho"], c["subnicho"]) or len(saida) >= VITRINE_QUANTOS:
+            continue
+        capas = banco.todos("SELECT id FROM videos WHERE canal_id=? AND duracao_s>? ORDER BY views DESC LIMIT ?",
+                            c["id"], metricas.CURTO_ATE_S, VITRINE_CAPAS)
+        if len(capas) < VITRINE_CAPAS:
+            continue                      # sem capa para mostrar, o cartão fica torto: melhor o próximo da régua
+        saida.append({
+            "nome": c["titulo"], "foto": c["foto"], "nicho": c["subnicho"] or c["nicho"],
+            "inscritos": c["inscritos"], "media": c["base_longos"], "raridade": c["raridade"],
+            "dias": round((metricas.meses_postando(c["primeiro_video"]) or 0) * 30.44) or None,
+            "capas": [v["id"] for v in capas],
+        })
+    return saida
+
+
+@app.get("/api/vitrine")
+def vitrine_publica():
+    """A porta do Radar: os números e alguns canais de exemplo, sem precisar de conta."""
+    agora = time.time()
+    if _VITRINE["dados"] and agora - _VITRINE["quando"] < VITRINE_MINUTOS * 60:
+        return _VITRINE["dados"]
+    n = _numeros()
+    _VITRINE["dados"] = {
+        "nome": NOME,
+        "canais": n["no_radar"], "analisados": n["canais_analisados"], "videos": n["videos_lidos"],
+        "nichos": n["nichos"], "subnichos": n["subnichos"],
+        "novos_semana": n["novos_semana"], "estouraram": n["outliers"],
+        "exemplos": _canais_da_vitrine(),
+        "depoimentos": depoimentos()["depoimentos"],
+    }
+    _VITRINE["quando"] = agora
+    return _VITRINE["dados"]
 
 
 def _numeros() -> dict:
@@ -577,12 +933,49 @@ def visao(u: dict = Depends(exigir("radar"))):
 
 @app.get("/api/radar")
 def radar(request: Request, u: dict = Depends(exigir("radar"))):
-    q = dict(request.query_params)
+    """A lista de canais do Radar: uma tela só, com a visão, os filtros, a ordem e o lado dela.
+
+    `salvos` e `acharam` recortam a lista para a base da pessoa; `tudo=1` desliga o corte de qualidade, que por
+    padrão tira os nichos que pagam pouco (eles só davam tela cheia de canal que não serve)."""
+    q = _com_a_visao(dict(request.query_params))
+    # o mesmo piso do garimpo: abaixo de 10 mil views por vídeo o canal nem teria entrado no Radar, então pedir
+    # menos que isso não traz nada de novo — traz canal cujo "normal" ainda não foi medido direito
+    piso = garimpo.MINIMO_POR_VIDEO
+    q["media_min"] = str(max(_numero(q, "media_min") or 0, piso))
     onde, args = _filtro_canais(q)
+    if q.get("salvos") == "1":
+        onde.append("c.id IN (SELECT canal_id FROM salvos WHERE usuario_id=?)"); args.append(u["id"])
+    if q.get("acharam") == "1":
+        onde.append("c.id IN (SELECT canal_id FROM achados WHERE usuario_id=?)"); args.append(u["id"])
+    if q.get("pasta"):      # `sem_pasta` é o nome reservado para os salvos que ainda não foram guardados em nenhuma
+        pedida = "" if q["pasta"] == "sem_pasta" else q["pasta"]
+        onde.append("c.id IN (SELECT canal_id FROM salvos WHERE usuario_id=? AND pasta=?)")
+        args += [u["id"], pedida]
+    if q.get("tudo") != "1" and not q.get("nicho"):
+        onde.append(f"c.nicho NOT IN ({','.join('?' * len(mercado.IRRELEVANTES))})")
+        args += sorted(mercado.IRRELEVANTES)
+    por = min(60, max(1, int(_numero(q, "por") or 30)))
     pagina = int(_numero(q, "pagina") or 0)
-    total = banco.um(f"SELECT COUNT(*) AS n FROM canais c WHERE {' AND '.join(onde)}", *args)["n"]
-    return {"total": total, "canais": _lista_de_canais(" AND ".join(onde), args, ORDENS.get(q.get("ordem"), ORDENS["media"]),
-                                                        30, pagina, u["id"])}
+    juntos = " AND ".join(onde)
+    total = banco.um(f"SELECT COUNT(*) AS n FROM canais c WHERE {juntos}", *args)["n"]
+    lista = _lista_de_canais(juntos, args, _ordem_sql(q.get("ordem", ""), q.get("sentido", "")), por, pagina, u["id"])
+    # o subnicho de histórias narradas não dá para pedir em SQL (é regex): sai da página, e a tela diz quantos saíram
+    dentro = [c for c in lista if q.get("tudo") == "1" or not mercado.irrelevante(c.get("nicho"), c.get("subnicho"))]
+    return {"total": total, "canais": dentro, "cortados": len(lista) - len(dentro),
+            "piso": piso, "media_min": float(q["media_min"])}
+
+
+@app.get("/api/visoes")
+def visoes(u: dict = Depends(exigir("radar"))):
+    """As perguntas prontas da lista de canais, com quantos canais cada uma tem agora.
+
+    A conta é a da visão sozinha: ela diz o que existe no Radar, não o que sobra depois dos filtros da tela."""
+    saida = []
+    for chave, v in VISOES.items():
+        onde, args = _filtro_canais(dict(v["filtros"]))
+        n = banco.um(f"SELECT COUNT(*) AS n FROM canais c WHERE {' AND '.join(onde)}", *args)["n"]
+        saida.append({"chave": chave, "rotulo": v["rotulo"], "dica": v["dica"], "ordem": v["ordem"], "canais": n})
+    return {"visoes": saida}
 
 
 @app.get("/api/filtros")
@@ -646,14 +1039,51 @@ def ranking(nicho: str = "", u: dict = Depends(exigir("ranking"))):
     return {"canais": [_vitrine(c, u["id"]) for c in pontos[:30]]}
 
 
-ORDENS_OUTLIERS = {"aleatorio": "RANDOM()", "nota": "o.nota DESC", "recentes": "v.publicado DESC", "views": "v.views DESC",
-                   "achados": "o.achado DESC", "pequenos": "c.inscritos ASC"}
+# A nota é recalculada na hora, não lida da tabela: a `outliers.nota` foi gravada com o normal que o canal tinha no
+# dia em que o vídeo foi achado, e quando o normal do canal é corrigido depois ela fica mentindo. Dava lista encabeçada
+# por vídeo de 137 views com "18.291x o normal". A tabela continua valendo como índice de quem já foi marcado; a conta
+# é sempre a de agora, a mesma do metricas.nota_outlier: views ÷ o normal do canal (Shorts contra Shorts).
+_NORMAL = f"CASE WHEN v.duracao_s <= {metricas.CURTO_ATE_S} THEN c.base_curtos ELSE c.base_longos END"
+_NOTA_VIVA = f"v.views * 1.0 / NULLIF({_NORMAL}, 0)"
+# e um normal de 19 views não é base para razão nenhuma: abaixo disto o canal ainda não foi medido o bastante
+NORMAL_MINIMO = 1000
+
+ORDENS_OUTLIERS = {"nota": (_NOTA_VIVA, "desc"), "recentes": ("v.publicado", "desc"), "views": ("v.views", "desc"),
+                   "achados": ("o.achado", "desc"), "inscritos": ("c.inscritos", "desc"),
+                   "por_hora": ("v.views * 1.0 / MAX(1.0, (julianday('now') - julianday(v.publicado)) * 24)", "desc"),
+                   "aleatorio": ("RANDOM()", "")}
 
 
+def piso_de_views(nota_min: float, normal_min: float) -> int:
+    """O mínimo de views que as outras regras já impõem, para a tela poder dizer o número.
+
+    Não é escolha nossa: pedir 10x o normal do canal, com o normal medido em pelo menos mil views, é pedir vídeos
+    de 10 mil views para cima. Dizer isso evita a pessoa arrastar um filtro que já está decidido; ela pode subir
+    dali, nunca descer abaixo do que as regras impõem."""
+    return max(0, int(nota_min * normal_min))
+
+
+def _ordem_videos(chave: str, sentido: str = "") -> str:
+    conta, padrao = ORDENS_OUTLIERS.get(chave) or ORDENS_OUTLIERS["nota"]
+    if not padrao:
+        return conta
+    return f"{conta} {(sentido if sentido in ('asc', 'desc') else padrao).upper()}"
+
+
+@app.get("/api/videos")        # o nome novo da lista única de vídeos; /api/outliers continua para a extensão
 @app.get("/api/outliers")
 def outliers(request: Request, u: dict = Depends(exigir("outliers"))):
     q = dict(request.query_params)
-    onde, args = ["o.nota >= ?"], [_numero(q, "nota_min") or 5]
+    nota_min = _numero(q, "nota_min") or 5
+    onde, args = [f"{_NOTA_VIVA} >= ?"], [nota_min]
+    normal_min = _numero(q, "normal_min")
+    normal_min = NORMAL_MINIMO if normal_min is None else normal_min
+    if normal_min > 0:
+        onde.append(f"{_NORMAL} >= ?"); args.append(normal_min)
+    piso = piso_de_views(nota_min, normal_min)
+    views_min = max(_numero(q, "views_min") or 0, piso)
+    if views_min > 0:
+        onde.append("v.views >= ?"); args.append(views_min)
     for campo in ("nicho", "subnicho"):
         if q.get(campo):
             onde.append(f"c.{campo}=?"); args.append(q[campo])
@@ -665,12 +1095,27 @@ def outliers(request: Request, u: dict = Depends(exigir("outliers"))):
         onde.append("v.duracao_s <= ?"); args.append(metricas.CURTO_ATE_S)
     if q.get("rosto") == "sem":
         onde.append("c.sem_rosto=1")
-    if q.get("meus") == "1":
+    if q.get("meus") == "1" or q.get("salvos") == "1":
         onde.append("c.id IN (SELECT canal_id FROM salvos WHERE usuario_id=?)"); args.append(u["id"])
-    for nome, coluna, operador in (("views_min", "v.views", ">="), ("inscritos_max", "c.inscritos", "<=")):
-        valor = _numero(q, nome)
-        if valor is not None:
-            onde.append(f"{coluna} {operador} ?"); args.append(valor)
+    if q.get("acharam") == "1":
+        onde.append("c.id IN (SELECT canal_id FROM achados WHERE usuario_id=?)"); args.append(u["id"])
+    if q.get("pasta"):
+        pedida = "" if q["pasta"] == "sem_pasta" else q["pasta"]
+        onde.append("c.id IN (SELECT canal_id FROM salvos WHERE usuario_id=? AND pasta=?)")
+        args += [u["id"], pedida]
+    if q.get("so_novos") == "1":            # saiu nos últimos 7 dias
+        onde.append("v.publicado >= ?"); args.append(_corte(7))
+    if q.get("so_crescendo") == "1":        # o canal está acelerando agora, não é um acerto antigo
+        onde.append("c.fase IN ('crescendo','nascendo')")
+    if q.get("modelar_estado") in ESTEIRA:  # a esteira: só o que eu marquei para modelar, ou o que já modelei
+        onde.append("v.id IN (SELECT video_id FROM modelar WHERE usuario_id=? AND estado=?)")
+        args += [u["id"], q["modelar_estado"]]
+    inscritos_max = _numero(q, "inscritos_max")   # o views_min já entrou acima, junto com o piso
+    if inscritos_max is not None:
+        onde.append("c.inscritos <= ?"); args.append(inscritos_max)
+    inscritos_min = _numero(q, "inscritos_min")
+    if inscritos_min is not None:
+        onde.append("c.inscritos >= ?"); args.append(inscritos_min)
     dias = _numero(q, "publicado_dias")
     if dias is not None:
         onde.append("v.publicado >= ?"); args.append(_corte(dias))
@@ -681,19 +1126,30 @@ def outliers(request: Request, u: dict = Depends(exigir("outliers"))):
     base = (f"FROM outliers o JOIN videos v ON v.id=o.video_id JOIN canais c ON c.id=o.canal_id "
             f"WHERE {' AND '.join(onde)}")
     pagina = int(_numero(q, "pagina") or 0)
+    # o marcador da esteira vem junto com o vídeo: o cartão precisa saber se já está na fila ou já foi modelado
     linhas = banco.todos(
-        "SELECT o.nota, v.id, v.titulo, v.views, v.publicado, v.duracao_s, c.id AS canal_id, c.titulo AS canal, "
-        f"c.foto, c.handle, c.inscritos, c.nicho, c.subnicho, c.sem_rosto, c.base_longos AS normal {base} "
-        f"ORDER BY {ORDENS_OUTLIERS.get(q.get('ordem'), ORDENS_OUTLIERS['nota'])}", *args)
+        f"SELECT ROUND({_NOTA_VIVA}, 1) AS nota, (SELECT estado FROM modelar m WHERE m.usuario_id=? AND m.video_id=v.id) "
+        f"AS modelar, v.id, v.titulo, v.views, v.publicado, v.duracao_s, c.id AS canal_id, c.titulo AS canal, "
+        f"c.foto, c.handle, c.inscritos, c.nicho, c.subnicho, c.sem_rosto, c.fase, c.base_longos AS normal {base} "
+        f"ORDER BY {_ordem_videos(q.get('ordem', ''), q.get('sentido', ''))}", u["id"], *args)
+    for l in linhas:
+        l["por_hora"] = metricas.views_por_hora(l["views"], l["publicado"])
     # os bloqueios e as respostas da primeira vez (língua, rosto, o que nunca mostrar) valem aqui também
     filtro = gosto.Filtro(u)
     # o formato é o da tela: "Longos e Shorts" (vazio) mostra os dois, mesmo que a pergunta da primeira vez diga "só longos"
     filtro.sem_shorts = q.get("tipo") == "longo"
     filtro.p = filtro.p | {"formato": "curto" if q.get("tipo") == "curto" else "todos"}
     filtro.linguas = {"outras"}
-    linhas = gosto.por_lingua([l for l in linhas if filtro.aceita(l)], q.get("lingua", ""))
+    # a língua é escolha da tela, não corte escondido: ela vale para os dois lados da conta, e `cortados` fica
+    # sendo só o que as respostas da primeira vez e os bloqueios tiraram — o que a tela diz e abre com um clique
+    na_lingua = gosto.por_lingua(linhas, q.get("lingua", ""))
+    dentro = [l for l in na_lingua if filtro.aceita(l)]
+    cortados = len(na_lingua) - len(dentro)
+    if q.get("com_cortados") == "1":
+        dentro = na_lingua
     por = min(60, max(1, int(_numero(q, "por") or 60)))   # Vídeos que estouraram pede de 10 em 10
-    return {"total": len(linhas), "videos": linhas[pagina * por:(pagina + 1) * por]}
+    return {"total": len(dentro), "cortados": cortados, "piso": piso, "views_min": views_min,
+            "videos": dentro[pagina * por:(pagina + 1) * por]}
 
 
 @app.get("/api/salvos")
@@ -745,7 +1201,8 @@ def meu_perfil(u: dict = Depends(usuario)):
 def _resolver(texto: str) -> str:
     ref = _ref_do_canal(texto)
     if ref and ref.startswith("@"):
-        achado = youtube.canal_por_handle(ref)
+        with youtube.gastando("medir"):
+            achado = youtube.canal_por_handle(ref)
         ref = achado["id"] if achado else None
     if not ref:
         raise HTTPException(404, "Não achei esse canal. Cole o @ do canal, o link dele ou o link de um vídeo.")
@@ -807,6 +1264,38 @@ async def procurar_nicho(request: Request, u: dict = Depends(usuario)):
 
 
 # ---------------------------------------------------------------- gosto: perguntas da primeira vez, bloqueios, explorar
+
+# ---------------------------------------------------------------- o menu de cada pessoa
+# A ordem das abas e as que ela escondeu. Fica na conta, não no navegador: o menu é o mesmo em qualquer máquina.
+# O servidor não sabe que abas existem (isso é da tela), então ele guarda os nomes como vieram, só limpos e limitados.
+
+ABAS_FIXAS = ("base",)            # a lista de canais não some: sem ela não sobra por onde começar
+PAINEL_MAX = 40
+
+
+def _painel(u: dict) -> dict:
+    try:
+        d = json.loads(u.get("painel") or "{}")
+    except ValueError:
+        d = {}
+    nomes = lambda k: [str(x)[:40] for x in d.get(k, []) if isinstance(x, str)][:PAINEL_MAX]  # noqa: E731
+    return {"abas_ordem": nomes("abas_ordem"),
+            "abas_ocultas": [a for a in nomes("abas_ocultas") if a not in ABAS_FIXAS]}
+
+
+@app.get("/api/painel")
+def ver_painel(u: dict = Depends(usuario)):
+    return _painel(u) | {"fixas": list(ABAS_FIXAS)}
+
+
+@app.post("/api/painel")
+async def salvar_painel(request: Request, u: dict = Depends(usuario)):
+    d = await request.json()
+    limpo = _painel({"painel": json.dumps({"abas_ordem": d.get("abas_ordem", []),
+                                           "abas_ocultas": d.get("abas_ocultas", [])}, ensure_ascii=False)})
+    banco.executar("UPDATE usuarios SET painel=? WHERE id=?", json.dumps(limpo, ensure_ascii=False), u["id"])
+    return limpo | {"fixas": list(ABAS_FIXAS)}
+
 
 @app.get("/api/prefs")
 def ver_prefs(u: dict = Depends(usuario)):
@@ -930,24 +1419,6 @@ async def salvar_ideia(request: Request, u: dict = Depends(usuario)):
 @app.delete("/api/ideias-salvas/{ideia_id}")
 def tirar_ideia(ideia_id: int, u: dict = Depends(usuario)):
     trabalho.tirar_ideia(u["id"], ideia_id)
-    return {"ok": True}
-
-
-@app.get("/api/alertas")
-def ver_alertas(request: Request, u: dict = Depends(usuario)):
-    lista = alertas.canais(u["id"], dict(request.query_params))
-    saida = [_vitrine(c, u["id"]) | {"pico": c["pico"], "novo": c["visto"] is None} for c in lista[:60]]
-    return {"canais": saida, "padrao": alertas.PADRAO}
-
-
-@app.get("/api/alertas/novos")
-def alertas_novos(u: dict = Depends(usuario)):
-    return {"novos": alertas.novos(u["id"])}
-
-
-@app.post("/api/alertas/vistos")
-async def alertas_vistos(request: Request, u: dict = Depends(usuario)):
-    alertas.marcar_vistos(u["id"], [str(i) for i in (await request.json()).get("ids", [])][:200])
     return {"ok": True}
 
 
@@ -1202,14 +1673,29 @@ async def canal_painel_fabrica_salvar(canal_id: str, request: Request, u: dict =
 def producao_config(canal_id: str, u: dict = Depends(usuario)):
     """O que o Roteiro e a Thumbnail puxam ao escolher o canal: perfil da fábrica (a voz), estilos, tempo, língua."""
     _meu_canal(u["id"], canal_id)
-    return producao.config(u["id"], canal_id) | {"perfis": producao.perfis(),
-                                                  "ias": {k: n for k, (n, _) in producao.IAS_IMAGEM.items()}}
+    cfg = producao.config(u["id"], canal_id)
+    perfil = cfg.get("perfil") or ""
+    return cfg | {"perfis": producao.perfis(), "ias": {k: n for k, (n, _) in producao.IAS_IMAGEM.items()},
+                  "telas_finais": producao.TELAS_FINAIS,
+                  # o rodapé mora no perfil da fábrica, que é quem escreve a descrição
+                  "rodape": producao.rodape_do_perfil(perfil),
+                  "rodapes_padrao": {t: publicar.rodape_padrao(cfg.get("lingua") or "", t, cfg.get("canal") or "",
+                                                               cfg.get("marcas") or "") for t in publicar.TIPOS},
+                  "tipos_de_modelo": publicar.TIPOS}
 
 
 @app.post("/api/producao/{canal_id}")
 async def producao_salvar(canal_id: str, request: Request, u: dict = Depends(usuario)):
     _meu_canal(u["id"], canal_id)
-    return producao.salvar(u["id"], canal_id, await request.json())
+    dados = await request.json()
+    cfg = producao.salvar(u["id"], canal_id, dados)
+    # o rodapé não é do Radar: vai para o perfil da fábrica, que é quem escreve a descrição de cada vídeo
+    if "rodape" in dados and cfg.get("perfil"):
+        try:
+            cfg["rodape"] = producao.salvar_rodape(cfg["perfil"], str(dados.get("rodape") or ""))
+        except ValueError as erro:
+            raise HTTPException(400, str(erro))
+    return cfg
 
 
 @app.get("/api/thumb/imagem/{video_id}")
@@ -1274,7 +1760,9 @@ async def assistente(request: Request, u: dict = Depends(usuario)):
         raise HTTPException(400, "Escreva uma mensagem.")
     try:
         pagina = d.get("pagina") if isinstance(d.get("pagina"), dict) else None
-        return {"resposta": await run_in_threadpool(producao.assistente, u["id"], canal_id, mensagens, pagina)}
+        projeto_id = str(d.get("projeto_id", ""))
+        return {"resposta": await run_in_threadpool(producao.assistente, u["id"], canal_id, mensagens, pagina,
+                                                    projeto_id)}
     except RuntimeError as erro:
         raise HTTPException(503, str(erro))
 
@@ -1391,8 +1879,9 @@ async def resultados_views(request: Request, u: dict = Depends(usuario)):
     """As views dos vídeos publicados (1 unidade da cota a cada 50 vídeos)."""
     ids = [i for i in (await request.json()).get("ids", []) if re.fullmatch(r"[\w-]{11}", str(i))][:200]
     try:
-        return {"videos": {v["id"]: {"views": v["views"], "curtidas": v.get("curtidas"), "comentarios": v.get("comentarios"),
-                                     "publicado": v.get("publicado")} for v in youtube.videos(ids)}}
+        with youtube.gastando("studio"):   # as views dos meus vídeos publicados, não do garimpo
+            return {"videos": {v["id"]: {"views": v["views"], "curtidas": v.get("curtidas"), "comentarios": v.get("comentarios"),
+                                         "publicado": v.get("publicado")} for v in youtube.videos(ids)}}
     except youtube.SemCota as erro:
         _sem_cota(erro)
 
@@ -1754,7 +2243,8 @@ def titulo_do_video(link: str, u: dict = Depends(usuario)):
     vid = roteiro_claude.id_do_video(link)
     if not vid:
         raise HTTPException(400, "Link de vídeo inválido.")
-    v = youtube.videos([vid])
+    with youtube.gastando("canal"):
+        v = youtube.videos([vid])
     if not v:
         raise HTTPException(404, "Vídeo não encontrado.")
     return {"id": vid, "titulo": v[0]["titulo"], "views": v[0]["views"], "publicado": v[0]["publicado"]}
@@ -1926,7 +2416,8 @@ def _ref_do_canal(texto: str) -> str | None:
         return m.group(1)
     m = re.search(r"(?:v=|youtu\.be/|/shorts/)([\w-]{11})", texto)
     if m:
-        v = youtube.videos([m.group(1)])
+        with youtube.gastando("medir"):
+            v = youtube.videos([m.group(1)])
         return v[0]["canal_id"] if v else None
     return None
 
@@ -1937,7 +2428,8 @@ async def medir_canal(request: Request, u: dict = Depends(exigir("extensao"))):
     try:
         ref = _ref_do_canal(texto)
         if ref and ref.startswith("@"):
-            achado = youtube.canal_por_handle(ref)
+            with youtube.gastando("medir"):
+                achado = youtube.canal_por_handle(ref)
             ref = achado["id"] if achado else None
         if not ref:
             raise HTTPException(404, "Não achei esse canal. Cole o @ do canal, o link dele ou o link de um vídeo.")
@@ -1962,21 +2454,30 @@ def adicionar_ao_radar(canal_id: str, u: dict = Depends(exigir("extensao"))):
 # ---------------------------------------------------------------- produzir: títulos e pauta para a fábrica
 
 def _exemplos(nicho: str = "", subnicho: str = "", limite: int = 25) -> list[str]:
-    onde, args = ["o.nota >= 3"], []
+    """Os títulos que de fato estouraram, pela nota de agora: exemplo com nota velha ensinaria o estilo errado."""
+    onde, args = [f"{_NOTA_VIVA} >= 3", f"{_NORMAL} >= {NORMAL_MINIMO}", "c.no_radar=1"], []
+    if not nicho and not subnicho:
+        onde.append(f"c.nicho NOT IN ({','.join('?' * len(mercado.IRRELEVANTES))})")
+        args += sorted(mercado.IRRELEVANTES)
     if subnicho:
         onde.append("c.subnicho=?"); args.append(subnicho)
     elif nicho:
         onde.append("c.nicho=?"); args.append(nicho)
     return [l["titulo"] for l in banco.todos(
         "SELECT v.titulo FROM outliers o JOIN videos v ON v.id=o.video_id JOIN canais c ON c.id=o.canal_id "
-        f"WHERE {' AND '.join(onde)} ORDER BY o.nota DESC LIMIT ?", *args, limite)]
+        f"WHERE {' AND '.join(onde)} ORDER BY {_NOTA_VIVA} DESC LIMIT ?", *args, limite)]
 
 
 @app.get("/api/titulos")
 def titulos(request: Request, u: dict = Depends(exigir("outliers"))):
     """O banco de títulos que estouraram: os vídeos dos canais do Radar com 3 vezes ou mais o normal."""
     q = dict(request.query_params)
-    onde, args = ["o.nota >= ?"], [_numero(q, "nota_min") or 3]
+    # a nota é refeita aqui, como na lista de vídeos: a gravada na tabela envelhece quando o normal do canal é
+    # corrigido, e punha no topo do banco um "846.313x" de canal que ainda não tinha base nenhuma
+    # c.no_radar=1 como em toda lista: sem isso o banco lia canal medido de passagem e nunca classificado (sem
+    # nicho, portanto sem o corte dos nichos que pagam pouco), e o topo virava clipe de pagode
+    onde = [f"{_NOTA_VIVA} >= ?", f"{_NORMAL} >= {NORMAL_MINIMO}", "c.no_radar=1"]
+    args = [_numero(q, "nota_min") or 3]
     for campo in ("nicho", "subnicho"):
         if q.get(campo):
             onde.append(f"c.{campo}=?"); args.append(q[campo])
@@ -1985,10 +2486,16 @@ def titulos(request: Request, u: dict = Depends(exigir("outliers"))):
     dias = _numero(q, "publicado_dias")
     if dias is not None:
         onde.append("v.publicado >= ?"); args.append(_corte(dias))
+    # a mesma regra das outras listas: nicho que paga pouco (Música, Games, Infantil...) não serve de exemplo de
+    # título para canal sem rosto, e sem isto o topo do banco era clipe e desenho
+    if not q.get("nicho"):
+        onde.append(f"c.nicho NOT IN ({','.join('?' * len(mercado.IRRELEVANTES))})")
+        args += sorted(mercado.IRRELEVANTES)
     return {"titulos": banco.todos(
-        "SELECT v.id, v.titulo, v.views, v.publicado, o.nota, c.titulo AS canal, c.nicho, c.subnicho "
+        f"SELECT v.id, v.titulo, v.views, v.publicado, ROUND({_NOTA_VIVA}, 1) AS nota, "
+        "c.titulo AS canal, c.nicho, c.subnicho "
         "FROM outliers o JOIN videos v ON v.id=o.video_id JOIN canais c ON c.id=o.canal_id "
-        f"WHERE {' AND '.join(onde)} ORDER BY o.nota DESC LIMIT 300", *args)}
+        f"WHERE {' AND '.join(onde)} ORDER BY {_NOTA_VIVA} DESC LIMIT 300", *args)}
 
 
 @app.post("/api/titulos/gerar")
@@ -2159,6 +2666,8 @@ def cota_gastar(u: dict = Depends(admin)):
 @app.get("/api/admin/cota")
 def admin_cota(u: dict = Depends(admin)):
     return {"cota": youtube.cota_hoje(),
+            "motivos": [{**m, "rotulo": youtube.MOTIVOS.get(m["motivo"], m["motivo"])}
+                        for m in youtube.gasto_por_motivo()],
             "garimpos": banco.todos("SELECT id, inicio, fim, unidades, buscas, canais_novos, estado FROM garimpos "
                                     "ORDER BY id DESC LIMIT 15")}
 

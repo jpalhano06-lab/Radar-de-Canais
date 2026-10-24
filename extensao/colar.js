@@ -4,13 +4,16 @@
 // mensagem. Não envia sozinha: a pessoa confere e aperta enviar.
 (() => {
   const m = location.hash.match(/radar-envio=([\w-]+)/);
-  if (!m) return;
+  const soColar = /radar-colar/.test(location.hash);          // o painel do YouTube guardou a pergunta (claude.js)
+  if (!m && !soColar) return;
   history.replaceState(null, "", location.pathname + location.search);   // tira o #radar-envio do endereço
 
   const pedir = (msg) => new Promise((ok) => chrome.runtime.sendMessage(msg, (r) => ok(r || { erro: "sem resposta" })));
   const CAIXAS = location.host.includes("gemini")
     ? ['rich-textarea div[contenteditable="true"]', ".ql-editor[contenteditable]", 'div[contenteditable="true"]']
-    : ["#prompt-textarea", 'div[contenteditable="true"]', "textarea"];
+    : location.host.includes("claude.ai")
+      ? ['div[contenteditable="true"].ProseMirror', 'div[contenteditable="true"]', "textarea"]
+      : ["#prompt-textarea", 'div[contenteditable="true"]', "textarea"];
 
   function avisar(texto, erro = false) {
     const el = document.createElement("div");
@@ -48,8 +51,24 @@
     }, 1500);
   }
 
+  // a pergunta que o painel do YouTube guardou: vale por 2 minutos, para não colar algo de ontem numa aba qualquer
+  async function doPainel() {
+    const g = await chrome.storage.local.get("radarColar");
+    chrome.storage.local.remove("radarColar");
+    const guardado = g.radarColar;
+    if (!guardado || Date.now() - (guardado.quando || 0) > 120000) return null;
+    return { prompt: guardado.texto, imagem: null };
+  }
+
   (async () => {
-    const envio = await pedir({ tipo: "api", caminho: `/api/ext/envio/${m[1]}` });
+    let envio;
+    if (soColar) {
+      const dados = await doPainel();
+      if (!dados) return;
+      envio = { dados };
+    } else {
+      envio = await pedir({ tipo: "api", caminho: `/api/ext/envio/${m[1]}` });
+    }
     if (envio.erro) return avisar("Radar: " + envio.erro, true);
     const { prompt, imagem } = envio.dados;
     const caixa = await esperarCaixa();

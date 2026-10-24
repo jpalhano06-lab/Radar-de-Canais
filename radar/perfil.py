@@ -30,6 +30,7 @@ def conectar(usuario_id: int, canal_id: str, meu: bool = True) -> dict:
     return banco.um("SELECT * FROM canais WHERE id=?", canal_id)
 
 
+@youtube.por("canal")
 def ultimos_videos(canal: dict, quantos: int = 12) -> list[dict]:
     linhas = banco.todos("SELECT id, titulo, views, publicado, duracao_s FROM videos WHERE canal_id=? "
                          "ORDER BY publicado DESC LIMIT ?", canal["id"], quantos)
@@ -121,6 +122,7 @@ def _sementes(usuario_id: int, canal_id: str) -> list[str]:
     return titulos
 
 
+@youtube.por("procura")
 def mais_ideias(canal: dict, tentativa: int = 0, usuario_id: int | None = None) -> dict:
     """Ideias tiradas do YouTube na hora (o botão "Buscar ideias novas"): busca o assunto do que a pessoa ensinou ao
     algoritmo (🎯, treino, canais inscritos) ou, sem isso, dos vídeos que mais renderam no canal dela, e devolve os que
@@ -147,6 +149,7 @@ def mais_ideias(canal: dict, tentativa: int = 0, usuario_id: int | None = None) 
 
 # ---------------------------------------------------------------- procurar nicho na hora
 
+@youtube.por("procura")
 def procurar(termo: str, tentativa: int = 0) -> dict:
     """Busca o nicho no YouTube agora, mede os canais e põe no Radar os novos que vão bem (uns 100 a 250 unidades).
     O termo fica para o garimpo de todo dia continuar procurando."""

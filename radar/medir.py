@@ -32,6 +32,7 @@ def _guardar_videos(lista: list[dict]) -> None:
                  [(v["id"], hora, v["views"]) for v in lista if v["views"] is not None])
 
 
+@youtube.por("medir")
 def medir_canais(ids: list[str], forcar: bool = False, origem: str = "") -> dict[str, dict]:
     """Lê os canais que estão velhos no banco e devolve todos os pedidos."""
     ids = [i for i in dict.fromkeys(ids) if i]
@@ -85,6 +86,7 @@ def _canais_do_banco(ids: list[str]) -> list[dict]:
     return banco.todos(f"SELECT * FROM canais WHERE id IN ({','.join('?' * len(ids))})", *ids)
 
 
+@youtube.por("medir")
 def medir_videos(ids: list[str]) -> dict[str, dict]:
     """Vídeos com a nota de outlier, as views por hora e os números do canal."""
     ids = [i for i in dict.fromkeys(ids) if i][:200]
@@ -134,6 +136,7 @@ def _canal_publico(c: dict) -> dict:
     }
 
 
+@youtube.por("medir")
 def canal_completo(canal_id: str) -> dict | None:
     c = medir_canais([canal_id]).get(canal_id)
     if not c:

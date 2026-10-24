@@ -201,6 +201,7 @@ def _completar(c: dict, rapido: bool = False) -> None:
     return dados["no_radar"] == 1
 
 
+@youtube.por("garimpo")
 def completar_pendentes(log=print, quantos: int = 80) -> int:
     """Canais do Radar sem nicho ou sem a resposta do rosto (o Groq estava fora, por exemplo). Não gasta cota."""
     pendentes = banco.todos("SELECT * FROM canais WHERE no_radar=1 AND (sem_rosto IS NULL OR nicho='' OR subnicho='') "
@@ -216,6 +217,7 @@ REMEDIR_HORAS = 20         # canal do Radar ou salvo é medido de novo uma vez p
 FRACAO_REMEDIR = 0.35      # até 35% da cota do garimpo vai para medir de novo (em alta, novidades)
 
 
+@youtube.por("garimpo")
 def remedir(log, orcamento: int) -> int:
     """Mede de novo os canais do Radar e os salvos: é o que mostra quem está em alta e os vídeos novos da sua base.
     Cada canal custa umas 3 unidades. Os salvos vão primeiro."""
@@ -244,6 +246,7 @@ def remedir(log, orcamento: int) -> int:
 MAX_TERMOS_AUTO = 400
 
 
+@youtube.por("garimpo")
 def aprender_termos(log, nichos_por_vez: int = 5) -> int:
     """Os títulos que estouraram viram buscas novas: o garimpo vai achando sozinho onde mais procurar."""
     if banco.um("SELECT COUNT(*) AS n FROM termos_auto")["n"] >= MAX_TERMOS_AUTO:
@@ -268,6 +271,7 @@ def aprender_termos(log, nichos_por_vez: int = 5) -> int:
     return novos
 
 
+@youtube.por("garimpo")
 def rodar(log=print, unidades: int | None = None) -> dict:
     if not _RODANDO.acquire(blocking=False):
         return {"ok": False, "motivo": "Já tem um garimpo rodando."}
@@ -330,6 +334,7 @@ def rodar(log=print, unidades: int | None = None) -> dict:
 GASTANDO = {"rodando": False, "inicio": 0, "orcamento": 0}
 
 
+@youtube.por("garimpo")
 def gastar_tudo(log=print) -> None:
     """Usa toda a cota livre de hoje: o garimpo com 100% e, se os termos acabarem antes (cada um só volta depois de
     3 dias), procuras com termos sorteados dos nichos, de jeitos diferentes, até sobrar menos que uma busca."""
@@ -361,6 +366,9 @@ def estado_gasto() -> dict:
     rodando = GASTANDO["rodando"] or _RODANDO.locked()
     ultimo = banco.um("SELECT inicio FROM garimpos ORDER BY id DESC LIMIT 1")
     return {**cota, "garimpando": rodando, "ultimo_garimpo": ultimo["inicio"] if ultimo else "",
+            # em que a cota de hoje foi gasta, para a tela não só dizer quanto sobrou mas onde foi
+            "motivos": [{**m, "rotulo": youtube.MOTIVOS.get(m["motivo"], m["motivo"])}
+                        for m in youtube.gasto_por_motivo()],
             "gasto": max(0, cota["usado"] - GASTANDO["inicio"]) if GASTANDO["rodando"] else 0,
             "orcamento": GASTANDO["orcamento"] if GASTANDO["rodando"] else 0}
 
@@ -373,6 +381,7 @@ def _busca_do_canal(canal_id: str) -> list[str]:
         "SELECT titulo FROM videos WHERE canal_id=? AND duracao_s>180 ORDER BY views DESC LIMIT 2", canal_id)]
 
 
+@youtube.por("garimpo")
 def parecidos(canal_id: str, guardar_no_radar: bool = True) -> list[dict]:
     """Canais que fazem o mesmo tipo de vídeo, do mais parecido para o menos (100 a 200 unidades, guardado 7 dias)."""
     cache = banco.um("SELECT dados, criado FROM traducoes WHERE chave=?", f"parecidos:{canal_id}")
@@ -403,6 +412,7 @@ def _parecidos_guardados(canal_id: str) -> bool:
     return bool(cache and cache["criado"] >= (datetime.now(timezone.utc) - timedelta(days=7)).isoformat())
 
 
+@youtube.por("garimpo")
 def concorrentes(canal_id: str, medir_agora: bool = False) -> dict:
     """Os concorrentes do nicho (os canais parecidos) e a nota do nicho, de 0 (lotado) a 10 (fácil de entrar).
 
@@ -427,6 +437,7 @@ def concorrentes(canal_id: str, medir_agora: bool = False) -> dict:
             "canais": [medir._canal_publico(c) for c in lista]}
 
 
+@youtube.por("canal")
 def ultimos_videos(canal_id: str, quantos: int = 6) -> list[dict]:
     """Os vídeos longos mais novos do canal com a nota (do banco, sem cota): ao lado de cada canal parecido."""
     achado = medir._canais_do_banco([canal_id])
@@ -439,6 +450,7 @@ def ultimos_videos(canal_id: str, quantos: int = 6) -> list[dict]:
     return saida
 
 
+@youtube.por("canal")
 def videos_do_nicho(canal_id: str, quantos: int = 24, dias: int = 365) -> list[dict]:
     """A aba Vídeos do Nicho da extensão: os vídeos longos que passaram do normal (2x ou mais) nos canais parecidos,
     do maior estouro para o menor. Os vídeos vêm do banco; só os parecidos podem gastar cota (guardados 7 dias)."""

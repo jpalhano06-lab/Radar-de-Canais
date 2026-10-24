@@ -1,9 +1,12 @@
-// A ajuda para publicar no YouTube Studio (pedido do usuário em 2026-10-20: "adicionar a extensão na hora de postar o
-// vídeo com anúncios e tudo"; escolhido "só um painel de ajuda"). Na tela de upload (ou de edição) do vídeo aparece um
-// painel com o título, a descrição e as tags que a fábrica montou, prontos para copiar, e a lista do que marcar:
-// detalhes, monetização e anúncios, questionário de anunciantes, elementos, verificações e visibilidade.
-// Não clica, não preenche e não publica nada: quem marca e aperta Publicar é a pessoa.
-// O vídeo do Radar é achado pelo nome do arquivo que está subindo (a entrega da fábrica usa o título como nome).
+// A publicação no YouTube Studio feita pela extensão. Começou como painel de copiar-e-colar (2026-10-20) e virou
+// automação (2026-10-22). Em 2026-10-23 o painel saiu de vez ("tire também o resto do painel, deixe só o botão"):
+// na tela só existe um botão vermelho por etapa, e o que ele faz está decidido no Radar, na tela do canal.
+// Em 2026-10-23, pelo jeito do Dotti Finder: o botão entra DENTRO do rodapé do Studio, à esquerda do Voltar e do
+// Avançar, em vez de boiar no canto da tela; a monetização liga e já coloca os anúncios de um aperto só (um a
+// cada minuto, o padrão fica guardado); a Tela final abre o editor dela sozinha; e os Detalhes marcam sempre
+// "Conteúdo alterado ou sintético: Sim", porque os vídeos da fábrica são feitos com IA.
+// Ao escolher o vídeo da fábrica ele já escreve título, descrição e tags; a descrição vem no modelo do canal
+// (guardado no Radar), sem lista de capítulos, só a sinopse. Quem aperta Publicar continua sendo a pessoa.
 (() => {
   if (window.__radarPublicar) return;
   window.__radarPublicar = true;
@@ -17,16 +20,23 @@
   });
 
   const EXTENSOES = /\.(mp4|mov|mkv|webm|avi|m4v|wmv|flv|mpe?g)$/i;
-  const estado = { arquivo: "", kit: null, opcoes: [], erro: "", carregando: false, aberto: false, feitos: {}, buscado: "" };
+  const estado = {
+    arquivo: "", kit: null, erro: "", carregando: false,
+    jaPreencheu: "", trabalhando: "", recado: "", recadoErro: false,
+    modoAnuncio: localStorage.getItem("radar-anuncio-modo") || "cada",
+    cadaMin: Number(localStorage.getItem("radar-anuncio-cada")) || 1,
+    quantos: Number(localStorage.getItem("radar-anuncio-quantos")) || 10,
+    telaFinal: localStorage.getItem("radar-tela-final") || "melhor",
+  };
+
+  const esperar = (ms) => new Promise((r) => setTimeout(r, ms));
 
   // ------------------------------------------------------------ o nome do arquivo que está subindo
   function novoArquivo(nome) {
     if (!nome || !EXTENSOES.test(nome) || nome === estado.arquivo) return;
     estado.arquivo = nome;
-    estado.aberto = true;
     buscar(nome);
   }
-  // o seletor de arquivo do Studio e o arrastar-e-soltar
   document.addEventListener("change", (e) => { const f = e.target && e.target.files && e.target.files[0]; if (f) novoArquivo(f.name); }, true);
   document.addEventListener("drop", (e) => { const f = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0]; if (f) novoArquivo(f.name); }, true);
 
@@ -49,96 +59,451 @@
     return !!(d && [...d.querySelectorAll("tp-yt-paper-dialog")].some((x) => x.offsetWidth > 0));
   }
 
+  // ------------------------------------------------------------ mexer na tela do Studio
+  // (o Studio é Polymer: o que funciona é focar o campo e "digitar" com insertText, do mesmo jeito que a pessoa faria)
+  const visivel = (el) => !!(el && el.offsetWidth + el.offsetHeight > 0 && getComputedStyle(el).visibility !== "hidden");
+  const caixa = () => document.querySelector("ytcp-uploads-dialog") || document.querySelector("ytcp-video-editor") || document.body;
+  const limpo = (el) => (el.textContent || "").replace(/\s+/g, " ").trim();
+
+  function folhas(re, onde = caixa()) {
+    const achados = [];
+    for (const el of onde.querySelectorAll("div, span, b, h1, h2, h3, p, yt-formatted-string, tp-yt-paper-item, ytcp-text-label")) {
+      if (el.children.length > 1) continue;
+      const t = limpo(el);
+      if (t && t.length < 120 && re.test(t) && visivel(el)) achados.push(el);
+    }
+    return achados;
+  }
+  const temTexto = (re) => folhas(re).length > 0;
+
+  const CLICAVEIS = "button, ytcp-button, tp-yt-paper-button, tp-yt-paper-item, tp-yt-paper-radio-button, #button, [role=button]";
+  function botao(re, onde = caixa()) {
+    for (const el of onde.querySelectorAll(CLICAVEIS)) {
+      if (!visivel(el) || el.disabled || el.getAttribute("aria-disabled") === "true") continue;
+      if (re.test(limpo(el))) return el;
+    }
+    return null;
+  }
+  function clicar(re, onde) {
+    const b = botao(re, onde);
+    if (b) b.click();
+    return !!b;
+  }
+
+  const oQueTem = (el) => String(el.value != null ? el.value : el.textContent || "");
+
+  function escrever(el, texto) {
+    el.focus();
+    if (el.tagName === "INPUT" || el.tagName === "TEXTAREA") {
+      el.select();
+    } else {
+      const sel = window.getSelection(), r = document.createRange();
+      r.selectNodeContents(el); sel.removeAllRanges(); sel.addRange(r);
+    }
+    document.execCommand("insertText", false, texto);
+    el.dispatchEvent(new Event("input", { bubbles: true }));
+    el.dispatchEvent(new Event("change", { bubbles: true }));
+  }
+
+  // devolve TRUE só quando o texto está mesmo no campo. O execCommand falha calado em alguns campos do Studio, e
+  // a extensão vinha dizendo "preenchido: descrição" com o campo vazio — mentira pior do que o erro.
+  function digitar(el, texto) {
+    if (!el || !texto) return false;
+    escrever(el, texto);
+    const pedaco = texto.slice(0, 30);
+    if (oQueTem(el).includes(pedaco)) return true;
+    // segunda tentativa: escrever direto e avisar o Polymer
+    if (el.value != null) el.value = texto; else el.textContent = texto;
+    el.dispatchEvent(new Event("input", { bubbles: true }));
+    el.dispatchEvent(new Event("change", { bubbles: true }));
+    return oQueTem(el).includes(pedaco);
+  }
+
+  // o campo QUE ESTÁ NA TELA: o Studio deixa cópias escondidas do mesmo id pela página, e escrever na escondida
+  // era escrever no vazio
+  const naTela = (seletor) => [...document.querySelectorAll(seletor)].find(visivel) || null;
+  const campoTitulo = () => naTela("#title-textarea #textbox, ytcp-social-suggestions-textbox#title-textarea #textbox");
+  const campoDescricao = () => naTela("#description-textarea #textbox, ytcp-social-suggestions-textbox#description-textarea #textbox, ytcp-video-description #textbox, #description-container #textbox");
+  const campoTags = () => naTela("#tags-container input, ytcp-form-input-container#tags-container input, #tags-container #text-input");
+
+  // a seção do Studio em volta de um texto: sobe do rótulo até o bloco que tem o controle procurado
+  function secaoDe(re, achar) {
+    for (const alvo of folhas(re)) {
+      let p = alvo.parentElement;
+      for (let i = 0; i < 6 && p; i++, p = p.parentElement) {
+        if (achar(p)) return p;
+      }
+    }
+    return null;
+  }
+
+  function marcar(el, ligado = true) {   // caixinha ou rádio do Polymer
+    if (!el) return false;
+    const agora = el.checked != null ? el.checked
+      : el.getAttribute("aria-checked") === "true" || el.hasAttribute("checked");
+    if (!!agora !== ligado) el.click();
+    return true;
+  }
+
+  // ------------------------------------------------------------ 1. Detalhes: escrever título, descrição e tags
+  async function preencherDetalhes({ avancar = false } = {}) {
+    estado.trabalhando = "detalhes"; desenhar();
+    // chegou aqui sem o vídeo (o nome do arquivo ainda não tinha aparecido): procura agora, sem pedir nada
+    if (!estado.kit) await buscar(estado.arquivo || arquivoDaTela());
+    const k = estado.kit;
+    estado.trabalhando = "detalhes"; desenhar();
+    const feitos = [], faltou = [];
+
+    if (k) {
+      if (digitar(campoTitulo(), (k.titulo || "").slice(0, 100))) feitos.push("título"); else faltou.push("título");
+      await esperar(300);
+
+      if (digitar(campoDescricao(), (k.descricao || "").slice(0, 5000))) feitos.push("descrição"); else faltou.push("descrição");
+      await esperar(300);
+    }
+
+    const naoCriancas = document.querySelector("tp-yt-paper-radio-button[name=VIDEO_MADE_FOR_KIDS_NOT_MFK]")
+      || folhas(/^Não,? não é conteúdo (feito )?para crianças|^Não é conteúdo para crianças|not made for kids/i)
+        .map((e) => e.closest("tp-yt-paper-radio-button")).filter(Boolean)[0];
+    if (naoCriancas) { marcar(naoCriancas); feitos.push("não é para crianças"); } else faltou.push("público (crianças)");
+
+    if (!campoTags()) { clicar(/^(Mostrar mais|Show more)$/i); await esperar(700); }
+    const tg = campoTags();
+    if (k && (k.tags || []).length) {
+      if (digitar(tg, tagsQueCabem(k.tags).join(", "))) { tg.blur(); feitos.push("tags"); } else faltou.push("tags");
+    }
+
+    await esperar(300);
+    if (marcarIA()) feitos.push("uso de IA: sim");
+    else faltou.push("uso de IA");
+
+    estado.trabalhando = "";
+    const daDescricao = !k ? ` Não achei este vídeo na fábrica${estado.arquivo ? ` (${estado.arquivo})` : ""}: título e descrição ficam com você.`
+      : k.modelo === "padrao" ? " A descrição está no modelo padrão do Radar: para mudar, escreva o modelo deste canal no Radar."
+        : k.modelo ? "" : " A descrição veio da fábrica: para padronizar, escreva o modelo do canal no Radar.";
+    recado(`Preenchido: ${feitos.join(", ") || "nada"}.${faltou.length ? ` Confira à mão: ${faltou.join(", ")}.` : ""}${daDescricao}`, !k);
+    if (avancar) { await esperar(600); proximaEtapa(); }
+  }
+
+  // O "Uso de IA" dos Detalhes: sempre Sim (pedido do usuário em 2026-10-23 — os vídeos da fábrica são feitos com
+  // IA, então a resposta é a mesma toda vez). O Studio já chamou essa pergunta de "Conteúdo alterado ou sintético";
+  // os dois nomes estão aqui porque a tela muda de uma conta para a outra.
+  // O "Sim" é exato: o da promoção paga e o das crianças são frases inteiras ("Sim, meu vídeo inclui promoção
+  // paga"), e sem o casamento exato a extensão marcaria a resposta errada numa pergunta que não é dela.
+  const IA_PERGUNTA = /Uso de IA|A IA foi usada|Conteúdo alterado ou sintético|conteúdo sintético|Altered or synthetic|AI (was )?used|Use of AI/i;
+
+  function marcarIA() {
+    const simDaSecao = (p) => [...p.querySelectorAll("tp-yt-paper-radio-button, ytcp-checkbox-lit, tp-yt-paper-checkbox, ytcp-checkbox")]
+      .find((r) => visivel(r) && /^(Sim|Yes)$/i.test(limpo(r)));
+    const secao = secaoDe(IA_PERGUNTA, simDaSecao);
+    return secao ? marcar(simDaSecao(secao), true) : false;
+  }
+
+  // ------------------------------------------------------------ 2. Monetização: ligar e marcar todos os anúncios
+  async function ligarAnuncios({ avancar = true } = {}) {
+    estado.trabalhando = "monetizacao"; desenhar();
+    const seletor = [...caixa().querySelectorAll("ytcp-select, tp-yt-paper-dropdown-menu, ytcp-text-dropdown-trigger")].find(visivel);
+    if (seletor) {
+      seletor.click();
+      await esperar(600);
+      clicar(/^(Ativad[ao]|Ativar|On|Monetização ativada)$/i, document.body);
+      await esperar(600);
+    }
+    for (const c of caixa().querySelectorAll("ytcp-checkbox-lit, tp-yt-paper-checkbox, ytcp-checkbox")) {
+      if (visivel(c) && c.getAttribute("aria-disabled") !== "true") { marcar(c, true); await esperar(120); }
+    }
+    clicar(/^(Concluído|Concluir|Salvar|Done|Save)$/i);
+    await esperar(600);
+    estado.trabalhando = "";
+    recado("Monetização ativada com todos os tipos de anúncio.");
+    if (avancar) { await esperar(400); proximaEtapa(); }
+  }
+
+  // o padrão de um aperto só (pedido do usuário em 2026-10-23: "anúncio a cada 1 minuto, ativa e já coloca"):
+  // liga a monetização, abre a linha do tempo dos intermediários e põe os espaços, sem mais nenhum clique
+  async function ligarEColocarAnuncios() {
+    await ligarAnuncios({ avancar: false });
+    estado.trabalhando = "anuncios"; desenhar();
+    // a linha do tempo dos intermediários abre pelo "Revisar a posição…" da Monetização; em algumas contas ela
+    // é a tela seguinte, e aí quem abre é o Avançar
+    if (etapaAtual() !== "anuncios") {
+      if (!clicar(/Revisar a posição do anúncio|posição do anúncio intermediário|Review midroll|midroll placement/i)) {
+        proximaEtapa();
+      }
+      await esperar(1500);
+    }
+    await esperarPeloPlayer();
+    if (!videoDaTela()) {
+      estado.trabalhando = "";
+      return recado("Liguei os anúncios. A linha do tempo dos intermediários ainda não carregou (o vídeo costuma "
+        + "precisar terminar de processar): quando ela aparecer, aperte o botão de novo.", true);
+    }
+    await colocarAnuncios();
+  }
+
+  // o player da linha do tempo só existe depois que o vídeo processa: vale esperar meio minuto por ele
+  async function esperarPeloPlayer(limite = 30000) {
+    const fim = Date.now() + limite;
+    while (Date.now() < fim) {
+      const v = videoDaTela();
+      if (v && v.duration > 1) return true;
+      estado.trabalhando = `anuncios:esperando ${Math.ceil((fim - Date.now()) / 1000)}s`; desenhar();
+      await esperar(500);
+    }
+    return false;
+  }
+
+  // ------------------------------------------------------------ 2b. Anúncios no meio do vídeo (mid-roll)
+  const videoDaTela = () => [...document.querySelectorAll("video")].find((v) => v.duration > 1) || null;
+
+  function quantosAnuncios() {
+    const v = videoDaTela();
+    const dur = v && v.duration ? v.duration : (estado.kit && estado.kit.duracao) || 0;
+    if (!dur) return { dur: 0, tempos: [] };
+    const passo = estado.modoAnuncio === "cada" ? Math.max(5, estado.cadaMin * 60) : dur / (Math.max(1, estado.quantos) + 1);
+    const tempos = [];
+    for (let t = passo; t < dur - 20; t += passo) {
+      tempos.push(Math.round(t));
+      if (estado.modoAnuncio === "quantidade" && tempos.length >= estado.quantos) break;
+    }
+    return { dur, tempos };
+  }
+
+  async function colocarAnuncios() {
+    const { dur, tempos } = quantosAnuncios();
+    if (!dur) return recado("Não achei a duração do vídeo nesta tela.", true);
+    const v = videoDaTela();
+    if (!v) return recado("Esta tela não tem o player dos espaços de anúncio.", true);
+    estado.trabalhando = "anuncios"; desenhar();
+    let postos = 0;
+    for (const t of tempos) {
+      try { v.currentTime = t; } catch { break; }
+      await esperar(400);
+      const b = botao(/espaço de anúncio|adicionar espaço|inserir anúncio|ad break|adicionar anúncio|add ad/i);
+      if (!b) { recado(`Coloquei ${postos}. Não achei o botão de adicionar espaço de anúncio nesta tela.`, true); break; }
+      b.click();
+      postos++;
+      estado.trabalhando = `anuncios:${postos}/${tempos.length}`; desenhar();
+      await esperar(400);
+    }
+    estado.trabalhando = "";
+    if (postos === tempos.length) {
+      recado(`${postos} anúncios colocados${estado.modoAnuncio === "cada" ? ` (um a cada ${estado.cadaMin} min)` : ""}.`);
+      clicar(/^(Concluído|Concluir|Salvar|Done|Save)$/i);
+      await esperar(800);
+      proximaEtapa();
+    } else if (postos) {
+      recado(`Coloquei ${postos} de ${tempos.length}. Confira a linha do tempo e siga você.`, true);
+    }
+    desenhar();
+  }
+
+  // ------------------------------------------------------------ 3. Adequação para anunciantes
+  async function responderNadaDisso({ avancar = true } = {}) {
+    estado.trabalhando = "anunciantes"; desenhar();
+    const nenhuma = folhas(/^Nenhuma das opções( acima)?$|^None of the above$/i)
+      .map((e) => e.closest("ytcp-checkbox-lit, tp-yt-paper-checkbox, ytcp-checkbox") || e.parentElement).filter(Boolean)[0];
+    if (nenhuma) { marcar(nenhuma, true); await esperar(500); }
+    else recado("Não achei o \"Nenhuma das opções\": marque você e clique em Enviar classificação.", true);
+    if (clicar(/^(Enviar classificação|Submit rating)$/i)) await esperar(1200);
+    estado.trabalhando = "";
+    if (nenhuma) recado("Questionário respondido com \"Nenhuma das opções\" — confira se é verdade para este vídeo.");
+    if (avancar) proximaEtapa();
+  }
+
+  // ------------------------------------------------------------ 4. Elementos: a tela final
+  // O padrão é o que o usuário monta à mão (imagem de 2026-10-23): um elemento de vídeo em "Melhor para o
+  // espectador" (o YouTube escolhe qual puxa mais) e o "Inscrever-se" do canal. "Importar do último vídeo" fica
+  // como a outra opção, para quem já tem uma tela final pronta e só quer repetir. Qual dos dois vale é do canal,
+  // guardado no Radar.
+
+  async function abrirTelaFinal() {
+    if (botao(BOTAO_ELEMENTO) || botao(/^(Importar do vídeo|Import from video)$/i)) return true;
+    // na lista de elementos, a linha "Tela final" tem Adicionar (ou Editar, quando já existe uma)
+    const linha = secaoDe(/^Tela final$|^End screen$/i, (p) => botao(/^(Adicionar|Editar|Add|Edit)$/i, p));
+    if (!linha) return false;
+    botao(/^(Adicionar|Editar|Add|Edit)$/i, linha).click();
+    await esperar(2200);
+    return !!(botao(BOTAO_ELEMENTO) || botao(/^(Importar do vídeo|Import from video)$/i));
+  }
+
+  const BOTAO_ELEMENTO = /^\+?\s*(Elemento|Element)$|^(Adicionar|Add) (elemento|element)$/i;
+  const MARCAVEIS = "tp-yt-paper-radio-button, ytcp-checkbox-lit, tp-yt-paper-checkbox, ytcp-checkbox";
+
+  // o rádio cujo rótulo casa, esteja o texto nele mesmo ou num filho
+  function radioComTexto(re, onde = caixa()) {
+    const direto = [...onde.querySelectorAll(MARCAVEIS)].find((r) => visivel(r) && re.test(limpo(r)));
+    return direto || folhas(re, onde).map((e) => e.closest(MARCAVEIS)).filter(Boolean)[0] || null;
+  }
+  const temElemento = (re) => folhas(re).length > 0;
+
+  // o menu do "+ Elemento" abre fora da caixa do editor, por isso a procura é no documento inteiro
+  async function porElemento(tipo) {
+    const b = botao(BOTAO_ELEMENTO);
+    if (!b) return false;
+    b.click();
+    await esperar(900);
+    const item = botao(tipo, document.body);
+    if (!item) return false;
+    item.click();
+    await esperar(1600);
+    return true;
+  }
+
+  async function telaFinalPadrao({ avancar = true } = {}) {
+    estado.trabalhando = "elementos"; desenhar();
+    const feitos = [], faltou = [];
+    if (!(await abrirTelaFinal())) {
+      estado.trabalhando = "";
+      recado("Não achei a Tela final nesta tela.", true);
+      if (avancar) proximaEtapa();
+      return;
+    }
+    if (temElemento(/^(Vídeo|Video):/i)) feitos.push("o vídeo que já estava lá");
+    else if (await porElemento(/^(Vídeo|Video)$/i)) {
+      await esperar(400);
+      // o rótulo pode estar no próprio rádio ou num filho dele: procuro dos dois jeitos, senão a opção fica
+      // sem marcar e a tela final sai com "Envio mais recente", que não é o que este canal usa
+      const melhor = radioComTexto(/Melhor para o espectador|Best for viewer/i);
+      if (melhor) { marcar(melhor, true); feitos.push("vídeo: melhor para o espectador"); }
+      else faltou.push('a opção "melhor para o espectador"');
+    } else faltou.push("o elemento de vídeo");
+
+    if (temElemento(/^(Inscrever-se|Subscribe)/i)) feitos.push("o inscrever-se que já estava lá");
+    else if (await porElemento(/^(Inscrição|Inscrever-se|Subscribe)$/i)) feitos.push("inscrever-se");
+    else faltou.push("o elemento de inscrição");
+
+    const salvou = clicar(/^(Salvar|Save)$/i);
+    await esperar(1200);
+    estado.trabalhando = "";
+    recado(`Tela final: ${feitos.join(", ") || "nada mudou"}.`
+      + (faltou.length ? ` Faça à mão: ${faltou.join(", ")}.` : "")
+      + (salvou ? "" : " Não achei o Salvar: confira e salve você."), !!faltou.length || !salvou);
+    if (avancar && !faltou.length && salvou) { await esperar(400); proximaEtapa(); }
+  }
+
+  // a outra opção: copiar a tela final do último vídeo do canal (é o jeito que o Studio deixa repetir certinho)
+  async function telaFinalDoUltimo({ avancar = true } = {}) {
+    estado.trabalhando = "elementos"; desenhar();
+    await abrirTelaFinal();
+    const importar = botao(/^(Importar do vídeo|Import from video)$/i);
+    if (!importar) {
+      estado.trabalhando = "";
+      recado('Não achei o "Importar do vídeo" da Tela final nesta tela.', true);
+      if (avancar) proximaEtapa();
+      return;
+    }
+    importar.click();
+    await esperar(1800);
+    // a janela lista os vídeos do canal, os mais novos primeiro: o primeiro cartão é o último vídeo
+    const janela = [...document.querySelectorAll("tp-yt-paper-dialog, ytcp-dialog")].filter(visivel).pop() || document.body;
+    const primeiro = [...janela.querySelectorAll("ytcp-video-row, ytcp-ve, #video-list-item, tp-yt-paper-item, img")]
+      .filter((e) => visivel(e) && e.offsetWidth > 60)[0];
+    if (primeiro) { primeiro.click(); await esperar(1500); }
+    const importou = clicar(/^(Importar|Import|Selecionar|Select)$/i, janela);
+    await esperar(1500);
+    clicar(/^(Salvar|Save)$/i);
+    await esperar(800);
+    estado.trabalhando = "";
+    recado(primeiro && importou ? "Tela final importada do último vídeo. Confira antes de avançar."
+      : 'Abri o "Importar do vídeo": escolha o vídeo na janela (não consegui escolher sozinho).', !(primeiro && importou));
+    if (avancar && primeiro && importou) proximaEtapa();
+  }
+
+  const TELAS_FINAIS = {
+    melhor: { rotulo: "Vídeo (melhor para o espectador) + inscrever-se", botao: "Montar a tela final", tarefa: telaFinalPadrao },
+    ultimo: { rotulo: "Copiar a do último vídeo", botao: "Tela final do último e pular", tarefa: telaFinalDoUltimo },
+    nenhuma: { rotulo: "Não mexer", botao: "Pular esta etapa", tarefa: () => proximaEtapa() },
+  };
+  const telaFinalEscolhida = () => TELAS_FINAIS[estado.telaFinal] || TELAS_FINAIS.melhor;
+
+  // ------------------------------------------------------------ andar nas etapas
+  function proximaEtapa() {
+    if (!clicar(/^(Avançar|Próxima|Continuar|Next|Continue)$/i)) recado("Não achei o botão Avançar.", true);
+    setTimeout(desenhar, 1200);
+  }
+
+  function etapaAtual() {
+    if (temTexto(/Espaços de anúncios intermediários|Mid-?roll ad breaks|anúncios intermediários/i)) return "anuncios";
+    if (botao(/^(Enviar classificação|Submit rating)$/i) || temTexto(/Adequação (para|a) anunciantes|Advertiser suitability/i)) return "anunciantes";
+    if (visivel(campoDescricao())) return "detalhes";
+    if (temTexto(/^Monetização$|^Monetization$/i)) return "monetizacao";
+    if (temTexto(/Elementos do vídeo|Video elements/i)) return "elementos";
+    if (temTexto(/^Verificaç(ão|ões)$|^Checks?$/i)) return "verificacoes";
+    return "";
+  }
+
   // ------------------------------------------------------------ o Radar
   async function buscar(arquivo) {
-    estado.carregando = true; estado.erro = ""; estado.buscado = arquivo;
+    estado.carregando = true; estado.erro = "";
     desenhar();
     const r = await pedir({ tipo: "api", caminho: `/api/ext/publicar?arquivo=${encodeURIComponent(arquivo || "")}` });
     estado.carregando = false;
     if (r.erro) estado.erro = r.status === 401 ? "Entre na sua conta do Radar pelo ícone da extensão." : r.erro;
-    else { estado.kit = r.dados.kit; estado.opcoes = r.dados.opcoes || []; estado.feitos = {}; }
+    else estado.kit = r.dados.kit;
     desenhar();
+    autoPreencher();
   }
 
-  async function escolher(nome) {
-    if (!nome) return;
-    estado.carregando = true; estado.erro = "";
-    desenhar();
-    const r = await pedir({ tipo: "api", caminho: `/api/ext/publicar/${encodeURIComponent(nome)}` });
-    estado.carregando = false;
-    if (r.erro) estado.erro = r.erro; else { estado.kit = r.dados; estado.feitos = {}; }
-    desenhar();
+  // escolheu o vídeo → título, descrição e tags já vão sozinhos (sem avançar: a pessoa confere antes)
+  // o padrão deste canal vem junto com o kit (está guardado no Radar, na tela do canal): minutos entre anúncios
+  // e que tela final montar. Sem canal configurado, fica o que a pessoa escolheu por último aqui.
+  function pegarOPadraoDoCanal() {
+    const p = estado.kit && estado.kit.padrao;
+    if (!p) return;
+    if (p.anuncio_cada) { estado.cadaMin = p.anuncio_cada; estado.modoAnuncio = "cada"; }
+    if (p.tela_final) estado.telaFinal = p.tela_final;
   }
 
-  async function baixarLegenda(botao) {
-    botao.disabled = true; botao.textContent = "Baixando…";
-    const r = await pedir({ tipo: "binario", caminho: `/api/ext/publicar/${encodeURIComponent(estado.kit.nome)}/legenda` });
-    botao.disabled = false; botao.textContent = "Baixar a legenda (.srt)";
-    if (r.erro) return avisar(r.erro, true);
-    const bytes = Uint8Array.from(atob(r.base64), (c) => c.charCodeAt(0));
-    const url = URL.createObjectURL(new Blob([bytes], { type: "application/x-subrip" }));
-    const a = Object.assign(document.createElement("a"), { href: url, download: `${estado.kit.nome}.srt` });
-    document.body.append(a); a.click(); a.remove();
-    setTimeout(() => URL.revokeObjectURL(url), 5000);
+  function autoPreencher() {
+    const k = estado.kit;
+    pegarOPadraoDoCanal();
+    if (!k || estado.jaPreencheu === k.nome || estado.trabalhando) return;
+    if (etapaAtual() !== "detalhes") return;
+    estado.jaPreencheu = k.nome;
+    preencherDetalhes();
   }
 
-  // ------------------------------------------------------------ o painel (num shadow root, o CSS do Studio não entra)
+  // as tags no formato de colar (o Studio separa nas vírgulas) até caber nos 500 caracteres
+  function tagsQueCabem(tags) {
+    const saida = [];
+    for (const t of tags || []) {
+      if ([...saida, t].join(", ").length > 500) break;
+      saida.push(t);
+    }
+    return saida;
+  }
+
+  // ------------------------------------------------------------ a barra (num shadow root, o CSS do Studio não entra)
   const host = document.createElement("div");
   host.id = "radar-publicar";
   const raiz = host.attachShadow({ mode: "open" });
   raiz.innerHTML = `<style>
     :host { all: initial; }
     * { box-sizing: border-box; }
-    /* o display: flex do .painel passava por cima do hidden: a caixa vazia ficava aberta em todas as telas do Studio */
     [hidden] { display: none !important; }
-    .lancador { position: fixed; right: 18px; bottom: 18px; z-index: 2147483646; border: 0; border-radius: 999px; padding: 10px 16px;
-      background: #b6f23a; color: #10160a; font: 700 13px Roboto, Arial, sans-serif; cursor: pointer; box-shadow: 0 6px 20px rgba(0,0,0,.35); }
-    .painel { position: fixed; right: 16px; top: 72px; bottom: 16px; width: 380px; z-index: 2147483647; display: flex; flex-direction: column;
-      background: #0d0f14; color: #eef1f7; border: 1px solid #262b36; border-radius: 14px; box-shadow: 0 12px 40px rgba(0,0,0,.45);
-      font: 13px/1.45 Roboto, Arial, sans-serif; overflow: hidden; }
-    .cab { display: flex; align-items: center; gap: 8px; padding: 12px 14px; border-bottom: 1px solid #262b36; }
-    .cab i { width: 10px; height: 10px; border-radius: 50%; background: #b6f23a; box-shadow: 0 0 8px #b6f23a; flex: none; }
-    .cab b { flex: 1; font-size: 14px; }
-    .corpo { overflow-y: auto; padding: 12px 14px 18px; display: grid; gap: 12px; }
-    .x { border: 0; background: transparent; color: #8d95a8; font-size: 18px; cursor: pointer; line-height: 1; }
-    .fraco { color: #8d95a8; font-size: 12px; }
+    :host(.na-barra) { display: inline-flex; align-items: center; margin-right: 10px; vertical-align: middle; }
+    .barra { position: fixed; right: 24px; bottom: 76px; z-index: 2147483647; display: grid; gap: 8px; justify-items: end;
+      font: 13px/1.45 Roboto, Arial, sans-serif; color: #eef1f7; }
+    /* dentro do rodapé do Studio (ao lado do Voltar e do Avançar): o botão anda com a janela em vez de boiar no canto */
+    .barra.na-barra { position: relative; right: auto; bottom: auto; display: inline-flex; }
+    /* no rodapé o botão fica à esquerda, então o cartão abre para a direita: ancorado à direita ele saía da tela */
+    .barra.na-barra .acima { position: absolute; bottom: calc(100% + 10px); left: 0; right: auto; justify-items: start; }
+    .acima { display: grid; gap: 8px; justify-items: end; }
+    .acima:empty { display: none; }
+    .botoes { display: flex; gap: 1px; }
+    .botoes button { border: 0; cursor: pointer; font: 700 13px Roboto, Arial, sans-serif; background: #cc0000; color: #fff;
+      padding: 10px 16px; display: flex; align-items: center; gap: 8px; box-shadow: 0 4px 14px rgba(0,0,0,.4); }
+    .botoes button:disabled { opacity: .6; cursor: default; }
+    .botoes .acao { border-radius: 4px; }
+    .botoes button i { width: 15px; height: 11px; border-radius: 3px; background: #fff; flex: none; }
+    /* o único cartão que sobrou é o recado: o que foi preenchido e o que falhou */
+    .cartao { max-width: 420px; background: #0d0f14; border: 1px solid #262b36; border-radius: 10px; padding: 10px 12px;
+      box-shadow: 0 12px 40px rgba(0,0,0,.45); }
     .erro { color: #ff5263; font-size: 12px; }
-    .aviso { background: #2a2210; border: 1px solid #5a4716; color: #ffd98a; border-radius: 10px; padding: 8px 10px; font-size: 12px; }
-    .caixa { background: #151820; border: 1px solid #262b36; border-radius: 10px; padding: 10px; display: grid; gap: 6px; }
-    .campo-cab { display: flex; align-items: center; gap: 8px; }
-    .campo-cab b { flex: 1; }
-    .conta { font-size: 11px; color: #8d95a8; }
-    .conta.passou { color: #ff5263; font-weight: 700; }
-    pre { margin: 0; white-space: pre-wrap; word-break: break-word; font: 12px/1.45 Roboto, Arial, sans-serif; color: #cfd5e2;
-      max-height: 120px; overflow-y: auto; background: #0d0f14; border-radius: 8px; padding: 6px 8px; }
-    button.b { border: 0; border-radius: 999px; padding: 5px 11px; cursor: pointer; font: 600 12px Roboto, Arial, sans-serif;
-      background: #1c2029; color: #eef1f7; border: 1px solid #2f3542; }
-    button.b:hover { background: #262b36; }
-    button.b.forte { background: #b6f23a; color: #10160a; border-color: #b6f23a; }
-    button.b.copiado { background: #1f3a12; border-color: #3d6b1f; color: #b6f23a; }
-    select, input { width: 100%; background: #1c2029; color: #eef1f7; border: 1px solid #262b36; border-radius: 8px; padding: 7px 8px; font: 13px Roboto, Arial, sans-serif; }
-    .linha { display: flex; gap: 6px; }
-    details { background: #151820; border: 1px solid #262b36; border-radius: 10px; }
-    summary { cursor: pointer; padding: 9px 10px; font-weight: 700; display: flex; gap: 8px; align-items: center; list-style: none; }
-    summary::-webkit-details-marker { display: none; }
-    summary::before { content: "▸"; color: #8d95a8; }
-    details[open] summary::before { content: "▾"; }
-    summary span { margin-left: auto; font-weight: 500; font-size: 11px; color: #8d95a8; }
-    summary span.tudo { color: #b6f23a; }
-    .itens { padding: 0 10px 10px; display: grid; gap: 7px; }
-    label.item { display: grid; grid-template-columns: 18px 1fr; gap: 6px; align-items: start; cursor: pointer; }
-    label.item input { width: 15px; height: 15px; margin: 2px 0 0; accent-color: #b6f23a; }
-    label.item.feito > span { color: #8d95a8; text-decoration: line-through; }
-    .item small { display: block; color: #8d95a8; font-size: 11.5px; text-decoration: none; }
-    .titulo-video { font-weight: 700; }
-  </style><button class="lancador" hidden>Radar · ajuda para publicar</button><div class="painel" hidden></div>`;
-  const lancador = raiz.querySelector(".lancador");
-  const painel = raiz.querySelector(".painel");
-  lancador.onclick = () => {
-    estado.aberto = true;
-    if (!estado.kit && !estado.carregando && !estado.opcoes.length) buscar(estado.arquivo || arquivoDaTela());
-    desenhar();
-  };
+    .ok { color: #b6f23a; font-size: 12px; }
+  </style><div class="barra" hidden></div>`;
+  const barra = raiz.querySelector(".barra");
 
   function el(tag, props = {}, ...filhos) {
     const e = Object.assign(document.createElement(tag), props);
@@ -146,189 +511,103 @@
     return e;
   }
 
-  function avisar(texto, erro = false) {
-    const a = el("div", { className: erro ? "erro" : "fraco", textContent: texto });
-    painel.querySelector(".corpo")?.prepend(a);
-    setTimeout(() => a.remove(), 6000);
+  function recado(texto, erro = false) {
+    estado.recado = texto; estado.recadoErro = erro;
+    desenhar();
   }
 
-  async function copiar(texto, botao) {
-    try {
-      await navigator.clipboard.writeText(texto);
-    } catch {
-      const t = el("textarea", { value: texto });
-      raiz.append(t); t.select(); document.execCommand("copy"); t.remove();
+  // ------------------------------------------------------------ o botão vermelho de cada etapa
+  function acaoDaEtapa(etapa) {
+    const ocupado = !!estado.trabalhando;
+    if (etapa === "detalhes") {
+      return { texto: ocupado || estado.carregando ? "Preenchendo…" : "Preencher e pular",
+        tarefa: () => preencherDetalhes({ avancar: true }) };
     }
-    const antes = botao.textContent;
-    botao.textContent = "Copiado ✓"; botao.classList.add("copiado");
-    setTimeout(() => { botao.textContent = antes; botao.classList.remove("copiado"); }, 1600);
-  }
-
-  // um campo para copiar, com a contagem do limite do Studio
-  function campo(rotulo, texto, limite, extra) {
-    if (!texto) return null;
-    const passou = limite && texto.length > limite;
-    const botao = el("button", { className: "b forte", textContent: "Copiar" });
-    botao.onclick = () => copiar(texto, botao);
-    return el("div", { className: "caixa" },
-      el("div", { className: "campo-cab" }, el("b", { textContent: rotulo }),
-        limite ? el("span", { className: "conta" + (passou ? " passou" : ""), textContent: `${texto.length}/${limite}` }) : null, botao),
-      el("pre", { textContent: texto }),
-      passou ? el("div", { className: "erro", textContent: `Passa do limite do Studio (${limite} caracteres): corte antes de salvar.` }) : null,
-      extra || null);
-  }
-
-  // as tags no formato de colar (o Studio separa nas vírgulas) até caber nos 500 caracteres
-  function tagsQueCabem(tags) {
-    const saida = [];
-    for (const t of tags) {
-      const proximo = [...saida, t].join(", ");
-      if (proximo.length > 500) break;
-      saida.push(t);
+    if (etapa === "monetizacao") {
+      const andando = (estado.trabalhando || "").startsWith("anuncios:") ? ` ${estado.trabalhando.split(":")[1]}` : "";
+      return { texto: ocupado ? `Ligando e colocando…${andando}` : `Ligar e colocar (1 a cada ${estado.cadaMin} min)`,
+        tarefa: () => ligarEColocarAnuncios() };
     }
-    return saida;
+    if (etapa === "anuncios") {
+      const { tempos } = quantosAnuncios();
+      const andamento = (estado.trabalhando || "").startsWith("anuncios:") ? ` ${estado.trabalhando.split(":")[1]}` : "";
+      return { texto: ocupado ? `Colocando…${andamento}` : `Colocar ${tempos.length} anúncios`, tarefa: () => colocarAnuncios() };
+    }
+    if (etapa === "anunciantes") return { texto: ocupado ? "Respondendo…" : "Responder “nada disso” e pular", tarefa: () => responderNadaDisso() };
+    if (etapa === "elementos") {
+      const tf = telaFinalEscolhida();
+      return { texto: ocupado ? "Montando…" : tf.botao, tarefa: () => tf.tarefa() };
+    }
+    if (etapa === "verificacoes") return { texto: "Pular esta etapa", tarefa: () => proximaEtapa() };
+    return null;   // quem aperta Publicar é a pessoa
   }
 
-  // ------------------------------------------------------------ o que marcar, na ordem das etapas do Studio
-  function etapas(k) {
-    const min = k && k.duracao ? k.duracao / 60 : null;
-    const capitulos = (k && k.capitulos || []).filter((c) => c.inicio > 0).map((c) => c.tempo).join(", ");
-    const midroll = min == null
-      ? { t: "Anúncios durante o vídeo (mid-roll)", d: "Só aparece em vídeos de 8 minutos ou mais. Deixe ligado e escolha \"Posicionar automaticamente\" (ou coloque nos começos de capítulo)." }
-      : min >= 8
-        ? { t: "Anúncios durante o vídeo (mid-roll): ligado", d: `O vídeo tem ${Math.floor(min)} min. Use "Posicionar automaticamente"${capitulos ? ` ou ponha nas viradas de capítulo: ${capitulos}` : ""}.` }
-        : { t: "Sem anúncio no meio", d: `O vídeo tem ${Math.floor(min)} min: o mid-roll só existe a partir de 8 minutos.` };
-    return [
-      { id: "detalhes", nome: "1. Detalhes", itens: [
-        { t: "Título e descrição", d: "Cole os textos lá de cima (a descrição já traz os capítulos)." },
-        { t: "Thumbnail", d: "Envie a thumbnail.jpg que está na pasta da entrega." },
-        { t: "Playlist", d: "Escolha a playlist do assunto, se tiver." },
-        { t: "Público: \"Não, não é conteúdo para crianças\"", d: "Conteúdo para crianças desliga os anúncios personalizados e os comentários." },
-        k ? { t: `Conteúdo alterado ou sintético: ${k.sintetico ? "Sim" : "Não"}`, d: k.sintetico ? "O vídeo tem imagens feitas por IA que parecem reais: marque Sim (o YouTube pede)." : "A fábrica não marcou imagens de IA realistas neste vídeo." }
-          : { t: "Conteúdo alterado ou sintético", d: "Marque Sim se o vídeo tem imagens de IA que parecem reais." },
-        { t: "Mostrar mais → Tags", d: "Cole as tags lá de cima (separadas por vírgula, o Studio separa sozinho)." },
-        { t: "Mostrar mais → Idioma do vídeo e categoria", d: "O idioma da narração; categoria do canal (ex.: Educação)." },
-      ] },
-      { id: "monetizacao", nome: "2. Monetização e anúncios", itens: [
-        { t: "Monetização: Ativada", d: "Abra a monetização, escolha Ativada e clique em Concluído." },
-        { t: "Tipos de anúncio: todos marcados", d: "Antes do vídeo, anúncios puláveis e não puláveis e depois do vídeo." },
-        midroll,
-      ] },
-      { id: "anunciantes", nome: "3. Adequação para anunciantes", itens: [
-        { t: "Responda o questionário com sinceridade", d: "Para cada tema (linguagem, violência, conteúdo adulto, drogas, armas, assuntos polêmicos…), veja se o vídeo mostra aquilo." },
-        { t: "\"Nenhuma das opções acima\" só se for verdade", d: "Quando o vídeo não tem nada daquilo. Classificar errado faz o YouTube deixar de confiar nas suas respostas." },
-        { t: "Enviar a classificação", d: "Clique em Enviar classificação no fim do questionário." },
-      ] },
-      { id: "elementos", nome: "4. Elementos do vídeo", itens: [
-        { t: "Legendas", d: k && k.legenda ? "Envie o .srt (botão \"Baixar a legenda\" lá em cima) → Enviar arquivo → Com tempo." : "Se tiver o .srt do vídeo, envie com tempo." },
-        { t: "Tela final", d: "\"Importar do vídeo\" reaproveita a de um vídeo anterior (vídeo + inscrever-se)." },
-        { t: "Cards", d: "Opcional: um card para um vídeo do mesmo assunto." },
-      ] },
-      { id: "verificacoes", nome: "5. Verificações", itens: [
-        { t: "Esperar a verificação de direitos autorais", d: "Se aparecer reivindicação, veja antes de publicar." },
-      ] },
-      { id: "visibilidade", nome: "6. Visibilidade", itens: [
-        { t: "Privado, Não listado, Público ou Agendar", d: "Para agendar, escolha a data e a hora. A Estreia é opcional." },
-        { t: "Você clica em Publicar / Agendar", d: "A extensão não publica nada sozinha." },
-        { t: "Depois de publicar: fixar o comentário", d: "Comente o texto do \"Comentário fixado\" e fixe no topo." },
-      ] },
-    ];
+  // ------------------------------------------------------------ desenhar
+  // o rodapé do Studio: o bloco que tem o Voltar e o Avançar. É lá que o botão mora, do lado de fora dos dois.
+  function rodapeDoStudio() {
+    const avancar = botao(/^(Avançar|Próxima|Continuar|Next|Continue)$/i);
+    if (!avancar) return null;
+    let p = avancar.parentElement;
+    for (let i = 0; i < 5 && p; i++, p = p.parentElement) {
+      if ([...p.querySelectorAll(CLICAVEIS)].some((b) => /^(Voltar|Back)$/i.test(limpo(b)))) return p;
+    }
+    return avancar.parentElement;
   }
 
-  function lista(k) {
-    return etapas(k).map((etapa, i) => {
-      const feitos = etapa.itens.filter((_, j) => estado.feitos[`${etapa.id}-${j}`]).length;
-      const contagem = el("span", { className: feitos === etapa.itens.length ? "tudo" : "", textContent: `${feitos}/${etapa.itens.length}` });
-      const d = el("details", { open: estado[`aberta-${etapa.id}`] ?? i === 0 },
-        el("summary", {}, etapa.nome, contagem),
-        el("div", { className: "itens" }, etapa.itens.map((item, j) => {
-          const chave = `${etapa.id}-${j}`;
-          const caixa = el("input", { type: "checkbox", checked: !!estado.feitos[chave] });
-          const linha = el("label", { className: "item" + (estado.feitos[chave] ? " feito" : "") }, caixa,
-            el("span", {}, item.t, el("small", { textContent: item.d })));
-          caixa.onchange = () => { estado.feitos[chave] = caixa.checked; desenhar(); };
-          return linha;
-        })));
-      d.addEventListener("toggle", () => { estado[`aberta-${etapa.id}`] = d.open; });
-      return d;
-    });
-  }
-
-  function escolha() {
-    const sel = el("select", {}, el("option", { value: "", textContent: estado.opcoes.length ? "Escolha o vídeo da fábrica…" : "Nenhum vídeo da fábrica com descrição pronta" }),
-      estado.opcoes.map((o) => el("option", { value: o.nome, textContent: o.titulo, selected: estado.kit && estado.kit.nome === o.nome })));
-    sel.onchange = () => escolher(sel.value);
-    const nome = el("input", { placeholder: "ou digite o nome do arquivo", value: estado.buscado || "" });
-    const ir = el("button", { className: "b", textContent: "Buscar" });
-    ir.onclick = () => buscar(nome.value.trim());
-    nome.onkeydown = (e) => { if (e.key === "Enter") ir.click(); };
-    return [sel, el("div", { className: "linha" }, nome, ir)];
+  function ancorar() {
+    const rodape = rodapeDoStudio();
+    if (rodape) {
+      if (host.parentElement !== rodape) rodape.insertBefore(host, rodape.firstChild);
+      host.classList.add("na-barra"); barra.classList.add("na-barra");
+    } else {
+      // tela sem rodapé (o vídeo ainda processando, a janela de aviso): volta a boiar, senão o botão sumia
+      if (host.parentElement !== document.body) document.body.append(host);
+      host.classList.remove("na-barra"); barra.classList.remove("na-barra");
+    }
   }
 
   function desenhar() {
-    const mostrar = telaDePublicar() || estado.aberto;
-    lancador.hidden = !mostrar || estado.aberto;
-    painel.hidden = !estado.aberto;
-    if (!estado.aberto) return;
-    const k = estado.kit;
-    const rolagem = painel.querySelector(".corpo")?.scrollTop || 0;
-    const fechar = el("button", { className: "x", title: "Fechar", textContent: "×" });
-    fechar.onclick = () => { estado.aberto = false; desenhar(); };
-
-    const video = el("div", { className: "caixa" },
-      estado.arquivo ? el("div", { className: "fraco", textContent: `Arquivo: ${estado.arquivo}` }) : null,
-      estado.carregando ? el("div", { className: "fraco", textContent: "Procurando no Radar…" })
-        : k ? el("div", { className: "titulo-video", textContent: `✓ ${k.titulo}` })
-          : el("div", { className: "fraco", textContent: estado.arquivo ? "Não achei este arquivo entre os vídeos da fábrica. Escolha qual é:" : "Escolha o vídeo da fábrica (ou suba o arquivo que eu acho sozinho):" }),
-      estado.erro ? el("div", { className: "erro", textContent: estado.erro }) : null,
-      estado.carregando ? null : escolha());
-
-    const textos = [];
-    if (k) {
-      const tags = tagsQueCabem(k.tags || []);
-      const tagsTexto = tags.join(", ");
-      const descricao = k.descricao || "";
-      const faltamHashtags = (k.hashtags || []).filter((h) => !descricao.includes(h));
-      textos.push(
-        campo("Título", k.titulo, 100),
-        (k.titulos_alt || []).length ? el("div", { className: "caixa" }, el("b", { textContent: "Títulos para o teste A/B" }),
-          el("div", { className: "fraco", textContent: "Em \"Testar e comparar\", junto com o título principal." }),
-          k.titulos_alt.map((t) => { const b = el("button", { className: "b", textContent: "Copiar" }); b.onclick = () => copiar(t, b);
-            return el("div", { className: "campo-cab" }, el("span", { textContent: t, style: "flex:1" }), b); })) : null,
-        campo("Descrição", descricao, 5000),
-        faltamHashtags.length ? campo("Hashtags (no fim da descrição)", faltamHashtags.join(" "), 0) : null,
-        campo("Tags", tagsTexto, 500, tags.length < (k.tags || []).length
-          ? el("div", { className: "fraco", textContent: `Ficaram ${tags.length} de ${k.tags.length} tags para caber nos 500 caracteres.` }) : null),
-        campo("Comentário fixado (depois de publicar)", k.comentario_fixado, 0));
-      if (k.legenda) {
-        const b = el("button", { className: "b", textContent: "Baixar a legenda (.srt)" });
-        b.onclick = () => baixarLegenda(b);
-        textos.push(el("div", { className: "caixa" }, el("b", { textContent: "Legenda" }), el("div", { className: "linha" }, b)));
-      }
+    const etapa = telaDePublicar() ? etapaAtual() : "";
+    const a = etapa ? acaoDaEtapa(etapa) : null;
+    barra.hidden = !etapa;
+    if (!etapa) {
+      host.classList.remove("na-barra"); barra.classList.remove("na-barra");
+      if (host.parentElement !== document.body) document.body.append(host);
+      return;
     }
+    ancorar();
+    const corpo = [];
+    if (estado.recado) corpo.push(el("div", { className: "cartao" },
+      el("div", { className: estado.recadoErro ? "erro" : "ok", textContent: estado.recado })));
 
-    painel.replaceChildren(
-      el("div", { className: "cab" }, el("i"), el("b", { textContent: "Radar · ajuda para publicar" }), fechar),
-      el("div", { className: "corpo" },
-        el("div", { className: "aviso", textContent: "Só ajuda: copie os textos e vá marcando. Nada é clicado ou publicado pela extensão." }),
-        video, textos, el("b", { textContent: "O que marcar em cada etapa" }), lista(k)));
-    painel.querySelector(".corpo").scrollTop = rolagem;
+    const principal = a ? el("button", { className: "acao", disabled: !!estado.trabalhando }, el("i"), a.texto) : null;
+    if (principal) principal.onclick = a.tarefa;
+    barra.replaceChildren(el("div", { className: "acima" }, corpo), el("div", { className: "botoes" }, principal));
   }
 
   (document.body || document.documentElement).append(host);
-  // o Studio troca de tela sem recarregar: confere a cada segundo se é a tela de publicar e se apareceu o nome do arquivo
+  // o Studio troca de tela sem recarregar: confere a cada segundo a etapa e o nome do arquivo
   let ultimo = "", ultimoVideo = "";
   setInterval(() => {
-    // outro vídeo aberto para editar: o arquivo e o kit eram do anterior
     const video = (location.pathname.match(/\/video\/([\w-]{11})/) || location.search.match(/[?&]udvid=([\w-]{11})/) || [])[1] || "";
-    if (video && ultimoVideo && video !== ultimoVideo) { estado.arquivo = ""; estado.kit = null; estado.buscado = ""; estado.feitos = {}; desenhar(); }
+    if (video && ultimoVideo && video !== ultimoVideo) {
+      estado.arquivo = ""; estado.kit = null; estado.jaPreencheu = ""; estado.recado = ""; desenhar();
+    }
     if (video) ultimoVideo = video;
     const agora = telaDePublicar();
-    if (agora && !estado.arquivo) {
+    if (agora && !estado.arquivo && !estado.kit) {
       const nome = arquivoDaTela();
       if (nome) novoArquivo(nome);
     }
-    const marca = `${agora}|${estado.aberto}`;
+    if (agora && estado.kit && estado.jaPreencheu !== estado.kit.nome) autoPreencher();
+    // O Studio redesenha o rodapé sozinho e o nosso botão vai junto — não é movido, é apagado da página. O
+    // elemento continua existindo aqui (com o shadow root dele), então basta pô-lo de volta: sem isto o botão
+    // sumia na primeira vez que o Studio mexia na barra e só voltava recarregando a página.
+    if (agora && !estado.trabalhando) {
+      const rodape = rodapeDoStudio();
+      if (!host.isConnected || (rodape && host.parentElement !== rodape)) ancorar();
+    }
+    const marca = `${agora}|${!!estado.kit}|${estado.recado}|${etapaAtual()}|${estado.trabalhando}`;
     if (marca !== ultimo) { ultimo = marca; desenhar(); }
   }, 1000);
 })();

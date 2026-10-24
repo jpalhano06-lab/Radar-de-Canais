@@ -1,11 +1,27 @@
 /* Painel do Claude no YouTube (claude.js): fica no canto direito, por cima da página */
+/* a abinha sempre à vista na beirada, para abrir sem precisar dos dois cliques (2026-10-22) */
+.radar-claude-abinha { position: fixed; right: 0; top: 50%; transform: translateY(-50%); z-index: 2290;
+  writing-mode: vertical-rl; border: 0; border-radius: 10px 0 0 10px; cursor: pointer; padding: 14px 7px;
+  font: 600 12px/1 Roboto, Arial, sans-serif; letter-spacing: .3px; background: #d97757; color: #fff;
+  box-shadow: -2px 0 10px rgba(0,0,0,.25); opacity: .85; transition: opacity .15s, padding .15s; }
+.radar-claude-abinha:hover { opacity: 1; padding: 18px 9px; }
+.radar-claude-abinha.escondida { display: none; }
 .radar-claude { position: fixed; top: 0; right: 0; bottom: 0; width: 400px; max-width: 100vw; z-index: 2300; display: none;
   flex-direction: column; font: 14px/1.45 Roboto, Arial, sans-serif; background: #fff; color: #0f0f0f;
   border-left: 1px solid rgba(0,0,0,.12); box-shadow: -6px 0 24px rgba(0,0,0,.18); }
 .radar-claude.aberto { display: flex; }
 html.radar-claude-ligado ytd-app { margin-right: 400px; }
 .radar-claude-cab { display: flex; align-items: center; gap: 8px; padding: 12px 14px; border-bottom: 1px solid rgba(0,0,0,.1); }
-.radar-claude-cab b { font-size: 16px; margin-right: auto; color: #d97757; }
+.radar-claude-abas { display: flex; gap: 4px; margin-right: auto; }
+.radar-claude .radar-claude-aba { background: transparent; color: #606060; font-weight: 700; font-size: 14px; padding: 6px 12px; }
+.radar-claude .radar-claude-aba.ativa { background: rgba(217,119,87,.14); color: #d97757; }
+.radar-claude-barra { display: flex; gap: 8px; align-items: center; padding: 8px 14px; border-bottom: 1px solid rgba(0,0,0,.08); }
+.radar-claude .radar-claude-agente { flex: 1; font: 13px Roboto, Arial, sans-serif; padding: 6px 8px; border-radius: 8px;
+  border: 1px solid rgba(0,0,0,.2); background: transparent; color: inherit; }
+.radar-claude .radar-claude-abrir { background: #d97757; color: #fff; }
+.radar-claude .radar-claude-abrir.pequeno { padding: 6px 10px; font-size: 12px; }
+.radar-claude-corpo { flex: 1; display: flex; flex-direction: column; min-height: 0; }
+.radar-claude-corpo .radar-claude-vazio .radar-claude-abrir { margin-top: 14px; }
 .radar-claude button { font: 500 13px Roboto, Arial, sans-serif; border: 0; border-radius: 999px; cursor: pointer;
   background: rgba(0,0,0,.07); color: inherit; padding: 6px 12px; }
 .radar-claude button:hover { filter: brightness(.92); }
@@ -33,3 +49,9 @@ html[dark] .radar-claude-msg.assistente { background: rgba(255,255,255,.08); }
 html[dark] .radar-claude-msg.erro { color: #ff8a80; }
 html[dark] .radar-claude-vazio, html[dark] .radar-claude-msg.pensando { color: #aaa; }
 html[dark] .radar-claude-pe textarea { border-color: rgba(255,255,255,.2); }
+
+html[dark] .radar-claude .radar-claude-aba { color: #aaa; }
+html[dark] .radar-claude .radar-claude-aba.ativa { background: rgba(217,119,87,.22); color: #f0b49b; }
+html[dark] .radar-claude-barra { border-color: rgba(255,255,255,.1); }
+html[dark] .radar-claude .radar-claude-agente { border-color: rgba(255,255,255,.2); }
+html[dark] .radar-claude .radar-claude-agente option { background: #212121; color: #f1f1f1; }

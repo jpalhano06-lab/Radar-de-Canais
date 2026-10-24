@@ -662,3 +662,16 @@ html[dark] .radar-np select option { background: #1c1c1c; }
 .radar-np-secundario { border: 1px solid rgba(128,128,128,.5); background: none; color: inherit; }
 .radar-np-principal[disabled], .radar-np-secundario[disabled] { opacity: .6; cursor: default; }
 .radar-np-pronto { display: grid; justify-items: center; gap: 14px; padding: 20px; text-align: center; } .radar-np-pronto b { font-size: 16px; }
+
+/* O selo em cima da miniatura (2026-10-23): quantas vezes passou do normal, o achado raro e a reação do público */
+.radar-selo { position: absolute; top: 6px; left: 6px; z-index: 51; display: flex; gap: 4px; flex-wrap: wrap;
+  max-width: calc(100% - 12px); pointer-events: none; }
+.radar-selo > span { pointer-events: auto; font: 700 12px/1 Roboto, Arial, sans-serif; padding: 4px 7px; border-radius: 7px;
+  background: rgba(0,0,0,.78); color: #fff; backdrop-filter: blur(6px); white-space: nowrap; }
+.radar-selo-x.verde { background: #b6f23a; color: #10160a; }
+.radar-selo-x.vermelha { background: #ff1f35; color: #fff; }
+.radar-selo-x.apagada { background: rgba(0,0,0,.7); color: #e8e8e8; }
+.radar-selo-raro.lendario { background: linear-gradient(90deg,#ffcf4a,#ff8a3d); color: #3a2300; }
+.radar-selo-raro.epico { background: #b28cff; color: #1a0d33; }
+.radar-selo-raro.raro { background: #8fd3ff; color: #06283d; }
+.radar-selo-reacao { background: #ff4d6d; color: #fff; display: inline-flex; gap: 3px; align-items: center; }

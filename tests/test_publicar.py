@@ -57,3 +57,64 @@ def test_kit_antigo_so_com_textos(tmp_path):
     (pasta / "publicacao.json").write_text(json.dumps({"textos": {"titulo": "Velho", "resumo": "R", "tags": ["a"]}}), encoding="utf-8")
     k = publicar.kit(pasta)
     assert (k["titulo"], k["descricao"], k["tags"], k["sintetico"], k["duracao"]) == ("Velho", "R", ["a"], False, None)
+
+
+def test_modelo_do_canal_troca_so_o_que_e_do_video_e_nao_poe_capitulos():
+    kit = {"titulo": "15 Poundland Items", "sinopse": "Uma lista do que vale a pena.", "hashtags": ["#a", "#b"],
+           "descricao": "A da fábrica", "capitulos": [{"tempo": "0:00", "nome": "Começo"}]}
+    texto = publicar.montar_descricao("{titulo}\n\n{sinopse}\n\nSobre o {canal}.\n\n{hashtags}", kit, "UK MARKET")
+    assert texto == "15 Poundland Items\n\nUma lista do que vale a pena.\n\nSobre o UK MARKET.\n\n#a #b"
+    assert "0:00" not in texto
+
+
+def test_modelo_vazio_mantem_a_descricao_da_fabrica():
+    assert publicar.montar_descricao("", {"descricao": "A da fábrica"}) == "A da fábrica"
+
+
+def test_campo_que_o_video_nao_tem_nao_deixa_buraco():
+    texto = publicar.montar_descricao("{titulo}\n\n{sinopse}\n\nFim", {"titulo": "T"})
+    assert texto == "T\n\nFim"
+
+
+def test_perfil_do_projeto_sai_do_caminho_do_yaml(tmp_path):
+    pasta = _projeto(tmp_path, "uk-video", "Um título")
+    (pasta / "projeto.json").write_text(json.dumps(
+        {"perfil": r"C:\Users\x\fabrica-videos\perfis\canal-uk-market.yaml"}), encoding="utf-8")
+    assert publicar.perfil_do_projeto(pasta) == "canal-uk-market"
+
+
+# ---------------------------------------------------------------- os modelos padrão (2026-10-23)
+
+def test_a_linha_so_de_campo_vazio_sai_inteira():
+    """Sem marcas, "incluindo {marcas}." viraria "incluindo ." — a frase pela metade é pior que a falta dela."""
+    modelo = "Olá.\nFalamos de marcas como {marcas}.\nFim."
+    assert publicar.montar_descricao(modelo, {}, "C", "Aldi, Lidl") == "Olá.\nFalamos de marcas como Aldi, Lidl.\nFim."
+    assert publicar.montar_descricao(modelo, {}, "C", "") == "Olá.\nFim."
+
+
+def test_toda_lingua_tem_os_dois_padroes_e_eles_se_montam():
+    kit = {"sinopse": "O resumo.", "hashtags": ["#x"]}
+    for lingua, tipos in publicar.MODELOS.items():
+        assert set(tipos) == set(publicar.TIPOS), lingua
+        for tipo in tipos:
+            texto = publicar.montar_descricao(publicar.modelo_padrao(lingua, tipo), kit, "Canal X", "Aldi")
+            assert "{" not in texto, (lingua, tipo)     # nenhum campo sobrou sem troca
+            assert "Canal X" in texto and "O resumo." in texto
+            assert len(texto) <= 5000
+
+
+def test_o_padrao_do_consumo_leva_o_aviso_inteiro():
+    """É o texto que o usuário usa de verdade: o aviso legal não pode encolher sem alguém pedir."""
+    texto = publicar.modelo_padrao("inglês", "consumo")
+    for pedaco in ("educational and informational purposes only", "does not allege illegal or unlawful conduct",
+                   "medical, legal or professional advice", "may change over time"):
+        assert pedaco in texto, pedaco
+
+
+def test_lingua_que_nao_existe_cai_no_ingles():
+    assert publicar.modelo_padrao("alemão", "geral") == publicar.MODELOS["inglês"]["geral"]
+    assert publicar.modelo_padrao("", "geral") == publicar.MODELOS["inglês"]["geral"]
+
+
+def test_tipo_que_nao_existe_cai_no_geral():
+    assert publicar.modelo_padrao("português", "inventado") == publicar.MODELOS["português"]["geral"]

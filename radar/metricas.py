@@ -59,6 +59,27 @@ def nota_outlier(views: int | None, normal: float | None) -> float | None:
     return round(views / normal, 1)
 
 
+def engajamento(views: int | None, curtidas: int | None, comentarios: int | None) -> float | None:
+    """Quanto o público reagiu: curtidas e comentários por view. Sem os três números não há taxa — e não ter
+    não é o mesmo que ser zero, então volta None."""
+    if not views or views <= 0 or curtidas is None or comentarios is None:
+        return None
+    return (curtidas + comentarios) / views
+
+
+REACAO_ALTA = 2.0          # o dobro do normal do nicho: daí para cima a reação sai do comum (p90 das medições)
+
+
+def reacao(taxa: float | None, normal_do_nicho: float | None) -> float | None:
+    """Quantas vezes o vídeo foi mais curtido e comentado que o vídeo típico do nicho dele.
+
+    Do nicho, não do canal nem do YouTube inteiro: Animais vive com 0,8% de reação e Religião com 2,7%, então
+    um número só mediria o assunto em vez do vídeo."""
+    if taxa is None or not normal_do_nicho or normal_do_nicho <= 0:
+        return None
+    return round(taxa / normal_do_nicho, 1)
+
+
 def views_por_hora(views: int | None, publicado: str, agora: datetime | None = None) -> float | None:
     dias = dias_desde(publicado, agora)
     if views is None or dias is None:

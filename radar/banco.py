@@ -102,6 +102,13 @@ CREATE TABLE IF NOT EXISTS cota (
     esgotada INTEGER NOT NULL DEFAULT 0,
     PRIMARY KEY (dia, chave)
 );
+CREATE TABLE IF NOT EXISTS cota_motivo (
+    dia TEXT NOT NULL,
+    motivo TEXT NOT NULL,
+    chamadas INTEGER NOT NULL DEFAULT 0,
+    unidades INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (dia, motivo)
+);
 CREATE TABLE IF NOT EXISTS garimpos (
     id INTEGER PRIMARY KEY,
     inicio TEXT NOT NULL,
@@ -135,11 +142,22 @@ CREATE TABLE IF NOT EXISTS ideias_salvas (
     criado TEXT NOT NULL,
     UNIQUE (usuario_id, canal_id, video_id)
 );
-CREATE TABLE IF NOT EXISTS alertas_vistos (
+CREATE TABLE IF NOT EXISTS depoimentos (
+    id INTEGER PRIMARY KEY,
+    nome TEXT NOT NULL,
+    canal TEXT NOT NULL DEFAULT '',
+    resultado TEXT NOT NULL DEFAULT '',
+    texto TEXT NOT NULL DEFAULT '',
+    print TEXT NOT NULL DEFAULT '',
+    quando TEXT NOT NULL,
+    mostrar INTEGER NOT NULL DEFAULT 1
+);
+CREATE TABLE IF NOT EXISTS modelar (
     usuario_id INTEGER NOT NULL,
-    canal_id TEXT NOT NULL,
-    visto TEXT NOT NULL,
-    PRIMARY KEY (usuario_id, canal_id)
+    video_id TEXT NOT NULL,
+    estado TEXT NOT NULL,
+    quando TEXT NOT NULL,
+    PRIMARY KEY (usuario_id, video_id)
 );
 CREATE TABLE IF NOT EXISTS thumb_projetos (
     id INTEGER PRIMARY KEY,
@@ -295,7 +313,10 @@ CREATE TABLE IF NOT EXISTS traducoes (
 COLUNAS_NOVAS = {
     "canais": {"subnicho": "TEXT NOT NULL DEFAULT ''", "velocidade": "REAL", "ganho_7d": "INTEGER",
                "anuncios": "INTEGER", "membros": "INTEGER"},   # monetização vista pela extensão (1, 0 ou sem saber)
-    "usuarios": {"prefs": "TEXT NOT NULL DEFAULT '{}'"},
+    # painel: a ordem e as abas escondidas do menu de cada pessoa. Fica fora de `prefs` porque salvar_prefs reescreve
+    # aquele JSON inteiro a cada resposta das perguntas, e levaria o menu junto
+    "usuarios": {"prefs": "TEXT NOT NULL DEFAULT '{}'", "painel": "TEXT NOT NULL DEFAULT '{}'"},
+    "salvos": {"pasta": "TEXT NOT NULL DEFAULT ''"},          # a pasta em que a pessoa guardou aquele canal
     "projetos_roteiro": {"ideal_para": "TEXT NOT NULL DEFAULT ''"},
     "buscas_feitas": {"vezes": "INTEGER NOT NULL DEFAULT 0", "total": "INTEGER NOT NULL DEFAULT 0", "zeros": "INTEGER NOT NULL DEFAULT 0"},
 }
@@ -360,6 +381,15 @@ def executar(sql: str, *args) -> int:
         cur = c.execute(sql, args)
         c.commit()
         return cur.lastrowid
+
+
+def mudou(sql: str, *args) -> int:
+    """Como o executar, mas diz quantas linhas mexeu: UPDATE e DELETE não têm lastrowid para responder isso."""
+    with _TRAVA:
+        c = con()
+        cur = c.execute(sql, args)
+        c.commit()
+        return cur.rowcount
 
 
 def varios(sql: str, linhas: list[tuple]) -> None:

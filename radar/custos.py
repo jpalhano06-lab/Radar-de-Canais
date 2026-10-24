@@ -13,7 +13,10 @@ _LIDOS: dict[str, tuple] = {}      # arquivo -> (mtime, linhas)
 def linhas(pasta: Path) -> list[dict]:
     arquivo = pasta / "custos_reais.json"
     try:
-        marca = arquivo.stat().st_mtime
+        # a hora sozinha não serve de marca: duas gravações no mesmo tique do relógio do disco davam a mesma, e a
+        # leitura guardada voltava com o conteúdo velho. O tamanho junto já separa os dois casos.
+        dados = arquivo.stat()
+        marca = (dados.st_mtime, dados.st_size)
     except OSError:
         return []
     if str(arquivo) in _LIDOS and _LIDOS[str(arquivo)][0] == marca:

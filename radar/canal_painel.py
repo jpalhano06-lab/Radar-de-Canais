@@ -54,7 +54,8 @@ def _gasto(usuario_id: int, titulo: str) -> dict:
     views = 0
     if ids:
         try:
-            views = sum(v["views"] or 0 for v in youtube.videos(ids))
+            with youtube.gastando("canal"):
+                views = sum(v["views"] or 0 for v in youtube.videos(ids))
         except youtube.SemCota:
             views = 0
     return {"fabrica": True, "videos": len(do_canal), "publicados": len(ids), "gasto_usd": round(total, 2),

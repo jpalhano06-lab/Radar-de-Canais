@@ -146,7 +146,9 @@ def gerar(usuario_id: int, titulo: str, link: str, minutos: int, lingua: str, pr
     # o ritmo real da voz, medido nos vídeos que a fábrica já entregou (tempo.py)
     from . import tempo
     ritmo = tempo.ritmo(usuario_id, perfil, lingua)
-    palavras = minutos * ritmo["ppm"]
+    # o ppm_alvo já desconta a mania do Claude de escrever mais do que se pede (tempo.py): é ele que dimensiona o
+    # pedido, para o vídeo cair dentro de 1 min 30 s do tempo escolhido
+    palavras = minutos * (ritmo.get("ppm_alvo") or ritmo["ppm"])
     sistema = INSTRUCOES + (f"\n\nInstruções do projeto \"{projeto['nome']}\" (estilo do canal, valem por cima das "
                             f"regras acima quando conflitarem):\n{projeto['instrucoes']}" if projeto and projeto["instrucoes"] else "")
     pedido = (f"Título do vídeo: {titulo}\nLíngua do roteiro: {lingua}\nTamanho: cerca de {palavras} palavras "
@@ -163,9 +165,12 @@ def gerar(usuario_id: int, titulo: str, link: str, minutos: int, lingua: str, pr
     roteiro = _limpar(_claude(sistema, pedido))
     # roteiro longo (até 1 hora, uns 9 mil palavras): o Claude às vezes para antes do tamanho. Ele continua de onde
     # parou, até 4 vezes, sem repetir o que já escreveu
+    # antes ele parava quando faltava menos de 15% (num vídeo de 15 min, 2 min a menos): agora o que sobra tem de
+    # caber na margem de 1 min 30 s do usuário, então a conta é em minutos de narração, não em porcentagem
+    falta_demais = max(200, (ritmo.get("ppm_alvo") or ritmo["ppm"]) * (tempo.MARGEM_MIN - 0.5))
     for _ in range(4):
         faltam = palavras - len(roteiro.split())
-        if faltam < palavras * 0.15:
+        if faltam < falta_demais:
             break
         aviso(f"O Claude está continuando o roteiro ({len(roteiro.split())} de {palavras} palavras)…")
         resto = _limpar(_claude(sistema, pedido + "\n\nVocê já escreveu este começo (NÃO repita nada dele):\n" + roteiro[-12000:]

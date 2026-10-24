@@ -5,8 +5,10 @@ de vídeos dele e manda também (canal_lido). Daqui sai a nota de outlier, o Ví
 no Radar, com as mesmas regras do garimpo."""
 import re
 import threading
+import time
 from collections import Counter
 from datetime import datetime, timedelta, timezone
+from statistics import median
 
 from . import banco, garimpo, gosto, medir, metricas, risco, youtube
 
@@ -17,6 +19,33 @@ RELER_DIAS = 7             # canal lido pela página só é lido de novo depois 
 INSCRITOS_SEM_IDADE = 100_000   # sem saber a idade do canal, só entra no Radar se for pequeno
 
 HOJE = {"dia": "", "videos": 0, "estouraram": 0, "canais": 0}   # o contador do ícone da extensão
+
+# ---------------------------------------------------------------- a reação do público, medida contra o nicho
+REACAO_VIEWS_MIN = 1000    # vídeo com pouquíssima view dá taxa instável: não entra na conta do normal
+REACAO_MINIMO = 30         # nicho com menos vídeos medidos que isto não tem normal de que falar
+REACAO_HORAS = 6           # o normal de um nicho muda devagar: fica guardado algumas horas
+_NORMAL_NICHO: dict[str, float] = {}
+_NORMAL_QUANDO = 0.0
+
+
+def normal_do_nicho() -> dict[str, float]:
+    """A taxa de reação do vídeo típico de cada nicho (mediana), para dizer quem passou dela."""
+    global _NORMAL_QUANDO
+    agora = time.time()
+    if _NORMAL_NICHO and agora - _NORMAL_QUANDO < REACAO_HORAS * 3600:
+        return _NORMAL_NICHO
+    por: dict[str, list[float]] = {}
+    for l in banco.todos(
+            "SELECT c.nicho, v.views, v.curtidas, v.comentarios FROM videos v JOIN canais c ON c.id=v.canal_id "
+            "WHERE v.curtidas IS NOT NULL AND v.comentarios IS NOT NULL AND v.views > ? AND c.nicho <> ''",
+            REACAO_VIEWS_MIN):
+        taxa = metricas.engajamento(l["views"], l["curtidas"], l["comentarios"])
+        if taxa is not None:
+            por.setdefault(l["nicho"], []).append(taxa)
+    _NORMAL_NICHO.clear()
+    _NORMAL_NICHO.update({n: median(t) for n, t in por.items() if len(t) >= REACAO_MINIMO})
+    _NORMAL_QUANDO = agora
+    return _NORMAL_NICHO
 
 
 def _contar(campo: str, n: int = 1) -> None:
@@ -118,11 +147,23 @@ def vistos(videos: list, canal: dict | None = None) -> dict:
     _contar("estouraram", estouraram)
     corte = (datetime.now(timezone.utc) - timedelta(days=RELER_DIAS)).isoformat()
     ler = [i for i in ids if i not in canais or (canais[i]["base_longos"] is None and (canais[i]["medido"] or "") < corte)]
+    # a reação sai das curtidas e dos comentários, que vêm da API e não da página: só tem para o que o Radar já mediu
+    normais = normal_do_nicho()
+    medidos = {v["id"]: v for v in medir._videos_do_banco([v["id"] for v in lista])}
+    def reacao_de(v):  # noqa: E306
+        guardado, canal = medidos.get(v["id"]), canais.get(v["canal_id"])
+        if not guardado or not canal:
+            return None
+        taxa = metricas.engajamento(guardado.get("views"), guardado.get("curtidas"), guardado.get("comentarios"))
+        return metricas.reacao(taxa, normais.get(canal.get("nicho") or ""))
     return {
         "videos": {v["id"]: {"nota": v.get("nota"), "canal_id": v["canal_id"],
                              "inscritos": (canais.get(v["canal_id"]) or {}).get("inscritos"),
-                             "normal": (canais.get(v["canal_id"]) or {}).get("base_longos")} for v in lista},
+                             "normal": (canais.get(v["canal_id"]) or {}).get("base_longos"),
+                             "raridade": (canais.get(v["canal_id"]) or {}).get("raridade") or "",
+                             "reacao": reacao_de(v)} for v in lista},
         "ler": ler[:LER_POR_VEZ],
+        "reacao_alta": metricas.REACAO_ALTA,   # o corte de "reagiu muito" é do Radar, não da extensão
     }
 
 
@@ -201,7 +242,8 @@ def _primeiro_exato(c: dict) -> dict:
     que começou a postar há 10 meses parecia ter 12 anos). A lista de envios dá a data certa (1 unidade por 50
     vídeos), uma vez só: fica guardada como exata. A fase e o selo são refeitos com ela."""
     try:
-        primeiro = youtube.primeiro_envio(c["id"])
+        with youtube.gastando("canal"):
+            primeiro = youtube.primeiro_envio(c["id"])
     except (youtube.SemCota, RuntimeError):
         return c
     if not primeiro:

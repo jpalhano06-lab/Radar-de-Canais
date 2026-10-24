@@ -1,6 +1,9 @@
 """A API de dados do YouTube (v3), revezando as chaves e contando a cota de cada uma.
 
 Custos (unidades): search.list 100; videos.list, channels.list e playlistItems.list 1 por página de até 50."""
+import contextlib
+import contextvars
+import functools
 import re
 import threading
 
@@ -27,11 +30,66 @@ def _usado(chave: str) -> dict:
                     banco.hoje_pacifico(), _final(chave)) or {"unidades": 0, "esgotada": 0}
 
 
+# ---------------------------------------------------------------- de onde saiu cada unidade
+# A cota some rápido e a conta por chave não dizia em quê. Cada pedido também é somado no motivo de quem pediu,
+# para o Radar responder "a cota de hoje foi para isto". É uma variável de contexto: vale só dentro do `with`,
+# e cada thread (o garimpo roda numa) começa no "outros" até dizer o que está fazendo.
+MOTIVOS = {
+    "garimpo": "Garimpo: procurar canais novos",
+    "procura": "Procurar no YouTube (botão da tela)",
+    "medir": "Medir canal",
+    "canal": "Abrir o canal: vídeos novos",
+    "studio": "Meus canais (Studio)",
+    "paises": "Radar de países",
+    "treino": "Treino do garimpo",
+    "outros": "Outros",
+}
+_MOTIVO = contextvars.ContextVar("motivo_da_cota", default="outros")
+
+
+@contextlib.contextmanager
+def gastando(motivo: str):
+    """Marca o que está sendo feito: a cota gasta aqui dentro entra nesse motivo.
+
+    Quem está dentro de outro motivo não o troca: o garimpo que chama o medir continua sendo garimpo, senão a
+    conta diria "medir" para quase tudo e ninguém saberia quem mandou medir."""
+    if _MOTIVO.get() != "outros":
+        yield
+        return
+    ficha = _MOTIVO.set(motivo if motivo in MOTIVOS else "outros")
+    try:
+        yield
+    finally:
+        _MOTIVO.reset(ficha)
+
+
+def por(motivo: str):
+    """Decorador: tudo o que esta função pedir ao YouTube entra nesse motivo."""
+    def fora(funcao):
+        @functools.wraps(funcao)
+        def dentro(*a, **k):
+            with gastando(motivo):
+                return funcao(*a, **k)
+        return dentro
+    return fora
+
+
+def gasto_por_motivo(dia: str = "") -> list[dict]:
+    """Quanto cada coisa gastou no dia (o de hoje, no fuso da cota), do maior para o menor."""
+    return banco.todos("SELECT motivo, chamadas, unidades FROM cota_motivo WHERE dia=? ORDER BY unidades DESC",
+                       dia or banco.hoje_pacifico())
+
+
 def _somar(chave: str, unidades: int, esgotada: bool = False) -> None:
     banco.executar(
         "INSERT INTO cota (dia, chave, unidades, esgotada) VALUES (?,?,?,?) ON CONFLICT(dia, chave) DO UPDATE SET "
         "unidades=unidades+excluded.unidades, esgotada=MAX(esgotada, excluded.esgotada)",
         banco.hoje_pacifico(), _final(chave), unidades, int(esgotada))
+    if unidades:
+        banco.executar(
+            "INSERT INTO cota_motivo (dia, motivo, chamadas, unidades) VALUES (?,?,1,?) "
+            "ON CONFLICT(dia, motivo) DO UPDATE SET chamadas=chamadas+1, unidades=unidades+excluded.unidades",
+            banco.hoje_pacifico(), _MOTIVO.get(), unidades)
 
 
 def cota_hoje() -> dict:

@@ -171,6 +171,7 @@ def na_lingua(titulo: str, lingua: str) -> bool:
 
 # ---------------------------------------------------------------- conferir uma ideia
 
+@youtube.por("paises")
 def conferir(usuario_id: int, projeto_id: int, video_id: str, titulo: str) -> dict:
     if projeto_id == 0:
         p = {"nome": "Radar de línguas", "paises": json.dumps(

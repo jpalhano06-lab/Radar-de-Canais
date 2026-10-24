@@ -191,8 +191,9 @@ def ultimo_video(usuario_id: int, canal_id: str) -> dict:
     cache = banco.um("SELECT dados, criado FROM traducoes WHERE chave=?", chave)
     if cache and time.time() - _segundos(cache["criado"]) < 900:
         return json.loads(cache["dados"])
-    ids = youtube.envios(canal_id, 10)      # 1 de cota, e mais 1 para os números dos 10 vídeos
-    videos = sorted(youtube.videos(ids), key=lambda v: v.get("publicado") or "", reverse=True) if ids else []
+    with youtube.gastando("studio"):        # a cota da API de dados gasta aqui é dos meus canais, não do garimpo
+        ids = youtube.envios(canal_id, 10)  # 1 de cota, e mais 1 para os números dos 10 vídeos
+        videos = sorted(youtube.videos(ids), key=lambda v: v.get("publicado") or "", reverse=True) if ids else []
     if not videos:
         raise RuntimeError("Este canal ainda não tem vídeo publicado.")
     v = videos[0]

@@ -107,8 +107,9 @@
     if (r.erro) { if (r.status === 401) semConta = true; return; }
     for (const [id, x] of Object.entries(r.dados.videos)) {
       const v = PAGINA.get(id);
-      if (v) Object.assign(v, { nota: x.nota, inscritos: x.inscritos, normal: x.normal });
+      if (v) Object.assign(v, { nota: x.nota, inscritos: x.inscritos, normal: x.normal, raridade: x.raridade, reacao: x.reacao });
     }
+    if (r.dados.reacao_alta) reacaoAlta = r.dados.reacao_alta;
     for (const id of r.dados.ler) if (!lidos.has(id)) { lidos.add(id); filaCanais.push(id); }
     lerCanais();
     atualizarTela();
@@ -147,7 +148,7 @@
 
   function atualizarTela() {
     clearTimeout(atualizarTela.t);
-    atualizarTela.t = setTimeout(() => { resumoDaBusca(); botaoFiltros(); botaoProvar(); faixaEmAlta(); menuDoVideo(); numerosTopo(); botaoNovaProducao(); }, 300);
+    atualizarTela.t = setTimeout(() => { varrer(); resumoDaBusca(); botaoFiltros(); botaoProvar(); faixaEmAlta(); menuDoVideo(); numerosTopo(); botaoNovaProducao(); }, 300);
   }
 
   // ------------------------------------------------------------ resumo da busca: o nicho está aberto?
@@ -393,15 +394,45 @@
   const semShorts = (sim) => document.documentElement.classList.toggle("radar-sem-shorts", !!sim);
   chrome.storage.local.get("semShorts").then(({ semShorts: s }) => semShorts(s));
 
-  // o 🎯 do treino continua nas miniaturas
+  // o selo do Radar e o 🎯 do treino, em cima de cada miniatura
   function varrer() {
-    if (!treino) return;
     document.querySelectorAll(CAIXAS).forEach((caixa) => {
       if (caixa.parentElement && caixa.parentElement.closest(CAIXAS)) return;
       const link = caixa.querySelector('a[href*="/watch?v="], a[href*="/shorts/"]');
       const id = idDoLink(link && link.getAttribute("href"));
-      if (id && caixa.dataset.alvo !== id) marcarAlvo(caixa, id);
+      if (!id) return;
+      selarCartao(caixa, id);
+      if (treino && caixa.dataset.alvo !== id) marcarAlvo(caixa, id);
     });
+  }
+
+  // ------------------------------------------------------------ o selo em cima da miniatura
+  // Quantas vezes o vídeo passou do normal do canal, o selo do achado raro e a reação do público, na própria capa:
+  // o vídeo que estourou salta da tela sem abrir nada. Só desenha o que o Radar já sabe — o resto chega depois.
+
+  let reacaoAlta = 2;            // o corte vem do Radar (vistos.reacao_alta); este é só o valor de partida
+
+  function selarCartao(caixa, id) {
+    const v = PAGINA.get(id);
+    const nada = !v || (v.nota == null && !v.raridade && v.reacao == null);
+    const assinatura = nada ? "" : `${id}|${v.nota ?? ""}|${v.raridade || ""}|${v.reacao ?? ""}`;
+    if (caixa.dataset.selo === assinatura) return;
+    caixa.dataset.selo = assinatura;
+    caixa.querySelectorAll(".radar-selo").forEach((s) => s.remove());
+    if (nada) return;
+    const lugar = caixa.querySelector(IMAGEM) || caixa;
+    if (getComputedStyle(lugar).position === "static") lugar.style.position = "relative";
+    const partes = [];
+    if (v.nota != null) {
+      partes.push(h("span", { class: `radar-selo-x ${corNota(v.nota)}`, title: `${nota(v.nota)} o normal deste canal${v.normal ? ` (${num(v.normal)} por vídeo)` : ""}` }, nota(v.nota)));
+    }
+    if (v.raridade && SELOS[v.raridade]) {
+      partes.push(h("span", { class: `radar-selo-raro ${v.raridade}`, title: `Canal ${SELOS[v.raridade]}: muita view por vídeo em pouco tempo de canal` }, SELOS[v.raridade]));
+    }
+    if (v.reacao != null && v.reacao >= reacaoAlta) {
+      partes.push(h("span", { class: "radar-selo-reacao", title: `O público reagiu ${nota(v.reacao)} mais que o normal do nicho (curtidas e comentários por view)` }, "♥", nota(v.reacao)));
+    }
+    if (partes.length) lugar.append(h("div", { class: "radar-selo" }, partes));
   }
 
   // ------------------------------------------------------------ treino do algoritmo: o selo 🎯 e o progresso
@@ -639,6 +670,7 @@
         }, "ideia"),
         botao("radar-botao", "titulo", "Copiar título", (e) => { navigator.clipboard.writeText(v.titulo); e.currentTarget.lastChild.textContent = "Título copiado ✓"; }, "titulo"),
         botao("radar-botao", "capa", "Copiar a capa", (e) => copiarImagem(e.currentTarget.lastChild, capaUrl), "copiar-capa"),
+        botao("radar-botao", "barras", "Print do cartão", (e) => copiarCartao(e.currentTarget.lastChild, capaUrl, v, c, n), "print-cartao"),
         lite && c.id ? botao("radar-botao", "parecidos", "Canais parecidos", () => parecidos(c.id, extra)) : null),
       extra);
     abrir("capa");
@@ -801,6 +833,82 @@
       cv.getContext("2d").drawImage(img, 0, 0);
       await copiarPng(cv);
       botao.textContent = "Capa copiada ✓ (Ctrl+V para colar)";
+    } catch { botao.textContent = "Não consegui copiar"; }
+  }
+
+  // ------------------------------------------------------------ print do cartão do vídeo
+  // A capa com o título, o canal, as views, a idade e a nota numa imagem só, para colar no WhatsApp ou no grupo.
+  // Nada sai do navegador: o desenho é num canvas aqui mesmo e vai direto para a área de transferência.
+
+  const CARTAO = { largura: 760, capa: 428, margem: 26 };
+
+  // quebra o texto em até `linhas` linhas, com "…" onde não couber (uma palavra sozinha maior que a linha é cortada)
+  function quebrar(ctx, texto, largura, linhas) {
+    const cabe = (t) => ctx.measureText(t).width <= largura;
+    const encurtar = (t) => { while (t.length > 1 && !cabe(`${t}…`)) t = t.slice(0, -1); return `${t}…`; };
+    const todas = [];
+    let atual = "";
+    for (const p of String(texto || "").split(/\s+/).filter(Boolean)) {
+      const tenta = atual ? `${atual} ${p}` : p;
+      if (cabe(tenta) || !atual) { atual = tenta; continue; }   // sem nada na linha, a palavra entra mesmo grande
+      todas.push(atual);
+      atual = p;
+    }
+    if (atual) todas.push(atual);
+    const saida = todas.slice(0, linhas);
+    if (saida.length && todas.length > linhas) saida[saida.length - 1] = encurtar(saida[saida.length - 1]);
+    return saida.map((l) => (cabe(l) ? l : encurtar(l)));
+  }
+
+  function caixaArredondada(ctx, x, y, w, hh, r) {
+    ctx.beginPath();
+    ctx.roundRect ? ctx.roundRect(x, y, w, hh, r) : ctx.rect(x, y, w, hh);
+    ctx.fill();
+  }
+
+  async function copiarCartao(botao, capaUrl, v, c, n) {
+    try {
+      const img = await capaLimpa(capaUrl);
+      const { largura: L, capa: H, margem: M } = CARTAO;
+      const cv = Object.assign(document.createElement("canvas"), { width: L, height: H + 196 });
+      const ctx = cv.getContext("2d");
+      ctx.fillStyle = "#0d0f14";
+      ctx.fillRect(0, 0, cv.width, cv.height);
+      // a capa recortada para 16:9, sem deformar
+      const escala = Math.max(L / img.naturalWidth, H / img.naturalHeight);
+      const lw = img.naturalWidth * escala, lh = img.naturalHeight * escala;
+      ctx.drawImage(img, (L - lw) / 2, (H - lh) / 2, lw, lh);
+      // a nota em cima da capa, no mesmo lugar em que ela aparece no YouTube
+      const x = n && n.nota != null ? nota(n.nota) : "";
+      if (x) {
+        ctx.font = "700 30px Roboto, Arial, sans-serif";
+        const w = ctx.measureText(x).width + 28;
+        ctx.fillStyle = n.nota >= 6 ? "#b6f23a" : "rgba(0,0,0,.78)";
+        caixaArredondada(ctx, M, M, w, 50, 12);
+        ctx.fillStyle = n.nota >= 6 ? "#10160a" : "#fff";
+        ctx.textBaseline = "middle";
+        ctx.fillText(x, M + 14, M + 26);
+      }
+      // o título, em até duas linhas
+      ctx.textBaseline = "alphabetic";
+      ctx.fillStyle = "#eef1f7";
+      ctx.font = "700 30px Roboto, Arial, sans-serif";
+      let y = H + 52;
+      for (const linha of quebrar(ctx, v.titulo, L - M * 2, 2)) { ctx.fillText(linha, M, y); y += 38; }
+      // o canal e os números
+      ctx.fillStyle = "#8d95a8";
+      ctx.font = "400 22px Roboto, Arial, sans-serif";
+      ctx.fillText(quebrar(ctx, c && c.titulo ? c.titulo : "", L - M * 2 - 40, 1)[0] || "", M, y + 10);
+      const partes = [n && n.views != null ? `${num(n.views)} views` : "", v.dias != null ? `há ${Math.round(v.dias)} dias` : "",
+        c && c.inscritos != null ? `${num(c.inscritos)} inscritos` : ""].filter(Boolean);
+      ctx.fillText(partes.join("  ·  "), M, y + 44);
+      // a assinatura, para o print se explicar sozinho quando for parar num grupo
+      ctx.fillStyle = "#b6f23a";
+      ctx.font = "700 18px Roboto, Arial, sans-serif";
+      const marca = "Radar de Canais";
+      ctx.fillText(marca, L - M - ctx.measureText(marca).width, y + 44);
+      await copiarPng(cv);
+      botao.textContent = "Cartão copiado ✓ (Ctrl+V para colar)";
     } catch { botao.textContent = "Não consegui copiar"; }
   }
 
@@ -1201,6 +1309,7 @@
     ["ideia", "ideia", "Salvar ideia", "guarda no painel do Radar"],
     ["titulo", "titulo", "Copiar o título", "vai para a área de transferência"],
     ["copiar-capa", "capa", "Copiar a capa", "a imagem, para colar onde quiser"],
+    ["print-cartao", "barras", "Print do cartão", "a capa com o título e os números"],
   ];
 
   // a Transcrição numa janelinha presa embaixo do botão Radar (fecha no × ou trocando de vídeo)

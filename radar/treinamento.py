@@ -55,6 +55,7 @@ SELECT = ("SELECT v.id, v.titulo, v.views, v.publicado, v.duracao_s, c.id AS can
           "c.inscritos, c.nicho, c.subnicho, c.sem_rosto, c.base_longos AS normal FROM videos v JOIN canais c ON c.id=v.canal_id ")
 
 
+@youtube.por("treino")
 def candidatos(usuario: dict, canal_id: str, excluir: set[str], quantos: int = 30) -> list[dict]:
     """Vídeos para a pessoa escolher: dos canais de referência, dos que estouraram falando do mesmo assunto e do mesmo
     nicho. Sorteados, sem os que ela já viu nesta rodada."""
@@ -88,6 +89,7 @@ def candidatos(usuario: dict, canal_id: str, excluir: set[str], quantos: int = 3
     return lista[:quantos]
 
 
+@youtube.por("treino")
 def concluir(usuario: dict, canal_id: str, positivos: list[str], negativos: list[str], aviso=lambda _t: None) -> dict:
     """Aprende as palavras dos escolhidos (com peso), escreve as buscas e procura no YouTube (uns 500 a 600 de cota)."""
     def titulos(ids):

@@ -893,3 +893,121 @@ questionário de anunciantes, público e visibilidade, achando o vídeo **pelo n
   antigo, o navegador abria antes do servidor novo subir (uns 5 s) e mostrava "não é possível acessar este site",
   parecendo que o Radar não ligava. Agora uma espera escondida tenta o endereço a cada segundo (até 90 s) e abre o
   navegador quando ele responde.
+
+## Extensão 0.13.0: a publicação se preenche sozinha, e o × para tirar um canal (2026-10-22)
+
+Pedido do usuário: "adicionar estas opções das imagens na extensão, quanto mais agilizar o trabalho melhor", com a
+descrição indo sozinha ao escolher o vídeo e a barra de ajuda saindo. Combinado: **a extensão clica e avança** — só o
+botão Publicar continua sendo da pessoa.
+
+- **`extensao/publicar.js` virou automação** (a lista de "o que marcar em cada etapa" saiu): ao escolher o vídeo da
+  fábrica (ou ao arrastar o arquivo, que acha o vídeo pelo nome), a extensão já **escreve o título, a descrição e as
+  tags** na tela de Detalhes e marca "Não, não é conteúdo para crianças". Escreve do jeito que a pessoa escreveria
+  (`focus` + `insertText`), que é o que o Polymer do Studio entende; os campos são `#title-textarea #textbox`,
+  `#description-textarea #textbox` e `#tags-container input` (abrindo o "Mostrar mais" antes).
+- **Um botão vermelho por etapa**, no canto de baixo, perto do Avançar do Studio: **Preencher e pular** (Detalhes),
+  **Anúncios ligados e pular** (Monetização: liga a monetização, marca todos os tipos de anúncio e avança),
+  **Colocar N anúncios** (espaços intermediários), **Responder "nada disso" e pular** (marca "Nenhuma das opções",
+  envia a classificação e avança) e **Pular esta etapa** (Elementos e Verificações). Na Visibilidade não tem botão.
+- **Anúncios no meio do vídeo**: no painel dá para escolher *um a cada X minutos* (padrão 1) ou *uma quantidade bem
+  dividida*. Ele anda com o player (`video.currentTime`) e clica no "espaço de anúncio" em cada tempo, mostrando o
+  andamento. Muito perto um do outro o YouTube pode não usar — 1 a 3 minutos costuma passar.
+- **As etapas são achadas pelo texto da tela** (pt-BR e inglês), não por posição: quando um botão não é achado, o
+  painel diz o que fazer à mão em vez de clicar errado.
+- **× para tirar um canal** (`ligarTirarCanal` em `radar/web/app.js`): sempre à vista no canto de cada cartão de
+  **Seus canais** (Início) e de cada quadradinho da tela **Canais**, com janela de confirmação com o nome do canal.
+  Usa o `DELETE /api/perfil/canais/{id}` que já existia: sai do Radar com a configuração de produção, o canal no
+  YouTube não é tocado e dá para adicionar de novo depois.
+- Para usar: em `chrome://extensions`, clique no ↻ do Radar de Canais e recarregue a aba do Studio (F5).
+
+## Extensão 0.14.0: descrição no modelo do canal, horário e tela final (2026-10-22)
+
+Pedidos do usuário no mesmo dia, olhando a publicação de verdade: "não quero aquele tipo de descrição... mais
+padronizado, só mudando para o tema do vídeo, sem spoilers, apenas uma sinopse"; o horário de postar com fuso; a tela
+final padrão; e "o painel você pode remover".
+
+- **Modelo da descrição, por canal** (escolha do usuário: fica no Radar, não na fábrica, para valer também nos vídeos
+  já prontos). Na página do canal, o bloco **🧾 Modelo da descrição**: um texto só, com `{titulo}`, `{sinopse}`,
+  `{canal}`, `{hashtags}` (e `{tags}` e `{capitulos}` para quem quiser). **Sem a lista de capítulos**, que era o que
+  entregava o vídeo inteiro na descrição da fábrica. O botão **Usar o modelo sugerido** traz um pronto na língua do
+  canal (título, sinopse, "sobre o canal", aviso legal, hashtags). Guardado em `canais_config.modelo_descricao`
+  (`producao.PADRAO`); vazio = a descrição da fábrica, como era.
+- **Quem é o canal do vídeo** (`publicar.perfil_do_projeto` + `producao.canal_do_perfil`): o `projeto.json` da fábrica
+  guarda o caminho do perfil (`perfis/canal-uk-market.yaml`); o Radar acha o canal que usa esse perfil (pelo que está
+  salvo ou pelo nome) e pega o modelo dele. `GET /api/ext/publicar` e `/api/ext/publicar/{nome}` já devolvem a
+  descrição montada, mais `canal` e `modelo` (se o canal tem modelo salvo).
+- **A sinopse** é o `resumo` que a fábrica escreve (2 ou 3 frases do que o vídeo mostra), agora exposto no kit.
+- **Horário de postar** (na etapa Visibilidade): escolha o fuso do público (EUA Leste, Brasil, Reino Unido…) e a hora
+  de lá; a extensão mostra "lá agora" e a hora que isso vira no Studio (a do seu computador), e o botão **Colocar o
+  horário** marca Programar e preenche a data e a hora. A conta usa `Intl` com o fuso IANA, então pega horário de
+  verão sozinho (17:00 em Nova York = 18:00 em Brasília no teste).
+- **Tela final do último e pular** (etapa Elementos): clica em "Importar do vídeo", escolhe o vídeo mais recente e
+  salva. Se a janela não abrir do jeito esperado, ele diz para escolher à mão em vez de clicar errado.
+- **O painel saiu**: ficou só o botão vermelho da etapa, com uma **setinha** ao lado que abre o vídeo escolhido, os
+  anúncios (um a cada X minutos ou uma quantidade), a legenda e o comentário fixado.
+- Para usar: em `chrome://extensions`, clique no ↻ do Radar de Canais e recarregue a aba do Studio (F5). O Radar
+  precisa ser religado (LIGAR-RADAR.bat) para as rotas novas valerem.
+
+## O tempo do vídeo passa a cair dentro de 1 min 30 s (2026-10-22)
+
+Pedido do usuário: "o Radar sempre gera roteiro, mas dificilmente acerta o tempo do vídeo pedido; sempre que gerar um
+roteiro ele tem de ver o resultado que deu o vídeo, para saber se está acertando ou errando. A margem de erro tem que
+ser no máximo de um minuto e meio para cima ou para baixo, e ele vai melhorando a cada pedido."
+
+O ajuste já existia (`radar/tempo.py`, 2026-10-18), mas errava feio. Medindo os 10 vídeos entregues: pediu 15 e saiu
+23,2; pediu 16 e saiu 19,5; pediu 15 e saiu 11,3. Dois motivos, os dois corrigidos:
+
+- **A medida dependia da fábrica ligada.** `_duracoes()` só sabia o tempo pela API da fábrica; com ela desligada o
+  Radar não media nada, caía nas 150 palavras por minuto do padrão e estourava nas vozes lentas (as de inglês falam
+  umas 135). Agora a duração vem **do disco** (`alinhamento.json` da pasta do projeto, mais a abertura do
+  `render/linha.json`, que é vídeo sem narração), com a API só de reserva. O resultado de cada vídeo também fica
+  gravado no `roteiro.json` (`medido`), então o histórico sobrevive à pasta do projeto sair do computador.
+- **A conta aprendia a coisa errada.** O ppm era *palavras escritas ÷ minutos*, e o Claude escreve mais do que se
+  pede (de 0 a 27% a mais nos vídeos medidos): o excesso se repetia em todo vídeo. Agora quem dimensiona o pedido é o
+  **`ppm_alvo` = palavras PEDIDAS ÷ minutos entregues**, que engloba a voz e a mania do Claude de esticar. O `ppm`
+  continua sendo mostrado como o ritmo real da voz. Para o João o Lobo: ppm 215, ppm_alvo 205; para o UK MARKET,
+  ppm 136 e ppm_alvo 105.
+- **A escrita parava cedo demais**: o laço de continuação aceitava faltar 15% (2 min num vídeo de 15). Agora o que
+  pode faltar é medido em minutos de narração, dentro da margem (`tempo.MARGEM_MIN`).
+- **O acerto aparece na tela** (`ritmo.acerto`): na hora de escrever o roteiro, "🎯 4 de 5 dos últimos vídeos desta
+  voz ficaram dentro de 1,5 min do tempo pedido · erro médio +1,2 min · pior: pediu 15 e saiu 18,8 min". No "por
+  quê?" vem a lista vídeo a vídeo, em verde quem ficou dentro e em vermelho quem passou.
+- `tests/test_tempo.py`: mede do disco somando a abertura, conta o que ficou fora da margem, encolhe o próximo pedido
+  e guarda o resultado no roteiro.
+
+## Extensão 0.15.0: abinha, ChatGPT e o agente no painel do YouTube (2026-10-22)
+
+Pedido do usuário: "o Claude que abre na lateral com dois cliques tem que ter uma abinha para mostrar ele, e quero o
+ChatGPT também; o Claude ali eu queria que desse para ter acesso a projeto e tudo".
+
+- **A abinha** (`.radar-claude-abinha`): uma lingueta na beirada direita do YouTube, sempre à vista, que abre o
+  painel. Os dois cliques com o botão direito e o Alt+C continuam funcionando; ela some enquanto o painel está
+  aberto.
+- **Duas abas no painel, Claude e ChatGPT.** No Claude continua o chat do Radar (`/api/assistente`, pela assinatura),
+  que sabe qual página está aberta.
+- **O agente (o "projeto") no Claude**: um seletor no alto do painel com os seus agentes de roteiro — que é onde
+  moram as instruções dos projetos do claude.ai. O escolhido vai no `projeto_id` do `/api/assistente` e as
+  instruções entram no contexto (`producao.assistente`), valendo por cima das regras gerais. A escolha fica
+  guardada.
+- **O claude.ai e o ChatGPT de verdade abrem numa janela ao lado.** Os dois mandam `X-Frame-Options: SAMEORIGIN`
+  (conferido), então não dá para pôr nenhum dos dois dentro do YouTube. A extensão abre a janela encostada na
+  direita e **cola** a pergunta com o título e o endereço da página; quem aperta enviar é a pessoa, como já era no
+  envio para o ChatGPT e o Gemini. O texto vai pelo `chrome.storage.local` (`radarColar`, vale 2 minutos) e quem
+  cola é o `colar.js`, que agora roda também no `claude.ai` (com o seletor da caixa do ProseMirror) e está no
+  `host_permissions`.
+- Para usar: em `chrome://extensions`, clique no ↻ do Radar de Canais e recarregue a aba do YouTube (F5).
+
+## Extensão 0.24.0: o horário de postar sai de cena (2026-10-24)
+
+Pedido do usuário: "remova da extensão esse colocar o horário" e, logo depois, tirar também o ajuste no Radar. Quem
+agenda o vídeo na etapa **Visibilidade** volta a ser a pessoa, à mão, no próprio Studio.
+
+- **Na extensão** (`extensao/publicar.js`): saíram o botão **Colocar o horário**, a conta do fuso (`deslocamento`,
+  `quandoPostar`, `colocarHorario`) e os campos `fuso`/`hora_postar` que vinham no kit. A etapa Visibilidade deixou de
+  ser reconhecida: nessa tela a barra do Radar some em vez de ficar ancorada no rodapé sem botão nenhum.
+- **No Radar**: a linha **Fuso do público do canal** + **Hora de postar, lá** saiu do bloco 📤 Publicação na página do
+  canal (`radar/web/app.js`), junto com o `producao.FUSOS`, os dois campos do `producao.PADRAO` e a validação deles, e
+  os dois campos do `padrao` do kit (`GET /api/ext/publicar`). O bloco ficou só com o anúncio a cada X minutos e a
+  tela final.
+- Para usar: em `chrome://extensions`, clique no ↻ do Radar de Canais e recarregue a aba do Studio (F5). O Radar
+  precisa ser religado (LIGAR-RADAR.bat).
