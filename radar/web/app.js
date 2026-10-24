@@ -182,7 +182,9 @@ const icone = (n, classe = "") => `<svg ${classe ? `class="${classe}"` : ""} vie
 const MENU = [
   ["perfil", "Perfil", [["inicio", "Início"], ["trabalho", "Produzir"], ["acompanhar", "Acompanhar"], ["resultados", "Resultados"], ["custos", "Custos"]]],
   ["descobrir", "Niche Finder", [["base", "Canais"], ["entraram", "Entraram hoje", "#/base?visao=entraram_hoje"],
-    ["videos", "Faceless Outliers"], ["titulos", "Títulos"], ["grupos", "Grupos de canais"], ["acharam", "Acharam para você"]]],
+    // Títulos saiu do menu a pedido do usuário (2026-10-25). A tela continua de pé em #/titulos, e o gerador de
+    // títulos segue no Roteiro, que é onde ele é usado de verdade.
+    ["videos", "Faceless Outliers"], ["grupos", "Grupos de canais"], ["acharam", "Acharam para você"]]],
   ["ferramentas", "Ferramentas", [["extensao", "Extensão"], ["medir", "Medir canal"], ["bloqueados", "Bloqueados"], ["planos", "Planos"], ["admin", "Administração"], ["integracoes", "Integrações"]]],
 ];
 const DICAS = {
@@ -3769,6 +3771,7 @@ async function rota() {
   if (!EU && !["entrar", "criar"].includes(nome)) { location.hash = "#/entrar"; return; }
   if (EU && (!ROTAS[nome] || nome === "entrar" || nome === "criar")) { location.hash = "#/inicio"; return; }
   menu(nome);
+  document.body.dataset.tela = nome;   // o CSS precisa saber a tela: só o Roteiro usa a janela inteira
   tela.innerHTML = '<div class="vazio">Carregando…</div>';
   window.scrollTo(0, 0);
   painel();

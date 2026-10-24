@@ -191,6 +191,12 @@ def _completar(c: dict, rapido: bool = False) -> None:
     nicho_final, sub_final = dados.get("nicho") or c["nicho"], dados.get("subnicho") or c.get("subnicho")
     if mercado.irrelevante(nicho_final, sub_final):
         dados["no_radar"] = 0       # paga pouco ou é de histórias narradas: medido, mas fora do Radar
+    # canal com rosto fica de fora: o Radar é de canal dark (pedido do usuário, 2026-10-25). O rosto não é sabido
+    # antes de medir, então o canal é medido e só depois cai fora — a medida não se perde, ele fica no banco.
+    # `None` (o Groq não respondeu) continua entrando: não sabido não é o mesmo que tem rosto.
+    rosto_final = dados.get("sem_rosto", c["sem_rosto"])
+    if rosto_final == 0:
+        dados["no_radar"] = 0
     banco.gravar("canais", "id", dados)
     for v in videos:
         normal = c["base_curtos"] if metricas.curto(v["duracao_s"]) else c["base_longos"]

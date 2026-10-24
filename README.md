@@ -1089,6 +1089,52 @@ Para comparar: o Dotti anuncia 29 funções, 19 grátis.
 feito) e conferir o 13 e os 21–24. E, se o MCP for virar produto, a cota de perguntas por plano — hoje ele é
 local e livre.
 
+## O pagode no Faceless Outliers, e o Radar só de canal dark (2026-10-25)
+
+"os dotti finder pesquisa canais melhores que o nosso, me explica pq, queremos canal dark que explodiu, mas o nosso
+esta trazendo pagode e musica".
+
+**Estava certo, e a causa não era a busca.** Os termos do garimpo são todos dark e em inglês; nenhum de música. O
+pagode entrava por outra porta, na **tela**, não na procura.
+
+A extensão guarda todo canal que a pessoa vê enquanto navega no YouTube — é o "ler os vídeos sem gastar cota". Esses
+canais ficam no banco com `no_radar=0`: nunca passaram pelo garimpo, então estão **sem nicho, sem rosto sabido e sem
+medida de verdade**. Eram 13.658 canais no banco para 420 no Radar.
+
+A lista de vídeos (`/api/outliers`) lia a tabela `outliers` juntando com `canais` **sem conferir o `no_radar`**. Daí:
+
+- o corte dos nichos que pagam pouco (`mercado.irrelevante`) não pegava nada, porque o nicho estava vazio;
+- o corte do rosto não pegava nada, porque `sem_rosto` estava nulo;
+- e a nota, que é views ÷ o normal do canal, ficava **gigante**: o "normal" de quem foi visto de passagem sai de
+  um ou dois vídeos. "Guns N' Roses — November Rain" marcava **50.025x**. Como a tela ordena por nota, o lixo
+  encabeçava a lista.
+
+Na base do usuário: dos 4.400 vídeos que a tela trazia, **2.736 (62%) eram de canal fora do Radar**, e os **25
+primeiros eram todos** — Guns N' Roses, pagodepontocom, Péricles, Grupo Di Propósito, Música Multishow, MTV.
+
+O mais incômodo: **o `c.no_radar=1` já existia na tela de Títulos**, com um comentário que diz "e o topo virava clipe
+de pagode". O conserto foi feito lá e nunca levado para a lista de vídeos, que é a tela que a pessoa usa.
+
+- **A lista de vídeos passa a cortar por `c.no_radar=1`**, como as outras. 62% da lista era lixo.
+- **Canal com rosto não entra mais no Radar** (`garimpo._completar`). O rosto só é sabido depois de medir, então o
+  canal é medido e só então fica de fora — a medida não se perde. `sem_rosto` nulo (o Groq não respondeu) continua
+  entrando: não sabido não é o mesmo que tem rosto. Na base de hoje, 74 dos 420 canais do Radar têm rosto.
+
+Oito testes no `tests/test_so_dark.py`, com o caso real: um "pagodepontocom" com normal de 1.200 e um vídeo de 21
+milhões de views, que sem o corte encabeça a tela e com ele não aparece.
+
+## Tudo no meio da tela, cinco capas por canal e Títulos fora do menu (2026-10-25)
+
+- **A tela estava colada na esquerda.** O `main` tinha `max-width: 1280px` e nenhuma margem automática, e um
+  `main { max-width: 1680px; }` escrito para o Roteiro valia para **todas** as telas — então em monitor largo o
+  Niche Finder nunca chegava ao limite e não havia folga para centralizar. A largura de 1680 passa a valer só para
+  o Roteiro (`body[data-tela="trabalho"]`, com o `rota()` marcando a tela no `body`), e o resto centraliza com
+  `margin-inline: auto`. Medido a 1600 px: 1280 de conteúdo, com folga igual dos dois lados.
+- **Cinco capas por canal** em vez de três (`servidor.VIDEOS_DO_CARTAO`): com três não dá para ver o padrão do
+  canal, que é para o que se olha. A grade cai para 4 abaixo de 1500 px e para 3 abaixo de 1180 px.
+- **Títulos saiu do menu**, a pedido. A tela continua de pé em `#/titulos` e o gerador de títulos segue no Roteiro,
+  que é onde ele é usado.
+
 ## Niche Finder numa caixa só, o painel de cota fora e as tags que faltavam (2026-10-25)
 
 Quatro pedidos do usuário, com as telas na mão.

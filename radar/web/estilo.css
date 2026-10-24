@@ -25,7 +25,7 @@ nav a .conta { margin-left: auto; font-size: 11px; background: var(--painel2); c
 nav a.ativo .conta { background: rgba(255,255,255,.22); color: #fff; }
 .rodape { margin-top: auto; border-top: 1px solid var(--linha); padding: 14px 10px 0; color: var(--fraco); font-size: 12px; display: grid; gap: 8px; }
 .rodape b { color: var(--texto); font-weight: 600; word-break: break-all; }
-main { flex: 1; min-width: 0; padding: 26px 30px 80px; max-width: 1280px; }
+main { flex: 1; min-width: 0; padding: 26px 30px 80px; max-width: 1280px; margin-inline: auto; width: 100%; }
 
 /* ---------------- peças */
 .cab-tela { display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; flex-wrap: wrap; margin-bottom: 6px; }
@@ -69,7 +69,9 @@ h1 { font-size: 26px; margin: 0; letter-spacing: -.3px; }
 .tag.epico { background: var(--roxo); color: #1a0d33; font-weight: 800; text-transform: uppercase; }
 .tag.raro { background: var(--azul); color: #04203f; font-weight: 800; text-transform: uppercase; }
 .tag.crescendo { color: var(--verde); } .tag.nascendo { color: var(--azul); } .tag.caindo, .tag.parado { color: var(--vermelho-claro); }
-.capas { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+.capas { display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px; }
+@media (max-width: 1500px) { .capas { grid-template-columns: repeat(4, 1fr); } }
+@media (max-width: 1180px) { .capas { grid-template-columns: repeat(3, 1fr); } }
 .video { display: grid; gap: 6px; min-width: 0; }
 .capa { position: relative; display: block; aspect-ratio: 16/9; border-radius: 10px; overflow: hidden; background: var(--painel2); }
 .capa img { width: 100%; height: 100%; object-fit: cover; display: block; transition: transform .2s; }
@@ -108,7 +110,7 @@ pre.log { background: var(--painel2); border-radius: 10px; padding: 12px; max-he
   .lateral { width: auto; height: auto; position: static; padding: 10px; }
   nav { grid-auto-flow: column; overflow-x: auto; } nav .secao, .rodape { display: none; }
   main { padding: 18px 16px 60px; }
-  .capas { grid-template-columns: repeat(3, minmax(140px, 1fr)); overflow-x: auto; }
+  .capas { grid-template-columns: repeat(2, minmax(130px, 1fr)); }
   .canal-cab { flex-wrap: wrap; }
 }
 
@@ -643,7 +645,11 @@ nav .secao { color: var(--acento2); font-weight: 700; }
 
 /* ================================================================= Roteiro mais largo e a aba Título (2026-10-15)
    "mantenha o roteiro e a thumbnail no mesmo lugar que antes, e do lado direito pode usar mais da janela" */
-main { max-width: 1680px; }
+/* Só o Roteiro usa a janela inteira. Enquanto isto valia para `main` solto, valia para TODAS as telas: em
+   monitor largo o Niche Finder nunca chegava no limite de 1280, então o `margin-inline: auto` não tinha folga
+   para centralizar e a lista ficava colada na esquerda (pedido do usuário, 2026-10-25: "tudo centralizado com
+   espaço nas laterais"). */
+body[data-tela="trabalho"] main { max-width: 1680px; }
 .ideia-grade { grid-template-columns: minmax(0, 1.1fr) minmax(380px, 1fr); gap: 22px; }
 .thumb-painel { padding: 16px; gap: 10px; }
 .thumb-painel textarea { width: 100%; resize: vertical; }

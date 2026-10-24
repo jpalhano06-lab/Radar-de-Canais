@@ -822,12 +822,15 @@ def _filtro_canais(q: dict) -> tuple[list[str], list]:
     return onde, args
 
 
+VIDEOS_DO_CARTAO = 5   # capas por canal: com três não dá para ver o padrão do canal, que é para o que se olha
+
+
 def _vitrine(c: dict, usuario_id: int | None = None, com_videos: bool = True) -> dict:
-    """O canal com as capas dos 3 vídeos longos que mais renderam, para o cartão do painel."""
+    """O canal com as capas dos VIDEOS_DO_CARTAO vídeos longos que mais renderam, para o cartão do painel."""
     publico = medir._canal_publico(c) | {"descoberto": c.get("descoberto", "")}
     if com_videos:
         videos = banco.todos("SELECT id, titulo, views, publicado, duracao_s FROM videos WHERE canal_id=? AND duracao_s>? "
-                             "ORDER BY views DESC LIMIT 3", c["id"], metricas.CURTO_ATE_S)
+                             "ORDER BY views DESC LIMIT ?", c["id"], metricas.CURTO_ATE_S, VIDEOS_DO_CARTAO)
         publico["videos"] = [v | {"nota": metricas.nota_outlier(v["views"], c["base_longos"])} for v in videos]
     if usuario_id is not None:
         meu = banco.um("SELECT pasta FROM salvos WHERE usuario_id=? AND canal_id=?", usuario_id, c["id"])
@@ -1132,7 +1135,7 @@ def outliers(request: Request, u: dict = Depends(exigir("outliers"))):
         if data:
             onde.append(f"v.publicado {operador} ?"); args.append(data + sufixo)
     base = (f"FROM outliers o JOIN videos v ON v.id=o.video_id JOIN canais c ON c.id=o.canal_id "
-            f"WHERE {' AND '.join(onde)}")
+            f"WHERE c.no_radar=1 AND {' AND '.join(onde)}")
     pagina = int(_numero(q, "pagina") or 0)
     # o marcador da esteira vem junto com o vídeo: o cartão precisa saber se já está na fila ou já foi modelado
     linhas = banco.todos(
