@@ -1766,6 +1766,7 @@ nav .subs a .olho svg { width: 15px; height: 15px; }
 .planos { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 16px; margin-top: 16px; }
 .plano { background: var(--painel); border: 1px solid var(--linha); border-radius: var(--raio); padding: 20px; display: grid; gap: 10px; align-content: start; }
 .plano.meu { border-color: var(--acento); }
+.plano.trancada { opacity: .55; }                     /* a funcao existe, o plano da pessoa nao abre */
 .plano h3 { margin: 0; font-size: 17px; }
 .plano .preco { font-size: 30px; font-weight: 800; } .plano .preco small { font-size: 13px; font-weight: 500; color: var(--fraco); }
 .plano ul { margin: 0; padding-left: 18px; display: grid; gap: 6px; color: var(--fraco); font-size: 13.5px; }
