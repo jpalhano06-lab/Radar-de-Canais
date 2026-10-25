@@ -40,7 +40,8 @@ fábrica, o que faltar vem do `.env` da fábrica.
 Uma vez por dia sozinho (`RADAR_GARIMPO_AUTOMATICO=0` desliga), pelo botão da Administração ou
 `uv run python -m radar garimpar [--unidades N]`. Busca os termos de cada nicho (`TERMOS`, mais
 `dados/termos.json`) nos vídeos do último mês, um nicho por vez; cada termo volta depois de 3 dias. Entra no Radar
-o canal criado há até 18 meses, com 3 a 400 vídeos e 10 mil views ou mais por vídeo. O Groq (grátis) dá o nicho e diz
+o canal criado há até 18 meses, com 3 a 400 vídeos e 10 mil views ou mais por vídeo **ou que explodiu agora**
+(500 mil views nos vídeos longos dos últimos 30 dias; ver "A porta do canal que explodiu"). O Groq (grátis) dá o nicho e diz
 se o canal é sem rosto (até 3 capas pequenas por pedido: o Qwen do Groq aceita 3 imagens, e a capa média gastava
 6 mil tokens contra o limite de 7 mil por minuto). Vídeo com 5x o normal vai para os Outliers. Depois, cada canal
 salvo procura os parecidos uma vez por semana e eles vão para os Achados de quem salvou.
@@ -1174,3 +1175,90 @@ testes no `test_abertura.py` cobram as duas coisas.
 Conferido com o Radar ligado, no navegador: as quatro telas montam a `.busca-caixa` com os filhos certos, nenhuma
 tem mais o `#painel-cota`, e o menu do Perfil mostra Produzir. Para a extensão: `chrome://extensions` → ↻ no Radar
 de Canais → F5 na aba do Studio.
+
+## A porta do canal que explodiu e a repescagem (2026-10-25)
+
+"os dotti finder pesquisa canais melhores que o nosso, queremos canal dark que explodiu". A régua deles, lida com o
+REA na extensão (`docs/analise-dottifinder.md`, seção 10), é **volume recente**; a nossa era **consistência**. O
+garimpo pedia normal de 10 mil, que é a mediana: o canal dark que acabou de estourar tem dois ou três vídeos enormes e
+o resto pequeno, e era medido e mandado embora. No banco do usuário, 146 canais criados há até 18 meses, com 500 mil
+views em 30 dias, ficaram de fora só por isso (Wiggle World: normal de 1.386 e um vídeo de 13,8 milhões).
+
+- **Segunda porta** (`metricas.explodiu`, usada pelo `garimpo._passa`): entra também o canal com **500 mil views ou
+  mais nos vídeos longos publicados nos últimos 30 dias**, ou o canal de **até 60 dias com 3 vídeos longos de 6x o
+  normal** (6 mil views ou mais cada: com normal de 76, qualquer vídeo é 6x). **Shorts não contam**, a pedido. Tudo o
+  resto da porta continua: 18 meses, 3 a 400 vídeos, país, risco, Groq do nicho e do rosto, canal com rosto fora.
+- **Repescagem** (`garimpo.repescar`, no garimpo diário logo depois do `remedir`, até 15% da cota dele): os canais
+  que já estão no banco e explodiram, mas **nunca foram julgados** (`sem_rosto` nulo — quem o Groq viu com rosto não
+  volta). Criado há até 18 meses pelo `criado_em`, porque o primeiro vídeo de quem passou pela extensão é o mais velho
+  que ela viu, e o Felipe Neto passava por canal de outubro. País e contagem de vídeos são conferidos antes de medir
+  (eram 94 dos 392 da fila caindo depois de gastar a medida). Os que mais somaram nos 30 dias primeiro, **40 por
+  garimpo** (cada um é uma pergunta de rosto e uma de nicho ao Groq), medidos de novo e pela mesma porta. Quem foi
+  repescado e não entrou espera 7 dias (`canais.repescado`).
+- Na base de hoje: **298 canais na fila**, uns 8 garimpos para esvaziar.
+
+Testes em `tests/test_explodiu.py` (16, sem rede).
+
+## Cartões, Gráfico e Mapa em todo o Niche Finder (2026-10-25)
+
+Pedido do usuário, com o print do Dotti Finder: os três botões que eles têm em cima da lista de canais, "em todos do
+niche finder". Os deles foram abertos no painel logado (`docs/analise-dottifinder.md`, seção 11).
+
+- **Onde:** Canais (e Entraram hoje, que é a mesma tela com a visão ligada), Faceless Outliers e Acharam para você.
+  O modo fica no endereço (`modo=grafico`, `modo=mapa`), como os filtros; sem nada, são os cartões de sempre.
+- **Gráfico:** os canais contados pelas cinco etapas de vida, pelo tempo que estão postando (`metricas.ETAPAS`):
+  teste de mercado (0 a 14 dias), decolagem (15 a 60), corrida por espaço (61 a 120), maturidade (121 a 420) e
+  saturação. Cada etapa diz quantos canais, a mediana por vídeo, as views em 30 dias (velocidade × 30) e o clima
+  ("janela de ouro", "já tem fila", "tarde para entrar"). **Clicar numa etapa volta para os cartões filtrados por
+  ela** — o filtro novo `etapa`, que também ganhou um select nas três telas.
+- **Mapa:** os mesmos canais juntados por nicho: canais, normal típico (mediana), crescendo, parados e público
+  (soma dos inscritos). Ordena por qualquer coluna (a ordem vale para todas as telas); clicar num nicho volta para
+  os cartões daquele nicho.
+- **Sempre o filtro da tela.** O Mapa do Dotti é o mesmo em todas as visões; o nosso conta o que a lista mostra. O
+  servidor tira o WHERE de um lugar só: `_onde_radar` para a lista de canais e `/api/radar/resumo`;
+  `_videos_filtrados` para a lista de vídeos e `/api/videos/resumo` (os canais dos vídeos, cada um uma vez);
+  `/api/achados/resumo` com o nicho e a etapa do Acharam. Conferido no navegador, com uma cópia do banco: a
+  Decolagem do Gráfico dizia 71 e a lista filtrada trouxe 71; História no Mapa, 54 e 54.
+- O número do chip da visão continua sendo o da visão sozinha; o Gráfico conta com a preferência "só sem rosto",
+  como a lista (Entraram hoje: chip 38, lista e Gráfico 36).
+- **Fora:** o "medir demanda" do Mapa deles (gasta busca de cota e não diz o que faz) e os três modos próprios dos
+  Grupos (mosaico, mapa, constelação).
+
+Testes em `tests/test_modos.py` (16): as pontas de cada etapa, o filtro, o resumo e o painel com as mesmas etapas
+do servidor.
+
+## O roteiro em passos e o limite do Claude (2026-10-25)
+
+Pedido do usuário, depois de olhar o Robô Dotti por dentro (`docs/analise-robo-dotti.md`, seção 6, itens A1 e A3).
+Feito do zero: os pedidos ao Claude são nossos.
+
+- **Quatro passos em vez de uma chamada só** (`roteiro_claude.gerar`), cada um um `claude -p`:
+  1. **Pesquisa na web**: o único passo com ferramentas (busca e leitura de páginas). Recebe só o título, a língua
+     e o tamanho. Só entra o que foi lido numa página aberta; volta com os fatos e a fonte de cada um, o ângulo, o
+     gancho e as **lacunas** (o que o título promete e não foi confirmado).
+  2. **Esboço**: as partes com o que cada uma entrega, o fato que a sustenta e o tamanho em palavras (a soma dá o
+     tamanho pedido), com o estilo do canal.
+  3. **Escrita**: as regras de sempre, mais "siga o esboço" e "nada das lacunas". A continuação de roteiro longo
+     ficou como estava.
+  4. **Revisão**: uma leitura, a conferência em sete pontos e **uma** rodada de conserto. Se a resposta vier fora do
+     formato ou bem mais curta que o rascunho (cortada), fica o rascunho.
+- **Passo de apoio que falha não derruba o roteiro, mas fica dito.** Pesquisa e revisão são de apoio: se falharem
+  por outro motivo que não o limite, o roteiro sai sem elas e a revisão do pedido mostra "Este roteiro saiu sem:
+  …". O robô do Dotti entrega como "pronto" sem avisar.
+- **A linha do tempo**: na revisão (Acompanhar, "Esperando sua revisão") e no editor do Roteiro aparecem os passos
+  com a hora e a duração, o que a pesquisa não confirmou, as notas da revisão e a pesquisa com as fontes. Tudo
+  também fica na pasta do roteiro (`pesquisa.txt`, `esboco.txt`, `revisao.txt` e `passos` no `roteiro.json`).
+- **O limite do Claude não é erro** (`roteiro_claude.LimiteDoClaude`). O Radar, o robô do Dotti e o Claude Code
+  deste PC gastam o mesmo limite. O aviso ("You've hit your session limit · resets 4:10am") dá a hora em que o
+  limite volta (sem hora, 30 minutos). O pedido vai para **"Esperando o limite do Claude"**, no bloco Na fila, e a
+  fila **não pede outro roteiro** até essa hora (antes, os próximos batiam no mesmo limite e viravam erro). Na hora,
+  o vigia devolve os pedidos para a fila e **eles seguem do passo em que pararam**: cada passo pronto fica em
+  `dados/roteiros_andamento/fila-<id>`. "↻ Tentar agora" tira a espera na mão.
+- O erro passageiro de login do Claude Code ("Failed to refresh OAuth token") é tentado de novo uma vez, depois de
+  um minuto.
+- **Fora, por enquanto:** o prompt da miniatura como quinto passo (a Produção já tem o dela) e os formatos de
+  roteiro por vídeo (item A2).
+
+Testes em `tests/test_roteiro_passos.py` (14), com um Claude de mentira: a ordem dos passos e a web só na
+pesquisa, o passo pulado, a revisão fora do formato ou cortada, a volta depois do limite fazendo só o passo que
+faltou, a hora lida do aviso e a fila esperando o limite.

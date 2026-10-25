@@ -59,6 +59,57 @@ def nota_outlier(views: int | None, normal: float | None) -> float | None:
     return round(views / normal, 1)
 
 
+# As cinco etapas de vida, pelo tempo que o canal está postando (o Gráfico do Niche Finder, 2026-10-25; a régua é a
+# que o Dotti Finder mostra). Cada uma: chave, rótulo, de, até (dias, com as pontas) e o clima de quem entra agora.
+# O painel repete a lista no select de etapa (tests/test_modos.py confere).
+ETAPAS = (
+    ("teste", "Teste de mercado", 0, 14, "ouro"),
+    ("decolagem", "Decolagem", 15, 60, "ouro"),
+    ("corrida", "Corrida por espaço", 61, 120, "atencao"),
+    ("maturidade", "Maturidade", 121, 420, "tarde"),
+    ("saturacao", "Saturação", 421, None, "tarde"),
+)
+
+
+def etapa(dias: float | None) -> str | None:
+    """A etapa de quem está postando há tantos dias (inteiros, como o "postando há" da tela)."""
+    if dias is None:
+        return None
+    d = int(dias)
+    for chave, _, de, ate, _ in ETAPAS:
+        if d >= de and (ate is None or d <= ate):
+            return chave
+    return None
+
+
+EXPLODIU_VIEWS = 500_000   # views dos vídeos longos publicados nos últimos 30 dias
+EXPLODIU_DIAS = 30
+TRACAO_ATE_DIAS = 60       # canal novo de até 60 dias...
+TRACAO_VIDEOS = 3          # ...com 3 vídeos longos de 6x o normal...
+TRACAO_NOTA = 6.0
+TRACAO_VIEWS = 6_000       # ...e 6 mil views ou mais cada: com normal de 76, qualquer vídeo é 6x
+
+
+def explodiu(videos: list[dict], primeiro_video: str, normal: float | None, agora: datetime | None = None) -> bool:
+    """O canal que estourou agora, mesmo com o normal baixo (a régua de "explodiu" do Dotti Finder, 2026-10-25).
+
+    A porta de sempre do garimpo pede normal de 10 mil: é consistência. Esta é a outra: 500 mil views nos vídeos longos
+    dos últimos 30 dias, ou um canal de até 60 dias com 3 vídeos longos de 6x o normal. Shorts não contam."""
+    longos = [v for v in _validos(videos) if not curto(v["duracao_s"])]
+    recentes = 0
+    for v in longos:
+        dias = dias_desde(v.get("publicado", ""), agora)
+        if dias is not None and dias <= EXPLODIU_DIAS:
+            recentes += v["views"]
+    if recentes >= EXPLODIU_VIEWS:
+        return True
+    postando = dias_desde(primeiro_video, agora)
+    if postando is None or postando > TRACAO_ATE_DIAS:
+        return False
+    fortes = [v for v in longos if v["views"] >= TRACAO_VIEWS and (nota_outlier(v["views"], normal) or 0) >= TRACAO_NOTA]
+    return len(fortes) >= TRACAO_VIDEOS
+
+
 def engajamento(views: int | None, curtidas: int | None, comentarios: int | None) -> float | None:
     """Quanto o público reagiu: curtidas e comentários por view. Sem os três números não há taxa — e não ter
     não é o mesmo que ser zero, então volta None."""
