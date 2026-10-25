@@ -156,6 +156,10 @@ async function carregando(botao, texto, tarefa) {
 
 // ---------------------------------------------------------------- ícones
 const I = {
+  // os três modos do Niche Finder: cartões, a curva de vida e o mapa de nichos
+  cartoes: '<rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/>',
+  grafico: '<path d="M3 19c3-1 4-9 8-11s7 2 10 9"/><path d="M3 21h18"/>',
+  mapa: '<path d="M3 5h18M3 12h18M3 19h18"/><path d="M9 3v18"/>',
   perfil: '<circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 4-6 8-6s8 2 8 6"/>',
   descobrir: '<circle cx="11" cy="11" r="7"/><path d="M21 21l-5-5"/>',
   criar: '<path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 013 3L7 19l-4 1 1-4z"/>',
@@ -663,7 +667,7 @@ function ligarSelects(raiz, f, padrao, aoMudar, manter = []) {
 const TAMANHOS = { pequeno: { inscritos_max: 10000 }, medio: { inscritos_min: 10000, inscritos_max: 100000 }, grande: { inscritos_min: 100000 } };
 const paraApi = (f) => ({ visao: f.visao, busca: f.busca, nicho: f.nicho, fase: f.fase, pasta: f.pasta,
   ...(TAMANHOS[f.tamanho] || {}), inscritos_max: f.inscritos_max, media_min: f.media_min,
-  idade_max: f.idade, achado_dias: f.achado, rosto: f.rosto, ordem: f.ordem, sentido: f.sentido,
+  idade_max: f.idade, achado_dias: f.achado, rosto: f.rosto, etapa: f.etapa, ordem: f.ordem, sentido: f.sentido,
   salvos: f.base === "salvos" ? "1" : "", acharam: f.base === "acharam" ? "1" : "" });
 
 // ---------------------------------------------------------------- entrar
@@ -3212,8 +3216,100 @@ function faixaVisoes(caixa, vs, f, aoEscolher) {
 const opcoesDePasta = (p) => [...p.pastas.map((x) => [x.nome, `📁 ${x.nome} (${x.canais})`]),
   ...(p.sem_pasta ? [["sem_pasta", `Sem pasta (${p.sem_pasta})`]] : [])];
 
+// ---------------------------------------------------------------- os três modos: Cartões, Gráfico e Mapa
+// Pedido do usuário (2026-10-25, com o print do Dotti Finder): em todas as telas do Niche Finder, a mesma lista vista
+// de três jeitos. O Gráfico conta os canais pelas cinco etapas de vida; o Mapa junta por nicho. Os dois vêm do
+// servidor com o MESMO filtro da tela (o do Dotti mostra o mesmo mapa em todas as visões), e clicar numa etapa ou
+// num nicho volta para os cartões já filtrados por ela. O modo mora no endereço, como os filtros.
+// As etapas repetem metricas.ETAPAS (tests/test_modos.py confere): o select de etapa nasce antes do resumo chegar.
+const ETAPAS = [["teste", "Teste de mercado", 0, 14, "ouro"], ["decolagem", "Decolagem", 15, 60, "ouro"],
+  ["corrida", "Corrida por espaço", 61, 120, "atencao"], ["maturidade", "Maturidade", 121, 420, "tarde"],
+  ["saturacao", "Saturação", 421, null, "tarde"]];
+const CLIMAS = { ouro: "janela de ouro", atencao: "já tem fila", tarde: "tarde para entrar" };
+const MODOS = [["", "Cartões", "cartoes"], ["grafico", "Gráfico", "grafico"], ["mapa", "Mapa", "mapa"]];
+const diasDaEtapa = ([, , de, ate]) => (ate == null ? `${de}+ dias` : `${de}–${ate} dias`);
+const opcoesDeEtapa = () => ETAPAS.map((e) => [e[0], `${e[1]} (${diasDaEtapa(e)})`]);
+const QUALQUER_ETAPA = "Qualquer etapa";
+const etapaDe = (dias) => (dias == null ? "" : (ETAPAS.find(([, , de, ate]) => dias >= de && (ate == null || dias <= ate)) || [""])[0]);
+const botoesModo = (f) => `<div class="modos" role="group" aria-label="Como mostrar a lista">${MODOS.map(([m, rotulo, ic]) =>
+  `<button type="button" class="modo-ver ${f.modo === m ? "ativo" : ""}" data-modo="${m}" title="${rotulo}" aria-label="${rotulo}" aria-pressed="${f.modo === m}">${icone(ic)}</button>`).join("")}</div>`;
+
+// os botões trocam o modo; quem desenha é a tela (aoMudar), que sabe de onde vem a lista dela
+function ligarModos(raiz, f, aoMudar) {
+  const pintar = () => raiz.querySelectorAll("[data-modo]").forEach((b) => {
+    b.classList.toggle("ativo", b.dataset.modo === f.modo); b.setAttribute("aria-pressed", String(b.dataset.modo === f.modo));
+  });
+  raiz.querySelectorAll("[data-modo]").forEach((b) => (b.onclick = () => { f.modo = b.dataset.modo; pintar(); aoMudar(); }));
+  return pintar;
+}
+
+// a ordem do Mapa vale para todas as telas: quem ordenou por público quer ver por público na próxima também
+let ORDEM_MAPA = { col: "normal", desc: true };
+const COLUNAS_MAPA = [["nicho", "Nicho", "o assunto dos canais"], ["canais", "Canais", "quantos canais deste nicho estão na lista"],
+  ["normal", "Normal típico", "a mediana do vídeo típico dos canais do nicho: é ela que diz se o assunto dá view"],
+  ["crescendo", "Crescendo", "canais que estão nascendo ou acelerando agora"],
+  ["parados", "Parados", "canais que pararam de postar: público sem dono"], ["publico", "Público", "a soma dos inscritos"]];
+
+// `caixa` recebe o Gráfico ou o Mapa; `escolher(campo, valor)` é o clique que volta para os cartões filtrados
+function desenharResumo(caixa, r, modo, escolher) {
+  if (!r.canais) { caixa.innerHTML = '<div class="vazio">Nenhum canal com esses filtros. Afrouxe um.</div>'; return; }
+  if (modo === "grafico") {
+    const maior = Math.max(...r.etapas.map((e) => e.canais), 1);
+    caixa.innerHTML = `<h2 class="modo-titulo">A vida de um nicho, do teste à saturação</h2>
+      <div class="vida"><svg viewBox="0 0 500 100" preserveAspectRatio="none" aria-hidden="true">
+        ${r.etapas.map((e, i) => `<rect x="${i * 100}" y="0" width="100" height="100" class="faixa ${e.clima}" opacity="${0.12 + 0.5 * e.canais / maior}"/>`).join("")}
+        <path d="M0,92 C40,90 70,40 120,22 S200,12 250,14 S330,20 380,34 S460,80 500,94" class="curva"/></svg>
+      <div class="vida-etapas">${r.etapas.map((e) => `<button type="button" class="vida-etapa ${e.clima}" data-etapa="${e.chave}" ${e.canais ? "" : "disabled"}>
+        <b>${esc(e.rotulo)}</b><small>${diasDaEtapa([e.chave, e.rotulo, e.de, e.ate])}</small>
+        <span class="n">${num(e.canais)}</span>
+        ${e.canais ? `<small>${num(e.media)} por vídeo${e.mes ? ` · ${num(e.mes)} views/30d` : ""}</small>` : "<small>nenhum canal aqui</small>"}
+        <span class="clima">${CLIMAS[e.clima]}</span></button>`).join("")}</div></div>
+      <p class="sub">Cada canal está na etapa do tempo que ele está postando. Clique numa etapa para ver os canais dela.</p>`;
+    caixa.querySelectorAll("[data-etapa]").forEach((b) => (b.onclick = () => escolher("etapa", b.dataset.etapa)));
+    return;
+  }
+  const { col, desc } = ORDEM_MAPA;
+  const linhas = [...r.nichos].sort((a, b) => {
+    const x = a[col] ?? "", y = b[col] ?? "";
+    const c = typeof x === "number" && typeof y === "number" ? x - y : String(x).localeCompare(String(y), "pt-BR");
+    return desc ? -c : c;
+  });
+  caixa.innerHTML = `<h2 class="modo-titulo">Mapa de nichos</h2><div class="mapa-rolar"><table class="mapa-nichos">
+    <thead><tr>${COLUNAS_MAPA.map(([k, rotulo, dica]) => `<th data-col="${k}" title="${esc(dica)}" class="${k === col ? "ativo" : ""}">${rotulo}${k === col ? (desc ? " ▼" : " ▲") : ""}</th>`).join("")}</tr></thead>
+    <tbody>${linhas.map((n) => `<tr ${n.nicho ? `data-nicho="${esc(n.nicho)}" title="Ver os canais de ${esc(n.nicho)}"` : ""}>
+      <td>${n.nicho ? esc(n.nicho) : "<i>(sem nicho)</i>"}</td><td>${num(n.canais)}</td><td>${num(n.normal)}</td>
+      <td>${num(n.crescendo)}</td><td>${num(n.parados)}</td><td>${num(n.publico)}</td></tr>`).join("")}</tbody></table></div>
+    <p class="sub">Clique num nicho para ver os canais dele, ou num título para ordenar.</p>`;
+  caixa.querySelectorAll("th[data-col]").forEach((th) => (th.onclick = () => {
+    ORDEM_MAPA = { col: th.dataset.col, desc: th.dataset.col === col ? !desc : th.dataset.col !== "nicho" };
+    desenharResumo(caixa, r, modo, escolher);
+  }));
+  caixa.querySelectorAll("tr[data-nicho]").forEach((tr) => (tr.onclick = () => escolher("nicho", tr.dataset.nicho)));
+}
+
+// o clique numa etapa do Gráfico ou num nicho do Mapa: volta para os cartões, com o select já mostrando o filtro
+const escolhaDoModo = (raiz, f, depois) => (campo, valor) => {
+  f[campo] = valor; f.modo = "";
+  const s = raiz.querySelector(`select[data-f="${campo}"]`);
+  if (s) { s.value = valor; s.classList.toggle("ligado", valor !== ""); }
+  depois();
+};
+
+// mostra o Gráfico ou o Mapa no lugar da lista (os elementos `.so-cartoes` somem); devolve se mostrou.
+// Sem modo, devolve false e a tela segue desenhando os cartões.
+async function mostrarModo(raiz, f, buscar, escolher) {
+  const caixa = raiz.querySelector("#resumo");
+  raiz.querySelectorAll(".so-cartoes").forEach((e) => (e.hidden = !!f.modo));
+  caixa.hidden = !f.modo;
+  if (!f.modo) { caixa.innerHTML = ""; return false; }
+  caixa.innerHTML = '<div class="vazio">Contando…</div>';
+  try { desenharResumo(caixa, await buscar(), f.modo, escolher); }
+  catch (e) { caixa.innerHTML = `<div class="vazio">${esc(porque(e))}</div>`; }
+  return true;
+}
+
 const PADRAO_BASE = { visao: "", busca: "", base: "", pasta: "", nicho: "", inscritos_max: "", media_min: "",
-  tamanho: "", idade: "", fase: "", ordem: "media", sentido: "" };
+  tamanho: "", idade: "", fase: "", etapa: "", ordem: "media", sentido: "", modo: "" };
 
 async function baseCanais() {
   const f = recorte(PADRAO_BASE);
@@ -3231,6 +3327,7 @@ async function baseCanais() {
       ["nicho", "Todos os nichos", o.nichos.map((n) => [n.valor, n.valor])],
       ["idade", "Qualquer idade", [[1, "Canal de até 1 mês"], [3, "Até 3 meses"], [6, "Até 6 meses"], [12, "Até 1 ano"]]],
       ["fase", "Qualquer fase", [["nascendo", "Nascendo"], ["crescendo", "Crescendo"], ["estavel", "Estável"], ["caindo", "Caindo"]]],
+      ["etapa", QUALQUER_ETAPA, opcoesDeEtapa()],
       ["ordem", "", [["media", "Mais views por vídeo"], ["alta", "Em alta agora"], ["estourando", "Muita view para o tamanho"],
         ["pontos", "Na hora de copiar"], ["ganho", "Mais inscritos na semana"], ["jovens", "Canais mais novos"],
         ["novos", "Entraram por último"], ["inscritos", "Mais inscritos"], ["aleatorio", "Aleatório"]]],
@@ -3240,9 +3337,10 @@ async function baseCanais() {
       ${trilho("media_min", "Views por vídeo, a partir de", degrausDe("media_min"), f)}
     </div>
     </div>
-    <div id="youtube"></div>
-    <div class="contagem" id="contagem"></div><div class="lista-canais" id="lista"></div>
-    <div class="mais"><button class="botao sec" id="mais" hidden>Carregar mais</button></div>`;
+    <div class="barra-modos">${botoesModo(f)}</div><div id="resumo" hidden></div>
+    <div id="youtube" class="so-cartoes"></div>
+    <div class="contagem so-cartoes" id="contagem"></div><div class="lista-canais so-cartoes" id="lista"></div>
+    <div class="mais so-cartoes"><button class="botao sec" id="mais" hidden>Carregar mais</button></div>`;
   let pagina = 0, tentativa = 0;
   const rosto = PREFS && PREFS.sem_rosto ? "sem" : "";
   const caixaYoutube = (vazio) => {
@@ -3265,6 +3363,7 @@ async function baseCanais() {
   });
   const carregar = async (mais = false) => {
     pagina = mais ? pagina + 1 : 0;
+    if (!mais && await mostrarModo(tela, f, () => api("/api/radar/resumo?" + consulta(paraApi({ ...f, rosto }))), escolherDoModo)) return;
     const lista = document.getElementById("lista");
     let d;
     // o carregar é chamado sem await (a tela já está montada): o erro morre aqui, dito na própria lista
@@ -3291,9 +3390,11 @@ async function baseCanais() {
     tela.querySelector('select[data-f="ordem"]').value = f.ordem;
     sincronizar(); acompanhar(); carregar();
   });
-  let pintarSentido = () => {}, pintarTrilhos = () => {};
-  const sincronizar = () => { pintarSentido(); pintarTrilhos(); desenharVisoes(); };
+  let pintarSentido = () => {}, pintarTrilhos = () => {}, pintarModos = () => {};
+  const sincronizar = () => { pintarSentido(); pintarTrilhos(); desenharVisoes(); pintarModos(); };
   const acompanhar = ligarSelects(tela, f, PADRAO_BASE, () => { sincronizar(); carregar(); }, ["busca"]);
+  const escolherDoModo = escolhaDoModo(tela, f, () => { sincronizar(); acompanhar(); carregar(); });
+  pintarModos = ligarModos(tela, f, () => { acompanhar(); carregar(); });
   pintarSentido = ligarSentido(f, () => { acompanhar(); carregar(); });
   pintarTrilhos = ligarTrilhos(tela, f, degrausDe, () => { acompanhar(); carregar(); });
   const ir = () => { f.busca = document.getElementById("busca").value.trim(); tentativa = 0; acompanhar(); carregar(); };
@@ -3316,7 +3417,8 @@ const DEGRAUS = {
 const degrausDe = (k) => DEGRAUS[k] || [["", "qualquer"]];
 
 const PADRAO_VIDEOS = { base: "", pasta: "", busca: "", lingua: "ptenes", nicho: "", nota_min: "5", publicado_dias: "", tipo: "longo",
-  views_min: "", modelar_estado: "", ordem: "nota", sentido: "", so_novos: "", so_crescendo: "", com_cortados: "" };
+  views_min: "", modelar_estado: "", ordem: "nota", sentido: "", so_novos: "", so_crescendo: "", com_cortados: "",
+  etapa: "", modo: "" };
 
 async function videosLista() {
   const f = recorte(PADRAO_VIDEOS);
@@ -3334,6 +3436,7 @@ async function videosLista() {
       ["nota_min", "", [[3, "3x o normal ou mais"], [5, "5x ou mais"], [10, "10x ou mais"], [20, "20x ou mais"]]],
       ["publicado_dias", "Qualquer data", [[7, "Últimos 7 dias"], [30, "Últimos 30 dias"], [90, "Últimos 3 meses"], [365, "Último ano"]]],
       ["tipo", "Longos e Shorts", [["longo", "Só vídeos longos"], ["curto", "Só Shorts"]]],
+      ["etapa", QUALQUER_ETAPA, opcoesDeEtapa()],
       ["ordem", "", [["nota", "Maior nota"], ["por_hora", "Views por hora"], ["views", "Mais views"], ["recentes", "Mais recentes"],
         ["inscritos", "Canal maior"], ["achados", "Achados por último"], ["aleatorio", "Aleatório"]]],
     ], f)}${botaoSentido()}</div>
@@ -3344,12 +3447,16 @@ async function videosLista() {
       ["com_cortados", "Mostrar o que foi cortado", "Inclui o que as suas respostas e os seus bloqueios estavam escondendo"],
     ], f)}
     </div>
-    <div class="contagem" id="contagem"></div><div class="grade-videos grandes" id="lista"></div>
-    <div class="mais"><button class="botao sec" id="mais" hidden>Carregar mais</button></div>`;
+    <div class="barra-modos">${botoesModo(f)}</div><div id="resumo" hidden></div>
+    <div class="contagem so-cartoes" id="contagem"></div><div class="grade-videos grandes so-cartoes" id="lista"></div>
+    <div class="mais so-cartoes"><button class="botao sec" id="mais" hidden>Carregar mais</button></div>`;
   const POR = 24;
   let pagina = 0;
   const carregar = async (mais = false) => {
     pagina = mais ? pagina + 1 : 0;
+    // o Gráfico e o Mapa contam os canais dos vídeos que o filtro mostra, cada canal uma vez
+    if (!mais && await mostrarModo(tela, f, () => api("/api/videos/resumo?" + consulta({ ...f, salvos: f.base === "salvos" ? "1" : "",
+      acharam: f.base === "acharam" ? "1" : "" })), escolherDoModo)) return;
     const lista = document.getElementById("lista");
     let d;
     try {
@@ -3375,9 +3482,11 @@ async function videosLista() {
     if (ver) ver.onclick = () => { f.com_cortados = "1"; sincronizar(); acompanhar(); carregar(); };
     ligarRoteiro(lista);
   };
-  let pintarSentido = () => {}, pintarMarcas = () => {}, pintarTrilhos = () => {};
-  const sincronizar = () => { pintarSentido(); pintarMarcas(); pintarTrilhos(); };
+  let pintarSentido = () => {}, pintarMarcas = () => {}, pintarTrilhos = () => {}, pintarModos = () => {};
+  const sincronizar = () => { pintarSentido(); pintarMarcas(); pintarTrilhos(); pintarModos(); };
   const acompanhar = ligarSelects(tela, f, PADRAO_VIDEOS, () => { sincronizar(); carregar(); }, ["busca"]);
+  const escolherDoModo = escolhaDoModo(tela, f, () => { sincronizar(); acompanhar(); carregar(); });
+  pintarModos = ligarModos(tela, f, () => { acompanhar(); carregar(); });
   pintarSentido = ligarSentido(f, () => { acompanhar(); carregar(); });
   pintarMarcas = ligarMarcas(tela, f, () => { acompanhar(); carregar(); });
   pintarTrilhos = ligarTrilhos(tela, f, degrausDe, () => { acompanhar(); carregar(); });
@@ -3394,15 +3503,38 @@ async function videosLista() {
   carregar();
 }
 
-// Acharam para você: os parecidos que cada canal salvo trouxe sozinho, numa tela só
+// Acharam para você: os parecidos que cada canal salvo trouxe sozinho, numa tela só. Os filtros e os três modos
+// são do Niche Finder inteiro (2026-10-25); a lista é curta (até 300), então o filtro dos cartões é feito aqui.
+const PADRAO_ACHARAM = { nicho: "", etapa: "", modo: "" };
+const diasPostando = (c) => (c.primeiro_video ? Math.floor((Date.now() - Date.parse(c.primeiro_video)) / 86400000) : null);
+
 async function acharam() {
-  const { canais } = await api("/api/achados");
+  const f = recorte(PADRAO_ACHARAM);
+  const { canais: todos } = await api("/api/achados");
+  if (!todos.length) f.modo = "";   // sem nenhum achado, o Gráfico vazio esconderia o "salve canais" da lista
+  const nichos = [...new Set(todos.map((c) => c.nicho).filter(Boolean))].sort((a, b) => a.localeCompare(b, "pt-BR"));
   tela.innerHTML = titulo("Acharam para você", "Cada canal que você salva procura sozinho os parecidos com ele. O que eles acharam chega aqui, já medido.") + `
-    <div class="contagem">${canais.length ? `${canais.length} ${canais.length === 1 ? "canal chegou" : "canais chegaram"} a partir dos seus salvos` : ""}</div>
-    <div class="lista-canais">${canais.map((c) => cartaoCanal(c, {
+    ${todos.length ? `<div class="busca-caixa"><div class="filtra">${selects([["nicho", "Todos os nichos", nichos.map((n) => [n, n])],
+      ["etapa", QUALQUER_ETAPA, opcoesDeEtapa()]], f)}</div></div>
+    <div class="barra-modos">${botoesModo(f)}</div>` : ""}<div id="resumo" hidden></div>
+    <div class="contagem so-cartoes" id="contagem"></div><div class="lista-canais so-cartoes" id="lista"></div>`;
+  const desenhar = async () => {
+    if (await mostrarModo(tela, f, () => api("/api/achados/resumo?" + consulta({ nicho: f.nicho, etapa: f.etapa })), escolherDoModo)) return;
+    const canais = todos.filter((c) => (!f.nicho || c.nicho === f.nicho) && (!f.etapa || etapaDe(diasPostando(c)) === f.etapa));
+    document.getElementById("contagem").textContent = canais.length
+      ? `${canais.length} ${canais.length === 1 ? "canal chegou" : "canais chegaram"} a partir dos seus salvos` : "";
+    const lista = document.getElementById("lista");
+    lista.innerHTML = canais.map((c) => cartaoCanal(c, {
       rodape: `<div class="sub">veio de <b>${esc(c.por_causa_de || "um canal seu")}</b>${c.achado ? ` · ${ha(c.achado)}` : ""}</div>` })).join("")
-      || `<div class="vazio">Ainda não chegou nenhum. Salve canais na aba <a href="#/base">Canais</a>: cada um procura os parecidos uma vez por semana.</div>`}</div>`;
-  ligarCartoes();
+      || (todos.length ? '<div class="vazio">Nenhum canal com esses filtros.</div>'
+        : `<div class="vazio">Ainda não chegou nenhum. Salve canais na aba <a href="#/base">Canais</a>: cada um procura os parecidos uma vez por semana.</div>`);
+    ligarCartoes(lista);
+  };
+  let pintarModos = () => {};
+  const acompanhar = ligarSelects(tela, f, PADRAO_ACHARAM, () => { pintarModos(); desenhar(); });
+  const escolherDoModo = escolhaDoModo(tela, f, () => { pintarModos(); acompanhar(); desenhar(); });
+  pintarModos = ligarModos(tela, f, () => { acompanhar(); desenhar(); });
+  desenhar();
 }
 
 const PADRAO_GRUPOS = { nicho: "", min: "" };

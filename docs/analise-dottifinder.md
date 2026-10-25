@@ -529,3 +529,63 @@ novos. Por isso a contagem acima usa `criado_em`.
 4. **Visão "explodiu agora"** no Radar: volume dos 30 dias, com o viral isolado marcado como "fonte de temas"
    (um vídeo só não faz o canal).
 5. Momentum com vídeo maduro de 21 dias em vez de 3.
+
+---
+
+## 11. Quarta leva (2026-10-25): o painel deles por dentro, aberto no Chrome logado
+
+Pedido do usuário, com o print dos três botões: "quero aquelas opções em todos do niche finder", e avaliar o que
+falta no nosso. Desta vez **o painel de verdade**, no Chrome do usuário, já logado (a seção 7 dizia que as telas por
+dentro precisavam de sessão). Só leitura: nenhum botão que muda conta ou gasta crédito foi apertado.
+
+### 11.1 Os três modos
+
+- **Cartões, Gráfico e Mapa** aparecem em **Todos os Canais** e **Novos Hoje**. **Vídeos em Alta** não tem modos;
+  **Grupos de Canais** tem os seus (Mosaico, Mapa, Constelação).
+- **Gráfico** — "Como um nicho nasce e morre": a curva com as cinco etapas da `regra_tipo.js` (seção 10: teste,
+  decolagem, corrida, maturidade, saturação), quantos canais em cada, views em 30 dias em média e o clima. Clicar
+  numa etapa mostra os canais dela.
+- **Mapa** — tabela de nichos: Canais, **Tráfego típico** (a mediana do vídeo típico; a dica deles diz que os nichos
+  mais lotados rendem menos que os vazios, e por isso é a ordem padrão), Parados, Público e um botão "medir"
+  demanda. **O mapa é o mesmo em Novos Hoje e em Todos**: ele ignora a visão e os filtros.
+- Feito no Radar no mesmo dia (README, "Cartões, Gráfico e Mapa"), com o filtro da tela valendo.
+
+### 11.2 O que eles têm e o Radar não
+
+**Filtros** ("Que canal você procura?" / "De que tamanho?" / "Mais filtros"):
+
+| Deles | No Radar |
+| --- | --- |
+| Anúncios: com / sem / só o que já foi lido | **não**, mas o dado existe (`canais.anuncios`, vindo da extensão) |
+| O que o canal faz: documentário, educativo, história narrada, comentário, tutorial, animação… (com contagem) | não |
+| Inscritos de–até (trilho duplo) | só o teto |
+| Vídeo típico de–até, Média por vídeo de–até | só o piso da média |
+| Views no mês | não |
+| Postando há (trilho, em dias) | select de idade em meses |
+| Duração típica | não |
+| Idioma (com contagem) | não (o garimpo é só em inglês) |
+| Tipo (Novo crescendo rápido, Potencial em crescimento, Fonte de temas 3–6 / 6–12 meses, Antigo, De olho) e Saúde (em alta, decadência, baixo potencial) | a fase (nascendo, crescendo, estável, caindo, parado) |
+
+**Ordens:** média por vídeo, postando há, views no mês, **maior outlier**, inscritos, entrou por último,
+aleatório, "heat score" / ritmo em 30 dias. Faltam no Radar: maior outlier, views no mês e postando há.
+
+**Visões:** TOP 10 que chegaram hoje, Novo crescendo rápido, Mais de 50 mil views por vídeo, Virou a chave, Muitas
+views poucos inscritos, Todos, Sem concorrência, **Sozinho e pequeno**, **Constantes**. Faltam no Radar: TOP 10 de
+hoje, Sozinho e pequeno e Constantes.
+
+**Outros:**
+
+- **"+ Salvar estes filtros"**: o filtro montado vira uma visão da pessoa, na fila dos chips.
+- **"Mostrar vídeos: Mais vistos / Mais recentes"**: escolhe quais capas o cartão mostra.
+- **Contador no topo**: "10.629 canais nesta lista · 296 mil canais no Dotti Finder".
+- **Ficaram de Fora**: os canais que o filtro deles deixou para trás, para conferir de novo.
+- **Grupos de Canais** com Mosaico, Mapa e Constelação; **Oportunidades** (quatro listas de "público sem quem
+  entregue"); **Títulos que Funcionam** com o multiplicador de cada fórmula.
+
+### 11.3 Ordem sugerida
+
+1. **Anúncios** e **maior outlier**: o dado já está no banco, é só filtro e ordem.
+2. **Salvar estes filtros** e **Mostrar vídeos (mais vistos / mais recentes)**: mudam o uso do dia a dia.
+3. **Views no mês**, **duração típica** e o **trilho duplo** de inscritos.
+4. As visões **Sozinho e pequeno**, **Constantes** e **TOP 10 de hoje**.
+5. **O que o canal faz** (o formato): precisa de uma pergunta nova ao Groq no garimpo.

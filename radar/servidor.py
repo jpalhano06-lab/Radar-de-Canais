@@ -12,6 +12,7 @@ import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta, timezone
+from statistics import median
 from urllib.parse import quote_plus
 
 from starlette.concurrency import run_in_threadpool
@@ -764,6 +765,48 @@ def _data(q: dict, nome: str) -> str:
     return valor if re.fullmatch(r"\d{4}-\d{2}-\d{2}", valor) else ""
 
 
+def _onde_etapa(q: dict) -> tuple[list[str], list]:
+    """A etapa de vida (metricas.ETAPAS) que a pessoa clicou no Gráfico: postando há de `de` a `ate` dias, inteiros.
+    Etapa que não existe não filtra."""
+    for chave, _, de, ate, _ in metricas.ETAPAS:
+        if q.get("etapa") == chave:
+            onde, args = ["c.primeiro_video <> ''", "c.primeiro_video <= ?"], [_corte(de)]
+            if ate is not None:
+                onde.append("c.primeiro_video > ?"); args.append(_corte(ate + 1))
+            return onde, args
+    return [], []
+
+
+def _resumo(canais: list[dict]) -> dict:
+    """O Gráfico e o Mapa da lista: os canais contados pelas cinco etapas de vida e juntados por nicho.
+
+    `media` é a mediana do vídeo típico (o `base_longos`); `mes` é a média de views em 30 dias (a velocidade, que é
+    views por dia dos vídeos do último mês, × 30). O Mapa abre pelo normal típico, do maior para o menor: nicho
+    lotado não é nicho que rende, e é o normal que diz se o assunto dá view."""
+    def mediana(valores):
+        v = sorted(x for x in valores if x)
+        return int(median(v)) if v else None
+    por_etapa: dict[str, list] = {}
+    por_nicho: dict[str, list] = {}
+    for c in canais:
+        dias = metricas.dias_desde(c.get("primeiro_video", ""))
+        por_etapa.setdefault(metricas.etapa(dias), []).append(c)
+        por_nicho.setdefault(c.get("nicho") or "", []).append(c)
+    etapas = []
+    for chave, rotulo, de, ate, clima in metricas.ETAPAS:
+        lista = por_etapa.get(chave, [])
+        velocidades = [c["velocidade"] for c in lista if c.get("velocidade")]
+        etapas.append({"chave": chave, "rotulo": rotulo, "de": de, "ate": ate, "clima": clima, "canais": len(lista),
+                       "media": mediana(c.get("base_longos") for c in lista),
+                       "mes": int(sum(velocidades) / len(velocidades) * 30) if velocidades else None})
+    nichos = [{"nicho": nicho, "canais": len(lista), "normal": mediana(c.get("base_longos") for c in lista),
+               "parados": sum(1 for c in lista if c.get("fase") == "parado"),
+               "crescendo": sum(1 for c in lista if c.get("fase") in ("crescendo", "nascendo")),
+               "publico": sum(c.get("inscritos") or 0 for c in lista)} for nicho, lista in por_nicho.items()]
+    nichos.sort(key=lambda n: -(n["normal"] or 0))
+    return {"canais": len(canais), "etapas": etapas, "nichos": nichos}
+
+
 def _filtro_canais(q: dict) -> tuple[list[str], list]:
     """Os filtros de canal do painel. Cada um vira um pedaço do WHERE."""
     onde, args = ["c.no_radar=1"], []
@@ -812,6 +855,8 @@ def _filtro_canais(q: dict) -> tuple[list[str], list]:
         onde.append("c.subnicho <> '' AND c.subnicho IN (SELECT subnicho FROM canais WHERE no_radar=1 "
                     "AND subnicho <> '' GROUP BY subnicho HAVING COUNT(*) <= ?)")
         args.append(quantos)
+    onde_etapa, args_etapa = _onde_etapa(q)
+    onde += onde_etapa; args += args_etapa
     for nome, coluna, operador, sufixo in (("inicio_de", "c.primeiro_video", ">=", ""),
                                            ("inicio_ate", "c.primeiro_video", "<=", "T23:59:59"),
                                            ("achado_de", "c.descoberto", ">=", ""),
@@ -942,17 +987,12 @@ def visao(u: dict = Depends(exigir("radar"))):
     }
 
 
-@app.get("/api/radar")
-def radar(request: Request, u: dict = Depends(exigir("radar"))):
-    """A lista de canais do Radar: uma tela só, com a visão, os filtros, a ordem e o lado dela.
-
-    `salvos` e `acharam` recortam a lista para a base da pessoa; `tudo=1` desliga o corte de qualidade, que por
-    padrão tira os nichos que pagam pouco (eles só davam tela cheia de canal que não serve)."""
-    q = _com_a_visao(dict(request.query_params))
+def _onde_radar(q: dict, u: dict) -> tuple[str, list]:
+    """O WHERE da lista de canais, com a visão já posta em `q` (_com_a_visao). A lista, o Gráfico e o Mapa leem
+    daqui: os três modos mostram os mesmos canais, só de jeitos diferentes."""
     # o mesmo piso do garimpo: abaixo de 10 mil views por vídeo o canal nem teria entrado no Radar, então pedir
     # menos que isso não traz nada de novo — traz canal cujo "normal" ainda não foi medido direito
-    piso = garimpo.MINIMO_POR_VIDEO
-    q["media_min"] = str(max(_numero(q, "media_min") or 0, piso))
+    q = {**q, "media_min": str(max(_numero(q, "media_min") or 0, garimpo.MINIMO_POR_VIDEO))}
     onde, args = _filtro_canais(q)
     if q.get("salvos") == "1":
         onde.append("c.id IN (SELECT canal_id FROM salvos WHERE usuario_id=?)"); args.append(u["id"])
@@ -965,9 +1005,31 @@ def radar(request: Request, u: dict = Depends(exigir("radar"))):
     if q.get("tudo") != "1" and not q.get("nicho"):
         onde.append(f"c.nicho NOT IN ({','.join('?' * len(mercado.IRRELEVANTES))})")
         args += sorted(mercado.IRRELEVANTES)
+    return " AND ".join(onde), args
+
+
+@app.get("/api/radar/resumo")
+def radar_resumo(request: Request, u: dict = Depends(exigir("radar"))):
+    """O Gráfico e o Mapa da lista de canais, com o mesmo filtro dela."""
+    q = _com_a_visao(dict(request.query_params))
+    juntos, args = _onde_radar(q, u)
+    canais = [c for c in banco.todos(f"SELECT c.* FROM canais c WHERE {juntos}", *args)
+              if q.get("tudo") == "1" or not mercado.irrelevante(c["nicho"], c["subnicho"])]
+    return _resumo(canais)
+
+
+@app.get("/api/radar")
+def radar(request: Request, u: dict = Depends(exigir("radar"))):
+    """A lista de canais do Radar: uma tela só, com a visão, os filtros, a ordem e o lado dela.
+
+    `salvos` e `acharam` recortam a lista para a base da pessoa; `tudo=1` desliga o corte de qualidade, que por
+    padrão tira os nichos que pagam pouco (eles só davam tela cheia de canal que não serve)."""
+    q = _com_a_visao(dict(request.query_params))
+    juntos, args = _onde_radar(q, u)
+    piso = garimpo.MINIMO_POR_VIDEO
+    q["media_min"] = str(max(_numero(q, "media_min") or 0, piso))
     por = min(60, max(1, int(_numero(q, "por") or 30)))
     pagina = int(_numero(q, "pagina") or 0)
-    juntos = " AND ".join(onde)
     total = banco.um(f"SELECT COUNT(*) AS n FROM canais c WHERE {juntos}", *args)["n"]
     lista = _lista_de_canais(juntos, args, _ordem_sql(q.get("ordem", ""), q.get("sentido", "")), por, pagina, u["id"])
     # o subnicho de histórias narradas não dá para pedir em SQL (é regex): sai da página, e a tela diz quantos saíram
@@ -1085,6 +1147,22 @@ def _ordem_videos(chave: str, sentido: str = "") -> str:
 @app.get("/api/outliers")
 def outliers(request: Request, u: dict = Depends(exigir("outliers"))):
     q = dict(request.query_params)
+    v = _videos_filtrados(q, u)
+    pagina = int(_numero(q, "pagina") or 0)
+    por = min(60, max(1, int(_numero(q, "por") or 60)))   # Vídeos que estouraram pede de 10 em 10
+    return {"total": len(v["dentro"]), "cortados": v["cortados"], "piso": v["piso"], "views_min": v["views_min"],
+            "videos": v["dentro"][pagina * por:(pagina + 1) * por]}
+
+
+@app.get("/api/videos/resumo")
+def videos_resumo(request: Request, u: dict = Depends(exigir("outliers"))):
+    """O Gráfico e o Mapa dos Faceless Outliers: os canais dos vídeos que o filtro da tela mostra, cada um uma vez."""
+    ids = list(dict.fromkeys(l["canal_id"] for l in _videos_filtrados(dict(request.query_params), u)["dentro"]))
+    return _resumo(medir._canais_do_banco(ids))
+
+
+def _videos_filtrados(q: dict, u: dict) -> dict:
+    """A lista de vídeos que estouraram com todos os filtros da tela, sem a página: a lista e o resumo leem daqui."""
     nota_min = _numero(q, "nota_min") or 5
     onde, args = [f"{_NOTA_VIVA} >= ?"], [nota_min]
     normal_min = _numero(q, "normal_min")
@@ -1118,6 +1196,8 @@ def outliers(request: Request, u: dict = Depends(exigir("outliers"))):
         onde.append("v.publicado >= ?"); args.append(_corte(7))
     if q.get("so_crescendo") == "1":        # o canal está acelerando agora, não é um acerto antigo
         onde.append("c.fase IN ('crescendo','nascendo')")
+    onde_etapa, args_etapa = _onde_etapa(q)  # a etapa de vida do canal, clicada no Gráfico
+    onde += onde_etapa; args += args_etapa
     if q.get("modelar_estado") in ESTEIRA:  # a esteira: só o que eu marquei para modelar, ou o que já modelei
         onde.append("v.id IN (SELECT video_id FROM modelar WHERE usuario_id=? AND estado=?)")
         args += [u["id"], q["modelar_estado"]]
@@ -1136,7 +1216,6 @@ def outliers(request: Request, u: dict = Depends(exigir("outliers"))):
             onde.append(f"v.publicado {operador} ?"); args.append(data + sufixo)
     base = (f"FROM outliers o JOIN videos v ON v.id=o.video_id JOIN canais c ON c.id=o.canal_id "
             f"WHERE c.no_radar=1 AND {' AND '.join(onde)}")
-    pagina = int(_numero(q, "pagina") or 0)
     # o marcador da esteira vem junto com o vídeo: o cartão precisa saber se já está na fila ou já foi modelado
     linhas = banco.todos(
         f"SELECT ROUND({_NOTA_VIVA}, 1) AS nota, (SELECT estado FROM modelar m WHERE m.usuario_id=? AND m.video_id=v.id) "
@@ -1158,9 +1237,7 @@ def outliers(request: Request, u: dict = Depends(exigir("outliers"))):
     cortados = len(na_lingua) - len(dentro)
     if q.get("com_cortados") == "1":
         dentro = na_lingua
-    por = min(60, max(1, int(_numero(q, "por") or 60)))   # Vídeos que estouraram pede de 10 em 10
-    return {"total": len(dentro), "cortados": cortados, "piso": piso, "views_min": views_min,
-            "videos": dentro[pagina * por:(pagina + 1) * por]}
+    return {"dentro": dentro, "cortados": cortados, "piso": piso, "views_min": views_min}
 
 
 @app.get("/api/salvos")
@@ -1183,6 +1260,16 @@ def novidades(dias: int = 14, u: dict = Depends(exigir("salvar"))):
         v["nota"] = metricas.nota_outlier(v["views"], normal)
         v["por_hora"] = metricas.views_por_hora(v["views"], v["publicado"])
     return {"videos": linhas}
+
+
+@app.get("/api/achados/resumo")
+def achados_resumo(nicho: str = "", etapa: str = "", u: dict = Depends(exigir("achados"))):
+    """O Gráfico e o Mapa do Acharam para você: os mesmos canais e os mesmos filtros da tela (que filtra no painel)."""
+    ids = [l["canal_id"] for l in banco.todos("SELECT canal_id FROM achados WHERE usuario_id=? ORDER BY criado DESC "
+                                              "LIMIT 300", u["id"])]
+    canais = [c for c in medir._canais_do_banco(ids) if (not nicho or c["nicho"] == nicho)
+              and (not etapa or metricas.etapa(metricas.dias_desde(c["primeiro_video"])) == etapa)]
+    return _resumo(canais)
 
 
 @app.get("/api/achados")

@@ -1780,3 +1780,39 @@ nav .subs a .olho svg { width: 15px; height: 15px; }
   border-radius: 9px; padding: 9px 11px; font: inherit; }
 .dep-print { display: grid; gap: 5px; color: var(--fraco); font-size: 12.5px; }
 .tabela tr.escondido { opacity: .5; }
+
+/* os três modos do Niche Finder: Cartões, Gráfico e Mapa (2026-10-25) */
+.so-cartoes[hidden], #resumo[hidden] { display: none !important; }
+.barra-modos { margin: 14px 0 4px; }
+.modos { display: inline-flex; gap: 2px; padding: 3px; border: 1px solid var(--linha); border-radius: 10px; background: var(--painel); }
+.modo-ver { display: grid; place-items: center; width: 36px; height: 30px; border: 0; border-radius: 7px; background: none; color: var(--fraco); cursor: pointer; }
+.modo-ver svg { width: 17px; height: 17px; }
+.modo-ver:hover { color: var(--texto); }
+.modo-ver.ativo { background: var(--painel2); color: var(--texto); }
+.modo-titulo { font-size: 18px; margin: 12px 0; }
+.vida { overflow: hidden; border: 1px solid var(--linha); border-radius: var(--raio); background: var(--painel); }
+.vida svg { display: block; width: 100%; height: 150px; }
+.vida .faixa.ouro { fill: var(--verde); } .vida .faixa.atencao { fill: var(--laranja); } .vida .faixa.tarde { fill: var(--detalhe); }
+.vida .curva { fill: none; stroke: var(--texto); stroke-width: 2.5; vector-effect: non-scaling-stroke; opacity: .85; }
+.vida-etapas { display: grid; grid-template-columns: repeat(5, 1fr); border-top: 1px solid var(--linha); }
+.vida-etapa { display: flex; flex-direction: column; gap: 3px; padding: 12px 14px; border: 0; border-right: 1px solid var(--linha); background: none; color: var(--texto); font: inherit; text-align: left; cursor: pointer; }
+.vida-etapa:last-child { border-right: 0; }
+.vida-etapa:hover:not(:disabled) { background: var(--painel2); }
+.vida-etapa:disabled { cursor: default; opacity: .5; }
+.vida-etapa small { color: var(--fraco); font-size: 12px; }
+.vida-etapa .n { font-size: 26px; font-weight: 700; line-height: 1.2; }
+.vida-etapa .clima { margin-top: 4px; font-size: 11px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; }
+.vida-etapa.ouro .clima { color: var(--verde); } .vida-etapa.atencao .clima { color: var(--laranja); } .vida-etapa.tarde .clima { color: var(--detalhe-claro); }
+.mapa-rolar { overflow-x: auto; border: 1px solid var(--linha); border-radius: var(--raio); background: var(--painel); }
+.mapa-nichos { width: 100%; border-collapse: collapse; font-size: 14px; }
+.mapa-nichos th { padding: 10px 12px; border-bottom: 1px solid var(--linha); color: var(--fraco); font-size: 12px; font-weight: 600; letter-spacing: .04em; text-align: right; text-transform: uppercase; white-space: nowrap; cursor: pointer; }
+.mapa-nichos th.ativo { color: var(--texto); }
+.mapa-nichos td { padding: 9px 12px; border-bottom: 1px solid var(--linha); text-align: right; font-variant-numeric: tabular-nums; }
+.mapa-nichos th:first-child, .mapa-nichos td:first-child { text-align: left; }
+.mapa-nichos tbody tr:last-child td { border-bottom: 0; }
+.mapa-nichos tbody tr[data-nicho] { cursor: pointer; }
+.mapa-nichos tbody tr[data-nicho]:hover { background: var(--painel2); }
+@media (max-width: 760px) {
+  .vida-etapas { grid-template-columns: 1fr 1fr; }
+  .vida-etapa { border-bottom: 1px solid var(--linha); }
+}

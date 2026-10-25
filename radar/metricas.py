@@ -59,6 +59,29 @@ def nota_outlier(views: int | None, normal: float | None) -> float | None:
     return round(views / normal, 1)
 
 
+# As cinco etapas de vida, pelo tempo que o canal está postando (o Gráfico do Niche Finder, 2026-10-25; a régua é a
+# que o Dotti Finder mostra). Cada uma: chave, rótulo, de, até (dias, com as pontas) e o clima de quem entra agora.
+# O painel repete a lista no select de etapa (tests/test_modos.py confere).
+ETAPAS = (
+    ("teste", "Teste de mercado", 0, 14, "ouro"),
+    ("decolagem", "Decolagem", 15, 60, "ouro"),
+    ("corrida", "Corrida por espaço", 61, 120, "atencao"),
+    ("maturidade", "Maturidade", 121, 420, "tarde"),
+    ("saturacao", "Saturação", 421, None, "tarde"),
+)
+
+
+def etapa(dias: float | None) -> str | None:
+    """A etapa de quem está postando há tantos dias (inteiros, como o "postando há" da tela)."""
+    if dias is None:
+        return None
+    d = int(dias)
+    for chave, _, de, ate, _ in ETAPAS:
+        if d >= de and (ate is None or d <= ate):
+            return chave
+    return None
+
+
 EXPLODIU_VIEWS = 500_000   # views dos vídeos longos publicados nos últimos 30 dias
 EXPLODIU_DIAS = 30
 TRACAO_ATE_DIAS = 60       # canal novo de até 60 dias...

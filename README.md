@@ -1198,3 +1198,31 @@ views em 30 dias, ficaram de fora só por isso (Wiggle World: normal de 1.386 e 
 - Na base de hoje: **298 canais na fila**, uns 8 garimpos para esvaziar.
 
 Testes em `tests/test_explodiu.py` (16, sem rede).
+
+## Cartões, Gráfico e Mapa em todo o Niche Finder (2026-10-25)
+
+Pedido do usuário, com o print do Dotti Finder: os três botões que eles têm em cima da lista de canais, "em todos do
+niche finder". Os deles foram abertos no painel logado (`docs/analise-dottifinder.md`, seção 11).
+
+- **Onde:** Canais (e Entraram hoje, que é a mesma tela com a visão ligada), Faceless Outliers e Acharam para você.
+  O modo fica no endereço (`modo=grafico`, `modo=mapa`), como os filtros; sem nada, são os cartões de sempre.
+- **Gráfico:** os canais contados pelas cinco etapas de vida, pelo tempo que estão postando (`metricas.ETAPAS`):
+  teste de mercado (0 a 14 dias), decolagem (15 a 60), corrida por espaço (61 a 120), maturidade (121 a 420) e
+  saturação. Cada etapa diz quantos canais, a mediana por vídeo, as views em 30 dias (velocidade × 30) e o clima
+  ("janela de ouro", "já tem fila", "tarde para entrar"). **Clicar numa etapa volta para os cartões filtrados por
+  ela** — o filtro novo `etapa`, que também ganhou um select nas três telas.
+- **Mapa:** os mesmos canais juntados por nicho: canais, normal típico (mediana), crescendo, parados e público
+  (soma dos inscritos). Ordena por qualquer coluna (a ordem vale para todas as telas); clicar num nicho volta para
+  os cartões daquele nicho.
+- **Sempre o filtro da tela.** O Mapa do Dotti é o mesmo em todas as visões; o nosso conta o que a lista mostra. O
+  servidor tira o WHERE de um lugar só: `_onde_radar` para a lista de canais e `/api/radar/resumo`;
+  `_videos_filtrados` para a lista de vídeos e `/api/videos/resumo` (os canais dos vídeos, cada um uma vez);
+  `/api/achados/resumo` com o nicho e a etapa do Acharam. Conferido no navegador, com uma cópia do banco: a
+  Decolagem do Gráfico dizia 71 e a lista filtrada trouxe 71; História no Mapa, 54 e 54.
+- O número do chip da visão continua sendo o da visão sozinha; o Gráfico conta com a preferência "só sem rosto",
+  como a lista (Entraram hoje: chip 38, lista e Gráfico 36).
+- **Fora:** o "medir demanda" do Mapa deles (gasta busca de cota e não diz o que faz) e os três modos próprios dos
+  Grupos (mosaico, mapa, constelação).
+
+Testes em `tests/test_modos.py` (16): as pontas de cada etapa, o filtro, o resumo e o painel com as mesmas etapas
+do servidor.
