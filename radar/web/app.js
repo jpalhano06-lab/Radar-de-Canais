@@ -2346,7 +2346,9 @@ async function canal(id, aba) {
   const c = d.canal;
   if (!d.meu) {   // canal que não é da pessoa: só os números e os vídeos
     tela.innerHTML = `<a class="voltar" href="javascript:history.back()">← voltar</a><article class="canal">${miolo(c)}</article>
+      <section class="cp-bloco" id="horarios-canal"></section>
       <div class="secao-tela"><h2>Últimos vídeos</h2><div class="grade-videos">${d.ultimos.map((v) => cartaoVideo(v, { canal: false })).join("")}</div></div>`;
+    horariosDoCanal(document.getElementById("horarios-canal"), d.horarios);
     ligarCartoes(); ligarRoteiro(); return;
   }
   CANAL_ATUAL = id;
@@ -2355,11 +2357,13 @@ async function canal(id, aba) {
     <article class="canal">${miolo(c)}</article>
     <div id="producao-canal"></div>
     <section class="cp-bloco" id="modelo-descricao"></section>
+    <section class="cp-bloco" id="horarios-canal"></section>
     <div id="painel-canal"></div>
     <div id="aba-corpo"></div>
     <div id="sugestoes-canal"></div></div></div>`;
   formProducao(document.getElementById("producao-canal"), id);
   modeloDaDescricao(document.getElementById("modelo-descricao"), id).catch(() => {});
+  horariosDoCanal(document.getElementById("horarios-canal"), d.horarios);
   painelCanal(document.getElementById("painel-canal"), id);
   sugestoesDoCanal(document.getElementById("sugestoes-canal"), c);
   ligarCartoes();
@@ -2376,6 +2380,42 @@ async function canal(id, aba) {
     corpo.innerHTML = `<div class="secao-tela"><h2>Seus últimos vídeos</h2><p class="linha-sub">A nota é quantas vezes o vídeo fez o normal do canal (${num(c.normal_longos)} por vídeo).</p>
         <div class="grade-videos">${d.ultimos.map((v) => cartaoVideo(v, { canal: false, roteiro: false, bloquear: false })).join("")}</div></div>`;
   }
+}
+
+// o melhor horário para postar, das curvas de views por hora que o Radar já guarda deste canal (sem cota).
+// Pedido do usuário em 2026-10-25, depois de abrir a vidIQ com o REA: lá, sem dado do canal, essa curva é uma matriz
+// fixa no código com ruído semeado pelo id do vídeo. Aqui, sem curva suficiente, a tela diz o que falta e não
+// desenha faixa nenhuma — ver radar/horarios.py.
+function horariosDoCanal(caixa, h) {
+  if (!caixa) return;
+  if (!h) { caixa.remove(); return; }
+  const cabeca = `<h3>🕒 Melhor horário para postar</h3>
+    <p class="sub">Das curvas de views por hora deste canal, somando ${num(h.horas)} ${h.horas === 1 ? "hora" : "horas"} de curva de ${num(h.videos)} ${h.videos === 1 ? "vídeo" : "vídeos"}. As primeiras ${h.ignorado_h} h de cada vídeo ficam de fora: o pico de estreia diz a hora em que você postou, não a hora em que o público assiste.</p>`;
+  if (!h.suficiente) {
+    caixa.innerHTML = `${cabeca}<div class="chamada aviso"><span class="texto">⚠ <b>Ainda não dá para dizer.</b>
+      O Radar precisa de ${h.minimo.videos} vídeos e ${num(h.minimo.horas)} horas de curva deste canal; tem ${num(h.videos)} e ${num(h.horas)}.
+      Enquanto não tiver, não aparece horário nenhum aqui — número inventado é pior que número nenhum.</span></div>`;
+    return;
+  }
+  let dia = "geral";
+  const desenhar = () => {
+    const valores = h.por_dia[dia] || [];
+    const topo = Math.max(...valores);
+    const pico = valores.indexOf(topo);
+    const faixa = h.faixas[pico];
+    const abas = ["geral", ...h.dias].map((d) => `<button class="botao sec${d === dia ? " ativo" : ""}" data-dia="${esc(d)}">${d === "geral" ? "Semana toda" : esc(d)}</button>`).join("");
+    const barras = valores.map((v, i) => {
+      const altura = Math.max(Math.round((v / (topo || 1)) * 100), 4);
+      const titulo = `${h.faixas[i][0]}h às ${h.faixas[i][1]}h59 · ${(v * 100).toFixed(1).replace(".", ",")}% do que o canal rende`;
+      return `<div class="hr-col${i === pico ? " pico" : ""}" title="${esc(titulo)}">
+        <div class="hr-barra"><i style="height:${altura}%"></i></div><span>${h.faixas[i][0]}h</span></div>`;
+    }).join("");
+    caixa.innerHTML = `${cabeca}<div class="hr-abas">${abas}</div><div class="hr-grafico">${barras}</div>
+      <p class="hr-pico">Pico ${dia === "geral" ? "da semana" : `de ${esc(dia)}`}: <b>${faixa[0]}h às ${faixa[1]}h59</b>
+        (${(topo * 100).toFixed(1).replace(".", ",")}% do que o canal rende). Poste um pouco antes, para o vídeo já estar no ar quando o público chegar.</p>`;
+    caixa.querySelectorAll("[data-dia]").forEach((b) => { b.onclick = () => { dia = b.dataset.dia; desenhar(); }; });
+  };
+  desenhar();
 }
 
 // embaixo da página do canal: vídeos que estouraram, do banco que o Radar já juntou, do mesmo assunto (não gasta cota)

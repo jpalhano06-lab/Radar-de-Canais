@@ -19,7 +19,7 @@ from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 
-from . import alvos, banco, canal_painel, custos, diagnostico, fabrica_api, fila, funcoes, garimpo, gosto, ia, integracoes, medir, mercado, metricas, pagina, perfil, producao, publicar, radar_paises, roteiro_claude, studio, tempo, thumb, trabalho, treinamento, youtube
+from . import alvos, banco, canal_painel, custos, diagnostico, fabrica_api, fila, funcoes, garimpo, gosto, horarios, ia, integracoes, medir, mercado, metricas, pagina, perfil, producao, publicar, radar_paises, roteiro_claude, studio, tempo, thumb, trabalho, treinamento, youtube
 from .config import DADOS, NOME, PLANOS, RAIZ, pode
 
 WEB = RAIZ / "radar" / "web"
@@ -413,6 +413,16 @@ def ext_canal_dados(canal_id: str, u: dict = Depends(exigir("extensao"))):
     if not d:
         raise HTTPException(404, "O Radar ainda não leu este canal.")
     return d
+
+
+@app.get("/api/ext/horarios/{canal_id}")
+def ext_horarios(canal_id: str, fuso: int = horarios.FUSO_PADRAO, u: dict = Depends(exigir("extensao"))):
+    """O melhor horário para postar neste canal, das curvas que o Radar já guarda (sem cota, sem rede).
+
+    Vai no plano grátis de propósito: é a conta que a vidIQ cobra no Pro e, sem dado do canal, inventa. O `fuso` são
+    os minutos de diferença do UTC; a extensão manda o do navegador. Sem curva suficiente a resposta vem com
+    `suficiente` falso e sem pico, e a tela não desenha faixa nenhuma."""
+    return horarios.do_canal(canal_id, max(-840, min(840, fuso)))
 
 
 @app.get("/api/ext/em-alta")
@@ -1241,7 +1251,8 @@ def meu_canal(canal_id: str, u: dict = Depends(usuario)):
     if not c:
         raise HTTPException(404, "Canal não encontrado.")
     return {"canal": _vitrine(c, u["id"], com_videos=False), "ultimos": perfil.ultimos_videos(c, 12),
-            "historico": perfil.historico(canal_id), "ideias": gosto.ideias_para(u, c),
+            "historico": perfil.historico(canal_id), "horarios": horarios.do_canal(canal_id),
+            "ideias": gosto.ideias_para(u, c),
             "parecidos": [_vitrine(p, com_videos=False) for p in perfil.parecidos_da_base(c)],
             "meu": bool(banco.um("SELECT 1 AS x FROM meus_canais WHERE usuario_id=? AND canal_id=?", u["id"], canal_id))}
 

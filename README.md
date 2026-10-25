@@ -1174,3 +1174,45 @@ testes no `test_abertura.py` cobram as duas coisas.
 Conferido com o Radar ligado, no navegador: as quatro telas montam a `.busca-caixa` com os filhos certos, nenhuma
 tem mais o `#painel-cota`, e o menu do Perfil mostra Produzir. Para a extensão: `chrome://extensions` → ↻ no Radar
 de Canais → F5 na aba do Studio.
+
+## Melhor horário para postar, do próprio canal (2026-10-25)
+
+Pedido depois de abrir a **vidIQ Vision 3.233.0 com o REA**. Na extensão deles o "Melhor Horário para Publicar"
+pede `vidiq.getHistograms` e desenha uma matriz 7 x 24 em 8 faixas de 3 horas. Mas o `select` da consulta faz isto:
+se o servidor devolve a matriz **toda zerada** (sem dado daquele canal), a curva passa a sair de `B6t(videoId)` —
+uma matriz fixa escrita no código (`TAt.activity`, picos genéricos às 15 h e às 19 h) com um ruído de ±15% semeado
+por um hash de `${videoId}-${dia}-${hora}`. Determinística, então não oscila entre recarregamentos; guardada três
+dias no `best-time-to-post-store`, então parece estável; marcada `isPlaceholderData`, com um aviso que só aparece
+para quem é Pro e diz apenas que "a precisão vai melhorar". É o recurso travado no plano `pro` e exige autenticar
+o canal.
+
+O Radar faz a conta de verdade, de graça, em `radar/horarios.py`:
+
+- **De onde sai**: as `leituras` que o `medir.py` já guarda (views acumuladas de cada vídeo). A diferença entre
+  duas leituras vizinhas é o quanto aquele vídeo rendeu naquelas horas — ou seja, quando o público aparece.
+- **As primeiras 24 h de cada vídeo ficam de fora.** O pico de estreia diz a hora em que o canal **postou**, não a
+  hora em que o público assiste; contando a estreia o histograma recomendaria de volta o horário já usado e
+  pareceria certeiro sem nunca ter medido nada.
+- **Cada vídeo pesa 1**: a fatia é dividida pelo total do próprio vídeo antes de somar, senão um vídeo que estourou
+  viraria sozinho o "melhor horário" do canal.
+- **Buraco de mais de 6 h entre leituras é descartado**: par de 24 h diz o total do dia, não a hora.
+- **Sem dado, o Radar diz que não sabe.** Abaixo de 8 vídeos e 200 horas de curva, `suficiente` é falso, `pico` é
+  nulo e a tela escreve o que falta. Número inventado é pior que número nenhum — é exatamente o que a vidIQ faz.
+
+**O limite da fonte, medido no banco**: dos 127.834 pares de leituras vizinhas, só **3%** estão a 6 h ou menos um
+do outro; 73% estão a 13-36 h e 23% a mais de 36. O vídeo só é lido de hora em hora enquanto alguém passa por ele,
+e o canal inteiro é relido uma vez por dia. Por isso o histograma só fecha nos canais que a extensão visitou muito.
+A fonte boa para o canal da própria pessoa já existe e está sem uso: o `extensao/studio.js` busca as views **hora a
+hora das últimas 48 h** na análise do Studio, com o login dela e sem cota — guardando esses pontos a cada passagem,
+em semanas sai um 7 x 24 denso. Fica como próximo passo.
+
+Onde aparece: na **página do canal** no site (própria ou de terceiro), com as 8 barras, as abas de dia da semana e
+o pico; e na **extensão**, na etapa de Visibilidade do Studio — que é onde se agenda e onde o `publicar.js` não
+tinha etapa nenhuma. Lá o cartão só mostra: nessa etapa quem agenda e quem aperta Publicar continua sendo a pessoa.
+A etapa é reconhecida pelo elemento `ytcp-video-visibility-select`, não pelo texto "Visibilidade": o stepper do
+Studio mostra o rótulo de todas as etapas em todas as telas.
+
+Conferido no navegador, com o banco real: Tinocando TV fecha em **21 h às 23 h59 (36,8%)** com 28 vídeos e 387 horas
+de curva, e a curva sobe a tarde inteira; o canal João o Lobo (19 vídeos, 158 horas) mostra o aviso de que ainda
+não dá para dizer. `tests/test_horarios.py` cobre as contas (12 testes). O painel do Studio não foi visto num
+upload de verdade — só o endereço que ele chama. Para a extensão: `chrome://extensions` → ↻ no Radar de Canais.

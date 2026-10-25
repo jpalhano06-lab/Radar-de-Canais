@@ -1785,3 +1785,22 @@ nav .subs a .olho svg { width: 15px; height: 15px; }
   border-radius: 9px; padding: 9px 11px; font: inherit; }
 .dep-print { display: grid; gap: 5px; color: var(--fraco); font-size: 12.5px; }
 .tabela tr.escondido { opacity: .5; }
+
+/* o melhor horário para postar, na página do canal (radar/horarios.py) */
+.hr-abas { display: flex; gap: 6px; flex-wrap: wrap; }
+/* a aba ligada tem que saltar em qualquer tema: nos claros o --acento é igual ao fundo do botão, então o que
+   diferencia é o contorno grosso e o apagado das outras, não só a cor de fundo */
+.hr-abas .botao.sec { padding: 5px 11px; font-size: 13px; text-transform: capitalize; opacity: .5; }
+.hr-abas .botao.sec.ativo { opacity: 1; font-weight: 700; outline: 2px solid var(--texto); outline-offset: -2px; }
+.hr-grafico { display: grid; grid-template-columns: repeat(8, 1fr); gap: 8px; align-items: end; height: 150px; }
+.hr-col { display: grid; grid-template-rows: 1fr auto; gap: 6px; height: 100%; justify-items: center; }
+.hr-col span { color: var(--fraco); font-size: 12px; font-variant-numeric: tabular-nums; }
+/* o trilho é só um sulco de fundo: se ele parecer barra, faixa vazia vira faixa cheia na leitura */
+.hr-barra { width: 100%; height: 100%; display: flex; align-items: flex-end; border-radius: 8px; overflow: hidden;
+  background: color-mix(in srgb, var(--texto) 5%, transparent); }
+.hr-barra i { display: block; width: 100%; border-radius: 8px; transition: height .2s;
+  background: color-mix(in srgb, var(--acento) 45%, transparent); }
+.hr-col.pico .hr-barra i { background: var(--acento); }
+.hr-col.pico span { color: var(--texto); font-weight: 700; }
+.hr-pico { margin: 0; color: var(--fraco); font-size: 13px; }
+.hr-pico b { color: var(--texto); }

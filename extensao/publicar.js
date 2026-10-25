@@ -23,6 +23,7 @@
   const estado = {
     arquivo: "", kit: null, erro: "", carregando: false,
     jaPreencheu: "", trabalhando: "", recado: "", recadoErro: false,
+    horarios: null, horariosPedido: false,
     modoAnuncio: localStorage.getItem("radar-anuncio-modo") || "cada",
     cadaMin: Number(localStorage.getItem("radar-anuncio-cada")) || 1,
     quantos: Number(localStorage.getItem("radar-anuncio-quantos")) || 10,
@@ -445,10 +446,51 @@
     if (temTexto(/Espaços de anúncios intermediários|Mid-?roll ad breaks|anúncios intermediários/i)) return "anuncios";
     if (botao(/^(Enviar classificação|Submit rating)$/i) || temTexto(/Adequação (para|a) anunciantes|Advertiser suitability/i)) return "anunciantes";
     if (visivel(campoDescricao())) return "detalhes";
+    // pelo elemento próprio da tela, não pelo texto: o stepper do Studio mostra o rótulo de todas as etapas em todas
+    // as telas, então procurar "Visibilidade" escrito acertaria em qualquer uma
+    if (visivel(document.querySelector("ytcp-video-visibility-select"))) return "visibilidade";
     if (temTexto(/^Monetização$|^Monetization$/i)) return "monetizacao";
     if (temTexto(/Elementos do vídeo|Video elements/i)) return "elementos";
     if (temTexto(/^Verificaç(ão|ões)$|^Checks?$/i)) return "verificacoes";
     return "";
+  }
+
+  // ------------------------------------------------------------ o melhor horário do canal, na etapa de visibilidade
+  // Pedido do usuário em 2026-10-25. A conta é do Radar (radar/horarios.py), das curvas de views por hora que ele já
+  // guarda deste canal: aqui só se mostra. Nada é clicado — nesta etapa quem agenda e quem publica é a pessoa, do
+  // mesmo jeito que o acaoDaEtapa já não dá botão. Sem curva suficiente o cartão não aparece.
+  function canalDoStudio() {
+    const daUrl = (location.pathname.match(/\/channel\/(UC[\w-]{22})/) || [])[1];
+    if (daUrl) return Promise.resolve(daUrl);
+    return chrome.storage.local.get("numerosCanal").then((d) => (d.numerosCanal || {}).canal || "").catch(() => "");
+  }
+
+  async function buscarHorarios() {
+    if (estado.horarios || estado.horariosPedido) return;
+    estado.horariosPedido = true;
+    const canal = await canalDoStudio();
+    if (!canal) return;
+    const fuso = -new Date().getTimezoneOffset();     // minutos somados ao UTC, como o horarios.py espera
+    const r = await pedir({ tipo: "api", caminho: `/api/ext/horarios/${encodeURIComponent(canal)}?fuso=${fuso}` });
+    if (!r.erro && r.dados && r.dados.suficiente) { estado.horarios = r.dados; desenhar(); }
+  }
+
+  function cartaoHorario() {
+    const h = estado.horarios;
+    if (!h) return null;
+    const valores = h.por_dia.geral || [];
+    const topo = Math.max(...valores);
+    const pico = valores.indexOf(topo);
+    const faixa = h.faixas[pico];
+    const colunas = valores.map((v, i) => el("div", { className: `hr-c${i === pico ? " pico" : ""}`,
+      title: `${h.faixas[i][0]}h às ${h.faixas[i][1]}h59 · ${(v * 100).toFixed(1).replace(".", ",")}%` },
+      el("u", {}, el("i", { style: `height:${Math.max(Math.round((v / (topo || 1)) * 100), 6)}%` })),
+      el("span", { textContent: `${h.faixas[i][0]}h` })));
+    return el("div", { className: "cartao hr" },
+      el("b", { textContent: `🕒 Pico do canal: ${faixa[0]}h às ${faixa[1]}h59` }),
+      el("div", { className: "hr-g" }, colunas),
+      el("small", { textContent: `Das curvas do Radar: ${h.videos} vídeos, ${h.horas} horas de curva, `
+        + `sem as ${h.ignorado_h} h de estreia. Poste um pouco antes do pico.` }));
   }
 
   // ------------------------------------------------------------ o Radar
@@ -520,6 +562,14 @@
       box-shadow: 0 12px 40px rgba(0,0,0,.45); }
     .erro { color: #ff5263; font-size: 12px; }
     .ok { color: #b6f23a; font-size: 12px; }
+    /* o melhor horário do canal, na etapa de visibilidade (radar/horarios.py) */
+    .hr b { font-size: 13px; } .hr small { display: block; color: #8b93a7; font-size: 11px; margin-top: 2px; }
+    .hr-g { display: grid; grid-template-columns: repeat(8, 1fr); gap: 4px; align-items: end; height: 54px; margin: 8px 0 4px; }
+    .hr-c { display: grid; grid-template-rows: 1fr auto; gap: 3px; height: 100%; justify-items: center; }
+    .hr-c u { display: block; width: 100%; height: 100%; display: flex; align-items: flex-end; background: #1b1f29; border-radius: 4px; overflow: hidden; }
+    .hr-c u i { display: block; width: 100%; background: #39404f; border-radius: 4px; }
+    .hr-c.pico u i { background: #cc0000; }
+    .hr-c span { color: #8b93a7; font-size: 10px; } .hr-c.pico span { color: #eef1f7; font-weight: 700; }
   </style><div class="barra" hidden></div>`;
   const barra = raiz.querySelector(".barra");
 
@@ -587,8 +637,13 @@
   function desenhar() {
     const etapa = telaDePublicar() ? etapaAtual() : "";
     const a = etapa ? acaoDaEtapa(etapa) : null;
-    barra.hidden = !etapa;
-    if (!etapa) {
+    // na etapa de visibilidade entra o melhor horário deste canal, para a pessoa agendar sabendo. Ela não tem botão
+    // (quem agenda e publica é a pessoa), então sem cartão não há o que mostrar: a barra fica escondida como antes
+    if (etapa === "visibilidade") buscarHorarios();
+    const extra = etapa === "visibilidade" ? cartaoHorario() : null;
+    const mostrar = !!etapa && (!!a || !!extra || !!estado.recado);
+    barra.hidden = !mostrar;
+    if (!mostrar) {
       host.classList.remove("na-barra"); barra.classList.remove("na-barra");
       if (host.parentElement !== document.body) document.body.append(host);
       return;
@@ -597,6 +652,7 @@
     const corpo = [];
     if (estado.recado) corpo.push(el("div", { className: "cartao" },
       el("div", { className: estado.recadoErro ? "erro" : "ok", textContent: estado.recado })));
+    if (extra) corpo.push(extra);
 
     const principal = a ? el("button", { className: "acao", disabled: !!estado.trabalhando }, el("i"), a.texto) : null;
     if (principal) principal.onclick = a.tarefa;
