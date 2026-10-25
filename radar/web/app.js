@@ -94,7 +94,9 @@ async function umPedido(caminho, opcoes) {
   const r = await fetch(caminho, { credentials: "same-origin", headers: { "Content-Type": "application/json" }, ...opcoes,
     body: opcoes.body ? JSON.stringify(opcoes.body) : undefined });
   const dados = await r.json().catch(() => ({}));
-  if (!r.ok) throw Object.assign(new Error(dados.detail || "Algo deu errado."), { status: r.status });
+  // "resposta" marca o erro que veio do próprio Radar (ele explicou em JSON o que houve), e não de um
+  // servidor caído no meio do caminho: só o segundo adianta tentar de novo.
+  if (!r.ok) throw Object.assign(new Error(dados.detail || "Algo deu errado."), { status: r.status, resposta: !!dados.detail });
   return dados;
 }
 
@@ -107,7 +109,10 @@ async function api(caminho, opcoes = {}) {
     if (guardado && Date.now() - guardado.quando < MEM_MS) return guardado.dados;
     if (VOO.has(caminho)) return VOO.get(caminho);
   }
-  // 502/503/504 é o Radar reiniciando: espera e tenta de novo, com a faixa avisando
+  // 502/503/504 sem resposta do Radar é ele reiniciando: espera e tenta de novo, com a faixa avisando.
+  // Quando o 503 é o próprio Radar dizendo que algo de fora está desligado (a fábrica na porta 8080, por
+  // exemplo), tentar de novo seis vezes só deixava a tela em "Carregando…" por um minuto e meio: esse erro
+  // é uma resposta, passa direto para a tela mostrar o que houve.
   const tentar = async () => {
     let contado = false;
     try {
@@ -115,7 +120,7 @@ async function api(caminho, opcoes = {}) {
         try {
           return await umPedido(caminho, opcoes);
         } catch (erro) {
-          if (![502, 503, 504].includes(erro.status) || i >= ESPERAS.length) throw erro;
+          if (![502, 503, 504].includes(erro.status) || erro.resposta || i >= ESPERAS.length) throw erro;
           if (!contado) { contado = true; tentandoDeNovo++; voltando(); }
           await new Promise((ok) => setTimeout(ok, ESPERAS[i]));
         }
