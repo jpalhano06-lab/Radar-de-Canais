@@ -907,7 +907,7 @@ async function trabalho() {
     () => {
       const editor = () => {
         $("rt-corpo").innerHTML = `<h2>O roteiro</h2><p class="sub">Leia, corrija o que quiser e salve. Só o texto que a voz fala.</p>
-          <textarea class="roteiro" id="rt-texto">${esc(E.r.roteiro)}</textarea>
+          ${notasDoRoteiro(E.r)}<textarea class="roteiro" id="rt-texto">${esc(E.r.roteiro)}</textarea>
           <div class="linha"><span class="sub" id="rt-conta"></span><button class="botao sec" id="rt-copiar">Copiar</button>
             <button class="botao sec" id="rt-salvar">Salvar alterações</button><button class="botao sec" id="rt-refazer">${E.r.manual ? "Trocar o roteiro" : "Escrever de novo"}</button></div>`;
         const contar = () => { const n = $("rt-texto").value.split(/\s+/).filter(Boolean).length; $("rt-conta").textContent = `${n} palavras · uns ${Math.max(1, Math.round(n / E.ppm))} minutos de narração`; };
@@ -1657,13 +1657,30 @@ function anel(pct) {
     <span class="anel-pct"><b>${pct}</b>%</span>`;
 }
 
+// O que o roteiro em passos deixa para quem revisa (2026-10-25): a linha do tempo com a hora de cada passo, o aviso
+// quando um passo de apoio foi pulado (o roteiro sai, mas não passou por ele), o que a pesquisa não confirmou, os fatos
+// com a fonte e as notas da revisão. Roteiro antigo, de uma chamada só, não tem passos e não mostra nada.
+function notasDoRoteiro(r) {
+  if (!r || !r.passos?.length) return "";
+  const duracao = (s) => (s >= 90 ? `${Math.round(s / 60)} min` : `${s} s`);
+  const hora = (t) => { const d = new Date(t); return isNaN(d) ? "" : d.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" }); };
+  const bloco = (titulo, texto, aberto) => (texto ? `<details ${aberto ? "open" : ""}><summary>${titulo}</summary><pre>${esc(texto)}</pre></details>` : "");
+  return `<div class="rt-passos">
+    ${r.pulados?.length ? `<div class="chamada aviso">⚠ Este roteiro saiu sem: ${r.pulados.map(esc).join(", ")}. Confira números, datas e nomes antes de aprovar.</div>` : ""}
+    <ol class="rt-linha">${r.passos.map((p) => `<li class="${p.estado === "pulado" ? "pulado" : "feito"}"><b>${esc(p.rotulo)}</b>
+      <small>${hora(p.inicio)} · ${p.estado === "pulado" ? `pulado${p.nota ? `: ${esc(p.nota)}` : ""}` : duracao(p.segundos)}</small></li>`).join("")}</ol>
+    ${bloco("O que a pesquisa não confirmou (o roteiro não pode afirmar)", r.lacunas, true)}
+    ${bloco("Notas da revisão", r.notas_revisao, true)}
+    ${bloco("A pesquisa, com as fontes", r.pesquisa, false)}</div>`;
+}
+
 // Acompanhar novo (2026-10-18, no modelo do Robô do Dotti, feito do zero): à esquerda a fila em blocos (precisa de
 // você, produzindo, na fila, entrada, parados); à direita o vídeo escolhido com as abas Acompanhamento, Diagnóstico
 // (de onde vieram as cenas: real × IA, e o log), Arquivos e Tags e descrição. O vídeo aberto atualiza a cada 5 s, a
 // lista a cada 20 s.
 const BLOCOS_AC = [["precisa_voce", "✋ Precisa de você"], ["produzindo", "⚙️ Produzindo"], ["na_fila", "⏳ Na fila"],
   ["entrada", "📥 Entrada"], ["parados", "⏸ Parados na fábrica"]];
-const ESTADO_FILA = { entrada: "Na Entrada", na_fila: "Na fila", escrevendo: "Escrevendo o roteiro", sua_vez: "Esperando sua revisão",
+const ESTADO_FILA = { entrada: "Na Entrada", na_fila: "Na fila", escrevendo: "Escrevendo o roteiro", limite: "Esperando o limite do Claude", sua_vez: "Esperando sua revisão",
   enviando: "Enviando para a fábrica", produzindo: "Produzindo", erro: "Parou com erro", precisa_voce: "Precisa de você", parado: "Parado" };
 
 async function acompanhar() {
@@ -1731,14 +1748,16 @@ async function acompanhar() {
         ${x.erro ? `<div class="chamada aviso">⚠ ${esc(x.erro)}</div>` : ""}
         <p class="acn-explica">${{ entrada: "Guardado na Entrada: não começa sozinho e não gasta nada.", na_fila: "Esperando a vez: começa quando a fábrica tiver vaga.",
           escrevendo: `O Claude está escrevendo o roteiro. ${esc(x.passo || "")}`, sua_vez: "O roteiro está pronto. Leia, ajuste se quiser e aprove para ir para a fábrica.",
-          enviando: "Criando o projeto na fábrica…", erro: "Corrija o que o aviso diz e tente de novo." }[x.estado] || ""}</p>
+          enviando: "Criando o projeto na fábrica…", erro: "Corrija o que o aviso diz e tente de novo.",
+          limite: `O Claude da assinatura bateu no limite. ${esc(x.passo || "")}. A fila segue sozinha quando ele voltar, do passo em que parou.` }[x.estado] || ""}</p>
         <div class="acn-acoes">${x.estado === "entrada" ? acao("▶ Começar", "", 'data-a="comecar"') : ""}
           ${x.estado === "erro" ? acao("↻ Tentar de novo", "", 'data-a="tentar"') : ""}
+          ${x.estado === "limite" ? acao("↻ Tentar agora", "", 'data-a="tentar"') : ""}
           ${acao("Excluir pedido", "contorno", 'data-a="excluir"')}</div>
         <div id="acn-revisao"></div>`;
       if (x.estado === "sua_vez") {
         const r = await api(`/api/fila/${x.id}/roteiro`);
-        caixa.querySelector("#acn-revisao").innerHTML = `<label class="campo"><span>Roteiro (${r.palavras.toLocaleString("pt-BR")} palavras)</span>
+        caixa.querySelector("#acn-revisao").innerHTML = `${notasDoRoteiro(r)}<label class="campo"><span>Roteiro (${r.palavras.toLocaleString("pt-BR")} palavras)</span>
           <textarea id="acn-texto" rows="16">${esc(r.roteiro)}</textarea></label>
           <div class="acn-acoes">${acao("Salvar alterações", "contorno", 'id="acn-salvar"')}${acao("✓ Aprovar e mandar para a fábrica", "", 'id="acn-aprovar"')}</div>`;
         // texto mexido e não salvo: a atualização automática não redesenha (antes, em 20 s, a edição sumia)

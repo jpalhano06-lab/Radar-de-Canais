@@ -2096,7 +2096,10 @@ def fila_roteiro(fid: int, u: dict = Depends(usuario)):
     except RuntimeError as erro:
         raise HTTPException(404, str(erro))
     texto = (pasta / "roteiro.txt").read_text(encoding="utf-8")
-    return {"nome": item["roteiro"], "titulo": meta.get("titulo", ""), "roteiro": texto, "palavras": len(texto.split())}
+    publico = roteiro_claude._publico(pasta)
+    # o que o roteiro em passos deixou para quem revisa (2026-10-25)
+    return {"nome": item["roteiro"], "titulo": meta.get("titulo", ""), "roteiro": texto, "palavras": len(texto.split())} | {
+        k: publico.get(k) or ([] if k in ("passos", "pulados") else "") for k in ("passos", "pulados", "lacunas", "notas_revisao", "pesquisa")}
 
 
 @app.post("/api/fila/{fid}/comecar")

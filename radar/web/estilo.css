@@ -1251,7 +1251,7 @@ nav .subs a.ativo { transform: none; }
 .acn-arquivos { display: flex; flex-wrap: wrap; gap: 8px; }
 .acn-pub { display: grid; gap: 4px; }
 .acn-pub-cab { display: flex; align-items: center; }
-.acn-pub pre { margin: 0; white-space: pre-wrap; word-break: break-word; background: var(--painel2); border-radius: 10px; padding: 10px; font: 13px/1.5 inherit; font-family: inherit; }
+.acn-pub pre { margin: 0; white-space: pre-wrap; word-break: break-word; background: var(--painel2); border-radius: 10px; padding: 10px; font-family: inherit; font-size: 13px; line-height: 1.5; font-family: inherit; }
 .acn-video textarea { background: var(--painel2); color: var(--texto); border: 1px solid var(--linha); border-radius: 10px; padding: 10px; font: inherit; font-size: 14px; line-height: 1.5; width: 100%; box-sizing: border-box; }
 .confirmar { display: inline-flex; align-items: center; gap: 6px; flex-wrap: wrap; font-size: 13px; }
 .confirmar .botao { padding: 5px 12px; font-size: 12px; }
@@ -1816,3 +1816,15 @@ nav .subs a .olho svg { width: 15px; height: 15px; }
   .vida-etapas { grid-template-columns: 1fr 1fr; }
   .vida-etapa { border-bottom: 1px solid var(--linha); }
 }
+
+/* o roteiro em passos (2026-10-25): a linha do tempo de cada passo e o que a pesquisa e a revisão deixaram */
+.rt-passos { display: grid; gap: 10px; margin-bottom: 12px; }
+.rt-linha { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 8px; }
+.rt-linha li { display: grid; gap: 2px; background: var(--painel2); border: 1px solid var(--linha); border-radius: 9px; padding: 7px 11px; min-width: 0; }
+.rt-linha li b { font-size: 13px; }
+.rt-linha li b::before { content: "✓ "; color: var(--verde); }
+.rt-linha li.pulado b::before { content: "– "; color: var(--detalhe); }
+.rt-linha li small { color: var(--fraco); font-size: 12px; overflow-wrap: anywhere; }
+.rt-passos details { background: var(--painel); border: 1px solid var(--linha); border-radius: 9px; padding: 8px 11px; }
+.rt-passos summary { cursor: pointer; font-size: 13px; font-weight: 600; }
+.rt-passos pre { white-space: pre-wrap; overflow-wrap: anywhere; font-family: inherit; font-size: 13px; line-height: 1.5; margin: 8px 0 0; color: var(--texto); max-height: 260px; overflow: auto; }

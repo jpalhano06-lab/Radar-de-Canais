@@ -119,6 +119,8 @@ def blocos(fila_itens: list[dict], producoes: dict) -> dict:
             saida["precisa_voce"].append(item)
         elif f["estado"] in ("escrevendo", "enviando", "produzindo"):
             saida["produzindo"].append(item)
+        elif f["estado"] == "limite":           # esperando o limite do Claude: volta sozinho, não precisa de você
+            saida["na_fila"].append(item)
         else:
             saida[f["estado"]].append(item)
     for nome, p in andamento.items():

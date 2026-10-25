@@ -3,7 +3,10 @@ fábrica quando abre vaga, no limite de vídeos ao mesmo tempo.
 
 Estados: entrada (guardado, não começa) → na_fila → escrevendo (o Claude faz o roteiro) → sua_vez (esperando a
 revisão, se ligada) → enviando → produzindo → entregue; ou erro e cancelado. "Criar e começar" é o sim para gastar:
-o vigia chama a produção da fábrica já confirmada."""
+o vigia chama a produção da fábrica já confirmada.
+
+O limite do Claude (2026-10-25) não é erro: o pedido vai para "limite", a fila para de pedir roteiro até a hora em que
+o limite volta e então devolve esses pedidos para a fila, que seguem do passo em que pararam."""
 import json
 import threading
 import time
@@ -11,7 +14,8 @@ import time
 from . import banco, fabrica_api
 from .config import FABRICA
 
-ESTADOS = ("entrada", "na_fila", "escrevendo", "sua_vez", "enviando", "produzindo", "entregue", "erro", "cancelado")
+ESTADOS = ("entrada", "na_fila", "escrevendo", "limite", "sua_vez", "enviando", "produzindo", "entregue", "erro",
+           "cancelado")
 CARACTERES_POR_PALAVRA = 5.9      # média do inglês e do português narrados, com o espaço
 MIN_CARACTERES, MAX_CARACTERES = 1000, 80000
 LIMITES = (1, 2, 3, 4, 6, 8)
@@ -103,8 +107,10 @@ def aprovar(usuario_id: int, fid: int) -> dict:
 
 
 def tentar(usuario_id: int, fid: int) -> dict:
-    _de(usuario_id, fid, "erro")
-    mudar(fid, "na_fila", erro="")
+    """Do erro, ou do limite do Claude sem esperar a hora (quem aperta sabe que o limite já voltou)."""
+    if _de(usuario_id, fid, "erro", "limite")["estado"] == "limite":
+        pausar(0)
+    mudar(fid, "na_fila", erro="", passo="")
     return item(usuario_id, fid)
 
 
@@ -125,6 +131,16 @@ def definir_limite(n: int) -> int:
         raise ValueError("Escolha 1, 2, 3, 4, 6 ou 8 vídeos ao mesmo tempo.")
     banco.executar("INSERT OR REPLACE INTO ajustes (chave, valor) VALUES ('fila_limite', ?)", str(int(n)))
     return int(n)
+
+
+def pausado_ate() -> float:
+    """Até quando (segundos desde 1970) a fila não pede roteiro ao Claude: o limite da assinatura bateu."""
+    linha = banco.um("SELECT valor FROM ajustes WHERE chave='claude_pausado_ate'")
+    return float(linha["valor"]) if linha else 0.0
+
+
+def pausar(ate: float) -> None:
+    banco.executar("INSERT OR REPLACE INTO ajustes (chave, valor) VALUES ('claude_pausado_ate', ?)", str(ate))
 
 
 # ---------------------------------------------------------------- o vigia: puxa a fila para a fábrica
@@ -167,8 +183,14 @@ def _escrever(linha: dict, roteirista, config_canal, ritmo) -> None:
             r = roteirista.gerar(usuario_id=linha["usuario_id"], titulo=pedido["titulo"], link=pedido.get("link", ""),
                                  minutos=max(1, round(minutos_de(pedido["caracteres"], ppm))), lingua=lingua,
                                  projeto_id=int(agente) if agente else None, observacoes=_observacoes(pedido),
-                                 perfil=cfg.get("perfil", ""), canal=canal, aviso=aviso)
+                                 perfil=cfg.get("perfil", ""), canal=canal, aviso=aviso, chave=f"fila-{linha['id']}")
     except Exception as erro:  # noqa: BLE001 (qualquer falha do roteiro vira o erro do pedido, com o motivo)
+        volta = getattr(erro, "volta", None)        # roteiro_claude.LimiteDoClaude: esperar, não errar
+        if volta:
+            pausar(max(volta, pausado_ate()))
+            mudar(linha["id"], "limite", de=("escrevendo",), erro="",
+                  passo=f"Esperando o limite do Claude (volta às {time.strftime('%H:%M', time.localtime(volta))})")
+            return
         mudar(linha["id"], "erro", de=("escrevendo",), erro=str(erro)[:500], passo="")
         return
     revisar = pedido.get("revisar") and not linha["aprovado"]
@@ -209,11 +231,17 @@ def passo(fabrica=None, roteirista=None, em_thread: bool = True, config_canal=No
         da_fila = {l["projeto"] for l in banco.todos("SELECT projeto FROM producoes_fila WHERE estado IN ('enviando', 'produzindo')")}
         fora = [n for n, p in andamento.items() if p.get("rodando") and n not in da_fila]
         vagas = limite() - len(da_fila) - len(fora)
-        # 3. a fila, na ordem: primeiro o roteiro (não ocupa vaga, até ESCRITAS_AO_MESMO_TEMPO), depois o envio (ocupa)
+        # 3. o limite do Claude: passada a hora, quem esperava volta para a fila (e segue do passo em que parou)
+        pausado = time.time() < pausado_ate()
+        if not pausado:
+            for linha in banco.todos("SELECT id FROM producoes_fila WHERE estado='limite'"):
+                if mudar(linha["id"], "na_fila", de=("limite",), passo=""):
+                    mudaram.append(linha["id"])
+        # 4. a fila, na ordem: primeiro o roteiro (não ocupa vaga, até ESCRITAS_AO_MESMO_TEMPO), depois o envio (ocupa)
         escrevendo = banco.um("SELECT COUNT(*) AS n FROM producoes_fila WHERE estado='escrevendo'")["n"]
         for linha in banco.todos("SELECT * FROM producoes_fila WHERE estado='na_fila' ORDER BY ordem"):
             if not linha["roteiro"]:
-                if escrevendo >= ESCRITAS_AO_MESMO_TEMPO or not mudar(linha["id"], "escrevendo", de=("na_fila",), passo="Começando…"):
+                if pausado or escrevendo >= ESCRITAS_AO_MESMO_TEMPO or not mudar(linha["id"], "escrevendo", de=("na_fila",), passo="Começando…"):
                     continue
                 escrevendo += 1
                 mudaram.append(linha["id"])
@@ -222,6 +250,7 @@ def passo(fabrica=None, roteirista=None, em_thread: bool = True, config_canal=No
                     continue
                 _escrever(linha, roteirista, config_canal, ritmo)
                 escrevendo -= 1
+                pausado = time.time() < pausado_ate()
                 linha = banco.um("SELECT * FROM producoes_fila WHERE id=?", linha["id"])
                 if linha["estado"] != "na_fila":
                     continue
