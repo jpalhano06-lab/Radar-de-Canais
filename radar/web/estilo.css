@@ -650,6 +650,11 @@ nav .secao { color: var(--acento2); font-weight: 700; }
    para centralizar e a lista ficava colada na esquerda (pedido do usuário, 2026-10-25: "tudo centralizado com
    espaço nas laterais"). */
 body[data-tela="trabalho"] main { max-width: 1680px; }
+/* As listas de canais e de vídeos também abrem até 1680: em 1280 cada capa ficava com uns 210px, pequena demais
+   para ler a thumb (pedido do usuário, 2026-10-25: "os vídeos um pouco maiores"). Continua centralizado. */
+body:is([data-tela="base"], [data-tela="videos"], [data-tela="acharam"], [data-tela="grupos"]) main { max-width: 1680px; }
+body:is([data-tela="base"], [data-tela="acharam"], [data-tela="grupos"]) .capas { gap: 14px; }
+body:is([data-tela="base"], [data-tela="acharam"], [data-tela="grupos"]) .capas .video .titulo { font-size: 14px; }
 .ideia-grade { grid-template-columns: minmax(0, 1.1fr) minmax(380px, 1fr); gap: 22px; }
 .thumb-painel { padding: 16px; gap: 10px; }
 .thumb-painel textarea { width: 100%; resize: vertical; }
