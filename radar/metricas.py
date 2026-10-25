@@ -59,6 +59,34 @@ def nota_outlier(views: int | None, normal: float | None) -> float | None:
     return round(views / normal, 1)
 
 
+EXPLODIU_VIEWS = 500_000   # views dos vídeos longos publicados nos últimos 30 dias
+EXPLODIU_DIAS = 30
+TRACAO_ATE_DIAS = 60       # canal novo de até 60 dias...
+TRACAO_VIDEOS = 3          # ...com 3 vídeos longos de 6x o normal...
+TRACAO_NOTA = 6.0
+TRACAO_VIEWS = 6_000       # ...e 6 mil views ou mais cada: com normal de 76, qualquer vídeo é 6x
+
+
+def explodiu(videos: list[dict], primeiro_video: str, normal: float | None, agora: datetime | None = None) -> bool:
+    """O canal que estourou agora, mesmo com o normal baixo (a régua de "explodiu" do Dotti Finder, 2026-10-25).
+
+    A porta de sempre do garimpo pede normal de 10 mil: é consistência. Esta é a outra: 500 mil views nos vídeos longos
+    dos últimos 30 dias, ou um canal de até 60 dias com 3 vídeos longos de 6x o normal. Shorts não contam."""
+    longos = [v for v in _validos(videos) if not curto(v["duracao_s"])]
+    recentes = 0
+    for v in longos:
+        dias = dias_desde(v.get("publicado", ""), agora)
+        if dias is not None and dias <= EXPLODIU_DIAS:
+            recentes += v["views"]
+    if recentes >= EXPLODIU_VIEWS:
+        return True
+    postando = dias_desde(primeiro_video, agora)
+    if postando is None or postando > TRACAO_ATE_DIAS:
+        return False
+    fortes = [v for v in longos if v["views"] >= TRACAO_VIEWS and (nota_outlier(v["views"], normal) or 0) >= TRACAO_NOTA]
+    return len(fortes) >= TRACAO_VIDEOS
+
+
 def engajamento(views: int | None, curtidas: int | None, comentarios: int | None) -> float | None:
     """Quanto o público reagiu: curtidas e comentários por view. Sem os três números não há taxa — e não ter
     não é o mesmo que ser zero, então volta None."""

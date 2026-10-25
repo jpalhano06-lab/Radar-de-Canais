@@ -312,7 +312,8 @@ CREATE TABLE IF NOT EXISTS traducoes (
 # colunas que entraram depois do primeiro banco: são criadas no banco que já existe
 COLUNAS_NOVAS = {
     "canais": {"subnicho": "TEXT NOT NULL DEFAULT ''", "velocidade": "REAL", "ganho_7d": "INTEGER",
-               "anuncios": "INTEGER", "membros": "INTEGER"},   # monetização vista pela extensão (1, 0 ou sem saber)
+               "anuncios": "INTEGER", "membros": "INTEGER",    # monetização vista pela extensão (1, 0 ou sem saber)
+               "repescado": "TEXT NOT NULL DEFAULT ''"},       # quando o garimpo.repescar mediu o canal de novo
     # painel: a ordem e as abas escondidas do menu de cada pessoa. Fica fora de `prefs` porque salvar_prefs reescreve
     # aquele JSON inteiro a cada resposta das perguntas, e levaria o menu junto
     "usuarios": {"prefs": "TEXT NOT NULL DEFAULT '{}'", "painel": "TEXT NOT NULL DEFAULT '{}'"},

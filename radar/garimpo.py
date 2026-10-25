@@ -151,20 +151,37 @@ def _avaliar(ids: list[str], log, contagem: dict, rapido: bool = False) -> list[
             candidatos.append(c["id"])
         else:
             banco.gravar("canais", "id", {"id": c["id"], "titulo": c["titulo"], "medido": banco.agora()})
-    entraram = []
-    for cid, c in medir.medir_canais(candidatos, forcar=True, origem="garimpo").items():
-        meses = metricas.meses_postando(c["primeiro_video"])
-        if (c["base_longos"] or 0) >= MINIMO_POR_VIDEO and meses is not None and meses <= CANAL_ATE_MESES:
-            titulos = [v["titulo"] for v in banco.todos(
-                "SELECT titulo FROM videos WHERE canal_id=? ORDER BY publicado DESC LIMIT 20", cid)]
-            if risco.avaliar(titulos):
-                continue      # canal com risco de desmonetização (reaproveitado, em série...) não entra no Radar
-            if _completar(c, rapido=rapido):
-                entraram.append(cid)
+    entraram = [cid for cid, c in medir.medir_canais(candidatos, forcar=True, origem="garimpo").items()
+                if _passa(c) and _entrar(c, rapido=rapido)]
     contagem["novos"] += len(entraram)
     if entraram:
         log(f"{len(entraram)} canais novos no Radar")
     return entraram
+
+
+def _passa(c: dict) -> bool:
+    """A porta do Radar, com o canal já medido: até 18 meses postando, e o normal de 10 mil OU ter explodido agora.
+
+    A segunda porta é de 2026-10-25: o canal dark que estourou tem dois ou três vídeos enormes e o resto pequeno, a
+    mediana fica baixa e ele era mandado embora (146 assim no banco do usuário). A régua está em metricas.explodiu."""
+    if not (3 <= (c["videos_total"] or 0) <= 400 and (c.get("pais") or "") in PAISES_ACEITOS):
+        return False
+    meses = metricas.meses_postando(c["primeiro_video"])
+    if meses is None or meses > CANAL_ATE_MESES:
+        return False
+    if (c["base_longos"] or 0) >= MINIMO_POR_VIDEO:
+        return True
+    videos = banco.todos("SELECT views, duracao_s, publicado FROM videos WHERE canal_id=?", c["id"])
+    return metricas.explodiu(videos, c["primeiro_video"], c["base_longos"])
+
+
+def _entrar(c: dict, rapido: bool = False) -> bool:
+    """O corte do risco e depois o nicho e o rosto (_completar). Devolve se o canal ficou no Radar."""
+    titulos = [v["titulo"] for v in banco.todos(
+        "SELECT titulo FROM videos WHERE canal_id=? ORDER BY publicado DESC LIMIT 20", c["id"])]
+    if risco.avaliar(titulos):
+        return False      # canal com risco de desmonetização (reaproveitado, em série...) não entra no Radar
+    return _completar(c, rapido=rapido)
 
 
 def _completar(c: dict, rapido: bool = False) -> None:
@@ -249,6 +266,50 @@ def remedir(log, orcamento: int) -> int:
     return feitos
 
 
+REPESCAR_POR_VEZ = 40      # por garimpo: cada um é uma pergunta de rosto e uma de nicho ao Groq, que tem limite por minuto
+REPESCAR_DE_NOVO_DIAS = 7  # repescado e barrado (risco, Groq fora...), o canal espera a semana
+FRACAO_REPESCAR = 0.15     # até 15% da cota do garimpo (uns 3 unidades por canal)
+
+
+@youtube.por("garimpo")
+def repescar(log, orcamento: int) -> int:
+    """Os canais que já estão no banco e explodiram, mas nunca foram julgados: a extensão guardou o canal enquanto a
+    pessoa navegava, ou o garimpo mediu antes da porta do "explodiu" existir. Não gasta busca.
+
+    Nunca julgado é `sem_rosto` nulo: quem o Groq já viu com rosto não volta. Criado há até 18 meses pelo `criado_em`,
+    porque o primeiro vídeo de quem passou pela extensão é o mais velho que ela viu (Felipe Neto passava por canal de
+    outubro). Os que mais somaram nos 30 dias primeiro; cada um é medido de novo e passa pela mesma porta do garimpo."""
+    agora = datetime.now(timezone.utc)
+    criado = (agora - timedelta(days=CANAL_ATE_MESES * 31)).isoformat()
+    de_novo = (agora - timedelta(days=REPESCAR_DE_NOVO_DIAS)).isoformat()
+    recentes = (agora - timedelta(days=metricas.EXPLODIU_DIAS)).isoformat()
+    fila = []
+    for c in banco.todos("SELECT * FROM canais WHERE no_radar=0 AND sem_rosto IS NULL AND criado_em<>'' "
+                         "AND criado_em >= ? AND repescado < ?", criado, de_novo):
+        if mercado.irrelevante(c["nicho"], c.get("subnicho")):
+            continue
+        if not (3 <= (c["videos_total"] or 0) <= 400 and (c.get("pais") or "") in PAISES_ACEITOS):
+            continue      # o país e a contagem já estão no banco: medir de novo só para cair no _passa gastava cota
+        videos = banco.todos("SELECT views, duracao_s, publicado FROM videos WHERE canal_id=?", c["id"])
+        if metricas.explodiu(videos, c["primeiro_video"], c["base_longos"]):
+            soma = sum(v["views"] or 0 for v in videos
+                       if not metricas.curto(v["duracao_s"]) and (v["publicado"] or "") >= recentes)
+            fila.append((soma, c["id"]))
+    fila.sort(reverse=True)
+    inicio, entraram, medidos = youtube.cota_hoje()["usado"], 0, 0
+    for _, cid in fila[:REPESCAR_POR_VEZ]:
+        if youtube.cota_hoje()["usado"] - inicio + 10 > orcamento:
+            break
+        c = medir.medir_canais([cid], forcar=True).get(cid)
+        banco.gravar("canais", "id", {"id": cid, "repescado": banco.agora()})
+        medidos += 1
+        if c and _passa(c) and _entrar(c):
+            entraram += 1
+    if medidos:
+        log(f"{medidos} canais repescados do banco (explodiram), {entraram} entraram no Radar")
+    return entraram
+
+
 MAX_TERMOS_AUTO = 400
 
 
@@ -297,6 +358,7 @@ def rodar(log=print, unidades: int | None = None) -> dict:
         anotar(f"Garimpo começou com {orcamento} unidades de cota.")
         completar_pendentes(anotar)
         remedir(anotar, int(orcamento * FRACAO_REMEDIR))
+        repescar(anotar, int(orcamento * FRACAO_REPESCAR))
         depois = (datetime.now(timezone.utc) - timedelta(days=DIAS_DO_VIDEO)).strftime("%Y-%m-%dT%H:%M:%SZ")
         for n, (nicho, termo) in enumerate(_proximos_termos()):
             if youtube.cota_hoje()["usado"] - inicio + 110 > orcamento:

@@ -455,3 +455,77 @@ dois passaram a ter teste (`tests/app_js.test.mjs`), que é como isso não se re
 O que falta agora não é mais código de paridade, é **decisão de produto**: preço, pagamento (Kiwify
 ou outro), entrar com o Google e publicar a extensão na Chrome Web Store. A lista de funções já
 mostra 32 contra as 29 anunciadas por eles.
+
+---
+
+## 10. Terceira leva (2026-10-25): por que o Dotti acha o canal dark que explodiu
+
+Pergunta do usuário: "os dotti finder pesquisa canais melhores que o nosso, queremos canal dark que explodiu".
+O mesmo pacote público da loja (ainda **v3.2.21**: nada mudou desde 24/10), lido com o REA. **Desta vez, com a
+autorização do usuário, a lógica dos arquivos foi lida**, só para entender o critério: `regra_tipo.js`,
+`regra_outlier.js`, `filtro.js`, `nicho.js` e `parecidos.js`. Nada de código, texto ou nome de lá entra no Radar.
+
+### 10.1 O que a extensão mostra
+
+**"Sem rosto" não está na extensão.** Nenhum arquivo fala de rosto, faceless ou dark: essa classificação roda
+no servidor deles, que pede login. Também é do servidor a busca dos parecidos (a extensão só mostra as etapas
+"procurando na base", "lendo os títulos", "comparando os assuntos"). O que segue é o que roda **dentro** da
+extensão.
+
+**"Explodiu" para eles é volume recente, não consistência.** O julgamento do canal é uma votação de juízes com
+peso, e quem ganha dá o tipo:
+
+| Juiz | Regra | Peso |
+| --- | --- | --- |
+| atividade | sem postar há mais que 3x o intervalo típico do canal (entre 21 e 120 dias) → decadência | 100 |
+| volume | **500 mil views ou mais nos vídeos dos últimos 30 dias** → "novo crescendo rápido" se o canal tem até 60 dias, senão "em alta" | 80 |
+| projeção | canal com menos de 30 dias: views dos 7 dias × 30 ≥ 650 mil → "em crescimento" | 75 |
+| consistência | 12+ vídeos e a mediana abaixo de 1% do campeão → viral isolado: vira "fonte de temas" se acertou 100 mil+ nos últimos 60 dias | 70 |
+| tração | canal de até 60 dias com **3 ou mais vídeos de 6x o normal** (e 6 mil views ou mais) → "novo crescendo rápido" | 60 |
+| momentum | mediana dos 12 vídeos maduros mais novos ÷ a dos 12 anteriores < 0,5 → decadência | 55 |
+| piso | melhor mês < 200 mil, mediana < 10 mil e menos de 3 outliers → baixo potencial | 30 |
+
+Outras réguas da extensão:
+
+- **Normal do canal com pouca amostra.** Com menos de 8 vídeos lidos, o normal não sai do canal: sai de uma
+  tabela de vídeo típico por tamanho (de 714 views para menos de mil inscritos até 73 mil para mais de um
+  milhão). E a nota de outlier tem **teto de 100x** no canal. É exatamente o buraco dos "50.025x" do
+  Guns N' Roses que o Radar tapou hoje com o `no_radar=1`.
+- **Vídeo maduro é de 21 dias** para o momentum (no Radar são 3).
+- **Atalhos de busca:** "canal pequeno que estourou" é 1 mil a 50 mil inscritos, com 100 mil views ou mais,
+  ordenado por outlier. Os recortes da lista do nicho: viral em canal pequeno, viral em canal médio, 500 mil+,
+  1 milhão+, outlier alto, 50+ views por hora e últimos 30 dias.
+- **Ciclo pela idade:** teste (até 14 dias), decolagem (15 a 60), corrida (61 a 120), maturidade (121 a 420) e
+  saturação.
+
+### 10.2 A diferença com o Radar, medida no banco
+
+A porta do garimpo (`garimpo.py`) pede **normal dos longos de 10 mil ou mais**, ou seja, mediana, ou seja,
+**consistência**. O canal dark que acabou de estourar costuma ter dois ou três vídeos enormes e o resto pequeno: a
+mediana fica baixa e ele **é medido e mandado embora**.
+
+No banco de hoje (só leitura), canais **criados há até 18 meses** com **500 mil views ou mais nos vídeos dos
+últimos 30 dias** (a régua do Dotti):
+
+- **486** canais; **162** no Radar e **324** fora.
+- Dos 324 de fora, **146 ficaram de fora pelo normal abaixo de 10 mil**. São os que o usuário quer: Wiggle World
+  (normal de 1.386 e um vídeo de 13,8 milhões), Crops the Desert (7 mil e 7,2 milhões), Wild Beginnings, Eastern
+  insects, ZeroCipher (normal de 76 e 1,6 milhão), Creation Nova, Haniya Rehman.
+- Quase todos os 324 têm `sem_rosto` nulo: entraram pela extensão e **nunca passaram pelo Groq**. Não dá para
+  dizer quantos são dark sem medir.
+
+A primeira contagem, pela data do primeiro vídeo, dava 834. O número estava inchado: para quem só passou pela
+extensão, o "primeiro vídeo" é o mais velho que a extensão viu, e Felipe Neto, NFL e MTV passavam por canais
+novos. Por isso a contagem acima usa `criado_em`.
+
+### 10.3 O que dá para levar para o Radar (a decidir)
+
+1. **Uma segunda porta no garimpo para quem explodiu:** canal de até 18 meses com 500 mil+ nos vídeos dos últimos
+   30 dias, ou com 3+ vídeos de 6x o normal, entra mesmo com o normal abaixo de 10 mil. Passa pelo Groq e pelo
+   corte do rosto como os outros.
+2. **Repescar os 324 do banco** pela mesma régua, sem gastar busca: só o Groq do rosto e do nicho.
+3. **Normal pela tabela de tamanho** quando o canal tem menos de 8 vídeos lidos, e teto na nota. Isso fecha a
+   causa do 50.025x em vez de só esconder a tela.
+4. **Visão "explodiu agora"** no Radar: volume dos 30 dias, com o viral isolado marcado como "fonte de temas"
+   (um vídeo só não faz o canal).
+5. Momentum com vídeo maduro de 21 dias em vez de 3.

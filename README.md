@@ -40,7 +40,8 @@ fábrica, o que faltar vem do `.env` da fábrica.
 Uma vez por dia sozinho (`RADAR_GARIMPO_AUTOMATICO=0` desliga), pelo botão da Administração ou
 `uv run python -m radar garimpar [--unidades N]`. Busca os termos de cada nicho (`TERMOS`, mais
 `dados/termos.json`) nos vídeos do último mês, um nicho por vez; cada termo volta depois de 3 dias. Entra no Radar
-o canal criado há até 18 meses, com 3 a 400 vídeos e 10 mil views ou mais por vídeo. O Groq (grátis) dá o nicho e diz
+o canal criado há até 18 meses, com 3 a 400 vídeos e 10 mil views ou mais por vídeo **ou que explodiu agora**
+(500 mil views nos vídeos longos dos últimos 30 dias; ver "A porta do canal que explodiu"). O Groq (grátis) dá o nicho e diz
 se o canal é sem rosto (até 3 capas pequenas por pedido: o Qwen do Groq aceita 3 imagens, e a capa média gastava
 6 mil tokens contra o limite de 7 mil por minuto). Vídeo com 5x o normal vai para os Outliers. Depois, cada canal
 salvo procura os parecidos uma vez por semana e eles vão para os Achados de quem salvou.
@@ -1174,3 +1175,26 @@ testes no `test_abertura.py` cobram as duas coisas.
 Conferido com o Radar ligado, no navegador: as quatro telas montam a `.busca-caixa` com os filhos certos, nenhuma
 tem mais o `#painel-cota`, e o menu do Perfil mostra Produzir. Para a extensão: `chrome://extensions` → ↻ no Radar
 de Canais → F5 na aba do Studio.
+
+## A porta do canal que explodiu e a repescagem (2026-10-25)
+
+"os dotti finder pesquisa canais melhores que o nosso, queremos canal dark que explodiu". A régua deles, lida com o
+REA na extensão (`docs/analise-dottifinder.md`, seção 10), é **volume recente**; a nossa era **consistência**. O
+garimpo pedia normal de 10 mil, que é a mediana: o canal dark que acabou de estourar tem dois ou três vídeos enormes e
+o resto pequeno, e era medido e mandado embora. No banco do usuário, 146 canais criados há até 18 meses, com 500 mil
+views em 30 dias, ficaram de fora só por isso (Wiggle World: normal de 1.386 e um vídeo de 13,8 milhões).
+
+- **Segunda porta** (`metricas.explodiu`, usada pelo `garimpo._passa`): entra também o canal com **500 mil views ou
+  mais nos vídeos longos publicados nos últimos 30 dias**, ou o canal de **até 60 dias com 3 vídeos longos de 6x o
+  normal** (6 mil views ou mais cada: com normal de 76, qualquer vídeo é 6x). **Shorts não contam**, a pedido. Tudo o
+  resto da porta continua: 18 meses, 3 a 400 vídeos, país, risco, Groq do nicho e do rosto, canal com rosto fora.
+- **Repescagem** (`garimpo.repescar`, no garimpo diário logo depois do `remedir`, até 15% da cota dele): os canais
+  que já estão no banco e explodiram, mas **nunca foram julgados** (`sem_rosto` nulo — quem o Groq viu com rosto não
+  volta). Criado há até 18 meses pelo `criado_em`, porque o primeiro vídeo de quem passou pela extensão é o mais velho
+  que ela viu, e o Felipe Neto passava por canal de outubro. País e contagem de vídeos são conferidos antes de medir
+  (eram 94 dos 392 da fila caindo depois de gastar a medida). Os que mais somaram nos 30 dias primeiro, **40 por
+  garimpo** (cada um é uma pergunta de rosto e uma de nicho ao Groq), medidos de novo e pela mesma porta. Quem foi
+  repescado e não entrou espera 7 dias (`canais.repescado`).
+- Na base de hoje: **298 canais na fila**, uns 8 garimpos para esvaziar.
+
+Testes em `tests/test_explodiu.py` (16, sem rede).
