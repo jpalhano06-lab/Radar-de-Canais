@@ -20,8 +20,11 @@
   let listaMsgs = null;
   let agentes = [], agente = "";
 
-  const api = (caminho, metodo = "GET", corpo) =>
-    new Promise((ok) => chrome.runtime.sendMessage({ tipo: "api", caminho, metodo, corpo }, (r) => ok(r || { erro: "sem resposta" })));
+  const api = (caminho, metodo = "GET", corpo) => new Promise((ok) => {
+    try {
+      chrome.runtime.sendMessage({ tipo: "api", caminho, metodo, corpo }, (r) => ok(r || { erro: chrome.runtime.lastError ? "A extensão foi recarregada: aperte F5 nesta página." : "sem resposta", status: 0 }));
+    } catch { ok({ erro: "A extensão foi recarregada: aperte F5 nesta página.", status: 0 }); }
+  });
 
   // elemento com texto seguro (o YouTube não deixa usar innerHTML)
   function h(tag, attrs = {}, ...filhos) {

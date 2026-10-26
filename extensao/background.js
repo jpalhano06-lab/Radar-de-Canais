@@ -6,20 +6,30 @@ async function config() {
   return { servidor: (servidor || PADRAO).replace(/\/+$/, ""), token };
 }
 
+// Ligar o Radar de novo (ou o Windows acordar) derrubava um pedido e a página ficava sem números até alguém apertar
+// F5. Agora o pedido que não chega é tentado mais duas vezes, com uma pausa curta, que é o tempo de o servidor subir.
+const TENTATIVAS = 3;
+const pausa = (ms) => new Promise((ok) => setTimeout(ok, ms));
+
 async function pedir({ caminho, metodo = "GET", corpo }) {
   const { servidor, token } = await config();
   // sem token vale o acesso livre do Radar neste computador (sem e-mail e senha)
-  try {
-    const r = await fetch(servidor + caminho, {
-      method: metodo,
-      headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
-      body: corpo ? JSON.stringify(corpo) : undefined,
-    });
-    const dados = await r.json().catch(() => ({}));
-    if (r.status === 401) await chrome.storage.local.remove("token");
-    return r.ok ? { dados } : { erro: dados.detail || `Erro ${r.status}`, status: r.status };
-  } catch (e) {
-    return { erro: "O servidor do Radar não respondeu.", status: 0 };
+  for (let tentativa = 1; ; tentativa++) {
+    try {
+      const r = await fetch(servidor + caminho, {
+        method: metodo,
+        headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+        body: corpo ? JSON.stringify(corpo) : undefined,
+      });
+      const dados = await r.json().catch(() => ({}));
+      if (r.status === 401) await chrome.storage.local.remove("token");
+      // 502/503/504 é o Radar reiniciando: vale esperar e pedir de novo, como se não tivesse chegado
+      if ([502, 503, 504].includes(r.status) && tentativa < TENTATIVAS) { await pausa(700 * tentativa); continue; }
+      return r.ok ? { dados } : { erro: dados.detail || `Erro ${r.status}`, status: r.status };
+    } catch (e) {
+      if (tentativa < TENTATIVAS) { await pausa(700 * tentativa); continue; }
+      return { erro: "O servidor do Radar não respondeu. Ele está ligado?", status: 0 };
+    }
   }
 }
 

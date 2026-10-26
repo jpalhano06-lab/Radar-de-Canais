@@ -71,6 +71,15 @@ FUNCOES: list[dict] = [
      "desc": "Uma câmera no canto de cada cartão do Studio: um clique copia a foto do gráfico."},
     {"chave": "publicar", "nome": "Preencher a publicação", "onde": "studio", "recurso": "extensao",
      "desc": "Preenche sozinha os detalhes, os anúncios e o questionário do vídeo no Studio. Quem aperta publicar é você."},
+    {"chave": "horario-postar", "nome": "Melhor horário para postar", "onde": "studio", "recurso": "extensao",
+     "desc": "Na hora de agendar, as faixas de 3 horas em que o público DESTE canal aparece, medidas nas curvas do "
+             "Radar. Sem curva suficiente ele diz que não sabe, em vez de inventar um horário."},
+    {"chave": "capa-2mb", "nome": "Capa acima de 2 MB", "onde": "studio", "recurso": "extensao",
+     "desc": "A capa grande demais é encolhida e salva em JPEG até caber no limite do YouTube, e já volta para o "
+             "campo da capa. A imagem no seu computador não muda."},
+    {"chave": "escrever-publicacao", "nome": "Descrição e tags com o Claude", "onde": "studio", "recurso": "extensao",
+     "desc": "Para o vídeo que não saiu da fábrica: um rascunho da descrição a partir do título (e da legenda, se "
+             "houver) e as tags que as pessoas buscam. Quem lê e muda antes de publicar é você."},
 
     # ---- o que depende do plano
     {"chave": "salvar", "nome": "Salvar canal no Radar", "onde": "video", "recurso": "salvar",

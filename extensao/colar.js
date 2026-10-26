@@ -8,7 +8,11 @@
   if (!m && !soColar) return;
   history.replaceState(null, "", location.pathname + location.search);   // tira o #radar-envio do endereço
 
-  const pedir = (msg) => new Promise((ok) => chrome.runtime.sendMessage(msg, (r) => ok(r || { erro: "sem resposta" })));
+  const pedir = (msg) => new Promise((ok) => {
+    try {
+      chrome.runtime.sendMessage(msg, (r) => ok(r || { erro: chrome.runtime.lastError ? "A extensão foi recarregada: aperte F5 nesta página." : "sem resposta", status: 0 }));
+    } catch { ok({ erro: "A extensão foi recarregada: aperte F5 nesta página.", status: 0 }); }
+  });
   const CAIXAS = location.host.includes("gemini")
     ? ['rich-textarea div[contenteditable="true"]', ".ql-editor[contenteditable]", 'div[contenteditable="true"]']
     : location.host.includes("claude.ai")

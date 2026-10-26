@@ -274,3 +274,70 @@ def _duracao(pasta: Path) -> float | None:
     """Os segundos do vídeo (anúncio no meio só a partir de 8 minutos), pela narração alinhada da fábrica."""
     valor = _ler(pasta / "alinhamento.json").get("duracao")
     return float(valor) if isinstance(valor, (int, float)) and valor > 0 else None
+
+
+# ---------------------------------------------------------------- escrever quando o vídeo não é da fábrica
+# Pedido do usuário em 2026-10-25, depois de olhar a ajuda de postagem do Dotti Finder (studio_ia.js): lá a extensão
+# escreve um rascunho da descrição a partir do título e sugere as tags que as pessoas buscam. O vídeo que sai da
+# fábrica já vem com título, descrição, tags e capítulos no publicacao.json — para esse, isto não serve e nem é
+# oferecido. Serve para o vídeo gravado fora da fábrica, em que o painel do Studio dizia só "título e descrição
+# ficam com você".
+#
+# Quem escreve é o Claude Code que já está instalado (roteiro_claude._claude), o mesmo do Roteiro: nada de chave nova
+# nem de cota do YouTube. O que volta é rascunho e vai para o campo do Studio, onde a pessoa lê e muda antes de
+# publicar — quem aperta Publicar continua sendo ela.
+
+TAGS_TETO = 500            # o teto do campo de tags do YouTube, contando as vírgulas
+
+SISTEMA_DESCRICAO = """Você escreve a descrição de vídeos de canais dark do YouTube (narrados, sem rosto).
+Escreva de 2 a 4 frases dizendo o que a pessoa vai ver, na mesma língua do título, em tom direto e sem prometer o que
+o vídeo não cumpre. Nada de "neste vídeo você vai descobrir", nada de emoji, nada de hashtag, nada de link e nada de
+pedir inscrição (o canal já tem um rodapé fixo para isso). Não invente fato, número, data nem fala de pessoa real: se
+o título não diz, não afirme. Responda SÓ com o texto da descrição, sem título e sem aspas."""
+
+SISTEMA_TAGS = """Você escolhe as tags de vídeos do YouTube: as palavras que as pessoas realmente digitam na busca
+para achar um vídeo desse assunto. Escreva de 12 a 20 tags na mesma língua do título, das mais buscadas para as mais
+específicas, sem repetir a mesma ideia, sem hashtag, sem aspas e sem número na frente. Nada de marca ou de nome de
+pessoa que o título não cite. Responda SÓ com a lista, uma tag por linha."""
+
+_SUJEIRA = re.compile(r"^[\s\-–—•*\d.)]+")
+
+
+def tags_que_cabem(tags: list[str], teto: int = TAGS_TETO) -> list[str]:
+    """As tags que cabem no campo do YouTube, na ordem em que vieram: o que passa do teto é cortado aqui, em vez de
+    o Studio recusar o campo inteiro."""
+    saida: list[str] = []
+    soma = 0
+    vistas: set[str] = set()
+    for t in tags:
+        t = " ".join(str(t).split())
+        chave = t.lower()
+        if not t or chave in vistas:
+            continue
+        custo = len(t) + (2 if saida else 0)      # a ", " entre uma tag e a seguinte conta no teto
+        if soma + custo > teto:
+            continue
+        saida.append(t)
+        soma += custo
+        vistas.add(chave)
+    return saida
+
+
+def escrever(o_que: str, titulo: str, fala: str = "") -> dict:
+    """Um rascunho de descrição ou a lista de tags, do título e da fala do vídeo (quando já existe legenda)."""
+    from . import roteiro_claude
+    titulo = " ".join(str(titulo).split())[:300]
+    pedido = f"Título do vídeo: {titulo}\n\n"
+    if fala:
+        pedido += f"Começo da fala do vídeo (transcrição):\n{fala[:4000]}\n\n"
+    if o_que == "tags":
+        texto = roteiro_claude._claude(SISTEMA_TAGS, pedido + "Escreva as tags.")
+        cruas = [_SUJEIRA.sub("", l).strip().strip('"#') for l in texto.split("\n")]
+        tags = tags_que_cabem([t for t in cruas if 2 <= len(t) <= 60])
+        if not tags:
+            raise RuntimeError("O Claude não devolveu nenhuma tag que sirva.")
+        return {"tags": tags}
+    texto = roteiro_claude._claude(SISTEMA_DESCRICAO, pedido + "Escreva a descrição.").strip().strip('"')
+    if not texto:
+        raise RuntimeError("O Claude não devolveu nenhuma descrição.")
+    return {"descricao": texto[:1500]}

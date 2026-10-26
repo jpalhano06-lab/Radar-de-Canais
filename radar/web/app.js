@@ -187,9 +187,11 @@ const icone = (n, classe = "") => `<svg ${classe ? `class="${classe}"` : ""} vie
 const MENU = [
   ["perfil", "Perfil", [["inicio", "Início"], ["trabalho", "Produzir"], ["acompanhar", "Acompanhar"], ["resultados", "Resultados"], ["custos", "Custos"]]],
   ["descobrir", "Niche Finder", [["base", "Canais"], ["entraram", "Entraram hoje", "#/base?visao=entraram_hoje"],
-    // Títulos saiu do menu a pedido do usuário (2026-10-25). A tela continua de pé em #/titulos, e o gerador de
-    // títulos segue no Roteiro, que é onde ele é usado de verdade.
-    ["videos", "Faceless Outliers"], ["grupos", "Grupos de canais"], ["acharam", "Acharam para você"]]],
+    // Títulos saiu do menu de manhã (25/10) e voltou de tarde, no mesmo dia, quando o usuário pediu os "títulos
+    // recomendados": agora a tela abre com os títulos que estouraram NOS NICHOS DOS CANAIS DELE, que é o que
+    // faltava para ela valer o lugar no menu. O gerador continua aqui e no Roteiro.
+    ["videos", "Faceless Outliers"], ["titulos", "Títulos que funcionam"], ["grupos", "Grupos de canais"],
+    ["acharam", "Acharam para você"]]],
   ["ferramentas", "Ferramentas", [["extensao", "Extensão"], ["medir", "Medir canal"], ["bloqueados", "Bloqueados"], ["planos", "Planos"], ["admin", "Administração"], ["integracoes", "Integrações"]]],
 ];
 const DICAS = {
@@ -668,7 +670,9 @@ function ligarSelects(raiz, f, padrao, aoMudar, manter = []) {
 const TAMANHOS = { pequeno: { inscritos_max: 10000 }, medio: { inscritos_min: 10000, inscritos_max: 100000 }, grande: { inscritos_min: 100000 } };
 const paraApi = (f) => ({ visao: f.visao, busca: f.busca, nicho: f.nicho, fase: f.fase, pasta: f.pasta,
   ...(TAMANHOS[f.tamanho] || {}), inscritos_max: f.inscritos_max, media_min: f.media_min,
-  idade_max: f.idade, achado_dias: f.achado, rosto: f.rosto, ordem: f.ordem, sentido: f.sentido,
+  idade_max: f.etapa && ETAPAS_DIAS[f.etapa] ? emMeses(ETAPAS_DIAS[f.etapa][1]) : f.idade,
+  idade_min: f.etapa && ETAPAS_DIAS[f.etapa] ? emMeses(ETAPAS_DIAS[f.etapa][0]) : "",
+  achado_dias: f.achado, rosto: f.rosto, ordem: f.ordem, sentido: f.sentido,
   salvos: f.base === "salvos" ? "1" : "", acharam: f.base === "acharam" ? "1" : "" });
 
 // ---------------------------------------------------------------- entrar
@@ -1503,7 +1507,10 @@ async function modeloDaDescricao(caixa, canalId) {
   const tipos = p.tipos_de_modelo || { geral: "Geral" };
   const padroes = p.rodapes_padrao || {};
   caixa.innerHTML = `<h3>📤 Publicação</h3>
-    <p class="sub">O que a extensão faz sozinha no YouTube Studio quando o vídeo é deste canal.</p>
+    <p class="sub">Esta tela <b>não publica nada</b>. Ela guarda as escolhas que você faria à mão em todo vídeo deste
+      canal, e a extensão do Radar repete sozinha na tela de enviar vídeo do YouTube Studio: liga a monetização e
+      espalha os anúncios, escolhe a tela final, marca o uso de IA e preenche título, descrição e tags do vídeo que
+      a fábrica entregou. <b>Quem aperta Publicar continua sendo você</b> — a extensão para antes disso.</p>
     <div class="linha">
       <label class="campo"><span>Anúncio no meio do vídeo, a cada</span>
         <div class="par"><input id="pb-anuncio" type="number" min="1" max="60" value="${+p.anuncio_cada || 1}"> <span>minutos</span></div></label>
@@ -1514,9 +1521,10 @@ async function modeloDaDescricao(caixa, canalId) {
 
     <h3>🧾 Rodapé da descrição</h3>
     <p class="sub">A apresentação do canal e o aviso legal, iguais em todo vídeo. <b>Quem escreve a descrição é a
-      fábrica</b>: ela põe o resumo do vídeo, os capítulos, os créditos e, no fim, este texto. Então o vídeo já sai
-      do projeto com a descrição pronta — a extensão só cola. Isto fica no perfil
-      <code>${esc(p.perfil || "—")}</code> da fábrica, não no Radar.</p>
+      fábrica</b>: ela põe o resumo do vídeo, os capítulos e, no fim, este texto. Então o vídeo já sai do projeto
+      com a descrição pronta — a extensão só cola. A lista de onde vêm as imagens <b>não entra mais na descrição</b>
+      (25/10/2026); ela continua no <code>creditos.txt</code> da pasta do projeto, para conferir quando precisar.
+      Isto fica no perfil <code>${esc(p.perfil || "—")}</code> da fábrica, não no Radar.</p>
     <div class="linha">
       <label class="campo"><span>Marcas e lojas que o canal cita</span>
         <input id="md-marcas" maxlength="300" placeholder="Ex.: Tesco, Asda, Sainsbury&#39;s, Morrisons, Aldi, Lidl" value="${esc(p.marcas || "")}"></label>
@@ -3258,7 +3266,174 @@ const opcoesDePasta = (p) => [...p.pastas.map((x) => [x.nome, `📁 ${x.nome} ($
   ...(p.sem_pasta ? [["sem_pasta", `Sem pasta (${p.sem_pasta})`]] : [])];
 
 const PADRAO_BASE = { visao: "", busca: "", base: "", pasta: "", nicho: "", inscritos_max: "", media_min: "",
-  tamanho: "", idade: "", fase: "", ordem: "media", sentido: "" };
+  tamanho: "", idade: "", fase: "", ordem: "media", sentido: "", modo: "", etapa: "",
+  vida_forma: "", vida_etapa: "" };
+// as etapas da curva da vida, nos MESMOS dias do radar/nichos.py, convertidos em meses porque é assim que o
+// filtro da lista pede a idade. Com meses redondos (1, 3, 6, 24) a lista trazia um canal a mais que a faixa.
+const DIA_MES = 30.44;
+const ETAPAS_DIAS = { testando: [0, 30], decolando: [30, 90], disputando: [90, 180], firme: [180, 730], veterano: [730, null] };
+const emMeses = (dias) => (dias === null || dias === undefined ? "" : String(dias / DIA_MES));
+
+// ---------------------------------------------------------------- as três visões da tela Canais
+// Pedido do usuário em 2026-10-25, com duas telas do Dotti Finder na mão. A mesma lista de canais, olhada de três
+// jeitos: um por um (a lista de sempre), pela idade de quem posta (a curva da vida) e por nicho (a tabela).
+// A conta é nossa (radar/nichos.py), feita com o que o Radar mede; aqui só se desenha.
+
+const MODOS = [["", "Canais", "um cartão por canal"], ["vida", "Curva da vida", "em que etapa estão os canais"],
+  ["nichos", "Por nicho", "uma linha por nicho, para comparar"]];
+// o vermelho de verdade (--detalhe), nao o --vermelho-claro: nos temas de acento marrom ele sai bege e
+// "tarde para entrar" perdia o aviso
+const COR_VEREDITO = { entrar: "var(--verde)", apertado: "var(--laranja)", tarde: "var(--detalhe)" };
+
+function faixaModos(caixa, f, trocar) {
+  caixa.innerHTML = MODOS.map(([v, nome, dica]) =>
+    `<button class="modo${(f.modo || "") === v ? " ligado" : ""}" data-modo="${v}" title="${esc(dica)}">${esc(nome)}</button>`).join("");
+  caixa.querySelectorAll("[data-modo]").forEach((b) => (b.onclick = () => trocar(b.dataset.modo)));
+}
+
+// quanto tempo de vida a etapa cobre, escrito como se fala
+function idadeEmPalavras(de, ate) {
+  const mes = (d) => Math.round(d / DIA_MES);
+  const anos = (d) => Math.round(d / 365);
+  if (ate === null) return mes(de) >= 12 ? `mais de ${anos(de)} anos` : `mais de ${mes(de)} meses`;
+  if (de === 0) return `até ${ate} dias`;
+  return mes(ate) >= 12 ? `${mes(de)} meses a ${anos(ate)} anos` : `${mes(de)} a ${mes(ate)} meses`;
+}
+
+// Quatro jeitos de olhar a mesma faixa. Pedido do usuário em 2026-10-25: a curva da vida tinha um desenho só, o
+// de barras, e ele quis escolher. Os quatro saem dos MESMOS números do /api/nichos/vida — nenhum recalcula nada,
+// só mostra de outro jeito. E clicar numa etapa, em qualquer uma das formas, abre os VÍDEOS dela aqui embaixo
+// (antes o clique trocava de tela e levava para a lista de canais; isso virou um botão dentro do bloco).
+const FORMAS_VIDA = [["barras", "Barras", "a altura de cada etapa diz quantos canais"],
+  ["faixa", "Faixa inteira", "uma régua só: cada etapa com a sua fatia do nicho"],
+  ["funil", "Funil", "uma linha por etapa, do começo da vida ao fim"],
+  ["tabela", "Tabela", "os números de todas as etapas lado a lado"]];
+
+const altura = (n, topo) => Math.max(Math.round((n / (topo || 1)) * 100), n ? 3 : 0);
+
+function desenhoVida(d, forma, escolhida) {
+  const topo = d.topo || 1;
+  const cor = (e) => COR_VEREDITO[e.veredito];
+  const marcada = (e) => (e.chave === escolhida ? " escolhida" : "");
+  if (forma === "faixa") {
+    const total = d.etapas.reduce((s, e) => s + e.canais, 0) || 1;
+    return `<div class="vida-regua">${d.etapas.map((e) => `<button class="vida-fatia${marcada(e)}" data-etapa="${esc(e.chave)}"
+        style="flex:${e.canais || 0.15};background:${cor(e)}" title="${esc(e.nome)}: ${num(e.canais)} canais">
+        <span>${Math.round((e.canais / total) * 100)}%</span></button>`).join("")}</div>
+      <div class="vida-legenda">${d.etapas.map((e) => `<button class="vida-chip${marcada(e)}" data-etapa="${esc(e.chave)}">
+        <i style="background:${cor(e)}"></i><b>${esc(e.nome)}</b>
+        <small>${num(e.canais)} ${e.canais === 1 ? "canal" : "canais"} · ${esc(idadeEmPalavras(e.de, e.ate))}</small></button>`).join("")}</div>`;
+  }
+  if (forma === "funil") {
+    return `<div class="vida-funil">${d.etapas.map((e) => `<button class="vida-degrau${marcada(e)}" data-etapa="${esc(e.chave)}">
+      <span class="vida-degrau-nome"><b>${esc(e.nome)}</b><small>${esc(idadeEmPalavras(e.de, e.ate))}</small></span>
+      <span class="vida-degrau-barra"><i style="width:${altura(e.canais, topo)}%;background:${cor(e)}"></i></span>
+      <span class="vida-degrau-n"><b>${num(e.canais)}</b><small>${e.views_mes ? `${num(e.views_mes)} views/mês` : "ninguém postou"}</small></span>
+      <span class="vida-selo" style="color:${cor(e)};border-color:${cor(e)}">${esc(e.veredito_nome)}</span></button>`).join("")}</div>`;
+  }
+  if (forma === "tabela") {
+    return `<table class="tabela tab-vida"><thead><tr><th>Etapa</th><th>Tempo postando</th><th class="n">Canais</th>
+        <th class="n">Postaram no mês</th><th class="n">Crescendo</th><th class="n">Views/mês</th><th>Para entrar</th><th></th></tr></thead>
+      <tbody>${d.etapas.map((e) => `<tr class="${e.chave === escolhida ? "escolhida" : ""}">
+        <td><b>${esc(e.nome)}</b><small class="sub"> · ${esc(e.o_que)}</small></td>
+        <td>${esc(idadeEmPalavras(e.de, e.ate))}</td>
+        <td class="n">${num(e.canais)}</td><td class="n">${num(e.postando || 0)}</td>
+        <td class="n" style="color:var(--verde)">${e.crescendo || "—"}</td>
+        <td class="n">${e.views_mes ? num(e.views_mes) : "—"}</td>
+        <td><span class="vida-selo" style="color:${cor(e)};border-color:${cor(e)}">${esc(e.veredito_nome)}</span></td>
+        <td><button class="botao sec" data-etapa="${esc(e.chave)}">ver os vídeos</button></td></tr>`).join("")}</tbody></table>`;
+  }
+  return `<div class="vida">${d.etapas.map((e) => `<button class="vida-et${marcada(e)}" data-etapa="${esc(e.chave)}">
+    <span class="vida-barra"><i style="height:${altura(e.canais, topo)}%;background:${cor(e)}"></i></span>
+    <b>${esc(e.nome)}</b><small>${esc(idadeEmPalavras(e.de, e.ate))}</small>
+    <span class="vida-n">${num(e.canais)}</span><small>${e.canais === 1 ? "canal" : "canais"}</small>
+    <small class="vida-mes">${e.views_mes ? `${num(e.views_mes)} views/mês em média` : "ninguém publicou este mês"}</small>
+    <span class="vida-selo" style="color:${cor(e)};border-color:${cor(e)}">${esc(e.veredito_nome)}</span>
+    <small class="vida-o-que">${esc(e.o_que)}</small></button>`).join("")}</div>`;
+}
+
+// os vídeos dos canais de uma etapa: a mesma lista da tela Vídeos, recortada pela idade de QUEM POSTA
+async function videosDaEtapa(caixa, f, e, abrirCanais, aoFechar) {
+  if (!e) { caixa.innerHTML = ""; return; }
+  caixa.innerHTML = `<div class="vazio">Procurando os vídeos de ${esc(e.nome)}…</div>`;
+  let d;
+  try {
+    d = await api("/api/videos?" + consulta({ etapa: e.chave, nicho: f.nicho, nota_min: 5, tipo: "longo",
+      lingua: "ptenes", ordem: "nota", por: 12, pagina: 0 }));
+  } catch (err) { caixa.innerHTML = `<div class="vazio">${esc(porque(err))}</div>`; return; }
+  caixa.innerHTML = `<div class="vida-cab vida-videos-cab">
+      <h3>O que estourou nos canais em ${esc(e.nome)}${f.nicho ? ` · ${esc(f.nicho)}` : ""}</h3>
+      <p class="sub">Vídeos que fizeram 5x o normal do próprio canal, em canais que estão postando há
+        ${esc(idadeEmPalavras(e.de, e.ate))}.${d.total ? ` São ${num(d.total)}; aqui estão os ${Math.min(12, d.total)} de maior nota.` : ""}</p>
+      <div class="vida-videos-acoes"><button class="botao sec" id="vida-canais">Ver os canais desta etapa</button>
+        <button class="botao sec" id="vida-fechar">Fechar</button></div></div>
+    <div class="grade-videos grandes">${d.videos.map((v) => cartaoVideoGrande(v)).join("")
+      || '<div class="vazio" style="grid-column:1/-1">Nenhum vídeo desta etapa ainda. O Radar só mostra o que já mediu: garimpe mais canais, ou escolha outra etapa.</div>'}</div>`;
+  ligarRoteiro(caixa);
+  caixa.querySelector("#vida-canais").onclick = () => abrirCanais(e.chave);
+  caixa.querySelector("#vida-fechar").onclick = () => { caixa.innerHTML = ""; aoFechar(); };
+}
+
+async function visaoVida(caixa, f, abrirCanais, acompanhar) {
+  caixa.innerHTML = '<div class="vazio">Contando os canais…</div>';
+  let d;
+  try { d = await api("/api/nichos/vida?" + consulta({ nicho: f.nicho })); }
+  catch (e) { caixa.innerHTML = `<div class="vazio">${esc(porque(e))}</div>`; return; }
+  if (!FORMAS_VIDA.some(([v]) => v === f.vida_forma)) f.vida_forma = "barras";
+  if (!d.etapas.some((e) => e.chave === f.vida_etapa)) f.vida_etapa = "";
+  caixa.innerHTML = `<div class="vida-cab"><h2>Como um nicho envelhece</h2>
+      <p class="sub">Cada canal entra na etapa do tempo que ele <b>já está postando</b>${f.nicho ? ` em ${esc(f.nicho)}` : ""}.
+        Muita gente nas duas primeiras significa assunto que ainda está abrindo; muita gente nas duas últimas, assunto
+        com dono. A média do mês é das views dos vídeos que cada canal publicou nos últimos 30 dias.</p></div>
+    <div class="modos modos-forma" id="formas-vida"></div>
+    <div id="vida-desenho"></div>
+    <p class="sub">${num(d.canais)} canais nesta conta${d.sem_data ? ` · ${d.sem_data} ficaram de fora (o Radar ainda não sabe quando eles começaram)` : ""}. Clique numa etapa para ver os vídeos dela aqui embaixo.</p>
+    <div id="vida-videos"></div>`;
+  const videos = caixa.querySelector("#vida-videos");
+  const pintar = () => {
+    caixa.querySelector("#formas-vida").innerHTML = FORMAS_VIDA.map(([v, nome, dica]) =>
+      `<button class="modo${f.vida_forma === v ? " ligado" : ""}" data-forma="${v}" title="${esc(dica)}">${esc(nome)}</button>`).join("");
+    caixa.querySelector("#vida-desenho").innerHTML = desenhoVida(d, f.vida_forma, f.vida_etapa);
+    caixa.querySelectorAll("[data-forma]").forEach((b) => (b.onclick = () => {
+      f.vida_forma = b.dataset.forma; acompanhar(); pintar();
+    }));
+    caixa.querySelectorAll("[data-etapa]").forEach((b) => (b.onclick = () => {
+      f.vida_etapa = b.dataset.etapa; acompanhar(); pintar();
+      videosDaEtapa(videos, f, d.etapas.find((e) => e.chave === f.vida_etapa), abrirCanais,
+        () => { f.vida_etapa = ""; acompanhar(); pintar(); });
+      videos.scrollIntoView({ behavior: "smooth", block: "start" });
+    }));
+  };
+  pintar();
+  if (f.vida_etapa) {
+    videosDaEtapa(videos, f, d.etapas.find((e) => e.chave === f.vida_etapa), abrirCanais,
+      () => { f.vida_etapa = ""; acompanhar(); pintar(); });
+  }
+}
+
+async function visaoNichos(caixa, f, abrirNicho) {
+  caixa.innerHTML = '<div class="vazio">Somando os nichos…</div>';
+  let d;
+  try { d = await api("/api/nichos/tabela?" + consulta({ nicho: f.nicho })); }
+  catch (e) { caixa.innerHTML = `<div class="vazio">${esc(porque(e))}</div>`; return; }
+  if (!d.nichos.length) { caixa.innerHTML = '<div class="vazio">Nenhum nicho com canais nestes filtros.</div>'; return; }
+  caixa.innerHTML = `<table class="tabela tab-nichos"><thead><tr>
+      <th>Nicho</th><th class="n">Canais</th><th class="n">Tráfego típico</th><th class="n">Crescendo</th>
+      <th class="n">Parados</th><th class="n">Views no mês</th><th class="n">Público</th><th></th></tr></thead>
+    <tbody>${d.nichos.map((l) => `<tr>
+      <td><b>${esc(l.nicho)}</b>${l.novos ? `<small class="sub"> · ${l.novos} com menos de 3 meses</small>` : ""}</td>
+      <td class="n">${num(l.canais)}</td>
+      <td class="n" title="A mediana do normal por vídeo dos canais deste nicho">${num(l.tipico)}</td>
+      <td class="n" style="color:var(--verde)">${l.crescendo || "—"}</td>
+      <td class="n" style="color:${l.parados ? "var(--vermelho-claro)" : "inherit"}">${l.parados || "—"}</td>
+      <td class="n">${num(l.views_mes)}</td>
+      <td class="n">${num(l.publico)}</td>
+      <td><button class="botao sec" data-nicho="${esc(l.nicho)}">ver canais</button></td></tr>`).join("")}</tbody></table>
+    <p class="sub">Tráfego típico é a <b>mediana</b> do normal por vídeo, não a média: um canal gigante no meio de
+      pequenos faria o nicho parecer o que ele não é. Views no mês são as dos vídeos publicados nos últimos
+      ${d.mes_dias} dias.</p>`;
+  caixa.querySelectorAll("[data-nicho]").forEach((b) => (b.onclick = () => abrirNicho(b.dataset.nicho)));
+}
 
 async function baseCanais() {
   const f = recorte(PADRAO_BASE);
@@ -3285,6 +3460,8 @@ async function baseCanais() {
       ${trilho("media_min", "Views por vídeo, a partir de", degrausDe("media_min"), f)}
     </div>
     </div>
+    <div class="modos" id="modos"></div>
+    <div id="outra-visao"></div>
     <div id="youtube"></div>
     <div class="contagem" id="contagem"></div><div class="lista-canais" id="lista"></div>
     <div class="mais"><button class="botao sec" id="mais" hidden>Carregar mais</button></div>`;
@@ -3309,6 +3486,23 @@ async function baseCanais() {
     document.getElementById("de-novo").onclick = (e) => noYoutube(e.currentTarget);
   });
   const carregar = async (mais = false) => {
+    const outra = document.getElementById("outra-visao");
+    faixaModos(document.getElementById("modos"), f, (m) => { f.modo = m; f.etapa = ""; acompanhar(); carregar(); });
+    // fora do modo lista a tela é outra: a lista, a contagem e a caixa do YouTube somem em vez de ficarem embaixo
+    for (const id of ["lista", "contagem", "mais", "youtube"]) document.getElementById(id).hidden = !!f.modo;
+    outra.hidden = !f.modo;
+    if (f.modo === "vida") {
+      return visaoVida(outra, f, (etapa) => { f.modo = ""; f.etapa = etapa; acompanhar(); carregar(); }, () => acompanhar());
+    }
+    if (f.modo === "nichos") {
+      return visaoNichos(outra, f, (nicho) => {
+        f.modo = ""; f.nicho = nicho;
+        // o select tem de mostrar o nicho escolhido na tabela, senao o filtro fica ligado sem aparecer onde
+        const sel = tela.querySelector('select[data-f="nicho"]');
+        if (sel) sel.value = nicho;
+        sincronizar(); acompanhar(); carregar();
+      });
+    }
     pagina = mais ? pagina + 1 : 0;
     const lista = document.getElementById("lista");
     let d;
@@ -3322,8 +3516,9 @@ async function baseCanais() {
     avisarPiso(tela, "media_min", d.media_min, f.media_min, (n) =>
       `O piso é ${num(n)}: abaixo disso o canal nem teria entrado no Radar. Para subir, arraste para a direita.`);
     const piso = d.media_min > (Number(f.media_min) || 0) ? ` · piso de ${num(d.media_min)} por vídeo` : "";
+    const daEtapa = f.etapa ? ` · só a etapa ${f.etapa}` : "";
     document.getElementById("contagem").textContent = d.total
-      ? `${d.total.toLocaleString("pt-BR")} ${d.total === 1 ? "canal" : "canais"} na base · mostrando ${quantos}${piso}` : "";
+      ? `${d.total.toLocaleString("pt-BR")} ${d.total === 1 ? "canal" : "canais"} na base · mostrando ${quantos}${piso}${daEtapa}` : "";
     document.getElementById("mais").hidden = quantos >= d.total;
     if (!mais) caixaYoutube(!d.total);
     ligarCartoes(lista);
@@ -3363,12 +3558,22 @@ const degrausDe = (k) => DEGRAUS[k] || [["", "qualquer"]];
 const PADRAO_VIDEOS = { base: "", pasta: "", busca: "", lingua: "ptenes", nicho: "", nota_min: "5", publicado_dias: "", tipo: "longo",
   views_min: "", modelar_estado: "", ordem: "nota", sentido: "", so_novos: "", so_crescendo: "", com_cortados: "" };
 
+// A tela travada. Pedido do usuário em 2026-10-25: a lista infinita rolava embaixo da busca e ele perdia de vista
+// o que já tinha olhado. Travar mostra 10 vídeos de cada vez, com Anterior e Próximo, recolhe o núcleo de busca
+// numa aba que se puxa de volta, e dá a cada vídeo um jeito de ser SEPARADO (botão ou arrastando) para uma pilha
+// em cima — a pilha dos que ele quer rever depois.
+//
+// A pilha vive SÓ NESTA JANELA, de propósito, como ele pediu: não vai para o servidor nem para o endereço. Fechou
+// a aba, acabou. Quem quiser guardar de verdade tem a esteira (🔖 no canto da capa) e o 💡 Salvar ideia, que já
+// gravam. Isto aqui é a mesa de trabalho de uma sessão de garimpo, não um arquivo.
 async function videosLista() {
   const f = recorte(PADRAO_VIDEOS);
   const [o, p] = await Promise.all([opcoes(), pastas()]);
   tela.innerHTML = titulo("Vídeos", "Todos os vídeos que fizeram muitas vezes o normal do próprio canal: o assunto já provou que dá view.") + `
-    <div class="grande-acao"><button class="botao" id="mais-youtube">Buscar vídeos novos no YouTube</button></div>
-    <div class="busca-caixa">
+    <div class="grande-acao"><button class="botao" id="mais-youtube">Buscar vídeos novos no YouTube</button>
+      <button class="botao sec" id="travar" title="Mostra 10 de cada vez, recolhe a busca e deixa você separar os que quer rever">📌 Travar 10 na tela</button></div>
+    <button class="puxar-busca" id="puxar" hidden>🔍 Abrir a busca e os filtros</button>
+    <div class="busca-caixa" id="busca-caixa">
     <div class="procura"><input id="busca" placeholder="Procurar no título do vídeo ou do canal" value="${esc(f.busca)}"><button class="botao vermelho" id="ir">Procurar</button></div>
     <div class="filtra">${selects([
       ["base", "Todos os canais", [["salvos", "Só os que eu salvei"], ["acharam", "Só os que acharam para mim"]]],
@@ -3389,21 +3594,84 @@ async function videosLista() {
       ["com_cortados", "Mostrar o que foi cortado", "Inclui o que as suas respostas e os seus bloqueios estavam escondendo"],
     ], f)}
     </div>
+    <div class="separados" id="separados" hidden></div>
     <div class="contagem" id="contagem"></div><div class="grade-videos grandes" id="lista"></div>
+    <div class="paginador" id="paginador" hidden>
+      <button class="botao sec" id="ant">← Anterior</button>
+      <span class="pag-onde" id="pag-onde"></span>
+      <button class="botao sec" id="prox">Próximo →</button></div>
     <div class="mais"><button class="botao sec" id="mais" hidden>Carregar mais</button></div>`;
-  const POR = 24;
-  let pagina = 0;
-  const carregar = async (mais = false) => {
-    pagina = mais ? pagina + 1 : 0;
+  const POR = 24, POR_TRAVADO = 10;
+  let pagina = 0, travado = false, paginas = 1;
+  const separados = [];                 // a pilha desta janela, na ordem em que ele separou
+  const naTela = new Map();             // id → vídeo da página que está na tela, para saber o que arrastaram
+  const caixaBusca = document.getElementById("busca-caixa");
+  const bandeja = document.getElementById("separados");
+
+  const pintarSeparados = () => {
+    bandeja.hidden = !travado && !separados.length;
+    bandeja.innerHTML = `<div class="sep-cab"><b>Separados para ver depois · ${separados.length}</b>
+        <span class="sub">Arraste um vídeo para cá, ou clique em <b>Separar</b>. Esta pilha vive só nesta janela: para guardar de verdade, use o 🔖 da capa ou o 💡 Salvar ideia.</span>
+        ${separados.length ? '<button class="botao sec" id="sep-limpar">Limpar a pilha</button>' : ""}</div>
+      <div class="sep-itens">${separados.map((v) => `<div class="sep-item" data-sep="${esc(v.id)}">
+        <a href="${linkVideo(esc(v.id))}" target="_blank" rel="noopener"><img src="https://i.ytimg.com/vi/${esc(v.id)}/mqdefault.jpg" alt="" loading="lazy"></a>
+        <div class="sep-texto"><a href="${linkVideo(esc(v.id))}" target="_blank" rel="noopener">${esc(v.titulo)}</a>
+          <small>${esc(v.canal || "")}${v.nota != null ? ` · ${nota(v.nota)} o normal` : ""}</small></div>
+        <button class="sep-tirar" data-tirar="${esc(v.id)}" title="Tirar da pilha">✕</button></div>`).join("")
+        || '<div class="vazio">Nada separado ainda.</div>'}</div>`;
+    const limpar = document.getElementById("sep-limpar");
+    if (limpar) limpar.onclick = () => { separados.length = 0; pintarSeparados(); marcarSeparados(); };
+    bandeja.querySelectorAll("[data-tirar]").forEach((b) => (b.onclick = () => {
+      const i = separados.findIndex((v) => v.id === b.dataset.tirar);
+      if (i >= 0) separados.splice(i, 1);
+      pintarSeparados(); marcarSeparados();
+    }));
+  };
+  const separar = (id) => {
+    const v = naTela.get(id);
+    if (!v || separados.some((x) => x.id === id)) return;
+    separados.push(v); pintarSeparados(); marcarSeparados();
+  };
+  // o que já está na pilha fica apagado na grade, para ele não separar duas vezes nem reler o mesmo vídeo
+  const marcarSeparados = () => document.getElementById("lista").querySelectorAll(".video.yt").forEach((c) => {
+    const ja = separados.some((v) => v.id === c.dataset.video);
+    c.classList.toggle("separado", ja);
+    const b = c.querySelector(".separar");
+    if (b) b.textContent = ja ? "✓ Separado" : "⇥ Separar";
+  });
+  bandeja.addEventListener("dragover", (e) => { e.preventDefault(); bandeja.classList.add("recebendo"); });
+  bandeja.addEventListener("dragleave", () => bandeja.classList.remove("recebendo"));
+  bandeja.addEventListener("drop", (e) => {
+    e.preventDefault(); bandeja.classList.remove("recebendo");
+    separar(e.dataTransfer.getData("text/plain"));
+  });
+
+  const carregar = async (mais = false, mesmaPagina = false) => {
+    if (!mesmaPagina) pagina = mais ? pagina + 1 : 0;
+    const por = travado ? POR_TRAVADO : POR;
     const lista = document.getElementById("lista");
     let d;
     try {
       d = await api("/api/videos?" + consulta({ ...f, salvos: f.base === "salvos" ? "1" : "",
-        acharam: f.base === "acharam" ? "1" : "", pagina, por: POR }));
+        acharam: f.base === "acharam" ? "1" : "", pagina, por }));
     } catch (e) { lista.innerHTML = `<div class="vazio" style="grid-column:1/-1">${esc(porque(e))}</div>`; return; }
     const html = d.videos.map((v) => cartaoVideoGrande(v)).join("");
-    if (mais) lista.insertAdjacentHTML("beforeend", html);
+    if (mais && !travado) lista.insertAdjacentHTML("beforeend", html);
     else lista.innerHTML = html || '<div class="vazio" style="grid-column:1/-1">Nenhum vídeo com esses filtros. Afrouxe um, ou busque vídeos novos no YouTube.</div>';
+    if (!mais || travado) naTela.clear();
+    d.videos.forEach((v) => naTela.set(v.id, v));
+    if (travado) {
+      lista.querySelectorAll(".video.yt").forEach((c) => {
+        c.draggable = true;
+        c.addEventListener("dragstart", (e) => e.dataTransfer.setData("text/plain", c.dataset.video));
+        const acoes = c.querySelector(".video-acoes");
+        if (acoes && !acoes.querySelector(".separar")) {
+          acoes.insertAdjacentHTML("afterbegin", '<button class="botao sec separar" title="Põe na pilha de cima, para rever depois">⇥ Separar</button>');
+          acoes.querySelector(".separar").onclick = () => separar(c.dataset.video);
+        }
+      });
+      marcarSeparados();
+    }
     const quantos = lista.querySelectorAll(".video.yt").length;
     // o que o filtro cortou não fica escondido: a tela diz quantos são e abre com um clique
     const fora = d.cortados && f.com_cortados !== "1"
@@ -3412,14 +3680,56 @@ async function videosLista() {
       `O piso é ${num(n)}: pedir ${Number(f.nota_min)}x o normal do canal, com o normal medido em pelo menos `
       + `${num(Math.round(d.piso / (Number(f.nota_min) || 5)))} views, já exige isso. Para subir, arraste para a direita.`);
     const piso = d.views_min > (Number(f.views_min) || 0) ? ` · piso de ${num(d.views_min)} views` : "";
+    paginas = Math.max(1, Math.ceil(d.total / por));
+    const onde = travado && d.total ? ` · página ${pagina + 1} de ${num(paginas)}` : "";
     document.getElementById("contagem").innerHTML = d.total
-      ? `${d.total.toLocaleString("pt-BR")} ${d.total === 1 ? "vídeo" : "vídeos"} · mostrando ${quantos}${piso}${fora}`
+      ? `${d.total.toLocaleString("pt-BR")} ${d.total === 1 ? "vídeo" : "vídeos"} · mostrando ${quantos}${onde}${piso}${fora}`
       : `${piso.replace(/^ · /, "")}${fora}`;
-    document.getElementById("mais").hidden = quantos >= d.total;
+    document.getElementById("mais").hidden = travado || quantos >= d.total;
+    if (travado) {
+      document.getElementById("ant").disabled = pagina === 0;
+      document.getElementById("prox").disabled = pagina + 1 >= paginas;
+      document.getElementById("pag-onde").textContent = d.total
+        ? `${pagina * por + 1}–${pagina * por + quantos} de ${d.total.toLocaleString("pt-BR")}` : "nada aqui";
+    }
     const ver = document.getElementById("ver-cortados");
     if (ver) ver.onclick = () => { f.com_cortados = "1"; sincronizar(); acompanhar(); carregar(); };
     ligarRoteiro(lista);
   };
+
+  const botaoTravar = document.getElementById("travar");
+  const travar = (ligar) => {
+    travado = ligar;
+    caixaBusca.classList.toggle("recolhida", ligar);
+    document.getElementById("puxar").hidden = !ligar;
+    document.getElementById("paginador").hidden = !ligar;
+    botaoTravar.textContent = ligar ? "✕ Soltar a tela" : "📌 Travar 10 na tela";
+    botaoTravar.classList.toggle("vermelho", ligar);
+    pintarSeparados();
+    carregar().then(() => {
+      if (ligar) document.getElementById("separados").scrollIntoView({ behavior: "smooth", block: "start" });
+    });
+  };
+  botaoTravar.onclick = () => travar(!travado);
+  document.getElementById("puxar").onclick = () => caixaBusca.classList.toggle("recolhida");
+  const virar = (passo) => {
+    const alvo = Math.min(Math.max(pagina + passo, 0), paginas - 1);
+    if (alvo === pagina) return;
+    pagina = alvo;
+    carregar(false, true).then(() => document.getElementById("separados").scrollIntoView({ behavior: "smooth", block: "start" }));
+  };
+  document.getElementById("ant").onclick = () => virar(-1);
+  document.getElementById("prox").onclick = () => virar(1);
+  // as setas do teclado viram a página também; o ouvinte sai sozinho quando esta tela não está mais no ar
+  const teclas = (e) => {
+    const px = document.getElementById("paginador");
+    if (!px || !tela.contains(px)) return document.removeEventListener("keydown", teclas);
+    if (!travado || /^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName)) return;
+    if (e.key === "ArrowRight") virar(1);
+    if (e.key === "ArrowLeft") virar(-1);
+  };
+  document.addEventListener("keydown", teclas);
+
   let pintarSentido = () => {}, pintarMarcas = () => {}, pintarTrilhos = () => {};
   const sincronizar = () => { pintarSentido(); pintarMarcas(); pintarTrilhos(); };
   const acompanhar = ligarSelects(tela, f, PADRAO_VIDEOS, () => { sincronizar(); carregar(); }, ["busca"]);
@@ -3472,6 +3782,32 @@ async function grupos() {
   tela.querySelectorAll(".grupo").forEach((g) => (g.onclick = () => { location.hash = "#/base?busca=" + encodeURIComponent(g.dataset.sub); }));
 }
 
+// Os títulos recomendados: os que estouraram NOS NICHOS DOS CANAIS DA PESSOA (pedido do usuário em 2026-10-25).
+// É a única recomendação que o Radar pode fazer sem inventar nada — ele não sabe o que vai funcionar amanhã, sabe
+// o que já funcionou no mesmo assunto. Sem canal cadastrado (ou sem nicho neles) o bloco diz isso, em vez de
+// mostrar uma lista qualquer fingindo que é para você.
+async function recomendados(caixa) {
+  if (!caixa) return;
+  caixa.innerHTML = '<h3>⭐ Recomendados para os seus canais</h3><p class="sub">Procurando…</p>';
+  let lista;
+  try { ({ titulos: lista } = await api("/api/titulos?meus=1&nota_min=5")); }
+  catch (e) { caixa.innerHTML = `<h3>⭐ Recomendados para os seus canais</h3><p class="sub">${esc(porque(e))}</p>`; return; }
+  const nichos = [...new Set(lista.map((t) => t.nicho).filter(Boolean))];
+  caixa.innerHTML = `<h3>⭐ Recomendados para os seus canais</h3>
+    <p class="sub">${lista.length
+      ? `Os títulos que mais estouraram ${nichos.length ? `em ${nichos.map(esc).join(", ")}` : "nos seus nichos"} — 5x o normal do canal ou mais. Não é previsão: é o que já deu certo no seu assunto.`
+      : "Nenhum título ainda. Isto enche quando os seus canais (no Perfil) tiverem nicho e o Radar achar vídeos que estouraram nele."}</p>
+    <div class="lista-titulos">${lista.slice(0, 12).map((t) => `<div class="titulo-linha">
+      <span class="t"><b>${esc(t.titulo)}</b><small>${esc(t.canal)} · ${esc(t.nicho)} · ${num(t.views)} views</small></span>
+      <span class="n">${nota(t.nota)}</span>
+      <button class="botao sec" data-copiar="${esc(t.titulo)}">Copiar</button>
+      <a class="botao sec" href="#/trabalho?ref=${esc(t.id)}&titulo=${encodeURIComponent(t.titulo)}">Levar ao Roteiro</a>
+    </div>`).join("")}</div>`;
+  caixa.querySelectorAll("[data-copiar]").forEach((b) => (b.onclick = async () => {
+    await navigator.clipboard.writeText(b.dataset.copiar); b.textContent = "Copiado ✓";
+  }));
+}
+
 // ---------------------------------------------------------------- Títulos
 // Em cima o gerador: o tema e o nicho, e o Claude escreve no estilo dos títulos que estouraram naquele nicho
 // (os exemplos saem do próprio Radar, nunca de fora). Embaixo o banco: os títulos de verdade que deram certo,
@@ -3496,6 +3832,7 @@ async function titulos() {
       <p class="sub">Grátis: usa o Groq, não gasta cota do YouTube.</p>
       <div id="tit-saida"></div>
     </div>
+    <section id="tit-recomendados" class="cp-bloco"></section>
     <h2 style="margin-top:26px">Banco de títulos que estouraram</h2>
     <div class="busca-caixa">${selects([["nicho", "Todos os nichos", o.nichos.map((n) => [n.valor, n.valor])],
       ["nota_min", "", [["3", "3x o normal ou mais"], ["5", "5x ou mais"], ["10", "10x ou mais"]]],
@@ -3517,6 +3854,7 @@ async function titulos() {
       alvo.querySelectorAll("[data-copiar]").forEach((b) => (b.onclick = async () => { await navigator.clipboard.writeText(b.dataset.copiar); b.textContent = "Copiado ✓"; }));
     } catch (e) { alvo.innerHTML = `<div class="vazio">${esc(porque(e))}</div>`; }
   };
+  recomendados(document.getElementById("tit-recomendados"));
   ligarSelects(tela, filtro, PADRAO_TITULOS, banco, ["busca"]);
   let espera;
   document.getElementById("tit-busca").oninput = (e) => {

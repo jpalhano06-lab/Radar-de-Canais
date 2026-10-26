@@ -9,7 +9,10 @@ function mostrarSo(id) {
   for (const x of ["permissao", "desligado", "dentro", "entrar"]) $(x).hidden = x !== id;
 }
 
+let reconferir = 0;
+
 async function mostrar() {
+  clearTimeout(reconferir);
   $("erro").textContent = "";
   const servidor = await endereco();
   $("servidor").value = servidor;
@@ -22,7 +25,11 @@ async function mostrar() {
     const r = await fetch(servidor + "/api/eu", { headers: token ? { Authorization: `Bearer ${token}` } : {}, signal: AbortSignal.timeout(6000) });
     resposta = r.ok ? await r.json() : { precisaEntrar: r.status === 401 };
   } catch {
-    return mostrarSo("desligado");
+    // o Radar pode estar subindo: a janelinha olha de novo sozinha, em vez de a pessoa ter de fechar e abrir
+    mostrarSo("desligado");
+    clearTimeout(reconferir);
+    reconferir = setTimeout(() => mostrar().catch(() => {}), 3000);
+    return;
   }
   if (resposta.precisaEntrar) return mostrarSo("entrar");
   mostrarSo("dentro");

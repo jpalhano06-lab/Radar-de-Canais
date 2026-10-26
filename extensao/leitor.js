@@ -72,7 +72,7 @@
   // o botão "Mostrar transcrição" sumiu da descrição). Pedir a legenda direto vem vazio (falta o token que só o player
   // tem), então a legenda é ligada por um instante, a resposta que o player baixa é lida e a legenda volta como estava.
   // O player não baixa de novo uma legenda que já baixou: toda legenda que passa fica guardada por vídeo.
-  let esperandoLegenda = null;
+  const esperandoLegenda = new Set();   // quem está esperando a próxima legenda (um por pedido)
   const legendas = new Map();        // id do vídeo -> [{ lingua, kind, dados }]
   function guardarLegenda(url, texto) {
     try {
@@ -80,7 +80,7 @@
       if (!dados || !dados.events) return;
       const id = u.searchParams.get("v");
       legendas.set(id, [...(legendas.get(id) || []), { lingua: u.searchParams.get("lang") || "", kind: u.searchParams.get("kind") || "", dados }]);
-      if (esperandoLegenda) esperandoLegenda(id);
+      for (const avisar of [...esperandoLegenda]) avisar(id);
     } catch { /* não era a legenda em JSON */ }
   }
   const abrirXhr = XMLHttpRequest.prototype.open;
@@ -109,13 +109,16 @@
     let j = guardada(id, t);
     if (!j) {
       const antes = p.getOption && p.getOption("captions", "track");
+      let pronto = () => {};
+      const avisar = (vid) => { if (vid === id) pronto(); };
       await new Promise((ok) => {
-        esperandoLegenda = (vid) => { if (vid === id) ok(); };
+        pronto = ok;
+        esperandoLegenda.add(avisar);
         if (p.loadModule) p.loadModule("captions");
         p.setOption("captions", "track", { languageCode: t.languageCode, kind: t.kind || "" });
-        setTimeout(ok, 10000);
+        setTimeout(ok, 6000);
       });
-      esperandoLegenda = null;
+      esperandoLegenda.delete(avisar);
       if (antes && antes.languageCode) p.setOption("captions", "track", antes);
       else { p.setOption("captions", "track", {}); if (p.unloadModule) p.unloadModule("captions"); }
       j = guardada(id, t);
@@ -132,18 +135,34 @@
   async function painelDoYoutube(id) {
     const botao = document.querySelector("ytd-video-description-transcript-section-renderer button");
     if (!botao || new URLSearchParams(location.search).get("v") !== id) return [];
-    const j = await new Promise((ok) => { esperandoTranscricao = ok; botao.click(); setTimeout(() => ok(null), 12000); });
+    const j = await new Promise((ok) => { esperandoTranscricao = ok; botao.click(); setTimeout(() => ok(null), 7000); });
     esperandoTranscricao = null;
     const fechar = document.querySelector('ytd-engagement-panel-section-list-renderer[target-id*="transcript"] #visibility-button button');
     if (fechar) fechar.click();
     return segmentos(j);
   }
 
+  // Um pedido por vídeo de cada vez: a aba do painel e a janelinha do menu abrem a mesma transcrição, e dois
+  // pedidos juntos ligavam e desligavam a legenda do player ao mesmo tempo (era um dos jeitos de bugar).
+  const emAndamento = new Map();
+
   async function transcricao(id) {
-    let linhas = [];
-    try { linhas = await legendaDoPlayer(id); } catch { /* tenta o outro jeito */ }
-    if (!linhas.length) linhas = await painelDoYoutube(id);
-    return { linhas };
+    if (emAndamento.has(id)) return emAndamento.get(id);
+    const tarefa = (async () => {
+      let linhas = [];
+      try { linhas = await legendaDoPlayer(id); } catch { /* tenta o outro jeito */ }
+      if (!linhas.length) {
+        try { linhas = await painelDoYoutube(id); } catch { linhas = []; }
+      }
+      if (linhas.length) return { linhas };
+      // sem nenhuma trilha de legenda o vídeo não tem transcrição mesmo; com trilha, foi o YouTube que não entregou
+      const r = resposta();
+      return { linhas: [], motivo: r && !trilha(r) ? "sem-legenda" : "nao-deu" };
+    })();
+    emAndamento.set(id, tarefa);
+    // só o acerto fica guardado: o que falhou tem de poder ser tentado de novo
+    tarefa.then((t) => { if (!t.linhas.length) emAndamento.delete(id); }, () => emAndamento.delete(id));
+    return tarefa;
   }
 
   window.addEventListener("message", async (e) => {

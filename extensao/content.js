@@ -8,8 +8,35 @@
   const IMAGEM = "ytd-thumbnail, a#thumbnail, yt-thumbnail-view-model, .yt-lockup-view-model__content-image, .shortsLockupViewModelHostThumbnailContainer";
   let semConta = false;
 
-  const api = (caminho, metodo = "GET", corpo) =>
-    new Promise((ok) => chrome.runtime.sendMessage({ tipo: "api", caminho, metodo, corpo }, (r) => ok(r || { erro: "sem resposta" })));
+  // A extensão "desligando" no meio da navegação era quase sempre uma destas três coisas, e nenhuma dizia o que
+  // tinha acontecido: o Chrome desligou o service worker e a primeira mensagem se perdeu; o Radar estava
+  // reiniciando; ou a extensão foi recarregada (chrome://extensions, atualização) e esta página ficou órfã. As duas
+  // primeiras agora são tentadas de novo sozinhas, e a terceira avisa na tela o que fazer, em vez de a página
+  // simplesmente parar de responder.
+  let orfa = false;
+  const ORFA = "A extensão foi recarregada: aperte F5 nesta página.";
+  const ponte = (msg) => new Promise((ok) => {
+    try {
+      chrome.runtime.sendMessage(msg, (r) => ok(r || { erro: chrome.runtime.lastError ? "sem-ponte" : "sem resposta", status: 0 }));
+    } catch { ok({ erro: "sem-ponte", status: 0 }); }
+  });
+  const espera0 = (ms) => new Promise((ok) => setTimeout(ok, ms));
+
+  const api = async (caminho, metodo = "GET", corpo) => {
+    if (orfa) return { erro: ORFA, status: 0 };
+    let r = await ponte({ tipo: "api", caminho, metodo, corpo });
+    // status 0 é pedido que não chegou (service worker dormindo, Radar reiniciando): a segunda tentativa resolve
+    if (r && r.status === 0 && r.erro !== "sem-ponte") {
+      await espera0(800);
+      r = await ponte({ tipo: "api", caminho, metodo, corpo });
+    }
+    if (r && r.erro === "sem-ponte") {
+      // runtime.id vazio = esta página não fala mais com a extensão; só o F5 religa
+      if (!chrome.runtime || !chrome.runtime.id) { orfa = true; avisoRapido("Radar: " + ORFA); }
+      return { erro: orfa ? ORFA : "A extensão não respondeu agora.", status: 0 };
+    }
+    return r;
+  };
 
   // elemento com texto seguro (nada vindo do YouTube vira HTML)
   function h(tag, attrs = {}, ...filhos) {
@@ -555,11 +582,14 @@
     const f = esperando.get(e.data.radarResposta);
     if (f) { esperando.delete(e.data.radarResposta); f(e.data.dados); }
   });
-  const pedirPagina = (tipo, id) => new Promise((ok) => {
+  // o teto é por pedido: a transcrição liga a legenda do player e espera o YouTube baixar, o que leva mais que os
+  // 15 s que valem para o resto (com 15 s para tudo, a transcrição estourava o tempo e a aba dizia que o vídeo não
+  // tinha legenda — era só a espera curta)
+  const pedirPagina = (tipo, id, teto = 15000) => new Promise((ok) => {
     const n = ++pedidos;
     esperando.set(n, ok);
     window.postMessage({ radarPedido: n, tipo, id }, location.origin);
-    setTimeout(() => { if (esperando.delete(n)) ok(null); }, 15000);
+    setTimeout(() => { if (esperando.delete(n)) ok(null); }, teto);
   });
   const espera = (ms) => new Promise((ok) => setTimeout(ok, ms));
   const minSeg = (s) => s == null ? "—" : s >= 3600 ? `${Math.floor(s / 3600)}:${String(Math.floor(s / 60) % 60).padStart(2, "0")}:${String(s % 60).padStart(2, "0")}`
@@ -634,13 +664,24 @@
     const abaTranscricao = () => {
       const lista = h("div", { class: "radar-transcricao" }, h("div", { class: "radar-fraco" }, "Lendo a fala do vídeo…"));
       const mostrar = (t) => {
-        if (!t || !t.linhas.length) return lista.replaceChildren(h("div", { class: "radar-fraco" }, "Este vídeo não tem transcrição."));
+        if (!t || !t.linhas || !t.linhas.length) {
+          // sem trilha de legenda o vídeo não tem transcrição mesmo; qualquer outro caso é tentativa que não deu, e
+          // chamar isso de "não tem transcrição" era mentira: agora dá para pedir de novo
+          if (t && t.motivo === "sem-legenda") return lista.replaceChildren(h("div", { class: "radar-fraco" }, "Este vídeo não tem legenda, nem automática."));
+          return lista.replaceChildren(h("div", { class: "radar-fraco" }, "Não consegui ler a fala agora (o YouTube não entregou a legenda)."),
+            botao("radar-botao", "relogio", "Tentar de novo", () => pedir()));
+        }
         lista.replaceChildren(...t.linhas.map((l) => h("div", { class: "radar-trecho" },
           h("button", { class: "radar-tempo", title: "Ir para este trecho", onclick: () => { const vid = document.querySelector("video"); if (vid) vid.currentTime = l.ms / 1000; } },
             minSeg(Math.floor(l.ms / 1000))), h("span", {}, l.texto))));
       };
+      // só o que deu certo fica guardado: o que falhou tem de poder ser tentado de novo
+      const pedir = () => {
+        lista.replaceChildren(h("div", { class: "radar-fraco" }, "Lendo a fala do vídeo…"));
+        pedirPagina("transcricao", id, 25000).then((t) => { transcrita = t && t.linhas && t.linhas.length ? t : null; mostrar(t); });
+      };
       if (transcrita) mostrar(transcrita);
-      else pedirPagina("transcricao", id).then((t) => { transcrita = t; mostrar(t); });
+      else pedir();
       const copiar = (comTempos) => (e) => {
         if (!transcrita || !transcrita.linhas.length) return;
         navigator.clipboard.writeText(comTempos ? transcrita.linhas.map((l) => `[${minSeg(Math.floor(l.ms / 1000))}] ${l.texto}`).join("\n")

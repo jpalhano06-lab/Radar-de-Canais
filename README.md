@@ -1216,3 +1216,221 @@ Conferido no navegador, com o banco real: Tinocando TV fecha em **21 h às 23 h5
 de curva, e a curva sobe a tarde inteira; o canal João o Lobo (19 vídeos, 158 horas) mostra o aviso de que ainda
 não dá para dizer. `tests/test_horarios.py` cobre as contas (12 testes). O painel do Studio não foi visto num
 upload de verdade — só o endereço que ele chama. Para a extensão: `chrome://extensions` → ↻ no Radar de Canais.
+
+## A ajuda de postagem que faltava, a extensão que não cai e a descrição sem a lista de imagens (2026-10-25)
+
+Quatro coisas que o usuário cobrou de uma vez: a parte da postagem que o **Dotti Finder** faz e o Radar não fazia,
+a tela de Publicação do Radar que "não faz sentido", a lista de onde vêm as imagens saindo da descrição, e a
+extensão que vive "desligando" — mais a transcrição que às vezes buga.
+
+### Primeiro: a extensão do Dotti, lida no disco
+
+Na vez anterior a análise foi feita na **vidIQ** (`pachckjkecffpdphbpmfolblodfkgbhl`), e ali a ajuda de postagem é
+quase toda inventada — a curva de melhor horário é uma matriz escrita no código. O concorrente que importa aqui é
+outro, e está instalado: `lpnjnahgabpibeaeocmflhdfhocpdkmi`, **Dotti Finder 3.2.21**. A ajuda de postagem deles
+mora em dois arquivos:
+
+- `studio_envio.js` — liga a monetização e responde "nada disso" no questionário, avança a etapa, guarda a escolha
+  para repetir sozinha, e **comprime a capa que passa de 2 MB** (encolhe em degraus de 1920/1280/960/640 e desce a
+  qualidade do JPEG até caber, devolvendo o arquivo no próprio campo do Studio).
+- `studio_ia.js` — **descrição com IA** a partir do título, **tags com IA**, capítulos tirados da legenda, e as
+  horas de mais views do canal com a "hora em que sai lá" no fuso do público.
+
+Batendo com o `publicar.js`, o Radar já fazia mais que eles em quase tudo (detalhes, anúncios de um aperto,
+questionário, tela final, uso de IA, melhor horário medido). Faltavam duas, e são as duas que entraram agora.
+
+### Capa acima de 2 MB
+
+O YouTube recusa capa maior que 2 MB e só diz que o arquivo é grande; a pessoa ia abrir um editor de imagem e
+voltar. Agora a extensão vê a imagem escolhida no campo da capa e, se passar do limite, mostra o cartão com o
+tamanho e um botão: encolhe, salva em JPEG até cair abaixo de 1,95 MB (folga para o Studio não recusar no limite) e
+já põe o arquivo no campo. A imagem no computador não muda. Conferido no navegador com uma capa de 4000x2250 e
+29,5 MB de ruído: saiu **1,18 MB em 1920x1080**, na primeira qualidade da escala.
+
+### Descrição e tags para o vídeo que não é da fábrica
+
+O vídeo que sai da fábrica já chega ao Studio com título, descrição, tags e capítulos prontos — para esse, rascunho
+de IA seria pior que o que ele já tem, e o botão não aparece. Quem não tinha nada era o vídeo gravado fora da
+fábrica: o painel dizia só "título e descrição ficam com você". Agora, nos Detalhes, ele oferece duas coisas, pela
+rota `POST /api/ext/escrever` (plano grátis, `radar/publicar.py`):
+
+- **Escrever a descrição**: de 2 a 4 frases do que o vídeo mostra, na língua do título, e o rascunho entra **em
+  cima** do que já estava no campo — embaixo costuma estar o texto fixo do canal, que não se joga fora.
+- **Sugerir as tags**: de 12 a 20 termos de busca, já cortados no teto de 500 caracteres do campo (`tags_que_cabem`),
+  sem repetir e sem número nem hashtag na frente.
+
+Quem escreve é o **Claude Code que já está instalado** (o mesmo do Roteiro): nada de chave nova, nada de cota do
+YouTube. Se o vídeo já tiver legenda, ela entra no pedido; vídeo recém-enviado ainda não tem, e isso não é erro —
+segue só com o título. Nada é publicado: o texto vai para o campo e quem lê, muda e aperta Publicar é a pessoa.
+
+### A lista de onde vêm as imagens saiu da descrição
+
+Era a fábrica que punha: o `creditos.txt` do projeto ia inteiro no meio da descrição de todo vídeo
+(`fabrica/publicacao.py`). Saiu. O `creditos.txt` continua sendo escrito na pasta do projeto, para conferir de onde
+veio cada imagem quando precisar — o que não acontece mais é essa lista sair publicada embaixo do vídeo. Com os
+créditos fora, o corte no teto de 5.000 caracteres também parou de precisar do aviso "créditos completos no
+arquivo". (Essa parte é no repositório da fábrica, não no do Radar.)
+
+### A tela Publicação do Radar, explicada
+
+Ela não publica nada, e isso não estava escrito em lugar nenhum. Agora a primeira linha diz o que ela é: o lugar
+onde ficam guardadas **as escolhas que a extensão repete** na tela de enviar vídeo do Studio (monetização e
+anúncios, tela final, uso de IA, título/descrição/tags do vídeo da fábrica), e que quem aperta Publicar é a pessoa.
+O texto do rodapé também parou de prometer os créditos que não vão mais.
+
+### A extensão parando sozinha
+
+Eram três coisas diferentes, e nenhuma dizia o que havia acontecido:
+
+- **O Chrome desliga o service worker** e a primeira mensagem depois disso se perde. Agora o pedido que não chega é
+  repetido (`content.js`), e no `background.js` o próprio `fetch` tenta três vezes, com pausa crescente.
+- **O Radar reiniciando** devolvia 502/503/504 ou nem respondia, e a página ficava sem números até o F5. Esses
+  códigos passaram a contar como "não chegou": espera e pede de novo. A janelinha da extensão também reconfere
+  sozinha a cada 3 s enquanto o Radar não responde, em vez de pedir para fechar e abrir.
+- **A extensão recarregada** (`chrome://extensions`, atualização) deixa a página órfã: `chrome.runtime.id` fica
+  vazio e nada mais funciona, calado. Agora aparece o aviso na tela dizendo para apertar F5 — a única coisa que
+  religa. O mesmo guarda-chuva entrou no `claude.js` e no `colar.js`.
+
+### A transcrição que bugava
+
+Dois defeitos, os dois na espera:
+
+- O `content.js` esperava **15 s** por qualquer resposta do `leitor.js`, mas a transcrição pode ligar a legenda do
+  player (até 10 s) e depois tentar o painel do YouTube (até 12 s): 22 s. Estourava o tempo e a aba escrevia **"Este
+  vídeo não tem transcrição"** — mentira. Agora o teto é por pedido (25 s para a transcrição), as esperas de dentro
+  couberam em 6 s e 7 s, e o que falha diz "não consegui ler agora" com um botão de **tentar de novo**. Só o acerto
+  fica guardado; o erro não gruda no vídeo.
+- Abrir a aba e a janelinha do menu ao mesmo tempo disparava **dois pedidos**, que ligavam e desligavam a legenda do
+  player um por cima do outro. Agora é um pedido por vídeo de cada vez, e quem espera a legenda é uma lista em vez
+  de um lugar só.
+
+"Este vídeo não tem legenda, nem automática" passou a ser dito **só quando o player não tem trilha nenhuma**.
+
+Testado: `tests/test_escrever_publicacao.py` (6 testes: o teto do campo de tags, a limpeza do que o Claude manda,
+a fala entrando no pedido) e os 221 do Radar passando. A rota foi chamada de verdade: tags e descrição saíram em 6 s
+para um título do UK MARKET. Os 4 testes que falham em `tests/app_js.test.mjs` já falhavam antes desta mudança (são
+do 503 do site). O painel do Studio não foi visto num upload de verdade — só a conta da capa, rodada no navegador.
+Para a extensão: `chrome://extensions` → ↻ no Radar de Canais (versão 0.27.0).
+
+## Curva da vida, nichos em tabela e títulos recomendados (2026-10-25)
+
+Pedido do usuário com duas telas do Dotti Finder na mão: a faixa "como um nicho nasce e morre" e a lista de nichos em
+tabela, mais os "títulos recomendados". **Não deu para entrar no Dotti para mexer**: o Claude in Chrome não está
+conectado (`list_connected_browsers` devolve vazio), e o site deles é atrás de login — entrar com a senha do usuário
+não se faz. O que deu para ler foi a extensão deles instalada no disco (`regra_tipo.js`, `cracha.js`), onde as
+etapas estão escritas, e as próprias telas das imagens. A regra da casa continua: **a ideia é deles, a conta e as
+palavras são nossas** — nada copiado.
+
+### A tela Canais agora tem três visões
+
+Uma faixa com três botões em cima da lista: **Canais** (a lista de sempre), **Curva da vida** e **Por nicho**. Os
+filtros de cima valem nas três, e o modo vai no endereço (`#/base?modo=vida`), como todo filtro do Radar.
+
+**Curva da vida** (`radar/nichos.py`, `/api/nichos/vida`): cada canal cai numa das cinco etapas pela idade de quem
+posta — o tempo desde o `primeiro_video`, que é o que diz se ainda dá para entrar.
+
+| Etapa | Quanto tempo postando | Veredito |
+|---|---|---|
+| Testando | até 30 dias | Janela aberta |
+| Decolando | 1 a 3 meses | Janela aberta |
+| Disputando | 3 a 6 meses | Já tem fila |
+| Firme | 6 meses a 2 anos | Tarde para entrar |
+| Veterano | mais de 2 anos | Tarde para entrar |
+
+O veredito é **da etapa**, não do canal: diz o que significa, para quem procura onde entrar, achar muita gente ali.
+Cada etapa mostra quantos canais tem, a barra na proporção, e a **média de views do mês** — a soma das views dos
+vídeos que cada canal publicou nos últimos 30 dias, dividida só por **quem publicou**. Canal parado não entra nessa
+média, senão ela viraria uma conta sobre quem desistiu. Clicar numa etapa abre a lista filtrada por ela.
+
+As faixas são **coladas** (fim exclusivo): a idade vem em dias quebrados, e com 0-30 e 31-90 o canal de 30 dias e
+meio sumia da conta. Conferido no banco real: as cinco etapas somam 343, que é o total de canais da lista, sem
+sobra nem falta. A etapa clicada manda `idade_min`/`idade_max` nos mesmos dias (÷ 30,44), senão a faixa dizia 34 e
+a lista abria com 35.
+
+**Por nicho** (`/api/nichos/tabela`): uma linha por nicho com canais, **tráfego típico**, crescendo, parados, views
+no mês e público. Tráfego típico é a **mediana** do normal por vídeo, não a média — um canal gigante no meio de
+pequenos faria o nicho parecer o que ele não é (Geopolítica: 2 canais, 1,7 mi típico; Crimes Reais: 47 canais,
+41 mil). O botão abre a lista naquele nicho, e o select de cima acompanha.
+
+Onde ficamos diferentes do Dotti de propósito: a coluna **DEMANDA** com o botão "medir" deles não entrou. Medir
+demanda de nicho gasta cota do YouTube e nós não temos uma conta de demanda que não seja chute — o que o Radar
+mede de verdade é o que está na tabela. Se virar útil, o lugar dela já está aberto.
+
+### Títulos recomendados
+
+A tela de Títulos saiu do menu de manhã, a pedido do usuário, e voltou de tarde no mesmo dia — porque agora ela abre
+com **⭐ Recomendados para os seus canais**: os títulos que estouraram (5x o normal ou mais) **nos nichos dos canais
+dele**, pelo `meus=1` novo do `/api/titulos`. Com os dois canais cadastrados, a lista sai em Animais e Economia e
+em mais nada. Sem canal, ou com canal sem nicho, o bloco diz isso em vez de mostrar uma lista qualquer fingindo que
+é para você. No menu ela chama-se **Títulos que funcionam**, que é o que ela entrega.
+
+Não é previsão, e o texto na tela diz isso: o Radar não sabe o que vai funcionar amanhã, sabe o que já funcionou no
+mesmo assunto.
+
+### De quebra
+
+A rota `/api/nichos` tinha uma função chamada `nichos`, que tapava o módulo `nichos` novo importado no topo do
+`servidor.py` — as duas rotas novas davam 500 (`'function' object has no attribute`). A função virou
+`nichos_da_base`; o endereço não mudou, porque quem manda nele é o `@app.get`.
+
+Testado: `tests/test_nichos.py` (9 testes: as bordas das etapas com dias quebrados, a média só de quem publicou, a
+mediana contra o canal gigante, nicho sem ninguém, base vazia) e os 236 do Radar passando. Conferido no navegador
+com o banco real: as duas visões desenhando e o bloco de recomendados com 12 títulos em Animais e Economia. E as
+cinco etapas batem uma a uma com a lista que elas abrem — 34, 68, 67, 144 e 30, faixa e lista com o mesmo número.
+
+## A tela travada dos Vídeos e as quatro formas da curva da vida (2026-10-25)
+
+Dois pedidos do usuário com a tela de **Vídeos** (Faceless Outliers) aberta na frente.
+
+### Travar 10 na tela
+
+A lista de Vídeos rolava sem fim embaixo do núcleo de busca: ele olhava vinte capas, rolava, carregava mais vinte e
+perdia o lugar — e não tinha onde pôr de lado o vídeo que queria rever no fim da sessão. O botão **📌 Travar 10 na
+tela**, ao lado de "Buscar vídeos novos no YouTube", muda a tela inteira enquanto estiver ligado:
+
+- **Dez de cada vez, parados.** A lista para de crescer: pede `por: 10` ao `/api/videos` e troca "Carregar mais" por
+  **← Anterior / Próximo →**, com `11–20 de 1.353` no meio e `página 2 de 136` na contagem. As setas ← e → do
+  teclado viram a página também (o ouvinte sai sozinho quando a tela sai do ar, e não atrapalha quem está digitando
+  na busca). Cada virada volta ao topo do bloco: a imagem fica travada no mesmo lugar, só o conteúdo muda.
+- **O núcleo de busca recolhe.** A `busca-caixa` some e no lugar dela fica uma aba, **🔍 Abrir a busca e os
+  filtros**, que abre e fecha com um clique. Os filtros continuam valendo (estão no endereço, como sempre); só não
+  ocupam mais meia tela enquanto ele olha as capas.
+- **Separar para ver depois.** Cada vídeo ganha um **⇥ Separar** ao lado de "Salvar ideia", e a capa também pode ser
+  **arrastada** para a bandeja de cima. O que está na pilha fica apagado na grade e com ✓ Separado, para ele não
+  separar duas vezes nem reler o mesmo vídeo. Na bandeja, cada item tem capa, título, canal, a nota e um ✕.
+
+A pilha vive **só nesta janela**, como ele pediu em maiúsculas: não vai para o banco nem para o endereço, e fechar a
+aba apaga. É a mesa de trabalho de uma sessão de garimpo, não um arquivo — para guardar de verdade continuam lá o
+🔖 da esteira (no canto da capa, que grava no servidor) e o 💡 Salvar ideia. O texto da bandeja diz isso.
+
+Soltar a tela devolve tudo: 24 por página, "Carregar mais" e a busca aberta. A pilha, se tiver alguma coisa, fica à
+vista.
+
+### A curva da vida, de quatro jeitos
+
+A **Curva da vida** (em Canais) tinha um desenho só — as cinco barras. Agora tem uma faixa de formas em cima, e os
+quatro desenhos saem dos **mesmos números** do `/api/nichos/vida`; nenhum recalcula nada:
+
+| Forma | O que mostra |
+| --- | --- |
+| **Barras** | o de sempre: a altura diz quantos canais estão na etapa |
+| **Faixa inteira** | uma régua só, cada etapa com a sua fatia em % do nicho, e a legenda embaixo |
+| **Funil** | uma linha por etapa, do começo da vida ao fim, com a barra, o número e o veredito lado a lado |
+| **Tabela** | canais, quantos postaram no mês, quantos estão crescendo, views/mês e veredito, tudo comparável |
+
+E o clique numa etapa mudou de destino: antes trocava de tela e levava para a lista de **canais** daquela etapa;
+agora abre, **aqui embaixo**, os **vídeos** que estouraram nos canais dela — os 12 de maior nota, 5x o normal do
+próprio canal, com o nicho do filtro junto. Ir para os canais virou um botão dentro do bloco ("Ver os canais desta
+etapa"), ao lado de "Fechar". A forma escolhida e a etapa aberta ficam no endereço (`vida_forma`, `vida_etapa`): o
+link reabre a tela do mesmo jeito.
+
+Para isso o `/api/videos` ganhou o parâmetro **`etapa`**, que filtra pela idade de **quem posta** (o
+`canais.primeiro_video`), não pela idade do vídeo, usando a mesma faixa de dias que a faixa contou —
+`nichos.limites()` é a única fonte dos cortes, para a contagem da etapa e a lista que ela abre nunca divergirem.
+Chave que não existe (endereço velho, nome torto) não vira filtro nenhum em vez de virar lista vazia.
+
+Testado: `tests/test_nichos.py` (11 testes, dois novos para os limites das etapas) e os 238 do Radar passando. No
+navegador, com o banco real: travar mostrou 10 de 1.353 em "página 1 de 136", Próximo levou a 11–20, separar e
+arrastar encheram a pilha, a aba reabriu a busca e soltar voltou para os 24; as quatro formas desenharam e
+"Testando" abriu 72 vídeos de canais com menos de 30 dias de casa. Os quatro testes que já falhavam no
+`tests/app_js.test.mjs` antes desta leva (os do 503) continuam falhando — nada aqui mexeu nesse trecho.

@@ -1804,3 +1804,104 @@ nav .subs a .olho svg { width: 15px; height: 15px; }
 .hr-col.pico span { color: var(--texto); font-weight: 700; }
 .hr-pico { margin: 0; color: var(--fraco); font-size: 13px; }
 .hr-pico b { color: var(--texto); }
+
+/* ---------------------------------------------------------------- as três visões da tela Canais (2026-10-25)
+   A lista de sempre, a curva da vida (em que etapa estão os canais) e a tabela por nicho. */
+.modos { display: flex; gap: 6px; margin: 10px 0 14px; flex-wrap: wrap; }
+.modo { border: 1px solid var(--linha); background: var(--painel); color: var(--fraco); border-radius: 999px;
+  padding: 7px 14px; font-size: 13px; font-weight: 600; cursor: pointer; }
+.modo:hover { color: var(--texto); }
+.modo.ligado { background: var(--acento); border-color: var(--acento); color: #fff; }
+
+.vida-cab h2 { margin: 0 0 4px; }
+.vida-cab .sub { margin: 0 0 14px; max-width: 70ch; }
+.vida { display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px; }
+.vida-et { display: grid; gap: 2px; justify-items: start; text-align: left; cursor: pointer;
+  background: var(--painel); border: 1px solid var(--linha); border-radius: var(--raio); padding: 12px; color: inherit; }
+.vida-et:hover { border-color: var(--acento); }
+.vida-barra { display: flex; align-items: flex-end; width: 100%; height: 70px; margin-bottom: 8px;
+  background: var(--painel2); border-radius: 8px; overflow: hidden; }
+.vida-barra i { display: block; width: 100%; border-radius: 8px; }
+.vida-et b { font-size: 15px; }
+.vida-et small { color: var(--fraco); font-size: 12px; }
+.vida-n { font-size: 28px; font-weight: 700; line-height: 1.1; margin-top: 6px; }
+.vida-mes { margin-bottom: 8px; }
+.vida-selo { border: 1px solid; border-radius: 999px; padding: 3px 10px; font-size: 11px; font-weight: 700;
+  text-transform: uppercase; letter-spacing: .02em; }
+.vida-o-que { margin-top: 8px; }
+
+.tab-nichos { margin-top: 4px; }
+.tab-nichos .n { text-align: right; white-space: nowrap; }
+.tab-nichos td:last-child { text-align: right; }
+.tab-nichos tbody tr:hover { background: var(--painel2); }
+
+@media (max-width: 900px) {
+  .vida { grid-template-columns: repeat(2, 1fr); }
+  .tab-nichos { font-size: 13px; }
+}
+
+/* ---------------------------------------------------------------- a tela travada dos Vídeos
+   Dez vídeos parados na tela, a busca recolhida numa aba que se puxa, e a pilha dos separados em cima. */
+.puxar-busca { display: block; width: 100%; margin: 0 0 16px; padding: 10px 14px; text-align: left; cursor: pointer;
+  background: var(--painel); border: 1px dashed var(--linha); border-radius: var(--raio); color: var(--fraco); font: inherit; }
+.puxar-busca:hover { color: var(--texto); border-color: var(--acento); }
+.busca-caixa.recolhida { display: none; }
+.separados { background: var(--painel); border: 1px solid var(--linha); border-radius: var(--raio);
+  padding: 14px; margin: 0 0 18px; scroll-margin-top: 80px; }
+.separados.recebendo { border-color: var(--verde); box-shadow: 0 0 0 2px color-mix(in srgb, var(--verde) 35%, transparent); }
+.sep-cab { display: flex; gap: 10px; align-items: baseline; flex-wrap: wrap; margin-bottom: 10px; }
+.sep-cab .sub { flex: 1; min-width: 240px; margin: 0; font-size: 12px; }
+.sep-itens { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 10px; }
+.sep-itens .vazio { grid-column: 1/-1; padding: 10px 0; }
+.sep-item { display: grid; grid-template-columns: 92px 1fr auto; gap: 10px; align-items: center;
+  background: var(--painel2); border: 1px solid var(--linha); border-radius: 10px; padding: 8px; }
+.sep-item img { width: 92px; height: 52px; object-fit: cover; border-radius: 6px; display: block; }
+.sep-texto { display: grid; gap: 2px; min-width: 0; }
+.sep-texto a { color: var(--texto); font-size: 13px; line-height: 1.25; text-decoration: none;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.sep-texto a:hover { color: var(--acento); }
+.sep-texto small { color: var(--fraco); font-size: 11px; }
+.sep-tirar { background: none; border: 0; color: var(--fraco); cursor: pointer; font-size: 15px; padding: 4px 6px; }
+.sep-tirar:hover { color: var(--vermelho-claro); }
+.grade-videos .video.yt.separado { opacity: .45; }
+.grade-videos .video.yt[draggable="true"] .capa { cursor: grab; }
+.paginador { display: flex; gap: 14px; align-items: center; justify-content: center; margin: 22px 0 8px; }
+.paginador .botao[disabled] { opacity: .4; cursor: default; }
+.pag-onde { color: var(--fraco); font-size: 13px; min-width: 150px; text-align: center; }
+
+/* ---------------------------------------------------------------- as outras formas da curva da vida */
+.modos-forma { margin-bottom: 14px; }
+.vida-regua { display: flex; gap: 3px; height: 54px; margin-bottom: 12px; }
+.vida-fatia { border: 0; border-radius: 6px; cursor: pointer; color: #000; font-weight: 700; font-size: 12px;
+  display: grid; place-items: center; min-width: 8px; padding: 0; }
+.vida-fatia:hover, .vida-fatia.escolhida { outline: 2px solid var(--texto); outline-offset: 2px; }
+.vida-legenda { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 8px; }
+.vida-chip { display: grid; grid-template-columns: 12px 1fr; grid-template-rows: auto auto; gap: 2px 8px;
+  align-items: center; text-align: left; cursor: pointer; background: var(--painel); border: 1px solid var(--linha);
+  border-radius: var(--raio); padding: 10px 12px; color: inherit; }
+.vida-chip i { grid-row: 1/3; width: 12px; height: 12px; border-radius: 3px; }
+.vida-chip small { color: var(--fraco); font-size: 12px; }
+.vida-chip:hover, .vida-chip.escolhida { border-color: var(--acento); }
+.vida-funil { display: grid; gap: 8px; }
+.vida-degrau { display: grid; grid-template-columns: 190px 1fr 140px auto; gap: 14px; align-items: center;
+  text-align: left; cursor: pointer; background: var(--painel); border: 1px solid var(--linha);
+  border-radius: var(--raio); padding: 12px 14px; color: inherit; }
+.vida-degrau:hover, .vida-degrau.escolhida { border-color: var(--acento); }
+.vida-degrau small { display: block; color: var(--fraco); font-size: 12px; }
+.vida-degrau-barra { height: 16px; background: var(--painel2); border-radius: 8px; overflow: hidden; }
+.vida-degrau-barra i { display: block; height: 100%; border-radius: 8px; }
+.vida-degrau-n b { font-size: 20px; }
+.vida-et.escolhida { border-color: var(--acento); box-shadow: 0 0 0 2px color-mix(in srgb, var(--acento) 35%, transparent); }
+.tab-vida { margin-top: 4px; }
+.tab-vida .n { text-align: right; white-space: nowrap; }
+.tab-vida td:last-child { text-align: right; }
+.tab-vida tbody tr:hover { background: var(--painel2); }
+.tab-vida tbody tr.escolhida { background: var(--painel2); }
+.vida-videos-cab { margin-top: 26px; border-top: 1px solid var(--linha); padding-top: 18px; }
+.vida-videos-cab h3 { margin: 0 0 4px; }
+.vida-videos-acoes { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 14px; }
+
+@media (max-width: 900px) {
+  .vida-degrau { grid-template-columns: 1fr; gap: 6px; }
+  .tab-vida { font-size: 13px; }
+}

@@ -24,6 +24,8 @@
     arquivo: "", kit: null, erro: "", carregando: false,
     jaPreencheu: "", trabalhando: "", recado: "", recadoErro: false,
     horarios: null, horariosPedido: false,
+    capa: null, capaRecado: "", capaTipo: "", comprimindo: false,
+    escrevendo: "", escritaRecado: "", escritaErro: false,
     modoAnuncio: localStorage.getItem("radar-anuncio-modo") || "cada",
     cadaMin: Number(localStorage.getItem("radar-anuncio-cada")) || 1,
     quantos: Number(localStorage.getItem("radar-anuncio-quantos")) || 10,
@@ -38,7 +40,12 @@
     estado.arquivo = nome;
     buscar(nome);
   }
-  document.addEventListener("change", (e) => { const f = e.target && e.target.files && e.target.files[0]; if (f) novoArquivo(f.name); }, true);
+  document.addEventListener("change", (e) => {
+    const f = e.target && e.target.files && e.target.files[0];
+    if (!f) return;
+    novoArquivo(f.name);
+    if (!aplicandoCapa && /^image\//.test(f.type)) novaCapa(f, e.target);
+  }, true);
   document.addEventListener("drop", (e) => { const f = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0]; if (f) novoArquivo(f.name); }, true);
 
   // reserva: o nome que o Studio mostra ("Nome do arquivo" na tela de upload e na de edição)
@@ -493,6 +500,170 @@
         + `sem as ${h.ignorado_h} h de estreia. Poste um pouco antes do pico.` }));
   }
 
+  // ------------------------------------------------------------ descrição e tags do vídeo que não é da fábrica
+  // Pedido do usuário em 2026-10-25: é a parte da ajuda de postagem que o Dotti Finder tem (studio_ia.js, "Descrição
+  // com IA" e "Tags com IA") e o Radar não tinha. Só aparece quando o vídeo NÃO foi achado na fábrica — o da fábrica
+  // já vem com título, descrição e tags prontos, que são melhores que qualquer rascunho. Quem escreve é o Claude do
+  // Radar (rota /api/ext/escrever); o texto entra no campo do Studio como rascunho, para a pessoa ler e mudar.
+  function videoDoStudio() {
+    return (location.pathname.match(/\/video\/([\w-]{11})/) || location.search.match(/[?&]udvid=([\w-]{11})/) || [])[1] || "";
+  }
+
+  async function escreverComIA(oQue) {
+    if (estado.escrevendo) return;
+    const campo = campoTitulo();
+    const titulo = campo ? oQueTem(campo).trim() : "";
+    if (titulo.length < 5) {
+      estado.escritaRecado = "Escreva o título do vídeo primeiro: é dele que o resto sai."; estado.escritaErro = true;
+      return desenhar();
+    }
+    estado.escrevendo = oQue; estado.escritaRecado = ""; estado.escritaErro = false; desenhar();
+    const r = await pedir({ tipo: "api", caminho: "/api/ext/escrever", metodo: "POST",
+      corpo: { o_que: oQue, titulo, video: videoDoStudio() } });
+    estado.escrevendo = "";
+    if (r.erro || !r.dados) {
+      estado.escritaRecado = r.erro || "O Radar não respondeu."; estado.escritaErro = true;
+      return desenhar();
+    }
+    if (oQue === "tags") {
+      const tags = tagsQueCabem(r.dados.tags || []);
+      const tg = await abrirAsTags();
+      if (!tg) { estado.escritaRecado = "Abra o “Mostrar mais” dos Detalhes e aperte de novo."; estado.escritaErro = true; }
+      else if (digitar(tg, tags.join(", "))) { tg.blur(); estado.escritaRecado = `${tags.length} tags escritas. Confira antes de publicar.`; }
+      else { estado.escritaRecado = "Não consegui escrever no campo das tags."; estado.escritaErro = true; }
+      return desenhar();
+    }
+    const alvo = campoDescricao();
+    const antes = alvo ? oQueTem(alvo).trim() : "";
+    // o rascunho entra EM CIMA do que já estava: embaixo costuma estar o texto fixo do canal, que não se joga fora
+    const texto = antes ? `${r.dados.descricao}\n\n${antes}` : r.dados.descricao;
+    if (!alvo || !digitar(alvo, texto.slice(0, 5000))) {
+      estado.escritaRecado = "Não consegui escrever no campo da descrição."; estado.escritaErro = true;
+    } else {
+      estado.escritaRecado = antes ? "Rascunho da descrição posto em cima do que já estava. Leia antes de publicar."
+        : "Rascunho da descrição escrito. Leia antes de publicar.";
+    }
+    desenhar();
+  }
+
+  function cartaoEscrita() {
+    const ocupado = !!estado.escrevendo;
+    const bt = (oQue, texto, feito) => {
+      const b = el("button", { className: "acao", disabled: ocupado }, el("i"), ocupado && estado.escrevendo === oQue ? feito : texto);
+      b.onclick = () => escreverComIA(oQue);
+      return b;
+    };
+    const dentro = [el("b", { textContent: "✍ Não achei este vídeo na fábrica" }),
+      el("small", { textContent: "O Claude do Radar escreve um rascunho a partir do título (e da legenda, se já houver). Nada é publicado." }),
+      el("div", { className: "dupla" }, bt("descricao", "Escrever a descrição", "Escrevendo…"), bt("tags", "Sugerir as tags", "Procurando…"))];
+    if (estado.escritaRecado) dentro.push(el("div", { className: estado.escritaErro ? "erro" : "ok", textContent: estado.escritaRecado }));
+    return el("div", { className: "cartao" }, dentro);
+  }
+
+  // ------------------------------------------------------------ a capa que passa de 2 MB
+  // O YouTube recusa capa acima de 2 MB e só diz "o arquivo é muito grande": a pessoa tem de abrir um editor de
+  // imagem e voltar. O Dotti Finder comprime na hora (estudo da extensão deles em 2026-10-25, studio_envio.js), e
+  // é a única parte da ajuda de postagem deles que o Radar não tinha. Aqui a conta é a mesma ideia: vai descendo o
+  // tamanho e a qualidade do JPEG até caber, e devolve o arquivo no próprio campo do Studio. Quem escolhe a capa
+  // continua sendo a pessoa — só o aperto de "comprimir" é nosso.
+  const CAPA_LIMITE = 2 * 1024 * 1024;
+  const CAPA_ALVO = 1950000;                                      // folga para o Studio não recusar no limite
+  const CAPA_QUALIDADES = [0.92, 0.86, 0.8, 0.74, 0.68, 0.62, 0.55, 0.48];
+  const CAPA_CAIXAS = [[1920, 1080], [1280, 720], [960, 540], [640, 360]];
+  let aplicandoCapa = false;
+
+  const mb = (b) => (Math.max(0, b) / 1048576).toFixed(1).replace(".", ",") + " MB";
+
+  function novaCapa(arquivo, campo) {
+    if (arquivo.size <= CAPA_LIMITE) {                             // já cabe: nada a fazer
+      if (estado.capa) { estado.capa = null; estado.capaRecado = ""; desenhar(); }
+      return;
+    }
+    estado.capa = { arquivo, campo };
+    estado.capaRecado = "";
+    desenhar();
+  }
+
+  // os tamanhos a tentar, do maior para o menor, sem repetir e sem esticar a imagem
+  function degrausDaCapa(w, h) {
+    const fora = [], longo = Math.max(w, h), curto = Math.min(w, h);
+    for (const [L, C] of CAPA_CAIXAS) {
+      const k = Math.min(1, L / longo, C / curto);
+      const t = [Math.max(1, Math.round(w * k)), Math.max(1, Math.round(h * k))];
+      if (!fora.some((x) => x[0] === t[0] && x[1] === t[1])) fora.push(t);
+    }
+    return fora;
+  }
+
+  async function encolher(arquivo) {
+    const img = await createImageBitmap(arquivo);
+    const tela = document.createElement("canvas"), pincel = tela.getContext("2d");
+    try {
+      for (const [w, h] of degrausDaCapa(img.width, img.height)) {
+        tela.width = w; tela.height = h;
+        pincel.fillStyle = "#fff";                                 // PNG com transparência viraria preto no JPEG
+        pincel.fillRect(0, 0, w, h);
+        pincel.imageSmoothingQuality = "high";
+        pincel.drawImage(img, 0, 0, w, h);
+        for (const q of CAPA_QUALIDADES) {
+          const bloco = await new Promise((ok) => tela.toBlob(ok, "image/jpeg", q));
+          if (!bloco) throw new Error("O navegador não conseguiu gerar o JPEG.");
+          if (bloco.size <= CAPA_ALVO) return { bloco, w, h };
+        }
+      }
+    } finally {
+      if (img.close) img.close();
+    }
+    throw new Error("Não consegui deixar a capa abaixo de 2 MB.");
+  }
+
+  async function comprimirCapa() {
+    const alvo = estado.capa;
+    if (!alvo || estado.comprimindo) return;
+    estado.comprimindo = true; estado.capaRecado = ""; desenhar();
+    try {
+      const { bloco, w, h } = await encolher(alvo.arquivo);
+      const nome = String(alvo.arquivo.name || "capa").replace(/\.[^.]+$/, "") + ".jpg";
+      const novo = new File([bloco], nome, { type: "image/jpeg", lastModified: Date.now() });
+      const campo = alvo.campo && alvo.campo.isConnected ? alvo.campo
+        : document.querySelector("#file-loader, ytcp-thumbnail-uploader input[type=file], ytcp-video-thumbnail-editor input[type=file]");
+      if (!campo) throw new Error("Não achei o campo da capa — escolha a imagem de novo no Studio.");
+      const dt = new DataTransfer();
+      dt.items.add(novo);
+      aplicandoCapa = true;
+      try {
+        campo.files = dt.files;
+        campo.dispatchEvent(new Event("change", { bubbles: true }));
+      } finally {
+        aplicandoCapa = false;
+      }
+      estado.capa = null;
+      estado.capaTipo = "ok";
+      estado.capaRecado = `Capa comprimida: ${mb(alvo.arquivo.size)} → ${mb(novo.size)} · ${w}×${h}. Confira na tela.`;
+    } catch (e) {
+      estado.capaTipo = "erro";
+      estado.capaRecado = (e && e.message) || String(e);
+    } finally {
+      estado.comprimindo = false;
+      desenhar();
+    }
+  }
+
+  function cartaoCapa() {
+    if (!estado.capa && !estado.capaRecado) return null;
+    const dentro = [];
+    if (estado.capa) {
+      const b = el("button", { className: "acao", disabled: estado.comprimindo },
+        el("i"), estado.comprimindo ? "Comprimindo…" : "Comprimir a capa e usar");
+      b.onclick = comprimirCapa;
+      dentro.push(el("b", { textContent: `🖼 A capa tem ${mb(estado.capa.arquivo.size)} — o YouTube aceita até 2 MB.` }),
+        el("small", { textContent: "Encolhe e salva em JPEG até caber, e já põe no campo da capa. A sua imagem no computador não muda." }),
+        b);
+    }
+    if (estado.capaRecado) dentro.push(el("div", { className: estado.capaTipo === "erro" ? "erro" : "ok", textContent: estado.capaRecado }));
+    return el("div", { className: "cartao" }, dentro);
+  }
+
   // ------------------------------------------------------------ o Radar
   async function buscar(arquivo) {
     estado.carregando = true; estado.erro = "";
@@ -562,6 +733,14 @@
       box-shadow: 0 12px 40px rgba(0,0,0,.45); }
     .erro { color: #ff5263; font-size: 12px; }
     .ok { color: #b6f23a; font-size: 12px; }
+    /* o cartão da capa grande tem botão dentro dele, fora da fileira de botões do rodapé */
+    .cartao b { font-size: 13px; }
+    .cartao small { display: block; color: #8b93a7; font-size: 11px; margin: 2px 0 8px; }
+    .cartao .acao { border: 0; cursor: pointer; font: 700 13px Roboto, Arial, sans-serif; background: #cc0000;
+      color: #fff; padding: 8px 14px; border-radius: 4px; display: flex; align-items: center; gap: 8px; }
+    .cartao .acao:disabled { opacity: .6; cursor: default; }
+    .cartao .dupla { display: flex; gap: 6px; flex-wrap: wrap; }
+    .cartao .acao i { width: 15px; height: 11px; border-radius: 3px; background: #fff; flex: none; }
     /* o melhor horário do canal, na etapa de visibilidade (radar/horarios.py) */
     .hr b { font-size: 13px; } .hr small { display: block; color: #8b93a7; font-size: 11px; margin-top: 2px; }
     .hr-g { display: grid; grid-template-columns: repeat(8, 1fr); gap: 4px; align-items: end; height: 54px; margin: 8px 0 4px; }
@@ -641,7 +820,9 @@
     // (quem agenda e publica é a pessoa), então sem cartão não há o que mostrar: a barra fica escondida como antes
     if (etapa === "visibilidade") buscarHorarios();
     const extra = etapa === "visibilidade" ? cartaoHorario() : null;
-    const mostrar = !!etapa && (!!a || !!extra || !!estado.recado);
+    const capa = cartaoCapa();
+    const escrita = etapa === "detalhes" && !estado.kit && !estado.carregando ? cartaoEscrita() : null;
+    const mostrar = !!etapa && (!!a || !!extra || !!capa || !!escrita || !!estado.recado);
     barra.hidden = !mostrar;
     if (!mostrar) {
       host.classList.remove("na-barra"); barra.classList.remove("na-barra");
@@ -653,6 +834,8 @@
     if (estado.recado) corpo.push(el("div", { className: "cartao" },
       el("div", { className: estado.recadoErro ? "erro" : "ok", textContent: estado.recado })));
     if (extra) corpo.push(extra);
+    if (capa) corpo.push(capa);
+    if (escrita) corpo.push(escrita);
 
     const principal = a ? el("button", { className: "acao", disabled: !!estado.trabalhando }, el("i"), a.texto) : null;
     if (principal) principal.onclick = a.tarefa;

@@ -19,7 +19,7 @@ from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 
-from . import alvos, banco, canal_painel, custos, diagnostico, fabrica_api, fila, funcoes, garimpo, gosto, horarios, ia, integracoes, medir, mercado, metricas, pagina, perfil, producao, publicar, radar_paises, roteiro_claude, studio, tempo, thumb, trabalho, treinamento, youtube
+from . import alvos, banco, canal_painel, custos, diagnostico, fabrica_api, fila, funcoes, garimpo, gosto, horarios, ia, integracoes, medir, mercado, metricas, nichos, pagina, perfil, producao, publicar, radar_paises, roteiro_claude, studio, tempo, thumb, trabalho, treinamento, youtube
 from .config import DADOS, NOME, PLANOS, RAIZ, pode
 
 WEB = RAIZ / "radar" / "web"
@@ -602,8 +602,8 @@ def _kit_com_modelo(usuario_id: int, pasta) -> dict:
     """O kit do vídeo como a fábrica escreveu, mais o padrão de publicação do canal.
 
     A descrição NÃO é remontada aqui (mudança de 2026-10-24): quem escreve é a fábrica, que já põe o resumo, os
-    capítulos, os créditos e o rodapé do canal no publicacao.json. Remontar aqui jogava fora os capítulos e os
-    créditos do vídeo, e deixava duas descrições diferentes para o mesmo projeto."""
+    capítulos e o rodapé do canal no publicacao.json. Remontar aqui jogava fora os capítulos do vídeo e deixava
+    duas descrições diferentes para o mesmo projeto."""
     k = publicar.kit(pasta)
     perfil = publicar.perfil_do_projeto(pasta)
     canal_id, canal = producao.canal_do_perfil(usuario_id, perfil)
@@ -641,6 +641,34 @@ def ext_publicar_legenda(nome: str, u: dict = Depends(exigir("extensao"))):
     if not arquivo:
         raise HTTPException(404, "Este vídeo não tem legenda.")
     return FileResponse(arquivo, media_type="application/x-subrip", filename=f"{nome}.srt")
+
+
+@app.post("/api/ext/escrever")
+async def ext_escrever(request: Request, u: dict = Depends(exigir("extensao"))):
+    """Um rascunho de descrição ou as tags para o vídeo que NÃO saiu da fábrica, pedido pelo painel do Studio.
+
+    O vídeo da fábrica já vem com tudo no publicacao.json e nem oferece este botão. Quem escreve é o Claude Code
+    instalado neste computador; se houver legenda do vídeo, ela entra no pedido. Nada é publicado: o texto volta
+    para o campo do Studio, para a pessoa ler e mudar."""
+    d = await request.json()
+    o_que = str(d.get("o_que") or "descricao")
+    if o_que not in ("descricao", "tags"):
+        raise HTTPException(400, "Só sei escrever a descrição ou as tags.")
+    titulo = str(d.get("titulo") or "").strip()
+    if len(titulo) < 5:
+        raise HTTPException(400, "Escreva o título do vídeo primeiro: é dele que sai o resto.")
+    fala = ""
+    video = str(d.get("video") or "")
+    if re.fullmatch(r"[\w-]{11}", video):
+        # vídeo recém-enviado ainda não tem legenda, e isso não é erro: segue só com o título
+        try:
+            fala = roteiro_claude.transcricao(video)[0]
+        except Exception:
+            fala = ""
+    try:
+        return await run_in_threadpool(publicar.escrever, o_que, titulo, fala)
+    except RuntimeError as erro:
+        raise HTTPException(502, str(erro))
 
 
 @app.get("/api/ext/linguas/{video_id}")
@@ -1012,7 +1040,7 @@ def filtros(u: dict = Depends(exigir("radar"))):
 
 
 @app.get("/api/nichos")
-def nichos(u: dict = Depends(exigir("radar"))):
+def nichos_da_base(u: dict = Depends(exigir("radar"))):
     return {"nichos": banco.todos("SELECT nicho, COUNT(*) AS canais FROM canais WHERE no_radar=1 AND nicho<>'' "
                                   "GROUP BY nicho ORDER BY canais DESC")}
 
@@ -1046,6 +1074,18 @@ def grupos(nicho: str = "", u: dict = Depends(exigir("radar"))):
         })
     saida.sort(key=lambda g: (-g["canais"], -g["mediana"]))
     return {"grupos": saida}
+
+
+@app.get("/api/nichos/vida")
+def nichos_vida(nicho: str = "", idioma: str = "", u: dict = Depends(exigir("radar"))):
+    """A faixa das cinco etapas da vida de um canal, somando os canais da mesma lista que a tela Canais mostra."""
+    return nichos.linha_da_vida(nicho, idioma, garimpo.MINIMO_POR_VIDEO)
+
+
+@app.get("/api/nichos/tabela")
+def nichos_tabela(nicho: str = "", idioma: str = "", minimo: int = 1, u: dict = Depends(exigir("radar"))):
+    """Um nicho por linha: canais, tráfego típico, parados e público."""
+    return nichos.tabela(nicho, idioma, max(1, min(minimo, 50)), garimpo.MINIMO_POR_VIDEO)
 
 
 @app.get("/api/ranking")
@@ -1110,6 +1150,15 @@ def outliers(request: Request, u: dict = Depends(exigir("outliers"))):
             onde.append(f"c.{campo}=?"); args.append(q[campo])
     if q.get("busca"):
         onde.append("(v.titulo LIKE ? OR c.titulo LIKE ?)"); args += [f"%{q['busca']}%"] * 2
+    # a etapa da curva da vida: a idade de QUEM POSTA, não a do vídeo. É o que faz o clique numa etapa abrir os
+    # vídeos dos canais dela sem mudar de tela, com o mesmo corte que a faixa contou (radar/nichos.py).
+    faixa = nichos.limites(q.get("etapa", ""))
+    if faixa:
+        de, ate = faixa
+        onde.append("c.primeiro_video IS NOT NULL AND c.primeiro_video != '' AND c.primeiro_video <= ?")
+        args.append(_corte(de))
+        if ate is not None:
+            onde.append("c.primeiro_video > ?"); args.append(_corte(ate))
     if q.get("tipo") == "longo":
         onde.append("v.duracao_s > ?"); args.append(metricas.CURTO_ATE_S)
     elif q.get("tipo") == "curto":
@@ -2505,6 +2554,12 @@ def titulos(request: Request, u: dict = Depends(exigir("outliers"))):
             onde.append(f"c.{campo}=?"); args.append(q[campo])
     if q.get("busca"):
         onde.append("v.titulo LIKE ?"); args.append(f"%{q['busca']}%")
+    # "recomendados": só os nichos em que a pessoa de fato publica (os canais dela), que é a única recomendação
+    # que o Radar pode fazer sem inventar — título que estourou no nicho dela, não no nicho de ninguém
+    if q.get("meus") == "1":
+        onde.append("c.nicho IN (SELECT nicho FROM canais WHERE nicho<>'' AND id IN "
+                    "(SELECT canal_id FROM meus_canais WHERE usuario_id=?))")
+        args.append(u["id"])
     dias = _numero(q, "publicado_dias")
     if dias is not None:
         onde.append("v.publicado >= ?"); args.append(_corte(dias))
