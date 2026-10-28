@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "Radar de Canais",
-  "version": "0.27.0",
-  "description": "Escreve em cima de cada vídeo quantas vezes ele passou do normal do canal, o selo do canal raro e a reação do público; lê os vídeos do YouTube enquanto você navega (sem gastar a cota) e guarda no Radar os que estouraram; resumo da busca, filtros dos vídeos da página e print do cartão; preenche sozinha a publicação no YouTube Studio (detalhes, anúncios e questionário), mostra o melhor horário do canal na hora de agendar, comprime a capa que passa de 2 MB e escreve a descrição e as tags do vídeo que não saiu da fábrica.",
+  "version": "0.29.0",
+  "description": "Escreve em cima de cada vídeo quantas vezes ele passou do normal do canal, o selo do canal raro e a reação do público; lê os vídeos do YouTube enquanto você navega (sem gastar a cota) e guarda no Radar os que estouraram; resumo da busca, filtros dos vídeos da página e print do cartão; preenche sozinha a publicação no YouTube Studio (detalhes, anúncios e questionário), mostra o melhor horário do canal na hora de agendar, comprime a capa que passa de 2 MB e escreve a descrição e as tags do vídeo que não saiu da fábrica; a descrição do vídeo da fábrica já vem escrita do Radar, do mesmo minuto do roteiro.",
   "icons": {
     "16": "icones/16.png",
     "48": "icones/48.png",

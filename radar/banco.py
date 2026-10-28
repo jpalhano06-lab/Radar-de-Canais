@@ -317,7 +317,9 @@ COLUNAS_NOVAS = {
     # aquele JSON inteiro a cada resposta das perguntas, e levaria o menu junto
     "usuarios": {"prefs": "TEXT NOT NULL DEFAULT '{}'", "painel": "TEXT NOT NULL DEFAULT '{}'"},
     "salvos": {"pasta": "TEXT NOT NULL DEFAULT ''"},          # a pasta em que a pessoa guardou aquele canal
-    "projetos_roteiro": {"ideal_para": "TEXT NOT NULL DEFAULT ''"},
+    # tipo: "roteiro" (o agente que escreve o roteiro) ou "descricao" (o que escreve a sinopse, as tags e as
+    # hashtags junto com ele). Os agentes que já existiam são todos de roteiro, por isso o padrão
+    "projetos_roteiro": {"ideal_para": "TEXT NOT NULL DEFAULT ''", "tipo": "TEXT NOT NULL DEFAULT 'roteiro'"},
     "buscas_feitas": {"vezes": "INTEGER NOT NULL DEFAULT 0", "total": "INTEGER NOT NULL DEFAULT 0", "zeros": "INTEGER NOT NULL DEFAULT 0"},
 }
 

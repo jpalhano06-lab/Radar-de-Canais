@@ -233,15 +233,21 @@
   const FAIXA_INSCRITOS = [0, 1e3, 5e3, 1e4, 5e4, 1e5, 5e5, 1e6, 5e6];
   const FAIXA_VIEWS = [0, 1e3, 1e4, 5e4, 1e5, 5e5, 1e6, 5e6, 2e7];
   const QUANDO = [["tudo", "Tudo", null], ["hora", "1 hora", 1 / 24], ["hoje", "Hoje", 1], ["semana", "7 dias", 7], ["mes", "30 dias", 30], ["ano", "1 ano", 365]];
+  // o formato é escolha da pessoa, não regra escondida: a janela jogava fora, calada, todo vídeo de até 3 minutos.
+  // Como na página inicial os Shorts são os de view mais alta, "Os mais vistos" nunca trazia os maiores números
+  // que estavam na tela, e a conta do botão (que conta tudo) nunca batia com a da janela.
+  const FORMATOS = [["longo", "Longos"], ["curto", "Shorts"], ["tudo", "Todos"]];
+  const doFormato = (v, f) => f === "tudo" || (f === "curto" ? !longo(v) : longo(v));
   const ORDENS = [["youtube", "YouTube", "play"], ["novos", "Mais novos", "calendario"], ["inscritos", "Inscritos", "usuario"], ["views", "Views", "olho"],
     ["vph", "Views/h", "tendencia"], ["nota", "Outlier", "fogo"]];
   const vph = (v) => v.views != null && v.dias != null ? v.views / Math.max(1, v.dias * 24) : null;
 
   function abrirFiltros() {
     document.querySelectorAll(".radar-janela-fundo").forEach((j) => j.remove());
-    const F = { ordem: "youtube", ins: [0, FAIXA_INSCRITOS.length - 1], vie: [0, FAIXA_VIEWS.length - 1], quando: "tudo", atalho: "" };
+    const F = { ordem: "youtube", ins: [0, FAIXA_INSCRITOS.length - 1], vie: [0, FAIXA_VIEWS.length - 1], quando: "tudo", formato: "longo", atalho: "" };
     const fundo = h("div", { class: "radar-janela-fundo", onclick: (e) => { if (e.target === fundo) fechar(); } });
-    const fechar = () => { fundo.remove(); clearInterval(relogio); };
+    const fechar = () => { fundo.remove(); clearInterval(relogio); clearTimeout(quadro);
+      removeEventListener("pointerup", soltar); removeEventListener("pointercancel", soltar); };
     const grade = h("div", { class: "rf-grade" });
     const conta = h("div", { class: "rf-conta" }), rodape = h("div", { class: "rf-rodape" });
     const ordem = [...PAGINA.keys()];   // a ordem do YouTube é a ordem em que os vídeos chegaram
@@ -249,7 +255,7 @@
     const filtrados = () => {
       const [i0, i1] = F.ins.map((i) => FAIXA_INSCRITOS[i]), [v0, v1] = F.vie.map((i) => FAIXA_VIEWS[i]);
       const lim = (QUANDO.find((q) => q[0] === F.quando) || [])[2];
-      let vs = [...PAGINA.values()].filter((v) => v.views != null && longo(v));
+      let vs = [...PAGINA.values()].filter((v) => v.views != null && doFormato(v, F.formato));
       vs = vs.filter((v) => (F.ins[0] === 0 || (v.inscritos != null && v.inscritos >= i0)) && (F.ins[1] === FAIXA_INSCRITOS.length - 1 || (v.inscritos != null && v.inscritos <= i1)));
       vs = vs.filter((v) => v.views >= v0 && (F.vie[1] === FAIXA_VIEWS.length - 1 || v.views <= v1));
       if (lim != null) vs = vs.filter((v) => v.dias != null && v.dias <= lim);
@@ -270,29 +276,53 @@
             v.nota != null ? h("span", { class: `rf-nota ${corNota(v.nota)}` }, nota(v.nota)) : null,
             vph(v) != null ? h("span", { class: "rf-vph" }, `${num(vph(v))} VPH`) : null))));
 
-    const desenhar = () => {
-      const vs = filtrados(), total = [...PAGINA.values()].filter((v) => v.views != null && longo(v)).length;
+    const pintar = () => {
+      // a conta é sobre tudo que o Radar leu nesta página, a mesma do selo do botão: dizer "de 300" quando o
+      // botão diz 356 fazia parecer que a janela tinha perdido vídeo pelo caminho
+      const vs = filtrados(), lidos = [...PAGINA.values()].filter((v) => v.views != null), total = lidos.length;
       conta.replaceChildren(h("b", {}, String(vs.length)), ` de ${total} vídeos`);
-      grade.replaceChildren(...(vs.length ? vs.map(cartao) : [h("div", { class: "radar-fraco" }, "Nenhum vídeo com esses filtros. Clique em Limpar ou em Carregar mais vídeos.")]));
+      // arrastando, só a conta anda: refazer as centenas de capas a cada passo deixava a janela sem resposta.
+      // A grade vem inteira quando a pessoa solta a ponta (o soltar pede o desenho de novo).
+      if (!arrastando) {
+        grade.replaceChildren(...(vs.length ? vs.map(cartao) : [h("div", { class: "radar-fraco" }, "Nenhum vídeo com esses filtros. Clique em Limpar ou em Carregar mais vídeos.")]));
+      }
       const semIns = vs.filter((v) => v.inscritos == null).length;
-      rodape.textContent = semIns ? `${semIns} ainda sem inscritos: o Radar está lendo os canais (sem gastar cota).` : "";
+      const foraDoFormato = total - lidos.filter((v) => doFormato(v, F.formato)).length;
+      rodape.textContent = [
+        foraDoFormato ? `${foraDoFormato} fora por causa do formato: em Formato, toque em Todos para ver.` : "",
+        semIns ? `${semIns} ainda sem inscritos: o Radar está lendo os canais (sem gastar cota).` : "",
+      ].filter(Boolean).join(" · ");
+      botoesFormato.forEach((b) => b.classList.toggle("ligado", b.dataset.f === F.formato));
       botoesOrdem.forEach((b) => b.classList.toggle("ligado", b.dataset.o === F.ordem));
       botoesQuando.forEach((b) => b.classList.toggle("ligado", b.dataset.q === F.quando));
       atalhos.forEach((a) => a.classList.toggle("ligado", a.dataset.a === F.atalho));
       for (const fx of faixas) fx.atualizar();
     };
+    // refazer a grade custa caro (são centenas de cartões): um arrasto de ponta a ponta manda dezenas de pedidos,
+    // e cada um refazia tudo na hora. A janela engasgava e parecia não responder. Os pedidos do mesmo quadro
+    // viram um só; os números em cima das faixas andam na hora, por fora deste desenho.
+    let quadro = 0;
+    const desenhar = () => { if (!quadro) quadro = setTimeout(() => { quadro = 0; pintar(); }, 0); };
 
     // faixa com duas pontas (mínimo e máximo), em degraus
+    // Enquanto a pessoa arrasta uma ponta, ninguém de fora escreve no valor dela. O relógio lá embaixo redesenha a
+    // janela toda vez que um canal termina de ser lido, e na página inicial — onde quase todo canal é desconhecido
+    // e o Radar lê um a cada 1,2 s — isso caía no meio de todo arrasto: a ponta voltava sozinha para onde estava e
+    // a lista não mudava.
+    let arrastando = null;
+    const soltar = () => { if (!arrastando) return; arrastando = null; desenhar(); };
+    addEventListener("pointerup", soltar); addEventListener("pointercancel", soltar);
     const faixa = (rotulo, ic, degraus, chave, fmt) => {
       const a = h("input", { type: "range", min: "0", max: String(degraus.length - 1), step: "1" });
       const b = h("input", { type: "range", min: "0", max: String(degraus.length - 1), step: "1" });
       const ta = h("span", { class: "rf-valor" }), tb = h("span", { class: "rf-valor" });
-      const mudou = () => { let x = +a.value, y = +b.value; if (x > y) [x, y] = [y, x]; F[chave] = [x, y]; F.atalho = ""; desenhar(); };
-      a.addEventListener("input", mudou); b.addEventListener("input", mudou);
+      const escrever = () => { ta.textContent = fmt(degraus[F[chave][0]]);
+        tb.textContent = fmt(degraus[F[chave][1]]) + (F[chave][1] === degraus.length - 1 ? "+" : ""); };
+      const mudou = () => { let x = +a.value, y = +b.value; if (x > y) [x, y] = [y, x]; F[chave] = [x, y]; F.atalho = ""; escrever(); desenhar(); };
+      for (const p of [a, b]) { p.addEventListener("input", mudou); p.addEventListener("pointerdown", () => { arrastando = p; }); }
       const caixa = h("div", { class: "rf-faixa" }, h("div", { class: "rf-faixa-cab" }, h("span", {}, icone(ic), rotulo), ta, h("span", {}, "–"), tb),
         h("div", { class: "rf-dupla" }, a, b));
-      caixa.atualizar = () => { a.value = F[chave][0]; b.value = F[chave][1]; ta.textContent = fmt(degraus[F[chave][0]]);
-        tb.textContent = fmt(degraus[F[chave][1]]) + (F[chave][1] === degraus.length - 1 ? "+" : ""); };
+      caixa.atualizar = () => { if (arrastando !== a) a.value = F[chave][0]; if (arrastando !== b) b.value = F[chave][1]; escrever(); };
       return caixa;
     };
     const curto = (n) => n >= 1e6 ? n / 1e6 + "M" : n >= 1e3 ? n / 1e3 + "K" : String(n);
@@ -308,6 +338,7 @@
       desenhar();
     } }, icone(ic), t));
     const botoesQuando = QUANDO.map(([k, t]) => h("button", { class: "rf-chip", "data-q": k, onclick: () => { F.quando = k; F.atalho = ""; desenhar(); } }, t));
+    const botoesFormato = FORMATOS.map(([k, t]) => h("button", { class: "rf-chip", "data-f": k, onclick: () => { F.formato = k; desenhar(); } }, t));
     const botoesOrdem = ORDENS.map(([k, t, ic]) => h("button", { class: "rf-chip", "data-o": k, onclick: () => { F.ordem = k; desenhar(); } }, icone(ic), t));
     const shorts = h("input", { type: "checkbox", class: "rf-interruptor", onchange: (e) => chrome.storage.local.set({ semShorts: e.target.checked }) });
     chrome.storage.local.get("semShorts").then(({ semShorts: s }) => { shorts.checked = !!s; });
@@ -320,19 +351,45 @@
       document.body.append(a); a.click(); a.remove();
     };
 
+    // "Carregar mais vídeos": uma rolagem só pedia uma leva ao YouTube e parava por aí. Agora desce até o fim
+    // quantas vezes precisar, esperando ele entregar, e para sozinho quando não vem mais nada. No fim devolve a
+    // página para onde estava — ninguém pediu para perder o lugar.
+    const maisBotao = h("button", { class: "rf-forte", onclick: () => puxarMais() }, icone("baixar"), "Carregar mais vídeos");
+    let puxando = false;
+    const puxarMais = async () => {
+      if (puxando) return;
+      puxando = true;
+      const voltar = scrollY;
+      try {
+        for (let i = 0; i < 8; i++) {
+          const antes = PAGINA.size;
+          maisBotao.replaceChildren(icone("baixar"), `Carregando… (${antes} vídeos)`);
+          scrollTo({ top: document.documentElement.scrollHeight });
+          await new Promise((ok) => setTimeout(ok, 1500));
+          if (!fundo.isConnected) return;         // fechou no meio: não mexe em mais nada
+          if (PAGINA.size === antes) break;       // o YouTube não entregou mais nada: é o fim da página
+        }
+      } finally {
+        puxando = false;
+        maisBotao.replaceChildren(icone("baixar"), "Carregar mais vídeos");
+        scrollTo({ top: voltar });
+        desenhar();
+      }
+    };
+
     fundo.append(h("div", { class: "rf-janela" },
       h("div", { class: "rf-topo" }, h("span", { class: "rf-marca" }, h("i", {}), "Radar"), h("b", {}, "Filtros"), conta,
-        h("div", { class: "rf-topo-acoes" },
-          h("button", { class: "rf-forte", onclick: () => window.scrollTo({ top: document.documentElement.scrollHeight, behavior: "smooth" }) }, icone("baixar"), "Carregar mais vídeos"),
+        h("div", { class: "rf-topo-acoes" }, maisBotao,
           h("button", { class: "rf-chip rf-borda", onclick: planilha }, icone("baixar"), "Baixar planilha"),
           h("button", { class: "rf-fechar", title: "Fechar", onclick: fechar }, "×"))),
       h("div", { class: "rf-corpo" },
         h("aside", { class: "rf-lado" },
           h("div", { class: "rf-secao" }, "Atalhos"), ...atalhos,
           h("div", { class: "rf-secao" }, "Filtrar", h("button", { class: "rf-limpar", onclick: () => {
-            Object.assign(F, { ins: [0, FAIXA_INSCRITOS.length - 1], vie: [0, FAIXA_VIEWS.length - 1], quando: "tudo", atalho: "" }); desenhar();
+            Object.assign(F, { ins: [0, FAIXA_INSCRITOS.length - 1], vie: [0, FAIXA_VIEWS.length - 1], quando: "tudo", formato: "longo", atalho: "" }); desenhar();
           } }, icone("limpar"), "Limpar")),
           ...faixas,
+          h("div", { class: "rf-faixa-cab" }, h("span", {}, icone("relogio"), "Formato")), h("div", { class: "rf-chips" }, botoesFormato),
           h("div", { class: "rf-faixa-cab" }, h("span", {}, icone("calendario"), "Publicado")), h("div", { class: "rf-chips" }, botoesQuando),
           h("div", { class: "rf-secao" }, "Página"), h("label", { class: "rf-chave" }, h("span", {}, icone("raio"), "Esconder Shorts"), shorts)),
         h("div", { class: "rf-principal" },
@@ -344,6 +401,7 @@
     let visto = PAGINA.size;
     const relogio = setInterval(() => {
       if (!fundo.isConnected) return clearInterval(relogio);
+      if (arrastando) return;                 // no meio de um arrasto, a página que chega espera a pessoa soltar
       for (const id of PAGINA.keys()) if (!ordem.includes(id)) ordem.push(id);
       const agora = [...PAGINA.values()].reduce((s, v) => s + (v.nota != null) + (v.inscritos != null), PAGINA.size);
       if (agora !== visto) { visto = agora; desenhar(); }

@@ -20,6 +20,23 @@ def _ler(arquivo: Path) -> dict:
         return {}
 
 
+# A descrição que o Radar escreveu junto com o roteiro (descricao.py), copiada para a pasta do projeto na hora do
+# envio. Ela existe antes de a fábrica terminar o vídeo: é por isso que o projeto já aparece no Studio sem o
+# publicacao.json dela, e é por isso que o texto dela ganha do texto da fábrica no kit.
+RADAR = "publicacao_radar.json"
+
+
+def _quando(pasta: Path) -> float:
+    """Quando este projeto ficou pronto para publicar (0 quando não tem nem o kit da fábrica nem o do Radar)."""
+    quando = 0.0
+    for nome in ("publicacao.json", RADAR):
+        try:
+            quando = max(quando, (pasta / nome).stat().st_mtime)
+        except OSError:
+            continue
+    return quando
+
+
 def normalizar(texto: str) -> str:
     """Sem acento, sem extensão, só letras e números separados por espaço: 'Desextinção: Os...mp4' -> 'desextincao os'."""
     texto = re.sub(r"\.(mp4|mov|mkv|webm|avi|m4v|wmv|flv|mpe?g)$", "", (texto or "").strip(), flags=re.I)
@@ -31,7 +48,8 @@ def _nomes(pasta: Path) -> list[str]:
     """Os nomes que o arquivo do vídeo pode ter: o da entrega, o título do kit, o da entrega no Radar e o da pasta."""
     pub, proj, entrega = _ler(pasta / "publicacao.json"), _ler(pasta / "projeto.json"), _ler(pasta / "entrega_pc.json")
     nomes = [Path(str(entrega.get("video") or "").replace("\\", "/")).name, pub.get("titulo"),
-             (pub.get("textos") or {}).get("titulo"), proj.get("titulo_entrega"), pasta.name]
+             (pub.get("textos") or {}).get("titulo"), _ler(pasta / RADAR).get("titulo"),
+             proj.get("titulo_entrega"), pasta.name]
     return [n for n in (normalizar(str(x)) for x in nomes if x) if n]
 
 
@@ -45,10 +63,10 @@ def perfil_do_projeto(pasta: Path) -> str:
 def _projetos(raiz: Path) -> list[Path]:
     """Os projetos com kit de publicação, os mais recentes primeiro."""
     try:
-        pastas = [p for p in raiz.iterdir() if p.is_dir() and not p.name.startswith("_") and (p / "publicacao.json").exists()]
+        pastas = [p for p in raiz.iterdir() if p.is_dir() and not p.name.startswith("_") and _quando(p)]
     except OSError:
         return []
-    return sorted(pastas, key=lambda p: (p / "publicacao.json").stat().st_mtime, reverse=True)
+    return sorted(pastas, key=_quando, reverse=True)
 
 
 def achar(raiz: Path, arquivo: str) -> str | None:
@@ -73,15 +91,19 @@ def opcoes(raiz: Path, limite: int = 40) -> list[dict]:
 
 def _titulo(pasta: Path) -> str:
     pub = _ler(pasta / "publicacao.json")
-    return str(pub.get("titulo") or (pub.get("textos") or {}).get("titulo") or pasta.name)
+    return str(pub.get("titulo") or (pub.get("textos") or {}).get("titulo")
+               or _ler(pasta / RADAR).get("titulo") or pasta.name)
 
 
 def kit(pasta: Path) -> dict:
     """O que vai nos campos do Studio, já no formato de colar (as tags separadas por vírgula, como o Studio aceita)."""
     pub = _ler(pasta / "publicacao.json")
+    # a descrição escrita no Radar junto com o roteiro ganha da da fábrica: chega no minuto do envio (o vídeo ainda
+    # está sendo feito) e saiu do projeto de descrição do canal, não do molde da fábrica
+    radar = _ler(pasta / RADAR)
     textos = pub.get("textos") or {}
-    tags = [str(t).strip() for t in (pub.get("tags") or textos.get("tags") or []) if str(t).strip()]
-    descricao = str(pub.get("descricao") or textos.get("resumo") or "")
+    tags = [str(t).strip() for t in (radar.get("tags") or pub.get("tags") or textos.get("tags") or []) if str(t).strip()]
+    descricao = str(radar.get("descricao") or pub.get("descricao") or textos.get("resumo") or "")
     capitulos = [c for c in pub.get("capitulos") or [] if isinstance(c, dict)]
     return {
         "nome": pasta.name,
@@ -89,13 +111,15 @@ def kit(pasta: Path) -> dict:
         "titulos_alt": [str(t) for t in pub.get("titulos_alt") or textos.get("titulos_alt") or []],
         "descricao": descricao,
         # a sinopse é o resumo que abre a descrição da fábrica: 2 ou 3 frases do que o vídeo mostra
-        "sinopse": str(textos.get("resumo") or "").strip() or descricao.split("\n\n")[0].strip(),
+        "sinopse": str(radar.get("sinopse") or textos.get("resumo") or "").strip() or descricao.split("\n\n")[0].strip(),
         "tags": tags,
-        "hashtags": [str(h) for h in pub.get("hashtags") or textos.get("hashtags") or []],
+        "hashtags": [str(h) for h in radar.get("hashtags") or pub.get("hashtags") or textos.get("hashtags") or []],
         "comentario_fixado": str(pub.get("comentario_fixado") or textos.get("comentario_fixado") or ""),
         # a descrição já traz os capítulos; o mid-roll fica melhor entre eles
         "capitulos": [{"tempo": str(c.get("tempo", "")), "nome": str(c.get("nome", "")), "inicio": c.get("inicio")} for c in capitulos],
-        "sintetico": bool(pub.get("sintetico")),
+        "sintetico": bool(pub.get("sintetico") or radar.get("sintetico")),
+        # de onde veio o texto do kit: "radar" (escrito junto com o roteiro) ou "fabrica"
+        "origem": "radar" if radar.get("descricao") else "fabrica",
         "legenda": str(pub.get("legenda") or ""),
         "duracao": _duracao(pasta),
     }

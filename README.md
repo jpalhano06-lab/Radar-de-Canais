@@ -1434,3 +1434,84 @@ navegador, com o banco real: travar mostrou 10 de 1.353 em "página 1 de 136", P
 arrastar encheram a pilha, a aba reabriu a busca e soltar voltou para os 24; as quatro formas desenharam e
 "Testando" abriu 72 vídeos de canais com menos de 30 dias de casa. Os quatro testes que já falhavam no
 `tests/app_js.test.mjs` antes desta leva (os do 503) continuam falhando — nada aqui mexeu nesse trecho.
+
+## A barra de carregamento da fábrica, na barra de tarefas do Windows (2026-10-25)
+
+Pedido do usuário: ver a produção andando sem abrir o Radar toda hora — do jeito que o Chrome faz quando está
+baixando um arquivo, com o ícone na barra de tarefas enchendo. **Nenhuma página de navegador consegue isso**:
+quem pinta a barra de tarefas é o Windows, pelo `ITaskbarList3`, e só para um programa com janela própria. (A
+primeira tentativa foi inventar contorno dentro do navegador — barra no canto do site, janela, aplicativo
+instalável. Tudo isso foi jogado fora: não era o que o usuário pediu.)
+
+Então é um programa: `radar/barra.py`, `python -m radar barra`, ou o **`BARRA-DA-FABRICA.bat`** na raiz, que o
+abre pelo `pythonw` (o Python sem a janela preta — só a janelinha aparece).
+
+- Uma janelinha de 260×96 com a **porcentagem em verde** e o título do vídeo embaixo. O ícone dela é o ponto
+  verde do Radar, desenhado em código — sem isso a barra de tarefas mostra a pena do tkinter, que não diz nada.
+- O título da janela vira `62% · Fábrica`, que é o que aparece ao passar o mouse no botão da barra de tarefas.
+- **Minimize e esqueça**: o botão continua lá e a barrinha continua enchendo.
+- De 10 em 10 segundos ele pergunta ao `/api/acompanhar`. Pedido vindo de `127.0.0.1` já entra como a
+  administração pelo acesso livre do Radar (`_usuario_livre`), então o programa **não precisa de login nem de
+  token** — e nada no servidor mudou por causa disto.
+- Vários vídeos ao mesmo tempo: a barra é uma só, então ela mostra a **média** — o quanto falta para a leva
+  inteira acabar — e a linha de baixo vira "3 vídeos · 88% · 54% · 12%". Quem quiser o de cada um abre o
+  Acompanhar.
+- Nada produzindo = sem barra nenhuma. Parado ou com erro = barra vermelha e "Parou: <título>". Radar
+  desligado = barra amarela e "O Radar está desligado".
+
+O `ITaskbarList3` não tem função solta: é um objeto COM, e as funções dele vêm numa tabela, por posição. O
+`BarraDaTarefa` chama na mão pelo `ctypes` — 3 é o `HrInit`, 9 o `SetProgressValue`, 10 o `SetProgressState` —,
+então **não entrou dependência nenhuma** no projeto. A janela que tem o botão na barra de tarefas não é a que o
+tkinter entrega no `winfo_id()`, e sim a mãe dela (`GetParent`); pintar a de dentro responde `S_OK` e não
+desenha nada.
+
+**Como o Windows 11 desenha isso** (e o que atrapalhou na hora de conferir): ele **não** enche o ícone de verde
+como o Windows 10 fazia. Ele pinta uma **linha fina embaixo do ícone**, do comprimento da porcentagem, na cor de
+destaque do sistema (azul, aqui) — e vermelha quando o estado é de erro. À primeira vista é igualzinho ao
+risquinho de "aplicativo aberto" que todo ícone tem, e foi por isso que a primeira conferida deu "não
+funcionou". O teste que resolveu foi pintar 100% em vermelho: a linha ficou vermelha e larga, sem dúvida
+nenhuma. Depois, 62% e 15% lado a lado mostraram o comprimento mudando com o número. Não dá para mudar nem a
+cor nem a grossura: isso é do Windows.
+
+Testado no computador do usuário, com o `ITaskbarList3` respondendo `S_OK` em todas as voltas: 62% desenhou a
+linha quase do tamanho do ícone, 15% virou um tracinho, 100% em vermelho ficou vermelho, e a janela mostrou
+"62%" com o título do vídeo e o ponto verde no lugar da pena. Com a fábrica vazia (o caso real na hora do
+teste), a barra some e a janela diz "Nada sendo produzido agora", que é o certo.
+
+## A descrição pronta antes do vídeo, e o agente que a escreve (2026-10-28)
+
+Pedido do usuário: *"quando gerar o roteiro no Claude quero que já gere uma descrição... vou criar um projeto que
+será para a criação de descrição; a descrição será criada enquanto o vídeo está sendo feito"*.
+
+**O que estava errado.** Quem escrevia a descrição era a fábrica, no `publicacao.json` de cada projeto — e esse
+arquivo só existe **depois** de narrar, gerar as imagens e montar o vídeo inteiro. Entre mandar o roteiro e o
+vídeo ficar pronto passam horas, e nesse meio-tempo a extensão no YouTube Studio não achava nem o projeto: ela
+procura pastas que já tenham `publicacao.json`. Quem chegava com o `.mp4` na mão via "não achei este vídeo na
+fábrica: título e descrição ficam com você".
+
+**O que mudou.** O Claude escreve a descrição **no mesmo minuto do roteiro** — ele acabou de ler o texto todo, que
+é a melhor fonte que existe para isso. O novo `radar/descricao.py` pede sinopse, tags e hashtags em JSON, limpa o
+que vem (tag repetida sai, tag grande demais sai, hashtag ganha o `#` que faltava) e guarda em `descricao.json`, ao
+lado do `roteiro.txt`. Falhar ali não derruba o roteiro: o erro fica no `roteiro.json` e a tela de Revisão oferece
+"Escrever de novo".
+
+**Agentes de descrição.** A tela de Agentes agora tem duas listas: *de roteiro* e *de descrição*. O agente de
+descrição é a mesma coisa que o de roteiro — as instruções de estilo que você cola de um projeto do claude.ai —,
+só que valem para a sinopse, as tags e as hashtags. Sem nenhum, valem as regras do Radar. Com um só, ele é usado
+sozinho; com vários, você escolhe na tela do Roteiro. No banco é a coluna `tipo` de `projetos_roteiro`
+(`roteiro` ou `descricao`), e os agentes que já existiam continuam todos de roteiro.
+
+**Como chega ao Studio.** Ao enviar o roteiro para a fábrica, o `descricao.json` vira `publicacao_radar.json`
+dentro da pasta do projeto, já com a descrição montada: a sinopse, o rodapé fixo do canal (do perfil da fábrica,
+como sempre) e as hashtags. A partir daí:
+
+- `publicar.py` acha o projeto por **esse** arquivo também, não só pelo `publicacao.json` — então a extensão
+  encontra o vídeo com ele ainda sendo feito.
+- No kit, o texto do Radar **ganha** do da fábrica (descrição, sinopse, tags e hashtags). Os capítulos, a legenda
+  e a duração continuam vindo da fábrica, que é quem os tem.
+- O kit passou a dizer de onde veio o texto (`origem`: `radar` ou `fabrica`), e a extensão diz isso no recado:
+  "A descrição, as tags e as hashtags vieram do Radar, escritas junto com o roteiro".
+
+**O que já era assim e continua.** Nos Detalhes, a extensão marca sozinha **"Não, não é conteúdo feito para
+crianças"** e **"Uso de IA: Sim"** (os vídeos da fábrica são feitos com IA), além de escrever título, descrição e
+tags. Isso não mudou — o que faltava era a descrição existir a tempo.

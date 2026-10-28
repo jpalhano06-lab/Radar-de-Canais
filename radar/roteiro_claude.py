@@ -129,7 +129,8 @@ def _limpar(texto: str) -> str:
 
 
 def gerar(usuario_id: int, titulo: str, link: str, minutos: int, lingua: str, projeto_id: int | None,
-          observacoes: str, perfil: str = "", canal: dict | None = None, aviso=lambda _t: None) -> dict:
+          observacoes: str, perfil: str = "", canal: dict | None = None, projeto_descricao_id: int | None = None,
+          aviso=lambda _t: None) -> dict:
     video_id = id_do_video(link)
     if link and not video_id:
         raise RuntimeError("Não reconheci o link do vídeo de referência.")
@@ -185,7 +186,25 @@ def gerar(usuario_id: int, titulo: str, link: str, minutos: int, lingua: str, pr
             "palavras_base": len(base.split()), "thumbnail": thumb, "segundos": round(time.time() - inicio),
             "criado": banco.agora(), "usuario_id": usuario_id, "ritmo": ritmo, "canal": canal or {}}
     (pasta / "roteiro.json").write_text(json.dumps(meta, ensure_ascii=False, indent=1), encoding="utf-8")
+    _escrever_descricao(usuario_id, pasta, projeto_descricao_id, aviso)
     return _publico(pasta)
+
+
+def _escrever_descricao(usuario_id: int, pasta, projeto_descricao_id, aviso=lambda _t: None) -> None:
+    """A descrição do vídeo, escrita logo depois do roteiro (pedido do usuário em 2026-10-28: ela fica pronta
+    enquanto o vídeo está sendo feito, em vez de só existir no fim, quando a fábrica monta o publicacao.json).
+
+    Falhar aqui não derruba o roteiro: o roteiro é o que a pessoa pediu, e a descrição se refaz com um botão.
+    O que deu errado fica no roteiro.json, para a tela de Revisão poder dizer."""
+    from . import descricao as _descricao
+    aviso("Roteiro pronto. O Claude está escrevendo a descrição e as tags…")
+    meta = json.loads((pasta / "roteiro.json").read_text(encoding="utf-8"))
+    try:
+        _descricao.gerar(usuario_id, pasta, projeto_descricao_id)
+        meta["descricao_erro"] = ""
+    except Exception as erro:
+        meta["descricao_erro"] = str(erro)[:300]
+    (pasta / "roteiro.json").write_text(json.dumps(meta, ensure_ascii=False, indent=1), encoding="utf-8")
 
 
 def manual(usuario_id: int, titulo: str, texto: str, link: str = "", minutos: int = 0, lingua: str = "",
@@ -234,7 +253,9 @@ def _publico(pasta) -> dict:
     meta = json.loads((pasta / "roteiro.json").read_text(encoding="utf-8"))
     meta["canal_nome"] = _nome_do_canal(meta)
     arquivo = pasta / "roteiro.txt"
+    from . import descricao as _descricao
     return meta | {"nome": pasta.name, "roteiro": arquivo.read_text(encoding="utf-8"), "arquivo": str(arquivo),
+                   "descricao": _descricao.ler(pasta),
                    "thumbnail_url": f"/api/roteiros/{pasta.name}/thumbnail.jpg" if (pasta / "thumbnail.jpg").exists() else "",
                    "comando": f'uv run fabrica novo {pasta.name} --roteiro "{arquivo}" --perfil perfis/documentario.yaml'}
 
@@ -361,7 +382,12 @@ def enviar(usuario_id: int, nome: str, perfil: str) -> dict:
     (destino / "projeto.json").write_text(json.dumps(dados, ensure_ascii=False, indent=2), encoding="utf-8")
     if (pasta / "thumbnail.jpg").exists():
         shutil.copy2(pasta / "thumbnail.jpg", destino / "thumbnail_referencia.jpg")
-    meta["fabrica"] = {"projeto": final, "perfil": perfil, "enviado": banco.agora(), "palavras": len((pasta / "roteiro.txt").read_text(encoding="utf-8").split())}
+    # a descrição escrita junto com o roteiro vai junto: a extensão já acha este vídeo no Studio com o vídeo
+    # ainda sendo feito, em vez de esperar o publicacao.json da fábrica
+    from . import descricao as _descricao
+    levou = _descricao.levar(pasta, destino, meta["titulo"], perfil)
+    meta["fabrica"] = {"projeto": final, "perfil": perfil, "enviado": banco.agora(), "descricao": levou,
+                       "palavras": len((pasta / "roteiro.txt").read_text(encoding="utf-8").split())}
     (pasta / "roteiro.json").write_text(json.dumps(meta, ensure_ascii=False, indent=1), encoding="utf-8")
     estimativa = "\n".join(l for l in (r.stdout or "").splitlines() if "US$" in l or "min" in l)[-600:]
     return {"projeto": final, "pasta": str(destino), "estimativa": estimativa,

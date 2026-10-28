@@ -127,7 +127,7 @@ def test_concorrentes_do_nicho_so_gastam_cota_quando_pedido(db, monkeypatch):
     _concorrente(ids[0], 40_000, 60, 2, "crescendo")
     _concorrente(ids[1], 8_000, 900, 5, "estavel")
     _concorrente(ids[2], 3_000, 1500, 200, "parado")
-    banco.executar("INSERT INTO traducoes (chave, dados, criado) VALUES (?,?,?)", f"parecidos:{CANAL}", json.dumps(ids), banco.agora())
+    banco.executar("INSERT INTO traducoes (chave, dados, criado) VALUES (?,?,?)", f"{garimpo.CHAVE_PARECIDOS}{CANAL}", json.dumps(ids), banco.agora())
     monkeypatch.setattr(garimpo, "parecidos", lambda cid: [{"id": i} for i in ids])
     r = garimpo.concorrentes(CANAL)
     assert r["medido"] and r["total"] == 3 and r["ativos"] == 2 and r["crescendo"] == 1 and r["novos_que_deram_certo"] == 1
