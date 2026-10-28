@@ -2310,7 +2310,10 @@ async def roteiro_para_fabrica(nome: str, request: Request, u: dict = Depends(do
 
 @app.get("/api/titulo-do-video")
 def titulo_do_video(link: str, u: dict = Depends(usuario)):
-    """O título e a capa do vídeo de referência, para a pessoa ver o que colou (1 unidade de cota)."""
+    """O título, a capa e se o vídeo tem legenda, para a pessoa ver o que colou (1 unidade de cota).
+
+    A legenda entra aqui (pedido do usuário em 2026-10-28) para a confirmação da Nova produção poder dizer, ANTES de
+    criar, que esse vídeo não tem legenda e o roteiro vai sair só do título."""
     vid = roteiro_claude.id_do_video(link)
     if not vid:
         raise HTTPException(400, "Link de vídeo inválido.")
@@ -2318,7 +2321,8 @@ def titulo_do_video(link: str, u: dict = Depends(usuario)):
         v = youtube.videos([vid])
     if not v:
         raise HTTPException(404, "Vídeo não encontrado.")
-    return {"id": vid, "titulo": v[0]["titulo"], "views": v[0]["views"], "publicado": v[0]["publicado"]}
+    return {"id": vid, "titulo": v[0]["titulo"], "views": v[0]["views"], "publicado": v[0]["publicado"],
+            "legenda": roteiro_claude.tem_legenda(vid)}
 
 
 # ---------------------------------------------------------------- YouTube Studio

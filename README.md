@@ -166,7 +166,11 @@ e a verificação de integridade do navegador, como a do MCP: sem ela, o desafio
   127.0.0.1 não vale em localhost). O canal do Studio entra em "Meus canais" sozinho.
 - **Roteiro pelo Claude** (`roteiro_claude.py`, no perfil e em Ideias → Roteiro): título, tempo (3 a 30 min, 150
   palavras por minuto), língua, projeto e o link do vídeo de referência. A transcrição (`youtube-transcript-api`,
-  legenda manual primeiro, depois a automática, em qualquer língua) vai como base; a thumbnail (maxres, depois sd, hq)
+  legenda manual primeiro, depois a automática, em qualquer língua) vai como base. **Sem legenda não para o pedido**
+  (2026-10-28): vídeo com as legendas desligadas pelo dono (`TranscriptsDisabled`) derrubava a produção inteira em
+  "Parou com erro"; agora o roteiro sai do título, das observações e do estilo do canal, o motivo fica no
+  `roteiro.json` (`base_erro`). Nada muda no site: quem avisa, antes de criar, é a confirmação da extensão. A
+  thumbnail (maxres, depois sd, hq)
   é copiada para `dados/roteiros/NOME/thumbnail.jpg`, com "Baixar" e "Copiar imagem". Quem escreve é o
   `claude -p` deste computador, pela assinatura do claude.ai, numa pasta vazia, sem ferramentas e sem a
   ANTHROPIC_API_KEY no ambiente (com ela o Claude Code cobraria por uso). Roda em segundo plano (`/api/roteiros/tarefa`).
@@ -895,6 +899,19 @@ questionário de anunciantes, público e visibilidade, achando o vídeo **pelo n
   mesma janela em dois passos (as mesmas rotas: `/api/meus-canais`, `/api/projetos`, `/api/producao/{canal}`,
   `/api/roteiros/ritmo`, `/api/fila/estimativa`, `/api/titulo-do-video` e `POST /api/fila`). Num vídeo aberto, o link
   dele já vem como referência. No fim, "Ver no Acompanhar" abre o site.
+- **Agente obrigatório e a lista de confirmação, na extensão** (2026-10-28, pedido do usuário: "aqui você é obrigado
+  sempre a selecionar o agente que você quer… e a opção de criar sem a transcrição não tem que ser pedida, é
+  automático"). Na janela da extensão, e só nela:
+  - **O agente é escolha obrigatória**: a janela abre sem agente escolhido (antes já vinha com o do canal), o select
+    fica destacado em vermelho enquanto ninguém escolhe e o envio não passa sem ele. Embaixo, um botãozinho **"usar o
+    agente padrão de CANAL: NOME"** preenche com o do canal ("Padrão do Claude (sem agente)" quando o canal não tem).
+  - **3 · Confirmar**: um passo novo, a lista do que vai ser feito item por item — título, canal, agente, idioma e
+    tamanho, vídeo de referência, o que acontece depois de escrever e o custo. O que falta fica vermelho, o que é só
+    aviso fica amarelo. O botão do rodapé virou **"Revisar e criar →"** nos passos 1 e 2 e **"✓ Confirmar e criar"**
+    no 3: nenhum roteiro começa sem passar por essa lista.
+  - **Sem legenda não é pergunta**: `/api/titulo-do-video` passou a dizer se o vídeo tem legenda
+    (`roteiro_claude.tem_legenda`), e a lista avisa ali mesmo que o roteiro vai sair do título. Nada para por causa
+    disso e nada é perguntado.
 - **LIGAR-RADAR.bat abre o navegador só quando o Radar responde** (2026-10-19): depois que ele passou a fechar o Radar
   antigo, o navegador abria antes do servidor novo subir (uns 5 s) e mostrava "não é possível acessar este site",
   parecendo que o Radar não ligava. Agora uma espera escondida tenta o endereço a cada segundo (até 90 s) e abre o
