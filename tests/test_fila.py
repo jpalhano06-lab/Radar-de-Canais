@@ -306,3 +306,10 @@ def test_a_rota_do_canal_de_teste(db, monkeypatch):
     assert r["agente_id"] == 1
     assert [l["lingua"] for l in r["linguas"]] == ["holandês", "português"]     # sem voz, o perfil não entra
     assert r["linguas"][0]["perfis"][0]["perfil"] == "canal-jan-de-wolf"
+
+
+def test_canal_de_teste_sempre_de_2_a_3_minutos():
+    teste = {"perfil": "canal-jan-de-wolf", "canal_id": ""}
+    assert fila.minutos_do(teste | {"caracteres": fila.caracteres_de(15, 150)}, 150) == 3
+    assert fila.minutos_do(teste | {"caracteres": fila.caracteres_de(1, 150)}, 150) == 2
+    assert fila.minutos_do({"canal_id": "UC1", "caracteres": fila.caracteres_de(15, 150)}, 150) == 15

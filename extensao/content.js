@@ -1593,6 +1593,7 @@
   // com o agente do canal. Num vídeo aberto, o link dele já vem como referência. O último canal usado fica lembrado.
   const POR_PALAVRA = 5.9, MINUTOS_NP = [8, 10, 12, 15, 20, 25, 30];
   const TESTE = "teste";      // o Canal de teste da Nova produção: não é canal do Radar, a língua é escolhida na hora
+  const MINUTOS_TESTE = [2, 3];   // o vídeo de teste é sempre de 2 a 3 min (pedido do usuário em 2026-10-29)
 
   function botaoNovaProducao() {
     const lugar = document.querySelector("ytd-masthead #end");
@@ -1729,7 +1730,7 @@
             chip("O Claude escreve", N.modo === "claude", () => { N.modo = "claude"; desenhar(); }), chip("Já tenho o roteiro", N.modo === "manual", () => { N.modo = "manual"; desenhar(); }))),
           ...(N.modo === "manual" ? [(() => { const t = h("textarea", { rows: "7", placeholder: "Cole aqui o roteiro inteiro (só o que vai ser narrado)" }); t.value = N.roteiro; t.oninput = () => { N.roteiro = t.value; }; return t; })()] : [
             h("div", { class: "radar-np-campo" }, h("span", {}, `Tamanho do roteiro: ${N.caracteres.toLocaleString("pt-BR")} caracteres ≈ ${Math.round(minutos())} min`),
-              h("div", { class: "radar-np-chips" }, (eTeste() ? [2, 3, 5] : MINUTOS_NP).map((m) => chip(`${m} min`, Math.round(minutos()) === m, () => { N.caracteres = Math.round(m * N.ppm * POR_PALAVRA / 10) * 10; desenhar(); custo(); })))),
+              h("div", { class: "radar-np-chips" }, (eTeste() ? MINUTOS_TESTE : MINUTOS_NP).map((m) => chip(`${m} min`, Math.round(minutos()) === m, () => { N.caracteres = Math.round(m * N.ppm * POR_PALAVRA / 10) * 10; desenhar(); custo(); })))),
             h("div", { class: "radar-np-duas" },
               campo("Nicho (opcional)", entrada(N.nicho, { placeholder: "Ex.: grandes marcas" }, (v) => { N.nicho = v; })),
               campo("Observação (opcional)", entrada(N.obs, { placeholder: "Ex.: sem gírias, fechar com pergunta" }, (v) => { N.obs = v; })))]),

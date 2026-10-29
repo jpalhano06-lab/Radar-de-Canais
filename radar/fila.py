@@ -154,6 +154,17 @@ def perfil_do(pedido: dict, cfg: dict) -> str:
     return pedido.get("perfil") or cfg.get("perfil", "")
 
 
+def minutos_do(pedido: dict, ppm: int) -> int:
+    """Os minutos do roteiro pelo tamanho pedido. O Canal de teste (sem canal, com o perfil escolhido) é sempre de 2 a
+    3 min (pedido do usuário em 2026-10-29), venha o tamanho que vier."""
+    minutos = max(1, round(minutos_de(pedido["caracteres"], ppm)))
+    return min(3, max(2, minutos)) if eh_teste(pedido) else minutos
+
+
+def eh_teste(pedido: dict) -> bool:
+    return bool(pedido.get("perfil")) and not pedido.get("canal_id")
+
+
 def _escrever(linha: dict, roteirista, config_canal, ritmo) -> None:
     """O roteiro do pedido (pelo Claude ou o colado). Termina em sua_vez (revisão) ou de volta na fila."""
     pedido = json.loads(linha["pedido"])
@@ -171,7 +182,7 @@ def _escrever(linha: dict, roteirista, config_canal, ritmo) -> None:
             def aviso(texto):
                 mudar(linha["id"], "escrevendo", de=("escrevendo",), passo=texto[:200])
             r = roteirista.gerar(usuario_id=linha["usuario_id"], titulo=pedido["titulo"], link=pedido.get("link", ""),
-                                 minutos=max(1, round(minutos_de(pedido["caracteres"], ppm))), lingua=lingua,
+                                 minutos=minutos_do(pedido, ppm), lingua=lingua,
                                  projeto_id=int(agente) if agente else None, observacoes=_observacoes(pedido),
                                  perfil=perfil_do(pedido, cfg), canal=canal, aviso=aviso)
     except Exception as erro:  # noqa: BLE001 (qualquer falha do roteiro vira o erro do pedido, com o motivo)
