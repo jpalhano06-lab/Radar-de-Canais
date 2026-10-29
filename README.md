@@ -1549,3 +1549,19 @@ ser falada".
 - **Agente CANAL DE TESTE** (id 8, criado direto no banco pela rota `POST /api/projetos`): o primeiro vídeo de um
   canal novo, só para ver se o canal é confiável. De 2 a 3 minutos, na língua escolhida na Nova produção, com assunto
   universal que dá para mostrar só com vídeo de banco grátis (Pexels/Pixabay), sem polêmica e sem dinheiro.
+
+## Extensão 0.31.0: o canal já traz o agente, e o 🧪 Canal de teste (2026-10-29)
+
+Pedido do usuário: "se eu já escolhi o canal João o Lobo, já tem que ir pro projeto; o único que terá que escolher
+é realmente o canal de teste, porque ele é genérico". Desfaz a escolha obrigatória do agente de 2026-10-28.
+
+- **Os canais sempre à vista no passo 1** da Nova produção da extensão, e escolher um canal já escolhe o agente dele
+  (o select continua lá para trocar). Saiu o botãozinho "usar o agente padrão de…" e o "(escolha obrigatória)".
+- **🧪 Canal de teste**: um chip a mais, para o primeiro vídeo de um canal novo. Vem com o agente CANAL DE TESTE e
+  3 minutos (atalhos de 2, 3 e 5 min), e pede a **língua do vídeo**; a **voz** é um perfil da fábrica que fala essa
+  língua (o primeiro já vem escolhido). A língua usada fica lembrada.
+- `GET /api/fila/teste`: o id do agente CANAL DE TESTE e as línguas que têm voz na fábrica, com os perfis de cada.
+- O pedido da fila aceita `perfil` (`fila.perfil_do`): o Canal de teste vai sem `canal_id`, e o perfil escolhido vale
+  para o ritmo do roteiro e para criar o projeto na fábrica.
+- Para usar: reinicie o Radar (LIGAR-RADAR.bat) e, em `chrome://extensions`, clique no ↻ do Radar de Canais e
+  recarregue a aba do YouTube.

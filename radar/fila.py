@@ -17,7 +17,7 @@ MIN_CARACTERES, MAX_CARACTERES = 1000, 80000
 LIMITES = (1, 2, 3, 4, 6, 8)
 ESCRITAS_AO_MESMO_TEMPO = 2       # roteiros pelo Claude ao mesmo tempo (20 pedidos de uma vez eram 20 chamadas juntas)
 CAMPOS = ("titulo", "link", "canal_id", "agente_id", "lingua", "caracteres", "roteiro_manual", "nicho", "observacao",
-          "revisar")
+          "revisar", "perfil")
 
 
 def minutos_de(caracteres: int, ppm: int) -> float:
@@ -148,6 +148,12 @@ def _observacoes(pedido: dict) -> str:
     return "\n".join(p for p in partes if p)[:1000]
 
 
+def perfil_do(pedido: dict, cfg: dict) -> str:
+    """O perfil da fábrica do vídeo: o que o pedido escolheu (o Canal de teste, que não é canal nenhum, escolhe a voz
+    pela língua) ou o do canal."""
+    return pedido.get("perfil") or cfg.get("perfil", "")
+
+
 def _escrever(linha: dict, roteirista, config_canal, ritmo) -> None:
     """O roteiro do pedido (pelo Claude ou o colado). Termina em sua_vez (revisão) ou de volta na fila."""
     pedido = json.loads(linha["pedido"])
@@ -159,7 +165,7 @@ def _escrever(linha: dict, roteirista, config_canal, ritmo) -> None:
             r = roteirista.manual(usuario_id=linha["usuario_id"], titulo=pedido["titulo"], texto=pedido["roteiro_manual"],
                                   link=pedido.get("link", ""), minutos=0, lingua=lingua, canal=canal)
         else:
-            ppm = ritmo(linha["usuario_id"], cfg.get("perfil", ""), lingua)["ppm"]
+            ppm = ritmo(linha["usuario_id"], perfil_do(pedido, cfg), lingua)["ppm"]
             agente = pedido.get("agente_id") or cfg.get("projeto_roteiro_id")
 
             def aviso(texto):
@@ -167,7 +173,7 @@ def _escrever(linha: dict, roteirista, config_canal, ritmo) -> None:
             r = roteirista.gerar(usuario_id=linha["usuario_id"], titulo=pedido["titulo"], link=pedido.get("link", ""),
                                  minutos=max(1, round(minutos_de(pedido["caracteres"], ppm))), lingua=lingua,
                                  projeto_id=int(agente) if agente else None, observacoes=_observacoes(pedido),
-                                 perfil=cfg.get("perfil", ""), canal=canal, aviso=aviso)
+                                 perfil=perfil_do(pedido, cfg), canal=canal, aviso=aviso)
     except Exception as erro:  # noqa: BLE001 (qualquer falha do roteiro vira o erro do pedido, com o motivo)
         mudar(linha["id"], "erro", de=("escrevendo",), erro=str(erro)[:500], passo="")
         return
@@ -242,7 +248,7 @@ def passo(fabrica=None, roteirista=None, em_thread: bool = True, config_canal=No
             try:
                 if not projeto:
                     # o projeto fica guardado assim que existe: "Tentar de novo" e um reinício reaproveitam, sem pagar outro
-                    projeto = roteirista.enviar(linha["usuario_id"], linha["roteiro"], cfg.get("perfil", ""))["projeto"]
+                    projeto = roteirista.enviar(linha["usuario_id"], linha["roteiro"], perfil_do(pedido, cfg))["projeto"]
                     banco.executar("UPDATE producoes_fila SET projeto=? WHERE id=?", projeto, linha["id"])
                 if not mudar(linha["id"], "enviando", de=("enviando",)):
                     continue

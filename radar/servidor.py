@@ -2054,6 +2054,21 @@ def fila_estimativa(canal: str = "", minutos: float = 0, u: dict = Depends(usuar
         return {"usd": None, "base": None}
 
 
+@app.get("/api/fila/teste")
+def fila_teste(u: dict = Depends(usuario)):
+    """O Canal de teste da Nova produção (pedido do usuário em 2026-10-29): o primeiro vídeo de um canal novo, que não
+    é canal nenhum do Radar. O agente é o CANAL DE TESTE e a pessoa escolhe a língua; a voz vem de um perfil da
+    fábrica que fala essa língua."""
+    agente = banco.um("SELECT id FROM projetos_roteiro WHERE usuario_id=? AND UPPER(nome)='CANAL DE TESTE'", u["id"])
+    nomes = {c: l for l, c in fabrica_api.IDIOMA.items()}
+    linguas: dict[str, list] = {}
+    for p in producao.perfis():
+        if p.get("voz") and p.get("idioma_da_voz") in nomes:
+            linguas.setdefault(nomes[p["idioma_da_voz"]], []).append({"perfil": p["perfil"], "canal": p.get("canal", ""), "voz": p["voz"]})
+    return {"agente_id": agente["id"] if agente else None,
+            "linguas": [{"lingua": l, "perfis": linguas[l]} for l in sorted(linguas)]}
+
+
 @app.get("/api/fila/ajustes")
 def fila_ajustes_ver(u: dict = Depends(usuario)):
     return {"limite": fila.limite(), "opcoes": list(fila.LIMITES)}

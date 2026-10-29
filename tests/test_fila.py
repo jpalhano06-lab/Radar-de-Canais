@@ -269,3 +269,40 @@ def test_no_maximo_duas_escritas_ao_mesmo_tempo(db):
             break
         threading.Event().wait(0.02)
     assert estados.count("escrevendo") == fila.ESCRITAS_AO_MESMO_TEMPO == 2
+
+
+def test_canal_de_teste_leva_o_perfil_da_lingua_escolhida(db):
+    """O Canal de teste (2026-10-29) não é canal do Radar: o pedido vai sem canal, com o agente CANAL DE TESTE, a
+    língua escolhida e o perfil da fábrica que fala essa língua, que vale para o roteiro e para a fábrica."""
+    enviados = []
+
+    class R(Roteirista):
+        def enviar(self, usuario_id, nome, perfil):
+            enviados.append(perfil)
+            return super().enviar(usuario_id, nome, perfil)
+    rot = R()
+    fila.criar(1, {"titulo": "Por que o mar é salgado?", "caracteres": 2650, "agente_id": "8", "lingua": "holandês",
+                   "perfil": "canal-jan-de-wolf", "canal_id": ""}, True)
+    fila.passo(fabrica=Fabrica(), roteirista=rot, em_thread=False, config_canal=lambda uid, cid: pytest.fail("sem canal"),
+               ritmo=lambda uid, perfil, lingua: {"ppm": 150})
+    assert rot.pedidos[0]["perfil"] == "canal-jan-de-wolf" and rot.pedidos[0]["projeto_id"] == 8
+    assert rot.pedidos[0]["lingua"] == "holandês" and rot.pedidos[0]["minutos"] == 3
+    assert enviados == ["canal-jan-de-wolf"]
+
+
+def test_a_rota_do_canal_de_teste(db, monkeypatch):
+    from fastapi.testclient import TestClient
+    from radar import producao, servidor
+    banco.executar("INSERT INTO projetos_roteiro (usuario_id, nome, instrucoes, criado) VALUES (1, 'CANAL DE TESTE', 'x', '')")
+    monkeypatch.setattr(producao, "perfis", lambda: [
+        {"perfil": "canal-jan-de-wolf", "canal": "Jan de WOLF", "voz": "Ido", "idioma_da_voz": "nl"},
+        {"perfil": "canal-joao-o-lobo", "canal": "João o Lobo", "voz": "Davi", "idioma_da_voz": "pt"},
+        {"perfil": "documentario", "canal": "Documentário", "voz": "", "idioma_da_voz": ""}])
+    servidor.app.dependency_overrides[servidor.usuario] = lambda: {"id": 1}
+    try:
+        r = TestClient(servidor.app).get("/api/fila/teste").json()
+    finally:
+        servidor.app.dependency_overrides.clear()
+    assert r["agente_id"] == 1
+    assert [l["lingua"] for l in r["linguas"]] == ["holandês", "português"]     # sem voz, o perfil não entra
+    assert r["linguas"][0]["perfis"][0]["perfil"] == "canal-jan-de-wolf"
