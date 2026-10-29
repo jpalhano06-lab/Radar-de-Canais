@@ -54,6 +54,16 @@ def transcricao(video_id: str) -> tuple[str, str]:
     return texto, escolhida.language_code
 
 
+def tem_legenda(video_id: str) -> bool:
+    """Se dá para ler a legenda desse vídeo. A Nova produção da extensão pergunta isso na confirmação, para a pessoa
+    saber antes de criar que o roteiro vai sair só do título (pedido do usuário em 2026-10-28)."""
+    from youtube_transcript_api import YouTubeTranscriptApi
+    try:
+        return bool(list(YouTubeTranscriptApi().list(video_id)))
+    except Exception:
+        return False
+
+
 def copiar_thumbnail(video_id: str, destino) -> bool:
     for nome in ("maxresdefault", "sddefault", "hqdefault"):
         r = httpx.get(f"https://i.ytimg.com/vi/{video_id}/{nome}.jpg", timeout=20)
@@ -129,17 +139,25 @@ def _limpar(texto: str) -> str:
 
 
 def gerar(usuario_id: int, titulo: str, link: str, minutos: int, lingua: str, projeto_id: int | None,
-          observacoes: str, perfil: str = "", canal: dict | None = None, aviso=lambda _t: None) -> dict:
+          observacoes: str, perfil: str = "", canal: dict | None = None, projeto_descricao_id: int | None = None,
+          aviso=lambda _t: None) -> dict:
     video_id = id_do_video(link)
     if link and not video_id:
         raise RuntimeError("Não reconheci o link do vídeo de referência.")
     pasta = PASTA / f"{datetime.now(banco.BRASILIA).strftime('%Y-%m-%d-%H%M')}-{_slug(titulo)}"
     pasta.mkdir(parents=True, exist_ok=True)
-    base, lingua_base, thumb = "", "", False
+    base, lingua_base, thumb, base_erro = "", "", False, ""
     if video_id:
         aviso("Lendo a transcrição do vídeo de referência…")
-        base, lingua_base = transcricao(video_id)
-        (pasta / "transcricao.txt").write_text(base, encoding="utf-8")
+        # sem legenda não derruba o pedido (pedido do usuário em 2026-10-28): o vídeo pode estar com as legendas
+        # desligadas pelo dono, e antes disso o pedido inteiro parava com erro. Agora o roteiro sai do título, das
+        # observações e do estilo do canal, e o motivo fica no roteiro.json para a Revisão poder dizer
+        try:
+            base, lingua_base = transcricao(video_id)
+            (pasta / "transcricao.txt").write_text(base, encoding="utf-8")
+        except Exception as erro:  # noqa: BLE001
+            base, lingua_base, base_erro = "", "", str(erro)
+            aviso("Esse vídeo não deu a legenda. Escrevendo o roteiro a partir do título…")
         aviso("Copiando a thumbnail…")
         thumb = copiar_thumbnail(video_id, pasta / "thumbnail.jpg")
     projeto = banco.um("SELECT * FROM projetos_roteiro WHERE id=? AND usuario_id=?", projeto_id, usuario_id) if projeto_id else None
@@ -158,6 +176,9 @@ def gerar(usuario_id: int, titulo: str, link: str, minutos: int, lingua: str, pr
     if base:
         # a transcrição muito longa é cortada: o começo e a estrutura importam mais
         pedido += f"\nTranscrição do vídeo de referência (língua: {lingua_base}):\n{base[:60000]}\n"
+    elif base_erro:
+        pedido += ("\nO vídeo de referência existe, mas não deu para ler a legenda dele: escreva a partir do título, "
+                   "das observações e do estilo do canal, sem nenhuma base de transcrição.\n")
     else:
         pedido += "\nSem vídeo de referência: escreva a partir do título.\n"
     aviso(f"O Claude está escrevendo (cerca de {palavras} palavras)…")
@@ -182,10 +203,28 @@ def gerar(usuario_id: int, titulo: str, link: str, minutos: int, lingua: str, pr
     (pasta / "roteiro.txt").write_text(roteiro, encoding="utf-8")
     meta = {"titulo": titulo, "link": link, "video_id": video_id, "minutos": minutos, "lingua": lingua,
             "projeto": projeto["nome"] if projeto else "", "palavras": len(roteiro.split()),
-            "palavras_base": len(base.split()), "thumbnail": thumb, "segundos": round(time.time() - inicio),
-            "criado": banco.agora(), "usuario_id": usuario_id, "ritmo": ritmo, "canal": canal or {}}
+            "palavras_base": len(base.split()), "base_erro": base_erro[:300], "thumbnail": thumb,
+            "segundos": round(time.time() - inicio), "criado": banco.agora(), "usuario_id": usuario_id, "ritmo": ritmo, "canal": canal or {}}
     (pasta / "roteiro.json").write_text(json.dumps(meta, ensure_ascii=False, indent=1), encoding="utf-8")
+    _escrever_descricao(usuario_id, pasta, projeto_descricao_id, aviso)
     return _publico(pasta)
+
+
+def _escrever_descricao(usuario_id: int, pasta, projeto_descricao_id, aviso=lambda _t: None) -> None:
+    """A descrição do vídeo, escrita logo depois do roteiro (pedido do usuário em 2026-10-28: ela fica pronta
+    enquanto o vídeo está sendo feito, em vez de só existir no fim, quando a fábrica monta o publicacao.json).
+
+    Falhar aqui não derruba o roteiro: o roteiro é o que a pessoa pediu, e a descrição se refaz com um botão.
+    O que deu errado fica no roteiro.json, para a tela de Revisão poder dizer."""
+    from . import descricao as _descricao
+    aviso("Roteiro pronto. O Claude está escrevendo a descrição e as tags…")
+    meta = json.loads((pasta / "roteiro.json").read_text(encoding="utf-8"))
+    try:
+        _descricao.gerar(usuario_id, pasta, projeto_descricao_id)
+        meta["descricao_erro"] = ""
+    except Exception as erro:
+        meta["descricao_erro"] = str(erro)[:300]
+    (pasta / "roteiro.json").write_text(json.dumps(meta, ensure_ascii=False, indent=1), encoding="utf-8")
 
 
 def manual(usuario_id: int, titulo: str, texto: str, link: str = "", minutos: int = 0, lingua: str = "",
@@ -234,7 +273,9 @@ def _publico(pasta) -> dict:
     meta = json.loads((pasta / "roteiro.json").read_text(encoding="utf-8"))
     meta["canal_nome"] = _nome_do_canal(meta)
     arquivo = pasta / "roteiro.txt"
+    from . import descricao as _descricao
     return meta | {"nome": pasta.name, "roteiro": arquivo.read_text(encoding="utf-8"), "arquivo": str(arquivo),
+                   "descricao": _descricao.ler(pasta),
                    "thumbnail_url": f"/api/roteiros/{pasta.name}/thumbnail.jpg" if (pasta / "thumbnail.jpg").exists() else "",
                    "comando": f'uv run fabrica novo {pasta.name} --roteiro "{arquivo}" --perfil perfis/documentario.yaml'}
 
@@ -361,7 +402,12 @@ def enviar(usuario_id: int, nome: str, perfil: str) -> dict:
     (destino / "projeto.json").write_text(json.dumps(dados, ensure_ascii=False, indent=2), encoding="utf-8")
     if (pasta / "thumbnail.jpg").exists():
         shutil.copy2(pasta / "thumbnail.jpg", destino / "thumbnail_referencia.jpg")
-    meta["fabrica"] = {"projeto": final, "perfil": perfil, "enviado": banco.agora(), "palavras": len((pasta / "roteiro.txt").read_text(encoding="utf-8").split())}
+    # a descrição escrita junto com o roteiro vai junto: a extensão já acha este vídeo no Studio com o vídeo
+    # ainda sendo feito, em vez de esperar o publicacao.json da fábrica
+    from . import descricao as _descricao
+    levou = _descricao.levar(pasta, destino, meta["titulo"], perfil)
+    meta["fabrica"] = {"projeto": final, "perfil": perfil, "enviado": banco.agora(), "descricao": levou,
+                       "palavras": len((pasta / "roteiro.txt").read_text(encoding="utf-8").split())}
     (pasta / "roteiro.json").write_text(json.dumps(meta, ensure_ascii=False, indent=1), encoding="utf-8")
     estimativa = "\n".join(l for l in (r.stdout or "").splitlines() if "US$" in l or "min" in l)[-600:]
     return {"projeto": final, "pasta": str(destino), "estimativa": estimativa,

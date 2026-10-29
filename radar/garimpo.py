@@ -3,7 +3,9 @@
 Roda uma vez por dia sozinho (servidor) ou com `python -m radar garimpar`. Gasta só a parte da cota de hoje que
 config.COTA_DO_GARIMPO deixa, e para quando ela acaba: o resto fica para a extensão."""
 import json
+import re
 import threading
+from collections import Counter
 from datetime import datetime, timedelta, timezone
 
 from . import banco, gosto, ia, medir, mercado, metricas, risco, youtube
@@ -381,29 +383,93 @@ def estado_gasto() -> dict:
 
 # ---------------------------------------------------------------- canais parecidos
 
-def _busca_do_canal(canal_id: str) -> list[str]:
-    """Os títulos dos vídeos que mais renderam: são a melhor busca para achar quem faz o mesmo."""
+# Os parecidos de antes (chave "parecidos:") eram de qualquer assunto: no Canada Insight (marcas de supermercado), 20
+# dos 24 eram audiolivro, cabelo crespo, academia e novela chinesa. A busca era o título inteiro dos 2 vídeos mais
+# vistos (os dois traduzidos para o português) e bastava aparecer uma vez. A chave nova descarta essas listas.
+CHAVE_PARECIDOS = "parecidos2:"
+BUSCAS_PARECIDOS = 4          # 100 unidades cada
+CANDIDATOS_MEDIDOS = 40       # medir custa umas 3 unidades por canal
+MINIMO_PARECENCA = 0.2        # parte dos títulos do candidato que falam do assunto do canal (0 a 1)
+_LINGUAS_DA_BUSCA = ("pt", "es", "en")
+
+
+def _titulos_longos(canal_id: str, quantos: int) -> list[str]:
     return [v["titulo"] for v in banco.todos(
-        "SELECT titulo FROM videos WHERE canal_id=? AND duracao_s>180 ORDER BY views DESC LIMIT 2", canal_id)]
+        "SELECT titulo FROM videos WHERE canal_id=? AND duracao_s>180 ORDER BY views DESC LIMIT ?", canal_id, quantos)]
+
+
+def _assunto_do_canal(canal_id: str) -> set[str]:
+    """As palavras que o canal repete nos títulos (em 2 ou mais vídeos, sem número solto): o assunto dele."""
+    contagem = Counter()
+    for titulo in _titulos_longos(canal_id, 40):
+        contagem.update(p for p in gosto.chaves(titulo) if not p.isdigit())
+    return {p for p, n in contagem.items() if n >= 2}
+
+
+def _palavras_da_busca(titulo: str, assunto: set[str]) -> str:
+    """O título virado busca: só as palavras do assunto, na ordem e com os acentos dele, até 6 (o título inteiro, com
+    número e parêntese, trazia qualquer coisa)."""
+    palavras, vistas = [], set()
+    for p in re.findall(r"[^\W\d_]+", titulo):
+        chave = gosto._simples(p)
+        if chave in assunto and chave not in vistas:
+            palavras.append(p)
+            vistas.add(chave)
+    return " ".join(palavras[:6])
+
+
+def _busca_do_canal(canal_id: str, assunto: set[str]) -> list[tuple[str, str]]:
+    """(busca, língua) dos vídeos que mais renderam, sem repetir o mesmo assunto e no máximo 2 por língua."""
+    buscas, por_lingua = [], Counter()
+    for titulo in _titulos_longos(canal_id, 15):
+        busca = _palavras_da_busca(titulo, assunto)
+        chaves = gosto.chaves(busca)
+        if len(chaves) < 2:
+            continue
+        lingua = gosto.lingua(titulo)
+        lingua = lingua if lingua in _LINGUAS_DA_BUSCA else ""
+        if por_lingua[lingua] >= 2:
+            continue
+        if any(len(chaves & gosto.chaves(b)) / len(chaves) >= .6 for b, _ in buscas):
+            continue
+        buscas.append((busca, lingua))
+        por_lingua[lingua] += 1
+        if len(buscas) >= BUSCAS_PARECIDOS:
+            break
+    return buscas
+
+
+def parecenca_do_canal(canal_id: str, assunto: set[str]) -> float:
+    """Parte dos vídeos longos do canal (do banco) cujo título tem 2 ou mais palavras do assunto: 0 a 1."""
+    titulos = _titulos_longos(canal_id, 30)
+    if not titulos or not assunto:
+        return 0.0
+    return sum(1 for t in titulos if len(gosto.chaves(t) & assunto) >= 2) / len(titulos)
 
 
 @youtube.por("garimpo")
 def parecidos(canal_id: str, guardar_no_radar: bool = True) -> list[dict]:
-    """Canais que fazem o mesmo tipo de vídeo, do mais parecido para o menos (100 a 200 unidades, guardado 7 dias)."""
-    cache = banco.um("SELECT dados, criado FROM traducoes WHERE chave=?", f"parecidos:{canal_id}")
+    """Canais que fazem o mesmo tipo de vídeo, do mais parecido para o menos (até 400 unidades da busca e a medida dos
+    candidatos, guardado 7 dias). Só fica quem fala do mesmo assunto nos próprios títulos."""
+    cache = banco.um("SELECT dados, criado FROM traducoes WHERE chave=?", f"{CHAVE_PARECIDOS}{canal_id}")
     semana = (datetime.now(timezone.utc) - timedelta(days=7)).isoformat()
     if cache and cache["criado"] >= semana:
         ids = json.loads(cache["dados"])
     else:
         medir.medir_canais([canal_id])
-        vistos = {}
-        for titulo in _busca_do_canal(canal_id):
-            for posicao, a in enumerate(youtube.buscar(titulo, ordem="relevance")):
+        assunto = _assunto_do_canal(canal_id)
+        vistos = Counter()
+        for busca, lingua in _busca_do_canal(canal_id, assunto):
+            for posicao, a in enumerate(youtube.buscar(busca, ordem="relevance", idioma=lingua)):
                 if a["canal_id"] != canal_id:
-                    vistos[a["canal_id"]] = vistos.get(a["canal_id"], 0) + (50 - posicao)
-        ids = [c for c, _ in sorted(vistos.items(), key=lambda x: -x[1])][:25]
+                    vistos[a["canal_id"]] += 50 - posicao
+        candidatos = [c for c, _ in vistos.most_common(CANDIDATOS_MEDIDOS)]
+        medir.medir_canais(candidatos)
+        nota = {c: parecenca_do_canal(c, assunto) for c in candidatos}
+        ids = sorted((c for c in candidatos if nota[c] >= MINIMO_PARECENCA),
+                     key=lambda c: (-round(nota[c], 1), -vistos[c]))[:25]
         banco.executar("INSERT OR REPLACE INTO traducoes (chave, dados, criado) VALUES (?,?,?)",
-                       f"parecidos:{canal_id}", json.dumps(ids), banco.agora())
+                       f"{CHAVE_PARECIDOS}{canal_id}", json.dumps(ids), banco.agora())
     canais = medir.medir_canais(ids)
     saida = []
     for cid in ids:
@@ -414,7 +480,7 @@ def parecidos(canal_id: str, guardar_no_radar: bool = True) -> list[dict]:
 
 def _parecidos_guardados(canal_id: str) -> bool:
     """A lista de parecidos deste canal já foi procurada nos últimos 7 dias (ler de novo não gasta cota)."""
-    cache = banco.um("SELECT criado FROM traducoes WHERE chave=?", f"parecidos:{canal_id}")
+    cache = banco.um("SELECT criado FROM traducoes WHERE chave=?", f"{CHAVE_PARECIDOS}{canal_id}")
     return bool(cache and cache["criado"] >= (datetime.now(timezone.utc) - timedelta(days=7)).isoformat())
 
 

@@ -750,11 +750,20 @@ async function mostrarVitrine() {
 // ---------------------------------------------------------------- Trabalho: a ideia, o roteiro pelo Claude e a fábrica
 
 function gerenciarProjetos(caixa, projetos, depois) {
-  caixa.innerHTML = `<div class="bloco" style="margin-top:6px"><h3>Agentes de roteiro</h3>
+  // dois tipos de agente (2026-10-28): o que escreve o roteiro e o que escreve a descrição junto com ele
+  const linha = (p) => `<div class="titulo-linha"><span class="t"><b>${esc(p.nome)}</b><small>${esc(p.instrucoes.slice(0, 120))}${p.instrucoes.length > 120 ? "…" : ""}</small></span>
+      <button class="botao sec editar-projeto" data-id="${p.id}">Editar</button><button class="botao sec apagar-projeto" data-id="${p.id}">×</button></div>`;
+  const deDescricao = projetos.filter((p) => p.tipo === "descricao");
+  caixa.innerHTML = `<div class="bloco" style="margin-top:6px"><h3>Agentes</h3>
     <p class="sub">Cada agente guarda o jeito de escrever de um canal (tom, público, como abrir e fechar). Cole aqui as instruções de um projeto do claude.ai: vão junto em todo roteiro feito com esse agente.</p>
-    ${projetos.map((p) => `<div class="titulo-linha"><span class="t"><b>${esc(p.nome)}</b><small>${esc(p.instrucoes.slice(0, 120))}${p.instrucoes.length > 120 ? "…" : ""}</small></span>
-      <button class="botao sec editar-projeto" data-id="${p.id}">Editar</button><button class="botao sec apagar-projeto" data-id="${p.id}">×</button></div>`).join("")}
+    <h4 class="rt-sub">De roteiro</h4>
+    ${projetos.filter((p) => (p.tipo || "roteiro") === "roteiro").map(linha).join("") || '<p class="sub">Nenhum ainda.</p>'}
+    <h4 class="rt-sub">De descrição</h4>
+    <p class="sub">Escrevem a sinopse, as tags e as hashtags no mesmo minuto do roteiro, enquanto o vídeo ainda está sendo feito. No YouTube Studio a extensão põe esse texto sozinha.</p>
+    ${deDescricao.map(linha).join("") || '<p class="sub">Nenhum ainda: sem um destes, valem as regras do Radar.</p>'}
     <input id="p-nome" placeholder="Nome do agente (ex.: canal de animais)"><input type="hidden" id="p-id">
+    <label class="campo"><span>O que este agente escreve</span><select id="p-tipo">
+      <option value="roteiro">O roteiro do vídeo</option><option value="descricao">A descrição, as tags e as hashtags</option></select></label>
     <input id="p-ideal" placeholder="Ideal para… (opcional: aparece embaixo do estilo na Nova produção)">
     <textarea id="p-instrucoes" rows="6" placeholder="Instruções: tom de voz, público, estrutura, o que evitar…"></textarea>
     <button class="botao" id="p-salvar" style="justify-self:start">Salvar agente</button></div>`;
@@ -762,16 +771,17 @@ function gerenciarProjetos(caixa, projetos, depois) {
     const p = projetos.find((x) => x.id === +b.dataset.id);
     caixa.querySelector("#p-id").value = p.id; caixa.querySelector("#p-nome").value = p.nome; caixa.querySelector("#p-instrucoes").value = p.instrucoes;
     caixa.querySelector("#p-ideal").value = p.ideal_para || "";
+    caixa.querySelector("#p-tipo").value = p.tipo || "roteiro";
   }));
   caixa.querySelectorAll(".apagar-projeto").forEach((b) => (b.onclick = async () => {
-    if (!confirm("Apagar este agente de roteiro?")) return;
+    if (!confirm("Apagar este agente?")) return;
     await api(`/api/projetos/${b.dataset.id}`, { method: "DELETE" }); depois();
   }));
   caixa.querySelector("#p-salvar").onclick = async () => {
     try {
       await api("/api/projetos", { method: "POST", body: { id: caixa.querySelector("#p-id").value || null,
         nome: caixa.querySelector("#p-nome").value, instrucoes: caixa.querySelector("#p-instrucoes").value,
-        ideal_para: caixa.querySelector("#p-ideal").value } });
+        tipo: caixa.querySelector("#p-tipo").value, ideal_para: caixa.querySelector("#p-ideal").value } });
       aviso("Agente salvo."); depois();
     } catch (e) { aviso(porque(e)); }
   };
@@ -792,9 +802,12 @@ async function trabalho() {
   if (/^[\w-]{11}$/.test(daExtensao.get("ref") || "")) { preset.link = linkVideo(daExtensao.get("ref")); preset.titulo = daExtensao.get("titulo") || ""; }
   const [{ projetos }, fab, { roteiros }, prod] = await Promise.all([api("/api/projetos"), api("/api/fabrica"), api("/api/roteiros"),
     api("/api/producoes").catch(() => null)]);
-  const agentes = projetos;
+  // dois tipos de agente: o que escreve o roteiro e o que escreve a descrição junto com ele (2026-10-28)
+  const agentes = projetos.filter((p) => (p.tipo || "roteiro") === "roteiro");
+  const agentesDesc = projetos.filter((p) => p.tipo === "descricao");
   const E = { passo: 0, link: preset.link || "", titulo: preset.titulo || "", ref: null, canal: CANAL_ATUAL || "", cfg: null,
-    agente: "", lingua: "português", minutos: 8, obs: "", r: null, perfil: "", quem: "", rascunho: "", ritmo: null, ppm: 150 };
+    agente: "", agenteDesc: agentesDesc.length === 1 ? String(agentesDesc[0].id) : "",
+    lingua: "português", minutos: 8, obs: "", r: null, perfil: "", quem: "", rascunho: "", ritmo: null, ppm: 150 };
   const perfilDireto = () => (fab.perfis.includes(E.perfil) ? E.perfil : fab.perfis.includes("documentario") ? "documentario" : fab.perfis[0] || "");
   // o canal vai junto no roteiro, para cada vídeo feito mostrar de qual canal é
   const canalDoVideo = () => ({ canal_id: E.canal, canal_titulo: ((MEUS || []).find((c) => c.id === E.canal) || {}).titulo || "" });
@@ -853,6 +866,7 @@ async function trabalho() {
         <dt>Título</dt><dd>${esc(E.titulo || "—")}</dd>
         <dt>Voz</dt><dd>${esc((E.cfg && E.cfg.voz) || "—")}</dd>
         <dt>Agente</dt><dd>${esc((agentes.find((a) => String(a.id) === E.agente) || {}).nome || "Agente padrão")}</dd>
+        <dt>Descrição</dt><dd>${esc((agentesDesc.find((a) => String(a.id) === E.agenteDesc) || {}).nome || "Regras do Radar")}</dd>
         <dt>Língua</dt><dd>${esc(E.lingua)}</dd>
         <dt>Tempo</dt><dd>${E.minutos} min</dd>
         <dt>Roteiro</dt><dd>${E.r ? `${E.r.roteiro.split(/\s+/).filter(Boolean).length} palavras` : "—"}</dd>
@@ -964,6 +978,10 @@ async function trabalho() {
         <div class="ritmo-linha ${E.ritmo && E.ritmo.medidos ? "ajustado" : ""}">⏱ ${E.ritmo && E.ritmo.medidos
           ? `<span><b>Tempo ajustado:</b> esta voz fala <b>${E.ppm} palavras por minuto</b> (medido em ${E.ritmo.medidos} ${E.ritmo.medidos === 1 ? "vídeo entregue" : "vídeos entregues"}). Para ${E.minutos} min, o Claude mira <b>${alvo.toLocaleString("pt-BR")} palavras</b>${E.ritmo.ppm_alvo && E.ritmo.ppm_alvo !== E.ppm ? " (já descontando o quanto ele costuma escrever a mais)" : ""}.</span><button class="link-editar" id="rt-por-que">por quê?</button>`
           : `<span>Para ${E.minutos} min, o Claude mira ${alvo.toLocaleString("pt-BR")} palavras. Quando a fábrica entregar os vídeos desta voz, o Radar mede o tempo real e <b>ajusta sozinho</b>.</span>`}</div>${placar}
+        <div class="ritmo-linha">📝 <span>Junto com o roteiro, o Claude escreve a <b>descrição, as tags e as hashtags</b> deste vídeo${
+          agentesDesc.length ? "" : " pelas regras do Radar (crie um agente de descrição para dar o estilo do canal)"}. Ficam prontas agora, enquanto o vídeo ainda está sendo feito.</span>${
+          agentesDesc.length ? `<select id="rt-agente-desc" class="rt-agente-desc"><option value="">Regras do Radar</option>${
+            agentesDesc.map((a) => `<option value="${a.id}" ${String(a.id) === E.agenteDesc ? "selected" : ""}>${esc(a.nome)}</option>`).join("")}</select>` : ""}</div>
         <h3 class="rt-sub">Quando o roteiro ficar pronto…</h3>
         <div class="modo-op">
           <button class="modo ${modo === "revisar" ? "marcado" : ""}" data-modo="revisar"><span class="ic">👀</span><b>Quero revisar antes</b><small>Você lê, corrige e só depois manda para a fábrica.</small></button>
@@ -974,6 +992,8 @@ async function trabalho() {
         <button class="botao vermelho grande" id="rt-escrever" style="justify-self:start">✍️ Escrever o roteiro com o Claude</button>
         <div id="rt-escrevendo"></div>`;
       ligarQuem();
+      const escolhaDesc = $("rt-agente-desc");
+      if (escolhaDesc) escolhaDesc.onchange = () => { E.agenteDesc = escolhaDesc.value; lado(); };
       const porQue = $("rt-por-que");
       if (porQue) porQue.onclick = () => explicarAjusteTempo(E.ritmo, E.minutos);
       $("rt-corpo").querySelectorAll(".modo:not([disabled])").forEach((b) => (b.onclick = () => {
@@ -988,7 +1008,8 @@ async function trabalho() {
         try {
           const direto = modo === "direto";
           const { tarefa } = await api("/api/roteiros", { method: "POST", body: { titulo: E.titulo, link: E.link, minutos: E.minutos, lingua: E.lingua,
-            projeto_id: E.agente, observacoes: E.obs, enviar_direto: direto, perfil: perfilDireto(), ...canalDoVideo() } });
+            projeto_id: E.agente, projeto_descricao_id: E.agenteDesc, observacoes: E.obs, enviar_direto: direto,
+            perfil: perfilDireto(), ...canalDoVideo() } });
           vigiarRoteiro(tarefa, E.titulo);
           $("rt-corpo").querySelectorAll(".modo, [data-quem]").forEach((x) => (x.disabled = true));
           for (;;) {
@@ -1006,16 +1027,18 @@ async function trabalho() {
       };
       return () => "Escreva o roteiro primeiro.";
     },
-    // 4. revisão e envio para a fábrica
+    // 4. revisão e envio para a fábrica (com a descrição que o Claude escreveu junto com o roteiro)
     () => {
-      $("rt-corpo").innerHTML = `<h2>Confira e envie</h2>
+      $("rt-corpo").innerHTML = `<h2>Confira e envie</h2>${blocoDescricao()}
         ${fab.conectada ? `<p class="sub">Cria o projeto na fábrica com este roteiro, este título e a voz do canal. <b>Não gasta nada</b>: produzir pede a sua confirmação.</p>
           <label class="campo"><span>Voz (perfil da fábrica)</span><select id="rt-perfil">${fab.perfis.map((p) => `<option ${p === (E.perfil || "documentario") ? "selected" : ""}>${esc(p)}</option>`).join("")}</select></label>
           <button class="botao vermelho grande" id="rt-enviar" style="justify-self:start">🏭 Enviar para a fábrica</button><div id="rt-enviado"></div>`
           : '<p class="sub">A fábrica não está nesta pasta: o Radar precisa estar dentro da pasta da fábrica para enviar.</p>'}`;
+      ligarDescricao();
       const enviar = $("rt-enviar");
       if (enviar) enviar.onclick = () => carregando(enviar, "Criando o projeto na fábrica…", async () => {
         await salvar();
+        await salvarDescricao();
         mostrarEnviado(await api(`/api/roteiros/${encodeURIComponent(E.r.nome)}/fabrica`, { method: "POST", body: { perfil: $("rt-perfil").value } }));
       });
       return () => "";
@@ -1031,6 +1054,55 @@ async function trabalho() {
       if (await produzirNaFabrica(f.projeto, E.titulo)) location.hash = "#/acompanhar";
     });
   };
+  // ---------------------------------------------------------------- a descrição, escrita junto com o roteiro
+  // Pedido do usuário em 2026-10-28. Ela já vem pronta desta tela: aqui é só para ler, corrigir e, se o Claude
+  // tiver falhado ou o estilo não agradar, refazer. Vai para a fábrica junto com o roteiro e é ela que a extensão
+  // põe no campo do Studio — antes de o vídeo ficar pronto.
+  const blocoDescricao = () => {
+    const d = (E.r && E.r.descricao) || {};
+    const erro = E.r && E.r.descricao_erro;
+    const escolha = agentesDesc.length
+      ? `<select id="rt-desc-agente"><option value="">Regras do Radar</option>${agentesDesc.map((a) => `<option value="${a.id}" ${String(a.id) === E.agenteDesc ? "selected" : ""}>${esc(a.nome)}</option>`).join("")}</select>`
+      : "";
+    if (!d.sinopse) {
+      return `<div class="bloco rt-descricao"><h3>📝 Descrição do vídeo</h3>
+        <p class="sub">${erro ? `O Claude não conseguiu escrever: ${esc(erro)}` : "Este roteiro ainda não tem descrição."} Dá para escrever agora — ela vai junto para a fábrica e aparece sozinha no YouTube Studio.</p>
+        <div class="linha">${escolha}<button class="botao sec" id="rt-desc-refazer">Escrever a descrição</button></div></div>`;
+    }
+    return `<div class="bloco rt-descricao"><h3>📝 Descrição do vídeo</h3>
+      <p class="sub">Escrita pelo Claude${d.projeto ? ` com o agente <b>${esc(d.projeto)}</b>` : " pelas regras do Radar"}, a partir do roteiro. Vai junto para a fábrica: no Studio, a extensão põe este texto, estas tags e estas hashtags sozinha.</p>
+      <label class="campo"><span>Sinopse (abre a descrição; o rodapé fixo do canal entra depois dela)</span>
+        <textarea id="rt-desc-sinopse" rows="4">${esc(d.sinopse)}</textarea></label>
+      <label class="campo"><span>Tags (separadas por vírgula)</span><textarea id="rt-desc-tags" rows="2">${esc((d.tags || []).join(", "))}</textarea></label>
+      <label class="campo"><span>Hashtags</span><input id="rt-desc-hashtags" value="${esc((d.hashtags || []).join(" "))}"></label>
+      <div class="linha">${escolha}<button class="botao sec" id="rt-desc-refazer">Escrever de novo</button>
+        <button class="botao sec" id="rt-desc-salvar">Salvar a descrição</button></div></div>`;
+  };
+  const descricaoDaTela = () => ({
+    sinopse: ($("rt-desc-sinopse") || {}).value || "",
+    tags: (($("rt-desc-tags") || {}).value || "").split(",").map((t) => t.trim()).filter(Boolean),
+    hashtags: (($("rt-desc-hashtags") || {}).value || "").split(/\s+/).filter(Boolean),
+  });
+  const salvarDescricao = async () => {
+    if (!E.r || !$("rt-desc-sinopse")) return;
+    E.r.descricao = (await api(`/api/roteiros/${encodeURIComponent(E.r.nome)}/descricao`, { method: "POST", body: descricaoDaTela() })).descricao;
+  };
+  const ligarDescricao = () => {
+    const agente = $("rt-desc-agente");
+    if (agente) agente.onchange = () => { E.agenteDesc = agente.value; lado(); };
+    const refazer = $("rt-desc-refazer");
+    if (refazer) refazer.onclick = (e) => carregando(e.currentTarget, "O Claude está escrevendo a descrição…", async () => {
+      E.r.descricao = (await api(`/api/roteiros/${encodeURIComponent(E.r.nome)}/descricao`,
+        { method: "POST", body: { refazer: true, projeto_id: E.agenteDesc } })).descricao;
+      E.r.descricao_erro = "";
+      ir(E.passo);
+    });
+    const guardar = $("rt-desc-salvar");
+    if (guardar) guardar.onclick = (e) => carregando(e.currentTarget, "Salvando…", async () => {
+      await salvarDescricao(); aviso("Descrição salva.");
+    });
+  };
+
   const salvar = () => E.r && api(`/api/roteiros/${encodeURIComponent(E.r.nome)}/texto`, { method: "POST", body: { roteiro: E.r.roteiro, titulo: E.titulo } });
   let validar = () => "";
   const ir = (i) => {
@@ -1142,12 +1214,17 @@ async function aplicarProducao(canalId, caixa, campos) {
 }
 
 const bandeiraImg = (c) => `<img src="https://flagcdn.com/w40/${c}.png" alt="" style="width:28px;height:20px;object-fit:cover;border-radius:3px">`;
+// as línguas além das três de sempre que as vozes da GenAI Pro falam (o fabrica_api.IDIOMA tem os códigos)
+const OUTRAS_LINGUAS_GENAIPRO = ["francês", "alemão", "italiano", "holandês", "polonês", "russo", "ucraniano", "turco",
+  "árabe", "hindi", "tâmil", "japonês", "chinês", "coreano", "indonésio", "malaio", "filipino", "vietnamita", "sueco",
+  "dinamarquês", "norueguês", "finlandês", "grego", "tcheco", "eslovaco", "húngaro", "romeno", "búlgaro", "croata"];
 // a produção do canal: na primeira vez, uma pergunta por vez (língua, voz, agente de roteiro, tempo); depois, uma
 // linha simples com o "editar". Pedidos do usuário em 2026-10-15: "uma pergunta por vez, só na primeira vez"; "maior";
 // "conectar a fábrica para já aparecer as vozes e dar para testar antes de escolher"; "adicionar o agente na terceira
 // pergunta, além do tempo dos vídeos".
 async function formProducao(caixa, canalId, depois = () => {}, perguntarDeNovo = false) {
-  let [p, { projetos }] = await Promise.all([api(`/api/producao/${encodeURIComponent(canalId)}`), api("/api/projetos")]);
+  let [p, { projetos: todos }] = await Promise.all([api(`/api/producao/${encodeURIComponent(canalId)}`), api("/api/projetos")]);
+  let projetos = todos.filter((x) => (x.tipo || "roteiro") === "roteiro");
   const escolha = { lingua: p.lingua, perfil: p.perfil, projeto_roteiro_id: String(p.projeto_roteiro_id || ""), minutos: String(p.minutos || 8) };
   let tocando = null, botaoTocando = null;
   const parar = () => { if (tocando) { tocando.pause(); tocando = null; } if (botaoTocando) { botaoTocando.textContent = "▶"; botaoTocando = null; } };
@@ -1169,8 +1246,11 @@ async function formProducao(caixa, canalId, depois = () => {}, perguntarDeNovo =
     // 1. a língua
     () => {
       caixa.innerHTML = moldura(0, `<h3>Em que língua são os vídeos deste canal?</h3>` + cartoes([
-        ["português", bandeiraImg("br"), "Português"], ["inglês", bandeiraImg("us"), "Inglês"], ["espanhol", bandeiraImg("es"), "Espanhol"]], "lingua"));
+        ["português", bandeiraImg("br"), "Português"], ["inglês", bandeiraImg("us"), "Inglês"], ["espanhol", bandeiraImg("es"), "Espanhol"]], "lingua")
+        + `<label class="linha">Outra língua das vozes da GenAI Pro: <select id="pg-outra"><option value="">Escolher…</option>
+          ${OUTRAS_LINGUAS_GENAIPRO.map((l) => `<option ${l === escolha.lingua ? "selected" : ""}>${esc(l)}</option>`).join("")}</select></label>`);
       opcoes(null, "lingua", () => perguntas[1]());
+      caixa.querySelector("#pg-outra").onchange = (e) => { if (e.target.value) { escolha.lingua = e.target.value; perguntas[1](); } };
     },
     // 2. a voz, da biblioteca da fábrica, com a prévia
     async (busca = "", genero = "") => {
@@ -1186,18 +1266,31 @@ async function formProducao(caixa, canalId, depois = () => {}, perguntarDeNovo =
       caixa.querySelector("#vz-busca").onkeydown = (e) => { if (e.key === "Enter") procurar(); };
       const manter = caixa.querySelector("#vz-manter");
       if (manter) manter.onclick = () => { parar(); perguntas[2](); };
-      let r;
-      try { r = await api("/api/fabrica/vozes?" + consulta({ lingua: escolha.lingua, busca, genero })); }
-      catch (e) { caixa.querySelector("#vz-lista").innerHTML = `<div class="vazio">${esc(e.message)}</div>`; return; }
+      // a fábrica manda umas 60 vozes por vez, só da língua do canal; "Mais vozes" pede a página seguinte
+      const vozes = [];
+      let pagina = 0, r;
+      const carregar = async () => {
+        try { r = await api("/api/fabrica/vozes?" + consulta({ lingua: escolha.lingua, busca, genero, pagina })); }
+        catch (e) { caixa.querySelector("#vz-lista").innerHTML = `<div class="vazio">${esc(e.message)}</div>`; return; }
+        const conhecidas = new Set(vozes.map((v) => v.voice_id));
+        vozes.push(...(r.vozes || []).filter((v) => !conhecidas.has(v.voice_id)));
+        desenhar();
+      };
+      const desenhar = () => {
       const lista = caixa.querySelector("#vz-lista");
       if (!lista) return;
-      lista.innerHTML = r.erro ? `<div class="vazio">${esc(r.erro)}</div>` : r.vozes.map((v, k) => `<div class="voz-cartao">
+      const rolagem = lista.scrollTop;
+      lista.innerHTML = r.erro && !vozes.length ? `<div class="vazio">${esc(r.erro)}</div>` : (vozes.map((v, k) => `<div class="voz-cartao">
           <button class="voz-ouvir" data-k="${k}" title="Ouvir">▶</button>
           <div class="voz-info"><b>${esc(v.nome)}</b><small>${esc([v.genero, v.idade, v.sotaque].filter(Boolean).join(" · "))}</small>
             <p>${esc((v.descricao || "").slice(0, 140))}${(v.descricao || "").length > 140 ? "…" : ""}</p></div>
-          <button class="botao" data-escolher="${k}">Escolher</button></div>`).join("") || '<div class="vazio">Nenhuma voz achada. Tente outra busca.</div>';
+          <button class="botao" data-escolher="${k}">Escolher</button></div>`).join("") || '<div class="vazio">Nenhuma voz achada. Tente outra busca.</div>')
+        + (r.tem_mais ? `<button class="botao sec" id="vz-mais">Mais vozes (${vozes.length} até agora)</button>` : "");
+      lista.scrollTop = rolagem;
+      const mais = lista.querySelector("#vz-mais");
+      if (mais) mais.onclick = () => carregando(mais, "Buscando mais vozes…", async () => { pagina += 1; await carregar(); });
       lista.querySelectorAll(".voz-ouvir").forEach((b) => (b.onclick = () => {
-        const v = r.vozes[+b.dataset.k];
+        const v = vozes[+b.dataset.k];
         const mesmo = botaoTocando === b; parar();
         if (mesmo || !v.previa) return;
         tocando = new Audio(v.previa); botaoTocando = b; tocando.play(); b.textContent = "■";
@@ -1205,12 +1298,14 @@ async function formProducao(caixa, canalId, depois = () => {}, perguntarDeNovo =
       }));
       lista.querySelectorAll("[data-escolher]").forEach((b) => (b.onclick = () => carregando(b, "Criando o canal na fábrica…", async () => {
         parar();
-        const v = r.vozes[+b.dataset.escolher];
+        const v = vozes[+b.dataset.escolher];
         const novo = await api(`/api/producao/${encodeURIComponent(canalId)}/voz`, { method: "POST", body: { voice_id: v.voice_id, nome: v.nome, idioma: v.idioma } });
         p = { ...p, ...novo }; escolha.perfil = novo.perfil;
         aviso(`Voz ${v.nome} guardada no canal (na fábrica: ${novo.perfil}).`);
         perguntas[2]();
       })));
+      };
+      await carregar();
     },
     // 3. o agente de roteiro, com a opção de criar um novo ali mesmo
     () => {
@@ -2758,7 +2853,8 @@ const ATALHOS_MIN = [8, 10, 12, 15, 20, 25, 30];
 async function novaProducao(preset = {}) {
   if (document.getElementById("nova-producao")) return;
   if (!EU?.admin) { aviso("Só a administração cria produções."); return; }
-  const [canais, { projetos: agentes }] = await Promise.all([meusCanais(), api("/api/projetos")]);
+  const [canais, { projetos: todosAgentes }] = await Promise.all([meusCanais(), api("/api/projetos")]);
+  const agentes = todosAgentes.filter((a) => (a.tipo || "roteiro") === "roteiro");
   const lembrado = canais.some((c) => c.id === guardado("np-canal", "")) ? guardado("np-canal", "") : "";
   const N = { passo: 1, titulo: preset.titulo || "", link: preset.link || "", canal: preset.canal || CANAL_ATUAL || lembrado || (canais.length === 1 ? canais[0].id : ""), cfg: null, agente: "",
     lingua: "português", ppm: 150, caracteres: 0, modo: "claude", roteiro: "", nicho: "", obs: "", revisar: false, ref: null, custo: null };
@@ -2767,7 +2863,7 @@ async function novaProducao(preset = {}) {
   const palavras = () => Math.round(N.caracteres / CARACTERES_POR_PALAVRA);
   const nomeCanal = () => (canais.find((c) => c.id === N.canal) || {}).titulo || "";
   const sigla = (t) => t.split(/\s+/).filter(Boolean).slice(0, 2).map((p) => p[0]).join("").toUpperCase();
-  const LINGUAS = ["português", "inglês", "espanhol", "francês", "alemão", "italiano"];
+  const LINGUAS = ["português", "inglês", "espanhol", ...OUTRAS_LINGUAS_GENAIPRO];
 
   document.body.insertAdjacentHTML("beforeend", `<div class="modal-fundo" id="nova-producao"><div class="np" role="dialog" aria-label="Nova produção">
     <header class="np-cab"><h2>Nova produção</h2><button class="np-fechar" title="Fechar (Esc)">×</button></header>

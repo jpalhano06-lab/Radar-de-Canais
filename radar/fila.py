@@ -205,6 +205,12 @@ def passo(fabrica=None, roteirista=None, em_thread: bool = True, config_canal=No
                 continue
             if mudou:
                 mudaram.append(linha["id"])
+        # 1b. o que parou com erro e foi retomado na fábrica por fora do Radar volta a produzindo (12-animais, 2026-10-27:
+        # retomado depois do crédito do OpenRouter, o pedido seguia "Parou com erro" com a fábrica andando)
+        for linha in banco.todos("SELECT * FROM producoes_fila WHERE estado='erro' AND projeto IS NOT NULL AND projeto != ''"):
+            p = andamento.get(linha["projeto"])
+            if p and p.get("rodando") and p.get("status") != "erro" and mudar(linha["id"], "produzindo", de=("erro",), erro=""):
+                mudaram.append(linha["id"])
         # 2. as vagas: o limite menos o que a fila mandou e os vídeos da fábrica feitos fora dela
         da_fila = {l["projeto"] for l in banco.todos("SELECT projeto FROM producoes_fila WHERE estado IN ('enviando', 'produzindo')")}
         fora = [n for n, p in andamento.items() if p.get("rodando") and n not in da_fila]

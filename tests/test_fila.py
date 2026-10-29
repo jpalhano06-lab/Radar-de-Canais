@@ -151,6 +151,27 @@ def test_erro_e_tentar_de_novo(db):
     assert fila.item(1, a["id"])["estado"] == "produzindo"
 
 
+def test_retomado_na_fabrica_volta_a_produzindo(db):
+    """12-animais (2026-10-27): a fábrica parou sem crédito, foi retomada por fora do Radar e o pedido seguia em erro."""
+    a = fila.criar(1, {"titulo": "T", "roteiro_manual": "x"}, True)
+    fab = Fabrica()
+    _volta(fab)
+    fila.mudar(a["id"], "erro", erro="OpenRouter: acabou o crédito.")
+    _volta(fab)                                         # a fábrica já está rodando de novo
+    atual = fila.item(1, a["id"])
+    assert (atual["estado"], atual["erro"]) == ("produzindo", "")
+
+
+def test_erro_sem_projeto_ou_parado_na_fabrica_fica_em_erro(db):
+    a = fila.criar(1, {"titulo": "T", "roteiro_manual": "x"}, True)
+    fab = Fabrica()
+    _volta(fab)
+    fila.mudar(a["id"], "erro", erro="parou")
+    fab.a.clear()
+    _volta(fab)
+    assert fila.item(1, a["id"])["estado"] == "erro"
+
+
 def test_reparar_depois_de_reiniciar(db):
     a = fila.criar(1, {"titulo": "T", "caracteres": 5000}, True)
     fila.mudar(a["id"], "enviando")

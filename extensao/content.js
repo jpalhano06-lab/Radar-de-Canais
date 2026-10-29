@@ -233,15 +233,21 @@
   const FAIXA_INSCRITOS = [0, 1e3, 5e3, 1e4, 5e4, 1e5, 5e5, 1e6, 5e6];
   const FAIXA_VIEWS = [0, 1e3, 1e4, 5e4, 1e5, 5e5, 1e6, 5e6, 2e7];
   const QUANDO = [["tudo", "Tudo", null], ["hora", "1 hora", 1 / 24], ["hoje", "Hoje", 1], ["semana", "7 dias", 7], ["mes", "30 dias", 30], ["ano", "1 ano", 365]];
+  // o formato é escolha da pessoa, não regra escondida: a janela jogava fora, calada, todo vídeo de até 3 minutos.
+  // Como na página inicial os Shorts são os de view mais alta, "Os mais vistos" nunca trazia os maiores números
+  // que estavam na tela, e a conta do botão (que conta tudo) nunca batia com a da janela.
+  const FORMATOS = [["longo", "Longos"], ["curto", "Shorts"], ["tudo", "Todos"]];
+  const doFormato = (v, f) => f === "tudo" || (f === "curto" ? !longo(v) : longo(v));
   const ORDENS = [["youtube", "YouTube", "play"], ["novos", "Mais novos", "calendario"], ["inscritos", "Inscritos", "usuario"], ["views", "Views", "olho"],
     ["vph", "Views/h", "tendencia"], ["nota", "Outlier", "fogo"]];
   const vph = (v) => v.views != null && v.dias != null ? v.views / Math.max(1, v.dias * 24) : null;
 
   function abrirFiltros() {
     document.querySelectorAll(".radar-janela-fundo").forEach((j) => j.remove());
-    const F = { ordem: "youtube", ins: [0, FAIXA_INSCRITOS.length - 1], vie: [0, FAIXA_VIEWS.length - 1], quando: "tudo", atalho: "" };
+    const F = { ordem: "youtube", ins: [0, FAIXA_INSCRITOS.length - 1], vie: [0, FAIXA_VIEWS.length - 1], quando: "tudo", formato: "longo", atalho: "" };
     const fundo = h("div", { class: "radar-janela-fundo", onclick: (e) => { if (e.target === fundo) fechar(); } });
-    const fechar = () => { fundo.remove(); clearInterval(relogio); };
+    const fechar = () => { fundo.remove(); clearInterval(relogio); clearTimeout(quadro);
+      removeEventListener("pointerup", soltar); removeEventListener("pointercancel", soltar); };
     const grade = h("div", { class: "rf-grade" });
     const conta = h("div", { class: "rf-conta" }), rodape = h("div", { class: "rf-rodape" });
     const ordem = [...PAGINA.keys()];   // a ordem do YouTube é a ordem em que os vídeos chegaram
@@ -249,7 +255,7 @@
     const filtrados = () => {
       const [i0, i1] = F.ins.map((i) => FAIXA_INSCRITOS[i]), [v0, v1] = F.vie.map((i) => FAIXA_VIEWS[i]);
       const lim = (QUANDO.find((q) => q[0] === F.quando) || [])[2];
-      let vs = [...PAGINA.values()].filter((v) => v.views != null && longo(v));
+      let vs = [...PAGINA.values()].filter((v) => v.views != null && doFormato(v, F.formato));
       vs = vs.filter((v) => (F.ins[0] === 0 || (v.inscritos != null && v.inscritos >= i0)) && (F.ins[1] === FAIXA_INSCRITOS.length - 1 || (v.inscritos != null && v.inscritos <= i1)));
       vs = vs.filter((v) => v.views >= v0 && (F.vie[1] === FAIXA_VIEWS.length - 1 || v.views <= v1));
       if (lim != null) vs = vs.filter((v) => v.dias != null && v.dias <= lim);
@@ -270,29 +276,53 @@
             v.nota != null ? h("span", { class: `rf-nota ${corNota(v.nota)}` }, nota(v.nota)) : null,
             vph(v) != null ? h("span", { class: "rf-vph" }, `${num(vph(v))} VPH`) : null))));
 
-    const desenhar = () => {
-      const vs = filtrados(), total = [...PAGINA.values()].filter((v) => v.views != null && longo(v)).length;
+    const pintar = () => {
+      // a conta é sobre tudo que o Radar leu nesta página, a mesma do selo do botão: dizer "de 300" quando o
+      // botão diz 356 fazia parecer que a janela tinha perdido vídeo pelo caminho
+      const vs = filtrados(), lidos = [...PAGINA.values()].filter((v) => v.views != null), total = lidos.length;
       conta.replaceChildren(h("b", {}, String(vs.length)), ` de ${total} vídeos`);
-      grade.replaceChildren(...(vs.length ? vs.map(cartao) : [h("div", { class: "radar-fraco" }, "Nenhum vídeo com esses filtros. Clique em Limpar ou em Carregar mais vídeos.")]));
+      // arrastando, só a conta anda: refazer as centenas de capas a cada passo deixava a janela sem resposta.
+      // A grade vem inteira quando a pessoa solta a ponta (o soltar pede o desenho de novo).
+      if (!arrastando) {
+        grade.replaceChildren(...(vs.length ? vs.map(cartao) : [h("div", { class: "radar-fraco" }, "Nenhum vídeo com esses filtros. Clique em Limpar ou em Carregar mais vídeos.")]));
+      }
       const semIns = vs.filter((v) => v.inscritos == null).length;
-      rodape.textContent = semIns ? `${semIns} ainda sem inscritos: o Radar está lendo os canais (sem gastar cota).` : "";
+      const foraDoFormato = total - lidos.filter((v) => doFormato(v, F.formato)).length;
+      rodape.textContent = [
+        foraDoFormato ? `${foraDoFormato} fora por causa do formato: em Formato, toque em Todos para ver.` : "",
+        semIns ? `${semIns} ainda sem inscritos: o Radar está lendo os canais (sem gastar cota).` : "",
+      ].filter(Boolean).join(" · ");
+      botoesFormato.forEach((b) => b.classList.toggle("ligado", b.dataset.f === F.formato));
       botoesOrdem.forEach((b) => b.classList.toggle("ligado", b.dataset.o === F.ordem));
       botoesQuando.forEach((b) => b.classList.toggle("ligado", b.dataset.q === F.quando));
       atalhos.forEach((a) => a.classList.toggle("ligado", a.dataset.a === F.atalho));
       for (const fx of faixas) fx.atualizar();
     };
+    // refazer a grade custa caro (são centenas de cartões): um arrasto de ponta a ponta manda dezenas de pedidos,
+    // e cada um refazia tudo na hora. A janela engasgava e parecia não responder. Os pedidos do mesmo quadro
+    // viram um só; os números em cima das faixas andam na hora, por fora deste desenho.
+    let quadro = 0;
+    const desenhar = () => { if (!quadro) quadro = setTimeout(() => { quadro = 0; pintar(); }, 0); };
 
     // faixa com duas pontas (mínimo e máximo), em degraus
+    // Enquanto a pessoa arrasta uma ponta, ninguém de fora escreve no valor dela. O relógio lá embaixo redesenha a
+    // janela toda vez que um canal termina de ser lido, e na página inicial — onde quase todo canal é desconhecido
+    // e o Radar lê um a cada 1,2 s — isso caía no meio de todo arrasto: a ponta voltava sozinha para onde estava e
+    // a lista não mudava.
+    let arrastando = null;
+    const soltar = () => { if (!arrastando) return; arrastando = null; desenhar(); };
+    addEventListener("pointerup", soltar); addEventListener("pointercancel", soltar);
     const faixa = (rotulo, ic, degraus, chave, fmt) => {
       const a = h("input", { type: "range", min: "0", max: String(degraus.length - 1), step: "1" });
       const b = h("input", { type: "range", min: "0", max: String(degraus.length - 1), step: "1" });
       const ta = h("span", { class: "rf-valor" }), tb = h("span", { class: "rf-valor" });
-      const mudou = () => { let x = +a.value, y = +b.value; if (x > y) [x, y] = [y, x]; F[chave] = [x, y]; F.atalho = ""; desenhar(); };
-      a.addEventListener("input", mudou); b.addEventListener("input", mudou);
+      const escrever = () => { ta.textContent = fmt(degraus[F[chave][0]]);
+        tb.textContent = fmt(degraus[F[chave][1]]) + (F[chave][1] === degraus.length - 1 ? "+" : ""); };
+      const mudou = () => { let x = +a.value, y = +b.value; if (x > y) [x, y] = [y, x]; F[chave] = [x, y]; F.atalho = ""; escrever(); desenhar(); };
+      for (const p of [a, b]) { p.addEventListener("input", mudou); p.addEventListener("pointerdown", () => { arrastando = p; }); }
       const caixa = h("div", { class: "rf-faixa" }, h("div", { class: "rf-faixa-cab" }, h("span", {}, icone(ic), rotulo), ta, h("span", {}, "–"), tb),
         h("div", { class: "rf-dupla" }, a, b));
-      caixa.atualizar = () => { a.value = F[chave][0]; b.value = F[chave][1]; ta.textContent = fmt(degraus[F[chave][0]]);
-        tb.textContent = fmt(degraus[F[chave][1]]) + (F[chave][1] === degraus.length - 1 ? "+" : ""); };
+      caixa.atualizar = () => { if (arrastando !== a) a.value = F[chave][0]; if (arrastando !== b) b.value = F[chave][1]; escrever(); };
       return caixa;
     };
     const curto = (n) => n >= 1e6 ? n / 1e6 + "M" : n >= 1e3 ? n / 1e3 + "K" : String(n);
@@ -308,6 +338,7 @@
       desenhar();
     } }, icone(ic), t));
     const botoesQuando = QUANDO.map(([k, t]) => h("button", { class: "rf-chip", "data-q": k, onclick: () => { F.quando = k; F.atalho = ""; desenhar(); } }, t));
+    const botoesFormato = FORMATOS.map(([k, t]) => h("button", { class: "rf-chip", "data-f": k, onclick: () => { F.formato = k; desenhar(); } }, t));
     const botoesOrdem = ORDENS.map(([k, t, ic]) => h("button", { class: "rf-chip", "data-o": k, onclick: () => { F.ordem = k; desenhar(); } }, icone(ic), t));
     const shorts = h("input", { type: "checkbox", class: "rf-interruptor", onchange: (e) => chrome.storage.local.set({ semShorts: e.target.checked }) });
     chrome.storage.local.get("semShorts").then(({ semShorts: s }) => { shorts.checked = !!s; });
@@ -320,19 +351,45 @@
       document.body.append(a); a.click(); a.remove();
     };
 
+    // "Carregar mais vídeos": uma rolagem só pedia uma leva ao YouTube e parava por aí. Agora desce até o fim
+    // quantas vezes precisar, esperando ele entregar, e para sozinho quando não vem mais nada. No fim devolve a
+    // página para onde estava — ninguém pediu para perder o lugar.
+    const maisBotao = h("button", { class: "rf-forte", onclick: () => puxarMais() }, icone("baixar"), "Carregar mais vídeos");
+    let puxando = false;
+    const puxarMais = async () => {
+      if (puxando) return;
+      puxando = true;
+      const voltar = scrollY;
+      try {
+        for (let i = 0; i < 8; i++) {
+          const antes = PAGINA.size;
+          maisBotao.replaceChildren(icone("baixar"), `Carregando… (${antes} vídeos)`);
+          scrollTo({ top: document.documentElement.scrollHeight });
+          await new Promise((ok) => setTimeout(ok, 1500));
+          if (!fundo.isConnected) return;         // fechou no meio: não mexe em mais nada
+          if (PAGINA.size === antes) break;       // o YouTube não entregou mais nada: é o fim da página
+        }
+      } finally {
+        puxando = false;
+        maisBotao.replaceChildren(icone("baixar"), "Carregar mais vídeos");
+        scrollTo({ top: voltar });
+        desenhar();
+      }
+    };
+
     fundo.append(h("div", { class: "rf-janela" },
       h("div", { class: "rf-topo" }, h("span", { class: "rf-marca" }, h("i", {}), "Radar"), h("b", {}, "Filtros"), conta,
-        h("div", { class: "rf-topo-acoes" },
-          h("button", { class: "rf-forte", onclick: () => window.scrollTo({ top: document.documentElement.scrollHeight, behavior: "smooth" }) }, icone("baixar"), "Carregar mais vídeos"),
+        h("div", { class: "rf-topo-acoes" }, maisBotao,
           h("button", { class: "rf-chip rf-borda", onclick: planilha }, icone("baixar"), "Baixar planilha"),
           h("button", { class: "rf-fechar", title: "Fechar", onclick: fechar }, "×"))),
       h("div", { class: "rf-corpo" },
         h("aside", { class: "rf-lado" },
           h("div", { class: "rf-secao" }, "Atalhos"), ...atalhos,
           h("div", { class: "rf-secao" }, "Filtrar", h("button", { class: "rf-limpar", onclick: () => {
-            Object.assign(F, { ins: [0, FAIXA_INSCRITOS.length - 1], vie: [0, FAIXA_VIEWS.length - 1], quando: "tudo", atalho: "" }); desenhar();
+            Object.assign(F, { ins: [0, FAIXA_INSCRITOS.length - 1], vie: [0, FAIXA_VIEWS.length - 1], quando: "tudo", formato: "longo", atalho: "" }); desenhar();
           } }, icone("limpar"), "Limpar")),
           ...faixas,
+          h("div", { class: "rf-faixa-cab" }, h("span", {}, icone("relogio"), "Formato")), h("div", { class: "rf-chips" }, botoesFormato),
           h("div", { class: "rf-faixa-cab" }, h("span", {}, icone("calendario"), "Publicado")), h("div", { class: "rf-chips" }, botoesQuando),
           h("div", { class: "rf-secao" }, "Página"), h("label", { class: "rf-chave" }, h("span", {}, icone("raio"), "Esconder Shorts"), shorts)),
         h("div", { class: "rf-principal" },
@@ -344,6 +401,7 @@
     let visto = PAGINA.size;
     const relogio = setInterval(() => {
       if (!fundo.isConnected) return clearInterval(relogio);
+      if (arrastando) return;                 // no meio de um arrasto, a página que chega espera a pessoa soltar
       for (const id of PAGINA.keys()) if (!ordem.includes(id)) ordem.push(id);
       const agora = [...PAGINA.values()].reduce((s, v) => s + (v.nota != null) + (v.inscritos != null), PAGINA.size);
       if (agora !== visto) { visto = agora; desenhar(); }
@@ -1559,12 +1617,13 @@
     if (rc.erro || ra.erro) return janela.replaceChildren(h("div", { class: "radar-erro" }, erroDoRadar(rc.erro ? rc : ra)));
     const canais = rc.dados.canais || [], agentes = ra.dados.projetos || [];
     const daqui = location.pathname === "/watch" && new URLSearchParams(location.search).get("v");
-    const N = { passo: 1, titulo: "", link: daqui ? `https://youtu.be/${daqui}` : "", ref: null, cfg: null, agente: "", lingua: "português",
+    // o agente é escolha obrigatória (pedido do usuário em 2026-10-28): N.agente vazio é "ninguém escolheu ainda" e
+    // "padrao" é escrever sem agente, pelas regras do Radar. N.padrao é o agente do canal, o do botãozinho
+    const N = { passo: 1, titulo: "", link: daqui ? `https://youtu.be/${daqui}` : "", ref: null, cfg: null, agente: "", padrao: "", lingua: "português",
       ppm: 150, caracteres: Math.round(12 * 150 * POR_PALAVRA / 10) * 10, modo: "claude", roteiro: "", nicho: "", obs: "", revisar: false, custo: null,
       canal: canais.some((c) => c.id === npCanal) ? npCanal : canais.length === 1 ? canais[0].id : "" };
     const minutos = () => N.caracteres / POR_PALAVRA / N.ppm;
     const nomeCanal = () => (canais.find((c) => c.id === N.canal) || {}).titulo || "";
-    const agenteAtual = () => agentes.find((a) => String(a.id) === String(N.agente));
 
     const custo = async () => {
       const r = await api(`/api/fila/estimativa?canal=${encodeURIComponent((N.cfg && N.cfg.perfil) || "")}&minutos=${minutos().toFixed(1)}`);
@@ -1575,7 +1634,8 @@
       const r = await api(`/api/producao/${encodeURIComponent(id)}`);
       N.cfg = r.erro ? null : r.dados;
       if (N.cfg) {
-        N.lingua = N.cfg.lingua || N.lingua; N.agente = N.cfg.projeto_roteiro_id || "";
+        N.lingua = N.cfg.lingua || N.lingua;
+        N.padrao = N.cfg.projeto_roteiro_id ? String(N.cfg.projeto_roteiro_id) : "padrao";
         const ritmo = await api(`/api/roteiros/ritmo?perfil=${encodeURIComponent(N.cfg.perfil || "")}&lingua=${encodeURIComponent(N.lingua)}`);
         N.ppm = (!ritmo.erro && ritmo.dados.ppm) || 150;
         N.caracteres = Math.round((N.cfg.minutos || 12) * N.ppm * POR_PALAVRA / 10) * 10;
@@ -1588,19 +1648,28 @@
       desenhar();
     };
 
+    const nomeDoAgente = (id) => (agentes.find((a) => String(a.id) === String(id)) || {}).nome || "Padrão do Claude (sem agente)";
+    const escolherAgente = (v) => { N.agente = v; desenhar(); };
+    const usarOPadrao = () => escolherAgente(N.padrao || "padrao");
+
     const campo = (rotulo, ...filhos) => h("label", { class: "radar-np-campo" }, h("span", {}, rotulo), ...filhos);
     const entrada = (valor, attrs, aoMudar, evento = "input") => { const i = h("input", { value: valor, ...attrs }); i.addEventListener(evento, (e) => aoMudar(e.target.value)); return i; };
     const chip = (texto, ligado, onclick) => h("button", { type: "button", class: `radar-np-chip${ligado ? " ligado" : ""}`, onclick }, texto);
     const erro = h("span", { class: "radar-np-erro" });
 
+    const sel = (opcoes, atual, aoMudar) => { const s = h("select", {}, opcoes.map(([v, t]) => { const o = h("option", { value: v }, t); if (String(v) === String(atual)) o.selected = true; return o; })); s.onchange = () => aoMudar(s.value); return s; };
+    // o mesmo select nos dois passos: sem nada escolhido ele fica no "— escolha o agente —" e o envio não passa
+    const selAgente = () => sel([["", "— escolha o agente —"], ["padrao", "Padrão do Claude (sem agente)"],
+      ...agentes.map((a) => [a.id, a.nome])], N.agente, escolherAgente);
+
     function desenhar() {
-      const ag = agenteAtual();
       const canaisEl = h("div", { class: "radar-np-campo" }, h("span", {}, "Canal"),
         h("div", { class: "radar-np-chips" }, canais.length ? canais.map((c) => chip(c.titulo, c.id === N.canal, () => escolherCanal(c.id)))
           : h("span", { class: "radar-fraco" }, "Nenhum canal: adicione em Meu trabalho → Canais, no site do Radar.")));
       const revisar = h("label", { class: "radar-np-revisar" }, (() => { const c = h("input", { type: "checkbox" }); c.checked = N.revisar; c.onchange = () => { N.revisar = c.checked; }; return c; })(),
         h("span", {}, h("b", {}, "Parar para eu revisar o roteiro"), h("small", {}, "O Claude escreve e espera você aprovar no Acompanhar antes de ir para a fábrica.")));
-      const passos = h("div", { class: "radar-np-passos" }, h("span", { class: N.passo === 1 ? "ligado" : "" }, "1 · O vídeo"), h("span", { class: N.passo === 2 ? "ligado" : "" }, "2 · Editar o roteiro"));
+      const passos = h("div", { class: "radar-np-passos" }, h("span", { class: N.passo === 1 ? "ligado" : "" }, "1 · O vídeo"),
+        h("span", { class: N.passo === 2 ? "ligado" : "" }, "2 · Editar o roteiro"), h("span", { class: N.passo === 3 ? "ligado" : "" }, "3 · Confirmar"));
       let corpo;
       if (N.passo === 1) {
         corpo = [passos,
@@ -1608,18 +1677,19 @@
           campo("Vídeo de referência (opcional: o roteiro modela este vídeo)", entrada(N.link, { placeholder: "https://youtu.be/…" }, (v) => { N.link = v.trim(); lerReferencia(); }, "change")),
           N.ref && N.ref.titulo ? h("button", { type: "button", class: "radar-np-usar", onclick: () => { N.titulo = N.ref.titulo; desenhar(); } }, `usar o título da referência: “${N.ref.titulo}”`) : null,
           N.canal ? null : canaisEl,
-          h("div", { class: "radar-np-campo" }, h("span", {}, "Agente do roteiro"),
-            h("div", { class: "radar-np-agente" },
-              h("div", {}, h("b", {}, N.modo === "manual" ? "Roteiro colado por você" : (ag && ag.nome) || "Padrão do Claude"),
+          h("div", { class: "radar-np-campo" }, h("span", {}, "Agente do roteiro (escolha obrigatória)"),
+            h("div", { class: `radar-np-agente${N.modo !== "manual" && !N.agente ? " falta" : ""}` },
+              h("div", {}, N.modo === "manual" ? h("b", {}, "Roteiro colado por você") : selAgente(),
                 h("small", {}, [nomeCanal() || "escolha o canal", N.lingua, N.modo === "manual" ? null : `≈ ${Math.round(minutos())} min`].filter(Boolean).join(" · "))),
               h("button", { type: "button", class: "radar-np-editar", onclick: () => { N.passo = 2; desenhar(); } }, "Editar")),
-            h("small", { class: "radar-fraco" }, "Sem editar, o Claude escreve o roteiro com este agente e o vídeo segue para a fábrica.")),
+            N.modo === "manual" || !N.canal ? null
+              : h("button", { type: "button", class: "radar-np-usar", onclick: usarOPadrao }, `usar o agente padrão de ${nomeCanal()}: ${nomeDoAgente(N.padrao)}`),
+            h("small", { class: "radar-fraco" }, "O agente é a cara do canal: escolha sempre qual vai escrever. Se o vídeo de referência não tiver legenda, o Claude escreve a partir do título — o pedido não para.")),
           revisar];
-      } else {
-        const sel = (opcoes, atual, aoMudar) => { const s = h("select", {}, opcoes.map(([v, t]) => { const o = h("option", { value: v }, t); if (String(v) === String(atual)) o.selected = true; return o; })); s.onchange = () => aoMudar(s.value); return s; };
+      } else if (N.passo === 2) {
         corpo = [passos, h("button", { type: "button", class: "radar-np-usar", onclick: () => { N.passo = 1; desenhar(); } }, "← Voltar ao vídeo"), canaisEl,
           h("div", { class: "radar-np-duas" },
-            campo("Agente do roteiro", sel([["", "Padrão do Claude"], ...agentes.map((a) => [a.id, a.nome])], N.agente, (v) => { N.agente = v; desenhar(); })),
+            campo("Agente do roteiro (escolha obrigatória)", selAgente()),
             campo("Idioma", sel([...new Set([N.lingua, "português", "inglês", "espanhol", "francês", "alemão", "italiano"])].map((l) => [l, l]), N.lingua, (v) => { N.lingua = v; }))),
           h("div", { class: "radar-np-campo" }, h("span", {}, "Roteiro"), h("div", { class: "radar-np-chips" },
             chip("O Claude escreve", N.modo === "claude", () => { N.modo = "claude"; desenhar(); }), chip("Já tenho o roteiro", N.modo === "manual", () => { N.modo = "manual"; desenhar(); }))),
@@ -1630,13 +1700,44 @@
               campo("Nicho (opcional)", entrada(N.nicho, { placeholder: "Ex.: grandes marcas" }, (v) => { N.nicho = v; })),
               campo("Observação (opcional)", entrada(N.obs, { placeholder: "Ex.: sem gírias, fechar com pergunta" }, (v) => { N.obs = v; })))]),
           revisar];
+      } else {
+        // 3 · Confirmar (pedido do usuário em 2026-10-28): a lista do que vai ser feito, item por item, antes de o
+        // Claude escrever. O que falta fica em vermelho e trava o botão; a legenda do vídeo de referência é um
+        // aviso, nunca um impedimento — sem ela o roteiro sai do título
+        const linha = (estado, rotulo, valor, dica) => h("div", { class: `radar-np-conf-item ${estado}` },
+          h("span", { class: "radar-np-conf-ic" }, estado === "ok" ? "✓" : "!"),
+          h("div", {}, h("b", {}, rotulo), h("span", {}, valor), dica ? h("small", {}, dica) : null));
+        const semLegenda = N.ref && N.ref.legenda === false;
+        corpo = [passos, h("button", { type: "button", class: "radar-np-usar", onclick: () => { N.passo = 1; desenhar(); } }, "← Voltar ao vídeo"),
+          h("div", { class: "radar-np-conf" },
+            linha(N.titulo.trim() ? "ok" : "falta", "Título", N.titulo.trim() || "falta escrever o título do vídeo"),
+            linha(N.canal ? "ok" : "falta", "Canal", nomeCanal() || "falta escolher o canal"),
+            linha(N.modo === "manual" || N.agente ? "ok" : "falta", "Agente do roteiro",
+              N.modo === "manual" ? "roteiro colado por você" : N.agente ? nomeDoAgente(N.agente) : "falta escolher o agente"),
+            linha("ok", "Idioma e tamanho", N.modo === "manual"
+              ? `${N.lingua} · ${N.roteiro.split(/\s+/).filter(Boolean).length.toLocaleString("pt-BR")} palavras coladas`
+              : `${N.lingua} · ${N.caracteres.toLocaleString("pt-BR")} caracteres ≈ ${Math.round(minutos())} min`),
+            linha(!N.link ? "ok" : N.ref && N.ref.titulo ? (semLegenda ? "aviso" : "ok") : "aviso", "Vídeo de referência",
+              !N.link ? "nenhum" : N.ref && N.ref.titulo ? `“${N.ref.titulo}”` : "não consegui ler esse link",
+              !N.link ? "O roteiro sai do título, das observações e do estilo do canal."
+                : N.ref && N.ref.titulo ? (semLegenda ? "Sem legenda: o roteiro sai do título, das observações e do estilo do canal — nada para por causa disso."
+                  : "Com legenda: a transcrição dele é a base do roteiro.") : "Confira o link no passo 1."),
+            linha("ok", "Depois de escrever", N.revisar ? "para para você revisar no Acompanhar" : "segue direto para a fábrica"),
+            N.custo && N.custo.usd != null ? linha("ok", "Custo estimado", `≈ US$ ${N.custo.usd.toFixed(2).replace(".", ",")}`) : null)];
       }
-      const enviar = async (comecar, botao) => {
+      /** O que não dá para deixar passar. Devolve se está tudo certo e deixa o aviso no rodapé. */
+      const conferir = () => {
         erro.textContent = "";
-        if (!N.titulo.trim()) { erro.textContent = "Escreva o título do vídeo."; return; }
-        if (!N.canal) { erro.textContent = "Escolha o canal."; N.passo = 2; return desenhar(); }
+        if (!N.titulo.trim()) { erro.textContent = "Escreva o título do vídeo."; N.passo = 1; desenhar(); return false; }
+        if (!N.canal) { erro.textContent = "Escolha o canal."; N.passo = 2; desenhar(); return false; }
+        if (N.modo !== "manual" && !N.agente) { erro.textContent = "Escolha o agente do roteiro (ou use o padrão do canal)."; N.passo = 1; desenhar(); return false; }
+        if (N.modo === "manual" && N.roteiro.split(/\s+/).filter(Boolean).length < 30) { erro.textContent = "Cole o roteiro inteiro."; N.passo = 2; desenhar(); return false; }
+        return true;
+      };
+      const enviar = async (comecar, botao) => {
+        if (!conferir()) return;
         botao.disabled = true; botao.lastChild.textContent = comecar ? "Criando…" : "Salvando…";
-        const pedido = { titulo: N.titulo, link: N.link, canal_id: N.canal, agente_id: N.agente, lingua: N.lingua, revisar: N.revisar,
+        const pedido = { titulo: N.titulo, link: N.link, canal_id: N.canal, agente_id: N.agente === "padrao" ? "" : N.agente, lingua: N.lingua, revisar: N.revisar,
           ...(N.modo === "manual" ? { roteiro_manual: N.roteiro } : { caracteres: N.caracteres, nicho: N.nicho, observacao: N.obs }) };
         const r = await api("/api/fila", "POST", { pedido, comecar });
         if (r.erro) { botao.disabled = false; botao.lastChild.textContent = comecar ? "Criar e começar" : "Salvar na Entrada"; erro.textContent = erroDoRadar(r); return; }
@@ -1657,7 +1758,10 @@
               N.custo && N.custo.usd != null ? `≈ US$ ${N.custo.usd.toFixed(2).replace(".", ",")}` : null].filter(Boolean).join(" · ")))),
         h("div", { class: "radar-np-rodape" }, erro,
           (() => { const b = h("button", { type: "button", class: "radar-np-secundario" }, h("span", {}, "Salvar na Entrada")); b.onclick = () => enviar(false, b); return b; })(),
-          (() => { const b = h("button", { type: "button", class: "radar-np-principal" }, h("span", {}, "Criar e começar")); b.onclick = () => enviar(true, b); return b; })()));
+          N.passo === 3
+            ? (() => { const b = h("button", { type: "button", class: "radar-np-principal" }, h("span", {}, "✓ Confirmar e criar")); b.onclick = () => enviar(true, b); return b; })()
+            : (() => { const b = h("button", { type: "button", class: "radar-np-principal" }, h("span", {}, "Revisar e criar →"));
+                b.onclick = () => { if (conferir()) { N.passo = 3; desenhar(); } }; return b; })()));
       if (N.passo === 1 && !N.titulo) { const t = janela.querySelector(".radar-np-titulo"); if (t) t.focus(); }
     }
 

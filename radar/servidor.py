@@ -19,7 +19,7 @@ from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 
-from . import alvos, banco, canal_painel, custos, diagnostico, fabrica_api, fila, funcoes, garimpo, gosto, horarios, ia, integracoes, medir, mercado, metricas, nichos, pagina, perfil, producao, publicar, radar_paises, roteiro_claude, studio, tempo, thumb, trabalho, treinamento, youtube
+from . import alvos, banco, canal_painel, custos, descricao, diagnostico, fabrica_api, fila, funcoes, garimpo, gosto, horarios, ia, integracoes, medir, mercado, metricas, nichos, pagina, perfil, producao, publicar, radar_paises, roteiro_claude, studio, tempo, thumb, trabalho, treinamento, youtube
 from .config import DADOS, NOME, PLANOS, RAIZ, pode
 
 WEB = RAIZ / "radar" / "web"
@@ -1848,10 +1848,11 @@ def _projeto_fabrica(nome: str):
 
 
 @app.get("/api/fabrica/vozes")
-def fabrica_vozes(lingua: str = "português", busca: str = "", genero: str = "", u: dict = Depends(usuario)):
+def fabrica_vozes(lingua: str = "português", busca: str = "", genero: str = "", pagina: int = 0,
+                  u: dict = Depends(usuario)):
     """As vozes da fábrica (GenAI Pro), com a prévia, para escolher a voz do canal. Não gasta crédito."""
     try:
-        return fabrica_api.vozes(lingua, busca, genero)
+        return fabrica_api.vozes(lingua, busca, genero, max(0, min(pagina, 20)))
     except fabrica_api.SemFabrica as erro:
         raise HTTPException(503, str(erro))
 
@@ -2310,7 +2311,10 @@ async def roteiro_para_fabrica(nome: str, request: Request, u: dict = Depends(do
 
 @app.get("/api/titulo-do-video")
 def titulo_do_video(link: str, u: dict = Depends(usuario)):
-    """O título e a capa do vídeo de referência, para a pessoa ver o que colou (1 unidade de cota)."""
+    """O título, a capa e se o vídeo tem legenda, para a pessoa ver o que colou (1 unidade de cota).
+
+    A legenda entra aqui (pedido do usuário em 2026-10-28) para a confirmação da Nova produção poder dizer, ANTES de
+    criar, que esse vídeo não tem legenda e o roteiro vai sair só do título."""
     vid = roteiro_claude.id_do_video(link)
     if not vid:
         raise HTTPException(400, "Link de vídeo inválido.")
@@ -2318,7 +2322,8 @@ def titulo_do_video(link: str, u: dict = Depends(usuario)):
         v = youtube.videos([vid])
     if not v:
         raise HTTPException(404, "Vídeo não encontrado.")
-    return {"id": vid, "titulo": v[0]["titulo"], "views": v[0]["views"], "publicado": v[0]["publicado"]}
+    return {"id": vid, "titulo": v[0]["titulo"], "views": v[0]["views"], "publicado": v[0]["publicado"],
+            "legenda": roteiro_claude.tem_legenda(vid)}
 
 
 # ---------------------------------------------------------------- YouTube Studio
@@ -2388,6 +2393,7 @@ async def roteiro_comecar(request: Request, u: dict = Depends(usuario)):
     tid = roteiro_claude.comecar(u["id"], enviar_perfil=perfil, titulo=titulo, link=str(d.get("link", "")).strip(),
                                  minutos=max(1, min(60, int(d.get("minutos") or 8))), lingua=str(d.get("lingua") or "português"),
                                  projeto_id=int(d["projeto_id"]) if d.get("projeto_id") else None,
+                                 projeto_descricao_id=int(d["projeto_descricao_id"]) if d.get("projeto_descricao_id") else None,
                                  observacoes=str(d.get("observacoes", "")).strip()[:1000], perfil=str(d.get("perfil") or ""),
                                  canal=_canal_do_pedido(d))
     return {"tarefa": tid}
@@ -2445,9 +2451,29 @@ def roteiro_thumbnail(nome: str, baixar: int = 0, u: dict = Depends(usuario)):
     return FileResponse(arquivo, media_type="image/jpeg", filename=f"{nome}.jpg" if baixar else None)
 
 
+@app.post("/api/roteiros/{nome}/descricao")
+async def roteiro_descricao(nome: str, request: Request, u: dict = Depends(usuario)):
+    """A descrição do vídeo: refazer com o Claude ou guardar a correção da pessoa.
+
+    Ela já foi escrita junto com o roteiro; isto é para quando o Claude falhou, para trocar o agente de descrição
+    ou para a pessoa mexer no texto antes de mandar para a fábrica."""
+    d = await request.json()
+    pasta, _meta = roteiro_claude._do_usuario(u["id"], nome)
+    try:
+        if d.get("refazer"):
+            return {"descricao": descricao.gerar(u["id"], pasta,
+                                                 int(d["projeto_id"]) if d.get("projeto_id") else None)}
+        return {"descricao": descricao.salvar(pasta, str(d.get("sinopse") or ""),
+                                              d.get("tags") if isinstance(d.get("tags"), list) else None,
+                                              d.get("hashtags") if isinstance(d.get("hashtags"), list) else None)}
+    except RuntimeError as erro:
+        raise HTTPException(400, str(erro))
+
+
 @app.get("/api/projetos")
 def projetos(u: dict = Depends(usuario)):
-    return {"projetos": banco.todos("SELECT id, nome, instrucoes, ideal_para FROM projetos_roteiro WHERE usuario_id=? ORDER BY nome", u["id"])}
+    return {"projetos": banco.todos("""SELECT id, nome, instrucoes, ideal_para, tipo FROM projetos_roteiro
+                                       WHERE usuario_id=? ORDER BY tipo, nome""", u["id"])}
 
 
 @app.post("/api/projetos")
@@ -2460,12 +2486,16 @@ async def salvar_projeto(request: Request, u: dict = Depends(usuario)):
     instrucoes = str(d.get("instrucoes", "")).strip()[:100000]
     # "Ideal para…" aparece embaixo do estilo na Nova produção; sem o campo no pedido, fica o que já estava
     ideal = str(d["ideal_para"]).strip()[:300] if "ideal_para" in d else None
+    # "roteiro" escreve o roteiro; "descricao" escreve a sinopse, as tags e as hashtags junto com ele
+    tipo = str(d.get("tipo") or "roteiro")
+    if tipo not in ("roteiro", "descricao"):
+        raise HTTPException(400, "O agente é de roteiro ou de descrição.")
     if d.get("id"):
-        banco.executar("UPDATE projetos_roteiro SET nome=?, instrucoes=?, ideal_para=COALESCE(?, ideal_para) WHERE id=? AND usuario_id=?",
-                       nome, instrucoes, ideal, int(d["id"]), u["id"])
+        banco.executar("""UPDATE projetos_roteiro SET nome=?, instrucoes=?, ideal_para=COALESCE(?, ideal_para), tipo=?
+                           WHERE id=? AND usuario_id=?""", nome, instrucoes, ideal, tipo, int(d["id"]), u["id"])
         return {"id": int(d["id"])}
-    return {"id": banco.executar("INSERT INTO projetos_roteiro (usuario_id, nome, instrucoes, ideal_para, criado) VALUES (?,?,?,?,?)",
-                                 u["id"], nome, instrucoes, ideal or "", banco.agora())}
+    return {"id": banco.executar("""INSERT INTO projetos_roteiro (usuario_id, nome, instrucoes, ideal_para, tipo, criado)
+                                    VALUES (?,?,?,?,?,?)""", u["id"], nome, instrucoes, ideal or "", tipo, banco.agora())}
 
 
 @app.delete("/api/projetos/{pid}")
