@@ -749,6 +749,32 @@ async function mostrarVitrine() {
 
 // ---------------------------------------------------------------- Trabalho: a ideia, o roteiro pelo Claude e a fábrica
 
+// O agente ligado a um projeto do claude.ai (2026-10-29): a extensão lê o projeto e atualiza o agente sozinha
+const ligadoAoClaude = (p) => p.claude_uuid
+  ? `🔗 projeto <b>${esc(p.claude_nome)}</b> do claude.ai${p.arquivos ? ` · ${p.arquivos} ${p.arquivos === 1 ? "arquivo" : "arquivos"}` : ""} · atualizado ${new Date(p.sincronizado).toLocaleString("pt-BR")}`
+  : "";
+
+// O "Atualizar do claude.ai": a página pede à extensão (site.js), que lê os projetos no Chrome logado
+function sincronizarClaude() {
+  return new Promise((ok, falha) => {
+    if (!document.documentElement.dataset.radarExtensao) return falha(new Error("Instale a extensão do Radar neste Chrome."));
+    const ouvir = (e) => {
+      if (e.source !== window || !e.data || e.data.radar !== "claude-sincronizado") return;
+      window.removeEventListener("message", ouvir);
+      const r = e.data.resposta || {};
+      r.erro ? falha(new Error(r.erro)) : ok(r.dados);
+    };
+    window.addEventListener("message", ouvir);
+    window.postMessage({ radar: "sincronizar-claude" }, "*");
+  });
+}
+
+function resumoDaSincronizacao(d) {
+  const n = (d.atualizados || []).length + (d.criados || []).length;
+  return `${n} ${n === 1 ? "agente atualizado" : "agentes atualizados"} do claude.ai`
+    + ((d.criados || []).length ? ` · novos: ${d.criados.join(", ")}` : "");
+}
+
 function gerenciarProjetos(caixa, projetos, depois) {
   // dois tipos de agente (2026-10-28): o que escreve o roteiro e o que escreve a descrição junto com ele
   const linha = (p) => `<div class="titulo-linha"><span class="t"><b>${esc(p.nome)}</b><small>${esc(p.instrucoes.slice(0, 120))}${p.instrucoes.length > 120 ? "…" : ""}</small></span>
@@ -1311,14 +1337,24 @@ async function formProducao(caixa, canalId, depois = () => {}, perguntarDeNovo =
     () => {
       caixa.innerHTML = moldura(2, `<h3>Qual agente de roteiro escreve para este canal?</h3>
         <p class="sub">O agente guarda o jeito de escrever: tom, público, como abrir e fechar.</p>` + cartoes([
-          ["", "✍️", "Agente padrão", "o Claude no jeito padrão"], ...projetos.map((x) => [String(x.id), "✍️", x.nome, x.instrucoes.slice(0, 80)]),
+          ["", "✍️", "Agente padrão", "o Claude no jeito padrão"], ...projetos.map((x) => [String(x.id), x.claude_uuid ? "🔗" : "✍️", x.nome,
+            x.claude_uuid ? `projeto ${x.claude_nome} do claude.ai${x.arquivos ? ` · ${x.arquivos} arquivos` : ""}` : x.instrucoes.slice(0, 80)]),
         ], "projeto_roteiro_id") + `
-        <button class="opcao opcao-nova" id="ag-novo"><span class="ic">＋</span><b>Criar um agente novo</b><small>cole as instruções de um projeto do claude.ai</small></button>
+        <p class="sub">🔗 Os seus projetos do claude.ai viram agentes sozinhos: a extensão lê as instruções e os arquivos de cada um e atualiza o agente quando você muda lá (ao abrir o Chrome, a cada meia hora e ao abrir o claude.ai).</p>
+        <button class="opcao opcao-nova" id="ag-sincronizar"><span class="ic">🔗</span><b>Atualizar do claude.ai agora</b><small>lê os seus projetos de novo</small></button>
+        <button class="opcao opcao-nova" id="ag-novo"><span class="ic">＋</span><b>Criar um agente novo</b><small>sem projeto no claude.ai: cole as instruções aqui</small></button>
         <div class="agente-novo" id="ag-form" hidden><input id="ag-nome" placeholder="Nome do agente (ex.: canal de animais em inglês)">
           <textarea id="ag-instr" rows="7" placeholder="Instruções: tom de voz, público, estrutura, como abrir e fechar, o que evitar…"></textarea>
           <button class="botao" id="ag-salvar">Salvar o agente e usar neste canal</button></div>`);
       ligarVoltar(2);
       opcoes(null, "projeto_roteiro_id", () => perguntas[3]());
+      caixa.querySelector("#ag-sincronizar").onclick = (e) => carregando(e.currentTarget, "Lendo o claude.ai…", async () => {
+        try {
+          const d = await sincronizarClaude();
+          projetos = (await api("/api/projetos")).projetos.filter((x) => (x.tipo || "roteiro") === "roteiro");
+          aviso(resumoDaSincronizacao(d)); perguntas[2]();
+        } catch (erro) { aviso(porque(erro)); }
+      });
       caixa.querySelector("#ag-novo").onclick = () => { caixa.querySelector("#ag-form").hidden = false; caixa.querySelector("#ag-nome").focus(); };
       caixa.querySelector("#ag-salvar").onclick = (e) => carregando(e.currentTarget, "Salvando…", async () => {
         const { id } = await api("/api/projetos", { method: "POST", body: { nome: caixa.querySelector("#ag-nome").value, instrucoes: caixa.querySelector("#ag-instr").value } });
@@ -1347,7 +1383,8 @@ async function formProducao(caixa, canalId, depois = () => {}, perguntarDeNovo =
       <p class="sub">O agente guarda o jeito de escrever do canal: tom, público, como abrir e fechar, o que evitar. Vale para os próximos roteiros${a.id ? " de todos os canais que usam este agente" : ""}.</p>
       <label class="campo"><span>Nome</span><input id="ag-nome" value="${esc(a.nome)}" placeholder="Ex.: canal de animais em português"></label>
       <label class="campo"><span>Ideal para (opcional)</span><input id="ag-ideal" value="${esc(a.ideal_para || "")}" placeholder="Ex.: modelar um vídeo que foi muito bem num canal de outro país"></label>
-      <label class="campo"><span>Instruções</span><textarea id="ag-instr" rows="12" placeholder="Cole aqui as instruções (de um projeto do claude.ai, por exemplo)">${esc(a.instrucoes)}</textarea></label>
+      ${a.claude_uuid ? `<p class="sub">${ligadoAoClaude(a)}. As instruções e os arquivos vêm de lá: para mudar, mude o projeto no claude.ai.</p>` : ""}
+      <label class="campo"><span>Instruções</span><textarea id="ag-instr" rows="12" ${a.claude_uuid ? "readonly" : ""} placeholder="Cole aqui as instruções (de um projeto do claude.ai, por exemplo)">${esc(a.instrucoes)}</textarea></label>
       <div class="linha"><button class="botao" id="ag-salvar">Salvar o agente</button><button class="botao sec" id="ag-cancelar">Cancelar</button></div></div>`;
     caixa.querySelector("#ag-cancelar").onclick = () => resumo();
     caixa.querySelector("#ag-salvar").onclick = (e) => carregando(e.currentTarget, "Salvando…", async () => {

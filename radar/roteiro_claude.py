@@ -18,7 +18,7 @@ from datetime import datetime
 
 import httpx
 
-from . import banco
+from . import banco, claude_projetos
 from .config import DADOS, FABRICA as _FABRICA
 
 PASTA = DADOS / "roteiros"
@@ -99,12 +99,19 @@ def _claude(sistema: str, pedido: str, modelo: str = "") -> str:
         raise RuntimeError("O Claude Code não está instalado neste computador (comando claude).")
     VAZIA.mkdir(parents=True, exist_ok=True)
     ambiente = {k: v for k, v in os.environ.items() if k not in ("ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN")}
-    comando = [executavel, "-p", "--output-format", "json", "--system-prompt", sistema, "--tools", "",
+    # as instruções vão por arquivo, não na linha de comando: o Windows corta a linha em 32 mil letras e o agente
+    # JAN DE WOLF sozinho tem 33 mil (com os arquivos do projeto do claude.ai, passa de 100 mil)
+    arquivo = VAZIA / f"sistema-{uuid.uuid4().hex[:8]}.txt"
+    arquivo.write_text(sistema, encoding="utf-8")
+    comando = [executavel, "-p", "--output-format", "json", "--system-prompt-file", str(arquivo), "--tools", "",
                "--strict-mcp-config", "--no-session-persistence"]
     if modelo:
         comando += ["--model", modelo]
-    r = subprocess.run(comando, input=pedido, capture_output=True, text=True, encoding="utf-8", cwd=VAZIA,
-                       env=ambiente, timeout=900)
+    try:
+        r = subprocess.run(comando, input=pedido, capture_output=True, text=True, encoding="utf-8", cwd=VAZIA,
+                           env=ambiente, timeout=900)
+    finally:
+        arquivo.unlink(missing_ok=True)
     try:
         dados = json.loads(r.stdout)
     except ValueError:
@@ -169,6 +176,11 @@ def gerar(usuario_id: int, titulo: str, link: str, minutos: int, lingua: str, pr
     palavras = minutos * (ritmo.get("ppm_alvo") or ritmo["ppm"])
     sistema = INSTRUCOES + (f"\n\nInstruções do projeto \"{projeto['nome']}\" (estilo do canal, valem por cima das "
                             f"regras acima quando conflitarem):\n{projeto['instrucoes']}" if projeto and projeto["instrucoes"] else "")
+    # os arquivos anexados ao projeto do claude.ai (roteiros de exemplo do canal), como o projeto de lá usa
+    arquivos = claude_projetos.texto_dos_arquivos(projeto)
+    if arquivos:
+        sistema += ("\n\nArquivos do projeto (exemplos e referências do canal: siga o estilo, o ritmo e o formato "
+                    f"deles, sem copiar o assunto):\n\n{arquivos}")
     pedido = (f"Título do vídeo: {titulo}\nLíngua do roteiro: {lingua}\nTamanho: cerca de {palavras} palavras "
               f"({minutos} minutos narrados)\n")
     if observacoes:

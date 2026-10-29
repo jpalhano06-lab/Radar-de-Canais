@@ -259,6 +259,12 @@ CREATE TABLE IF NOT EXISTS projetos_roteiro (
     instrucoes TEXT NOT NULL DEFAULT '',
     criado TEXT NOT NULL
 );
+-- os projetos do claude.ai cujo agente a pessoa apagou: a próxima leitura não cria o agente de novo
+CREATE TABLE IF NOT EXISTS claude_ignorados (
+    usuario_id INTEGER NOT NULL,
+    claude_uuid TEXT NOT NULL,
+    PRIMARY KEY (usuario_id, claude_uuid)
+);
 CREATE TABLE IF NOT EXISTS meus_canais (
     usuario_id INTEGER NOT NULL,
     canal_id TEXT NOT NULL,
@@ -319,7 +325,10 @@ COLUNAS_NOVAS = {
     "salvos": {"pasta": "TEXT NOT NULL DEFAULT ''"},          # a pasta em que a pessoa guardou aquele canal
     # tipo: "roteiro" (o agente que escreve o roteiro) ou "descricao" (o que escreve a sinopse, as tags e as
     # hashtags junto com ele). Os agentes que já existiam são todos de roteiro, por isso o padrão
-    "projetos_roteiro": {"ideal_para": "TEXT NOT NULL DEFAULT ''", "tipo": "TEXT NOT NULL DEFAULT 'roteiro'"},
+    # claude_*, arquivos e sincronizado: o projeto do claude.ai ligado ao agente (claude_projetos.py)
+    "projetos_roteiro": {"ideal_para": "TEXT NOT NULL DEFAULT ''", "tipo": "TEXT NOT NULL DEFAULT 'roteiro'",
+                         "claude_uuid": "TEXT NOT NULL DEFAULT ''", "claude_nome": "TEXT NOT NULL DEFAULT ''",
+                         "arquivos": "TEXT NOT NULL DEFAULT ''", "sincronizado": "TEXT NOT NULL DEFAULT ''"},
     "buscas_feitas": {"vezes": "INTEGER NOT NULL DEFAULT 0", "total": "INTEGER NOT NULL DEFAULT 0", "zeros": "INTEGER NOT NULL DEFAULT 0"},
 }
 

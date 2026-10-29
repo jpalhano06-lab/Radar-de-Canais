@@ -1,5 +1,6 @@
 // Faz os pedidos ao servidor do Radar pela página do YouTube: o content script não fala direto com o servidor.
 const PADRAO = "http://127.0.0.1:8400";
+importScripts("claude-projetos.js");
 
 async function config() {
   const { servidor, token } = await chrome.storage.local.get(["servidor", "token"]);
@@ -46,6 +47,10 @@ chrome.runtime.onMessage.addListener((msg, _remetente, responder) => {
     imagem(msg.url).then(responder);
     return true;
   }
+  if (msg && msg.tipo === "sincronizar-claude") {   // o botão "Atualizar do claude.ai" do Radar (site.js)
+    sincronizarClaude().then(responder);
+    return true;
+  }
   if (msg && msg.tipo === "radar") {          // abre uma página do Radar (ex.: o Roteiro com o vídeo de referência)
     config().then(({ servidor }) => chrome.tabs.create({ url: servidor + msg.caminho }));
   }
@@ -90,3 +95,22 @@ chrome.commands.onCommand.addListener(async (comando) => {
   const [aba] = await chrome.tabs.query({ active: true, currentWindow: true });
   if (aba && /^https:\/\/www\.youtube\.com\//.test(aba.url || "")) chrome.tabs.sendMessage(aba.id, { tipo }).catch(() => {});
 });
+
+// Os projetos do claude.ai viram os agentes do Radar (claude-projetos.js): ao abrir o Chrome e a cada meia hora.
+// Falhar aqui não tem problema: abrir o claude.ai faz a mesma leitura pela própria página (claude-sync.js)
+async function sincronizarClaude() {
+  try {
+    const projetos = await lerProjetosClaude();
+    const r = await pedir({ caminho: "/api/ext/projetos-claude", metodo: "POST", corpo: { projetos } });
+    if (!r.erro) await chrome.storage.local.set({ claudeSincronizado: Date.now(), claudeResultado: r.dados });
+    return r;
+  } catch (e) {
+    return { erro: String(e.message || e) + " Abra o claude.ai neste Chrome e tente de novo.", status: 0 };
+  }
+}
+chrome.runtime.onStartup.addListener(() => sincronizarClaude());
+chrome.runtime.onInstalled.addListener(() => {
+  chrome.alarms.create("claude-projetos", { periodInMinutes: 30 });
+  sincronizarClaude();
+});
+chrome.alarms.onAlarm.addListener((a) => { if (a.name === "claude-projetos") sincronizarClaude(); });

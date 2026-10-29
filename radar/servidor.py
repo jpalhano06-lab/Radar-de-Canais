@@ -19,7 +19,7 @@ from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 
-from . import alvos, banco, canal_painel, custos, descricao, diagnostico, fabrica_api, fila, funcoes, garimpo, gosto, horarios, ia, integracoes, medir, mercado, metricas, nichos, pagina, perfil, producao, publicar, radar_paises, roteiro_claude, studio, tempo, thumb, trabalho, treinamento, youtube
+from . import alvos, banco, canal_painel, claude_projetos, custos, descricao, diagnostico, fabrica_api, fila, funcoes, garimpo, gosto, horarios, ia, integracoes, medir, mercado, metricas, nichos, pagina, perfil, producao, publicar, radar_paises, roteiro_claude, studio, tempo, thumb, trabalho, treinamento, youtube
 from .config import DADOS, NOME, PLANOS, RAIZ, pode
 
 WEB = RAIZ / "radar" / "web"
@@ -2472,8 +2472,21 @@ async def roteiro_descricao(nome: str, request: Request, u: dict = Depends(usuar
 
 @app.get("/api/projetos")
 def projetos(u: dict = Depends(usuario)):
-    return {"projetos": banco.todos("""SELECT id, nome, instrucoes, ideal_para, tipo FROM projetos_roteiro
-                                       WHERE usuario_id=? ORDER BY tipo, nome""", u["id"])}
+    lista = banco.todos("""SELECT id, nome, instrucoes, ideal_para, tipo, claude_uuid, claude_nome, sincronizado, arquivos
+                           FROM projetos_roteiro WHERE usuario_id=? ORDER BY tipo, nome""", u["id"])
+    for p in lista:     # os arquivos do projeto do claude.ai são grandes: a tela só mostra quantos são
+        try:
+            p["arquivos"] = len(json.loads(p["arquivos"] or "[]"))
+        except ValueError:
+            p["arquivos"] = 0
+    return {"projetos": lista}
+
+
+@app.post("/api/ext/projetos-claude")
+async def ext_projetos_claude(request: Request, u: dict = Depends(exigir("extensao"))):
+    """Os projetos do claude.ai, lidos pela extensão no Chrome logado: cada um atualiza o agente ligado a ele."""
+    d = await request.json()
+    return claude_projetos.sincronizar(u["id"], d.get("projetos") or [])
 
 
 @app.post("/api/projetos")
@@ -2500,6 +2513,7 @@ async def salvar_projeto(request: Request, u: dict = Depends(usuario)):
 
 @app.delete("/api/projetos/{pid}")
 def apagar_projeto(pid: int, u: dict = Depends(usuario)):
+    claude_projetos.apagado(u["id"], banco.um("SELECT claude_uuid FROM projetos_roteiro WHERE id=? AND usuario_id=?", pid, u["id"]))
     banco.executar("DELETE FROM projetos_roteiro WHERE id=? AND usuario_id=?", pid, u["id"])
     return {"ok": True}
 
