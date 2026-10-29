@@ -1266,18 +1266,31 @@ async function formProducao(caixa, canalId, depois = () => {}, perguntarDeNovo =
       caixa.querySelector("#vz-busca").onkeydown = (e) => { if (e.key === "Enter") procurar(); };
       const manter = caixa.querySelector("#vz-manter");
       if (manter) manter.onclick = () => { parar(); perguntas[2](); };
-      let r;
-      try { r = await api("/api/fabrica/vozes?" + consulta({ lingua: escolha.lingua, busca, genero })); }
-      catch (e) { caixa.querySelector("#vz-lista").innerHTML = `<div class="vazio">${esc(e.message)}</div>`; return; }
+      // a fábrica manda umas 60 vozes por vez, só da língua do canal; "Mais vozes" pede a página seguinte
+      const vozes = [];
+      let pagina = 0, r;
+      const carregar = async () => {
+        try { r = await api("/api/fabrica/vozes?" + consulta({ lingua: escolha.lingua, busca, genero, pagina })); }
+        catch (e) { caixa.querySelector("#vz-lista").innerHTML = `<div class="vazio">${esc(e.message)}</div>`; return; }
+        const conhecidas = new Set(vozes.map((v) => v.voice_id));
+        vozes.push(...(r.vozes || []).filter((v) => !conhecidas.has(v.voice_id)));
+        desenhar();
+      };
+      const desenhar = () => {
       const lista = caixa.querySelector("#vz-lista");
       if (!lista) return;
-      lista.innerHTML = r.erro ? `<div class="vazio">${esc(r.erro)}</div>` : r.vozes.map((v, k) => `<div class="voz-cartao">
+      const rolagem = lista.scrollTop;
+      lista.innerHTML = r.erro && !vozes.length ? `<div class="vazio">${esc(r.erro)}</div>` : (vozes.map((v, k) => `<div class="voz-cartao">
           <button class="voz-ouvir" data-k="${k}" title="Ouvir">▶</button>
           <div class="voz-info"><b>${esc(v.nome)}</b><small>${esc([v.genero, v.idade, v.sotaque].filter(Boolean).join(" · "))}</small>
             <p>${esc((v.descricao || "").slice(0, 140))}${(v.descricao || "").length > 140 ? "…" : ""}</p></div>
-          <button class="botao" data-escolher="${k}">Escolher</button></div>`).join("") || '<div class="vazio">Nenhuma voz achada. Tente outra busca.</div>';
+          <button class="botao" data-escolher="${k}">Escolher</button></div>`).join("") || '<div class="vazio">Nenhuma voz achada. Tente outra busca.</div>')
+        + (r.tem_mais ? `<button class="botao sec" id="vz-mais">Mais vozes (${vozes.length} até agora)</button>` : "");
+      lista.scrollTop = rolagem;
+      const mais = lista.querySelector("#vz-mais");
+      if (mais) mais.onclick = () => carregando(mais, "Buscando mais vozes…", async () => { pagina += 1; await carregar(); });
       lista.querySelectorAll(".voz-ouvir").forEach((b) => (b.onclick = () => {
-        const v = r.vozes[+b.dataset.k];
+        const v = vozes[+b.dataset.k];
         const mesmo = botaoTocando === b; parar();
         if (mesmo || !v.previa) return;
         tocando = new Audio(v.previa); botaoTocando = b; tocando.play(); b.textContent = "■";
@@ -1285,12 +1298,14 @@ async function formProducao(caixa, canalId, depois = () => {}, perguntarDeNovo =
       }));
       lista.querySelectorAll("[data-escolher]").forEach((b) => (b.onclick = () => carregando(b, "Criando o canal na fábrica…", async () => {
         parar();
-        const v = r.vozes[+b.dataset.escolher];
+        const v = vozes[+b.dataset.escolher];
         const novo = await api(`/api/producao/${encodeURIComponent(canalId)}/voz`, { method: "POST", body: { voice_id: v.voice_id, nome: v.nome, idioma: v.idioma } });
         p = { ...p, ...novo }; escolha.perfil = novo.perfil;
         aviso(`Voz ${v.nome} guardada no canal (na fábrica: ${novo.perfil}).`);
         perguntas[2]();
       })));
+      };
+      await carregar();
     },
     // 3. o agente de roteiro, com a opção de criar um novo ali mesmo
     () => {

@@ -169,13 +169,17 @@ IDIOMA = {"português": "pt", "inglês": "en", "espanhol": "es", "francês": "fr
           "romeno": "ro", "búlgaro": "bg", "croata": "hr"}
 
 
-def vozes(lingua: str, busca: str = "", genero: str = "") -> dict:
-    """A biblioteca de vozes da GenAI Pro pela fábrica, com a prévia em áudio de cada uma. Não gasta crédito."""
+def vozes(lingua: str, busca: str = "", genero: str = "", pagina: int = 0) -> dict:
+    """A biblioteca de vozes da GenAI Pro pela fábrica, só as da língua, com a prévia em áudio. Não gasta crédito."""
     from urllib.parse import urlencode
-    consulta = urlencode({"idioma": IDIOMA.get(lingua, lingua if lingua in IDIOMA.values() else "pt"),
-                          "busca": busca[:60], "genero": genero if genero in ("male", "female") else ""})
-    r = _pedir("GET", f"/api/vozes/genaipro?{consulta}", tempo=40)
-    return {"vozes": r.get("vozes", []), "erro": r.get("erro", ""), "preco_por_mil": r.get("preco_por_mil")}
+    codigo = IDIOMA.get(lingua, lingua if lingua in IDIOMA.values() else "pt")
+    consulta = urlencode({"idioma": codigo, "busca": busca[:60], "genero": genero if genero in ("male", "female") else "",
+                          "pagina": pagina})
+    r = _pedir("GET", f"/api/vozes/genaipro?{consulta}", tempo=60)
+    # a fábrica antiga não filtra: a GenAI Pro completa a página com vozes de outras línguas
+    so_da_lingua = [v for v in r.get("vozes", []) if not v.get("idioma") or v["idioma"] == codigo]
+    return {"vozes": so_da_lingua, "erro": r.get("erro", ""), "preco_por_mil": r.get("preco_por_mil"),
+            "tem_mais": bool(r.get("tem_mais"))}
 
 
 def criar_canal(nome: str, voz: dict) -> str:

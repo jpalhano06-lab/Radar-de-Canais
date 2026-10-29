@@ -1848,10 +1848,11 @@ def _projeto_fabrica(nome: str):
 
 
 @app.get("/api/fabrica/vozes")
-def fabrica_vozes(lingua: str = "português", busca: str = "", genero: str = "", u: dict = Depends(usuario)):
+def fabrica_vozes(lingua: str = "português", busca: str = "", genero: str = "", pagina: int = 0,
+                  u: dict = Depends(usuario)):
     """As vozes da fábrica (GenAI Pro), com a prévia, para escolher a voz do canal. Não gasta crédito."""
     try:
-        return fabrica_api.vozes(lingua, busca, genero)
+        return fabrica_api.vozes(lingua, busca, genero, max(0, min(pagina, 20)))
     except fabrica_api.SemFabrica as erro:
         raise HTTPException(503, str(erro))
 
