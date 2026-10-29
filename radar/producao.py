@@ -125,7 +125,8 @@ def config(usuario_id: int, canal_id: str) -> dict:
         dados["perfil"] = _perfil_do_canal(canal.get("titulo", ""))
     p = _perfil(dados["perfil"])
     if not dados["lingua"]:
-        dados["lingua"] = {"en": "inglês", "es": "espanhol"}.get(p.get("idioma_da_voz", ""), "português")
+        from .fabrica_api import IDIOMA     # o fabrica_api importa este módulo
+        dados["lingua"] = {c: l for l, c in IDIOMA.items()}.get(p.get("idioma_da_voz", ""), "português")
     return dados | {"voz": p.get("voz", ""), "canal": canal.get("titulo", ""), "salvo": bool(linha)}
 
 

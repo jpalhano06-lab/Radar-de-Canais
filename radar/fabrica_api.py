@@ -160,7 +160,13 @@ def apagar(nome: str) -> dict:
 
 # ---------------------------------------------------------------- as vozes da fábrica, para a configuração do canal
 
-IDIOMA = {"português": "pt", "inglês": "en", "espanhol": "es"}
+# as 32 línguas que as vozes da GenAI Pro falam (os modelos Multilingual v2 e Turbo v2.5), com o código dela
+IDIOMA = {"português": "pt", "inglês": "en", "espanhol": "es", "francês": "fr", "alemão": "de", "italiano": "it",
+          "holandês": "nl", "polonês": "pl", "russo": "ru", "ucraniano": "uk", "turco": "tr", "árabe": "ar",
+          "hindi": "hi", "tâmil": "ta", "japonês": "ja", "chinês": "zh", "coreano": "ko", "indonésio": "id",
+          "malaio": "ms", "filipino": "fil", "vietnamita": "vi", "sueco": "sv", "dinamarquês": "da",
+          "norueguês": "no", "finlandês": "fi", "grego": "el", "tcheco": "cs", "eslovaco": "sk", "húngaro": "hu",
+          "romeno": "ro", "búlgaro": "bg", "croata": "hr"}
 
 
 def vozes(lingua: str, busca: str = "", genero: str = "") -> dict:

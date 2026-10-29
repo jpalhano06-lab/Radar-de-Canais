@@ -1214,6 +1214,10 @@ async function aplicarProducao(canalId, caixa, campos) {
 }
 
 const bandeiraImg = (c) => `<img src="https://flagcdn.com/w40/${c}.png" alt="" style="width:28px;height:20px;object-fit:cover;border-radius:3px">`;
+// as línguas além das três de sempre que as vozes da GenAI Pro falam (o fabrica_api.IDIOMA tem os códigos)
+const OUTRAS_LINGUAS_GENAIPRO = ["francês", "alemão", "italiano", "holandês", "polonês", "russo", "ucraniano", "turco",
+  "árabe", "hindi", "tâmil", "japonês", "chinês", "coreano", "indonésio", "malaio", "filipino", "vietnamita", "sueco",
+  "dinamarquês", "norueguês", "finlandês", "grego", "tcheco", "eslovaco", "húngaro", "romeno", "búlgaro", "croata"];
 // a produção do canal: na primeira vez, uma pergunta por vez (língua, voz, agente de roteiro, tempo); depois, uma
 // linha simples com o "editar". Pedidos do usuário em 2026-10-15: "uma pergunta por vez, só na primeira vez"; "maior";
 // "conectar a fábrica para já aparecer as vozes e dar para testar antes de escolher"; "adicionar o agente na terceira
@@ -1242,8 +1246,11 @@ async function formProducao(caixa, canalId, depois = () => {}, perguntarDeNovo =
     // 1. a língua
     () => {
       caixa.innerHTML = moldura(0, `<h3>Em que língua são os vídeos deste canal?</h3>` + cartoes([
-        ["português", bandeiraImg("br"), "Português"], ["inglês", bandeiraImg("us"), "Inglês"], ["espanhol", bandeiraImg("es"), "Espanhol"]], "lingua"));
+        ["português", bandeiraImg("br"), "Português"], ["inglês", bandeiraImg("us"), "Inglês"], ["espanhol", bandeiraImg("es"), "Espanhol"]], "lingua")
+        + `<label class="linha">Outra língua das vozes da GenAI Pro: <select id="pg-outra"><option value="">Escolher…</option>
+          ${OUTRAS_LINGUAS_GENAIPRO.map((l) => `<option ${l === escolha.lingua ? "selected" : ""}>${esc(l)}</option>`).join("")}</select></label>`);
       opcoes(null, "lingua", () => perguntas[1]());
+      caixa.querySelector("#pg-outra").onchange = (e) => { if (e.target.value) { escolha.lingua = e.target.value; perguntas[1](); } };
     },
     // 2. a voz, da biblioteca da fábrica, com a prévia
     async (busca = "", genero = "") => {
@@ -2841,7 +2848,7 @@ async function novaProducao(preset = {}) {
   const palavras = () => Math.round(N.caracteres / CARACTERES_POR_PALAVRA);
   const nomeCanal = () => (canais.find((c) => c.id === N.canal) || {}).titulo || "";
   const sigla = (t) => t.split(/\s+/).filter(Boolean).slice(0, 2).map((p) => p[0]).join("").toUpperCase();
-  const LINGUAS = ["português", "inglês", "espanhol", "francês", "alemão", "italiano"];
+  const LINGUAS = ["português", "inglês", "espanhol", ...OUTRAS_LINGUAS_GENAIPRO];
 
   document.body.insertAdjacentHTML("beforeend", `<div class="modal-fundo" id="nova-producao"><div class="np" role="dialog" aria-label="Nova produção">
     <header class="np-cab"><h2>Nova produção</h2><button class="np-fechar" title="Fechar (Esc)">×</button></header>
