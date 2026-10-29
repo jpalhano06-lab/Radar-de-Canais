@@ -1532,3 +1532,20 @@ como sempre) e as hashtags. A partir daí:
 **O que já era assim e continua.** Nos Detalhes, a extensão marca sozinha **"Não, não é conteúdo feito para
 crianças"** e **"Uso de IA: Sim"** (os vídeos da fábrica são feitos com IA), além de escrever título, descrição e
 tags. Isso não mudou — o que faltava era a descrição existir a tempo.
+
+## O título traduzido para a língua do vídeo, e o agente CANAL DE TESTE (2026-10-29)
+
+Pedido do usuário: "o título lá pode ser em português, porém sempre terá a tradução automática pra língua que vai
+ser falada".
+
+- **`roteiro_claude.traduzir_titulo`**: na Nova produção o título pode ser escrito em português. Quando o roteiro é
+  feito (pelo Claude ou colado), o título é traduzido para a língua do pedido, pelo `claude -p --model haiku` (a
+  assinatura, sem custo por uso). O Claude já escreve o roteiro para o título traduzido. No `roteiro.json` ficam
+  `titulo` (o traduzido, que vira o `titulo_entrega` da fábrica e o título da descrição) e `titulo_original`.
+- Título já na língua certa (português, inglês e espanhol, pelo `gosto.lingua`) nem chama o Claude. Tradução que
+  falha ou volta estranha (várias linhas, comprida demais) deixa o título como veio: o vídeo não para por isso.
+- Testado com o Claude de verdade: "Por que os gatos dormem 16 horas por dia?" virou "Why Do Cats Sleep 16 Hours a
+  Day?" e "Waarom slapen katten 16 uur per dag?". Testes em `tests/test_titulo_traduzido.py`.
+- **Agente CANAL DE TESTE** (id 8, criado direto no banco pela rota `POST /api/projetos`): o primeiro vídeo de um
+  canal novo, só para ver se o canal é confiável. De 2 a 3 minutos, na língua escolhida na Nova produção, com assunto
+  universal que dá para mostrar só com vídeo de banco grátis (Pexels/Pixabay), sem polêmica e sem dinheiro.

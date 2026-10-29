@@ -145,6 +145,31 @@ def _limpar(texto: str) -> str:
     return re.sub(r"\n{3,}", "\n\n", texto).strip()
 
 
+_CODIGO_DA_LINGUA = {"português": "pt", "inglês": "en", "espanhol": "es"}
+
+
+def traduzir_titulo(titulo: str, lingua: str) -> str:
+    """O título na língua falada no vídeo (pedido do usuário em 2026-10-29: "o título lá pode ser em português, porém
+    sempre terá a tradução automática pra língua que vai ser falada"). Já na língua certa, nem chama o Claude.
+    Tradução que falha ou volta estranha (várias linhas, comprida demais) deixa o título como veio: o vídeo não para
+    por causa disso."""
+    from . import gosto
+    titulo = " ".join(str(titulo).split())
+    if not titulo or not lingua or gosto.lingua(titulo) == _CODIGO_DA_LINGUA.get(lingua.lower()):
+        return titulo
+    try:
+        traduzido = _claude("Você traduz títulos de vídeos do YouTube. Responda só com o título traduzido, numa linha, "
+                            "sem aspas e sem explicação. Mantenha o tom chamativo, números e nomes próprios. Se o título "
+                            "já estiver na língua pedida, devolva igual.",
+                            f"Língua: {lingua}\nTítulo: {titulo}", modelo="haiku")
+    except Exception:  # noqa: BLE001
+        return titulo
+    traduzido = traduzido.strip().strip("\"'“”«»").strip()
+    if not traduzido or "\n" in traduzido or len(traduzido) > max(150, len(titulo) * 3):
+        return titulo
+    return traduzido
+
+
 def gerar(usuario_id: int, titulo: str, link: str, minutos: int, lingua: str, projeto_id: int | None,
           observacoes: str, perfil: str = "", canal: dict | None = None, projeto_descricao_id: int | None = None,
           aviso=lambda _t: None) -> dict:
@@ -167,6 +192,10 @@ def gerar(usuario_id: int, titulo: str, link: str, minutos: int, lingua: str, pr
             aviso("Esse vídeo não deu a legenda. Escrevendo o roteiro a partir do título…")
         aviso("Copiando a thumbnail…")
         thumb = copiar_thumbnail(video_id, pasta / "thumbnail.jpg")
+    original = titulo
+    if lingua:
+        aviso(f"Traduzindo o título para {lingua}…")
+        titulo = traduzir_titulo(titulo, lingua)
     projeto = banco.um("SELECT * FROM projetos_roteiro WHERE id=? AND usuario_id=?", projeto_id, usuario_id) if projeto_id else None
     # o ritmo real da voz, medido nos vídeos que a fábrica já entregou (tempo.py)
     from . import tempo
@@ -213,7 +242,7 @@ def gerar(usuario_id: int, titulo: str, link: str, minutos: int, lingua: str, pr
             break
         roteiro = roteiro + "\n\n" + resto
     (pasta / "roteiro.txt").write_text(roteiro, encoding="utf-8")
-    meta = {"titulo": titulo, "link": link, "video_id": video_id, "minutos": minutos, "lingua": lingua,
+    meta = {"titulo": titulo, "titulo_original": original, "link": link, "video_id": video_id, "minutos": minutos, "lingua": lingua,
             "projeto": projeto["nome"] if projeto else "", "palavras": len(roteiro.split()),
             "palavras_base": len(base.split()), "base_erro": base_erro[:300], "thumbnail": thumb,
             "segundos": round(time.time() - inicio), "criado": banco.agora(), "usuario_id": usuario_id, "ritmo": ritmo, "canal": canal or {}}
@@ -253,7 +282,8 @@ def manual(usuario_id: int, titulo: str, texto: str, link: str = "", minutos: in
     pasta.mkdir(parents=True, exist_ok=True)
     thumb = copiar_thumbnail(video_id, pasta / "thumbnail.jpg") if video_id else False
     (pasta / "roteiro.txt").write_text(texto, encoding="utf-8")
-    meta = {"titulo": titulo, "link": link, "video_id": video_id, "minutos": minutos, "lingua": lingua, "projeto": "",
+    original, titulo = titulo, traduzir_titulo(titulo, lingua)
+    meta = {"titulo": titulo, "titulo_original": original, "link": link, "video_id": video_id, "minutos": minutos, "lingua": lingua, "projeto": "",
             "palavras": len(texto.split()), "palavras_base": 0, "thumbnail": thumb, "segundos": 0, "manual": True,
             "criado": banco.agora(), "usuario_id": usuario_id, "canal": canal or {}}
     (pasta / "roteiro.json").write_text(json.dumps(meta, ensure_ascii=False, indent=1), encoding="utf-8")
