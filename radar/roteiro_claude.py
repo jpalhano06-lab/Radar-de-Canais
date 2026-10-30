@@ -433,9 +433,13 @@ def enviar(usuario_id: int, nome: str, perfil: str) -> dict:
     final, n = projeto, 2
     while (FABRICA / "projetos" / final).exists():
         final, n = f"{projeto}-{n}", n + 1
-    r = subprocess.run([shutil.which("uv"), "run", "fabrica", "novo", final, "--roteiro", str(pasta / "roteiro.txt"),
-                        "--perfil", f"perfis/{perfil}.yaml", "--sim"],
-                       cwd=FABRICA, capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=300)
+    # --no-sync: sem ele o uv reinstala a fábrica e tenta reescrever o Scripts/fabrica.exe, que o Windows trava
+    # enquanto a fábrica está ligada; e o VIRTUAL_ENV do Radar sai do ambiente para o uv não avisar que o ignora
+    ambiente = {k: v for k, v in os.environ.items() if k != "VIRTUAL_ENV"}
+    r = subprocess.run([shutil.which("uv"), "run", "--no-sync", "fabrica", "novo", final,
+                        "--roteiro", str(pasta / "roteiro.txt"), "--perfil", f"perfis/{perfil}.yaml", "--sim"],
+                       cwd=FABRICA, env=ambiente, capture_output=True, text=True, encoding="utf-8",
+                       errors="replace", timeout=300)
     destino = FABRICA / "projetos" / final
     if not (destino / "projeto.json").exists():
         raise RuntimeError("A fábrica não criou o projeto: " + (r.stderr or r.stdout or "")[-400:])
