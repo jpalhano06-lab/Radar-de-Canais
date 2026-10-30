@@ -1567,3 +1567,20 @@ Pedido do usuário: "se eu já escolhi o canal João o Lobo, já tem que ir pro 
   para o ritmo do roteiro e para criar o projeto na fábrica.
 - Para usar: reinicie o Radar (LIGAR-RADAR.bat) e, em `chrome://extensions`, clique no ↻ do Radar de Canais e
   recarregue a aba do YouTube.
+
+## Um erro da fábrica num pedido não para mais a fila (2026-10-30)
+
+A fila ficou parada: a fábrica da porta 8080 era a de outra pasta (`tiplabs\backend-editor`, ligada à mão), que só
+tinha projetos de teste antigos, e o `POST /api/projetos/NOME/retomar` do primeiro da fila voltava "Projeto não
+encontrado". O pedido voltava para a fila a cada 20 s e os de trás nem o roteiro começavam.
+
+- **`fabrica_api.FabricaDesligada`** (filha de `SemFabrica`): só a fábrica fora do ar — porta muda (`httpx.HTTPError`)
+  ou chave recusada (401). Qualquer outro erro dela segue como `SemFabrica`, que é erro sobre o que foi pedido. Quem
+  pega `SemFabrica` (o site, as Integrações, o painel do canal) continua pegando os dois.
+- **O vigia da fila** (`fila.passo`) só termina a volta na `FabricaDesligada`: aí o pedido espera, sem erro, e a fila
+  espera com ele. Um erro da fábrica sobre o projeto vira o erro daquele pedido ("Tentar de novo" reaproveita o
+  projeto, sem pagar outro) e a volta segue para os próximos, inclusive os roteiros, que nem dependem da fábrica.
+- Se a fábrica certa voltar e retomar o vídeo por fora, o pedido sai do erro sozinho (a regra 1b, de 2026-10-27).
+- **Qual fábrica está na porta 8080**: a de `RADAR_FABRICA` (`fabrica-videos`) é a que o Radar enche de projetos. O
+  `LIGAR-TIPLABS` de outra pasta rouba a porta e o Radar não acha nada; o vigia do `fabrica-videos` não religa, porque
+  a intrusa responde no `/api/saude`. Testes em `tests/test_fila.py`.

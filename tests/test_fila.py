@@ -313,3 +313,38 @@ def test_canal_de_teste_sempre_de_2_a_3_minutos():
     assert fila.minutos_do(teste | {"caracteres": fila.caracteres_de(15, 150)}, 150) == 3
     assert fila.minutos_do(teste | {"caracteres": fila.caracteres_de(1, 150)}, 150) == 2
     assert fila.minutos_do({"canal_id": "UC1", "caracteres": fila.caracteres_de(15, 150)}, 150) == 15
+
+
+# ---- a fábrica ligada na pasta errada (2026-10-30)
+
+class FabricaRecusa(Fabrica):
+    """Aceita o envio, mas a produção dá o erro dado (de um projeto só, ou de todos)."""
+    def __init__(self, erro, so=None):
+        super().__init__()
+        self.erro, self.so = erro, so
+
+    def produzir(self, nome, confirmar):
+        if self.so in (None, nome):
+            raise self.erro
+        super().produzir(nome, confirmar)
+
+
+def test_erro_da_fabrica_num_pedido_nao_trava_a_fila(db):
+    """A fábrica estava ligada na pasta errada e não achava o projeto do primeiro da fila: o pedido ficava voltando
+    para a fila a cada 20 s e os de trás nem o roteiro começavam. Agora só ele para, em erro."""
+    a = fila.criar(1, {"titulo": "A", "roteiro_manual": "x"}, True)
+    b = fila.criar(1, {"titulo": "B", "roteiro_manual": "x"}, True)
+    _volta(FabricaRecusa(fila.fabrica_api.SemFabrica("Projeto 'p-m-A' não encontrado."), so="p-m-A"))
+    primeiro, segundo = fila.item(1, a["id"]), fila.item(1, b["id"])
+    assert (primeiro["estado"], primeiro["erro"]) == ("erro", "Projeto 'p-m-A' não encontrado.")
+    assert segundo["estado"] == "produzindo"
+
+
+def test_fabrica_que_cai_no_envio_nao_vira_erro(db):
+    """Desligada de verdade (porta muda ou chave recusada): o pedido espera na fila, sem erro."""
+    a = fila.criar(1, {"titulo": "A", "roteiro_manual": "x"}, True)
+    b = fila.criar(1, {"titulo": "B", "roteiro_manual": "x"}, True)
+    _volta(FabricaRecusa(fila.fabrica_api.FabricaDesligada("desligada")))
+    for pedido in (a, b):
+        atual = fila.item(1, pedido["id"])
+        assert (atual["estado"], atual["erro"]) == ("na_fila", "")

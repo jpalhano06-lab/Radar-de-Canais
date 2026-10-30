@@ -194,7 +194,10 @@ def _escrever(linha: dict, roteirista, config_canal, ritmo) -> None:
 
 
 def passo(fabrica=None, roteirista=None, em_thread: bool = True, config_canal=None, ritmo=None) -> list[int]:
-    """Uma volta do vigia. Devolve os ids que mudaram. A fábrica desligada só faz a volta terminar: nada vira erro."""
+    """Uma volta do vigia. Devolve os ids que mudaram. A fábrica desligada só faz a volta terminar: nada vira erro.
+    Um erro da fábrica sobre um projeto (ela não achou, recusou) é erro só daquele pedido: a volta segue para os
+    outros (2026-10-30: a fábrica ligada na pasta errada não achava o projeto do primeiro da fila, e os de trás nem
+    o roteiro começavam)."""
     if None in (fabrica, roteirista, config_canal, ritmo):
         padrao = _padrao()
         fabrica, roteirista = fabrica or padrao[0], roteirista or padrao[1]
@@ -266,10 +269,11 @@ def passo(fabrica=None, roteirista=None, em_thread: bool = True, config_canal=No
                 fabrica.produzir(projeto, confirmar=True)
                 if mudar(linha["id"], "produzindo", de=("enviando",), passo=""):
                     vagas -= 1
-            except fabrica_api.SemFabrica:
+            except fabrica_api.FabricaDesligada:
+                # a fábrica caiu no meio da volta: o pedido espera, sem erro, e o resto da fila espera com ele
                 mudar(linha["id"], "na_fila", de=("enviando",), passo="")
                 return mudaram
-            except Exception as erro:  # noqa: BLE001
+            except Exception as erro:  # noqa: BLE001 (inclusive um erro da fábrica sobre este projeto: só este para)
                 mudar(linha["id"], "erro", de=("enviando",), erro=str(erro)[:500], passo="")
             mudaram.append(linha["id"])
         return mudaram

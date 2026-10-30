@@ -19,7 +19,12 @@ _CUSTOS: dict[str, tuple[float, dict]] = {}       # nome -> (mtime do final.mp4,
 
 
 class SemFabrica(RuntimeError):
-    pass
+    """Qualquer "não deu" da fábrica: ela desligada ou um erro dela sobre o que foi pedido."""
+
+
+class FabricaDesligada(SemFabrica):
+    """Só a fábrica fora do ar (porta muda ou chave recusada): nada do pedido tem culpa. A fila da Nova produção
+    separa os dois (2026-10-30): um projeto que a fábrica não achou era erro de um pedido só e parava a fila toda."""
 
 
 def _pedir(metodo: str, caminho: str, corpo: dict | None = None, tempo: float = 20) -> dict:
@@ -27,9 +32,9 @@ def _pedir(metodo: str, caminho: str, corpo: dict | None = None, tempo: float = 
     try:
         r = httpx.request(metodo, URL + caminho, json=corpo, timeout=tempo, headers={"x-fabrica-token": token} if token else {})
     except httpx.HTTPError:
-        raise SemFabrica("O editor da fábrica não está ligado (porta 8080). Ligue a fábrica e tente de novo.")
+        raise FabricaDesligada("O editor da fábrica não está ligado (porta 8080). Ligue a fábrica e tente de novo.")
     if r.status_code == 401:
-        raise SemFabrica("A fábrica recusou a chave (FABRICA_TOKEN no .env da fábrica).")
+        raise FabricaDesligada("A fábrica recusou a chave (FABRICA_TOKEN no .env da fábrica).")
     if r.status_code >= 400:
         raise SemFabrica(r.json().get("detail", f"Erro {r.status_code} da fábrica.") if r.headers.get("content-type", "").startswith("application/json") else f"Erro {r.status_code} da fábrica.")
     return r.json()
