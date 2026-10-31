@@ -341,6 +341,11 @@ CONSERTOS = {
     "views_nao_descem": "UPDATE videos SET views=(SELECT MAX(l.views) FROM leituras l WHERE l.video_id=videos.id) "
                         "WHERE EXISTS (SELECT 1 FROM leituras l WHERE l.video_id=videos.id "
                         "AND l.views > COALESCE(videos.views, -1))",
+    # e a curva do painel: as leituras que desceram eram o mesmo número errado da página. Fica a maior até ali.
+    "curva_nao_desce": "DELETE FROM leituras WHERE rowid IN (SELECT rowid FROM (SELECT rowid, views, "
+                       "MAX(views) OVER (PARTITION BY video_id ORDER BY quando "
+                       "ROWS BETWEEN UNBOUNDED PRECEDING AND 1 PRECEDING) maior FROM leituras) "
+                       "WHERE maior IS NOT NULL AND views < maior)",
 }
 
 
