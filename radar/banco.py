@@ -333,6 +333,17 @@ COLUNAS_NOVAS = {
 }
 
 
+# consertos que rodam uma vez só no banco que já existe (a chave fica em `ajustes`)
+CONSERTOS = {
+    # Até 2026-10-31 o que a extensão lia na página (o número arredondado da tela, "17 mil" para 17.512, e às vezes
+    # a linha errada) apagava a contagem exata da API: um vídeo de 8.232 views passou a valer 112. View não volta
+    # atrás, então cada vídeo volta para a maior leitura que já teve.
+    "views_nao_descem": "UPDATE videos SET views=(SELECT MAX(l.views) FROM leituras l WHERE l.video_id=videos.id) "
+                        "WHERE EXISTS (SELECT 1 FROM leituras l WHERE l.video_id=videos.id "
+                        "AND l.views > COALESCE(videos.views, -1))",
+}
+
+
 def _migrar(c: sqlite3.Connection) -> None:
     for tabela, colunas in COLUNAS_NOVAS.items():
         existentes = {l[1] for l in c.execute(f"PRAGMA table_info({tabela})")}
@@ -340,6 +351,12 @@ def _migrar(c: sqlite3.Connection) -> None:
             if nome not in existentes:
                 c.execute(f"ALTER TABLE {tabela} ADD COLUMN {nome} {tipo}")
     c.execute("CREATE INDEX IF NOT EXISTS canais_subnicho ON canais(subnicho)")
+    feitos = {l[0] for l in c.execute("SELECT chave FROM ajustes WHERE chave LIKE 'conserto:%'")}
+    for nome, sql in CONSERTOS.items():
+        if f"conserto:{nome}" not in feitos:
+            c.execute(sql)
+            c.execute("INSERT OR REPLACE INTO ajustes (chave, valor) VALUES (?,?)",
+                      (f"conserto:{nome}", datetime.now(timezone.utc).isoformat(timespec="seconds")))
     c.commit()
 
 

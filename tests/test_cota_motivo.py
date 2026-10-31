@@ -14,7 +14,7 @@ from radar import banco, youtube  # noqa: E402
 @pytest.fixture
 def banco_limpo(monkeypatch):
     """Um banco só desta prova, na memória: a conta da cota de verdade não pode ser mexida por teste."""
-    con = sqlite3.connect(":memory:")
+    con = sqlite3.connect(":memory:", check_same_thread=False)   # como o banco de verdade: o medir pede em paralelo
     con.row_factory = sqlite3.Row
     con.executescript(banco.ESQUEMA)
     banco._migrar(con)        # as colunas que o Radar foi acrescentando depois (subnicho, pasta, painel...)
@@ -63,3 +63,18 @@ def test_todo_motivo_tem_nome_em_portugues():
     """A tela mostra o rótulo, não a chave: um motivo sem nome apareceria como "paises" para quem usa."""
     for chave, rotulo in youtube.MOTIVOS.items():
         assert rotulo and rotulo != chave, chave
+
+
+def test_os_canais_medidos_em_paralelo_continuam_no_motivo_de_quem_pediu(banco_limpo, monkeypatch):
+    """Thread nova não herda a variável de contexto: sem repassá-la, o gasto do garimpo virava "Outros"."""
+    from radar import medir
+
+    def falso_envios(canal_id, quantos=50):
+        youtube._somar("chave-de-teste", 1)
+        return []
+
+    monkeypatch.setattr(youtube, "envios", falso_envios)
+    with youtube.gastando("garimpo"):
+        medir._ler_videos_dos_canais([{"id": f"UC{letra * 22}"} for letra in "abcdefghij"])
+    gasto = {m["motivo"]: m["unidades"] for m in youtube.gasto_por_motivo()}
+    assert gasto == {"garimpo": 10}

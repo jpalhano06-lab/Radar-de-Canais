@@ -133,3 +133,45 @@ def test_concorrentes_do_nicho_so_gastam_cota_quando_pedido(db, monkeypatch):
     assert r["medido"] and r["total"] == 3 and r["ativos"] == 2 and r["crescendo"] == 1 and r["novos_que_deram_certo"] == 1
     assert 0 <= r["nota"] <= 10 and r["rotulo"]
     assert [c["id"] for c in r["canais"]][0] == ids[0]   # o que mais faz view por vídeo primeiro
+
+
+def test_a_pagina_nunca_abaixa_as_views_que_a_api_contou(db):
+    """A tela mostra "17 mil" para 17.512, e às vezes lê a linha errada: o número de lá só vale quando é maior."""
+    banco.executar("INSERT INTO videos (id, canal_id, titulo, publicado, duracao_s, views, medido) "
+                   "VALUES ('vid00000001', ?, 'Octopus', '2026-10-01T00:00:00+00:00', 600, 17512, "
+                   "'2026-10-29T13:00:00+00:00')", CANAL)
+    pagina.vistos([_video(1, 17_000, 20)])          # o número redondo da tela
+    assert banco.um("SELECT views FROM videos WHERE id='vid00000001'")["views"] == 17512
+    pagina.vistos([_video(1, 112, 20)])             # a linha errada da página
+    assert banco.um("SELECT views FROM videos WHERE id='vid00000001'")["views"] == 17512
+    pagina.vistos([_video(1, 18_000, 20)])          # cresceu de verdade: entra
+    assert banco.um("SELECT views FROM videos WHERE id='vid00000001'")["views"] == 18_000
+    # e a curva do painel sobe sempre, nunca desce
+    curva = [l["views"] for l in banco.todos("SELECT views FROM leituras WHERE video_id='vid00000001' ORDER BY quando")]
+    assert curva == sorted(curva)
+
+
+def test_a_nota_sai_das_views_guardadas_e_nao_do_numero_da_tela(db):
+    lista = [_video(i, 20_000, 30 + i * 10) for i in range(2, 14)]
+    pagina.canal_lido({"id": CANAL, "titulo": "Bichos", "inscritos": 4_000, "videos_total": 12}, lista)
+    pagina.vistos([_video(1, 900_000, 20)])
+    r = pagina.vistos([_video(1, 900, 20)])         # a mesma linha errada: a nota não pode cair com ela
+    assert r["videos"]["vid00000001"]["nota"] == 45.0
+
+
+def test_o_conserto_devolve_as_views_que_a_pagina_tinha_apagado(tmp_path, monkeypatch):
+    """O banco que já existia: cada vídeo volta para a maior leitura que a curva guardou."""
+    arquivo = tmp_path / "velho.db"
+    monkeypatch.setattr(banco, "ARQUIVO", arquivo)
+    monkeypatch.setattr(banco, "_CON", None)
+    banco.executar("INSERT INTO videos (id, canal_id, titulo, publicado, duracao_s, views, medido) "
+                   "VALUES ('vid00000001', ?, 'Octopus', '2026-10-01T00:00:00+00:00', 600, 112, '')", CANAL)
+    banco.varios("INSERT INTO leituras (video_id, quando, views) VALUES (?,?,?)",
+                 [("vid00000001", "2026-10-17T16", 8232), ("vid00000001", "2026-10-26T22", 112)])
+    banco.executar("DELETE FROM ajustes WHERE chave LIKE 'conserto:%'")
+    banco._CON.close()
+    banco._CON = None
+    assert banco.um("SELECT views FROM videos WHERE id='vid00000001'")["views"] == 8232
+    assert banco.um("SELECT valor FROM ajustes WHERE chave='conserto:views_nao_descem'")
+    banco._CON.close()
+    banco._CON = None

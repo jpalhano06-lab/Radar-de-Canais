@@ -447,10 +447,27 @@ def parecenca_do_canal(canal_id: str, assunto: set[str]) -> float:
     return sum(1 for t in titulos if len(gosto.chaves(t) & assunto) >= 2) / len(titulos)
 
 
+# A página do canal pede os parecidos por três caminhos ao mesmo tempo (Canais Parecidos, Vídeos do Nicho e a nota
+# do nicho). Sem isto, os três procuravam e mediam os mesmos 40 canais de uma vez: três vezes a espera e três vezes
+# a cota. Com a trava, o primeiro procura e os outros dois esperam e aproveitam o que ele guardou.
+_TRAVAS_PARECIDOS: dict[str, threading.Lock] = {}
+_TRAVA_DAS_TRAVAS = threading.Lock()
+
+
+def _trava_dos_parecidos(canal_id: str) -> threading.Lock:
+    with _TRAVA_DAS_TRAVAS:
+        return _TRAVAS_PARECIDOS.setdefault(canal_id, threading.Lock())
+
+
 @youtube.por("garimpo")
 def parecidos(canal_id: str, guardar_no_radar: bool = True) -> list[dict]:
     """Canais que fazem o mesmo tipo de vídeo, do mais parecido para o menos (até 400 unidades da busca e a medida dos
     candidatos, guardado 7 dias). Só fica quem fala do mesmo assunto nos próprios títulos."""
+    with _trava_dos_parecidos(canal_id):
+        return _parecidos(canal_id)
+
+
+def _parecidos(canal_id: str) -> list[dict]:
     cache = banco.um("SELECT dados, criado FROM traducoes WHERE chave=?", f"{CHAVE_PARECIDOS}{canal_id}")
     semana = (datetime.now(timezone.utc) - timedelta(days=7)).isoformat()
     if cache and cache["criado"] >= semana:
