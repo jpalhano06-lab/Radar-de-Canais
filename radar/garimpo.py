@@ -5,6 +5,7 @@ config.COTA_DO_GARIMPO deixa, e para quando ela acaba: o resto fica para a exten
 import json
 import re
 import threading
+import time
 from collections import Counter
 from datetime import datetime, timedelta, timezone
 
@@ -187,7 +188,7 @@ def _completar(c: dict, rapido: bool = False) -> None:
         if subnicho:
             dados["subnicho"] = subnicho
     if not rapido and c["sem_rosto"] is None:
-        resposta = ia.sem_rosto([f"https://i.ytimg.com/vi/{v['id']}/default.jpg" for v in videos[:3]])
+        resposta = ia.sem_rosto([f"https://i.ytimg.com/vi/{v['id']}/default.jpg" for v in videos])
         if resposta is not None:
             dados["sem_rosto"] = int(resposta)
     nicho_final, sub_final = dados.get("nicho") or c["nicho"], dados.get("subnicho") or c.get("subnicho")
@@ -210,18 +211,27 @@ def _completar(c: dict, rapido: bool = False) -> None:
 
 
 @youtube.por("garimpo")
-def completar_pendentes(log=print, quantos: int = 80) -> int:
-    """Canais do Radar sem nicho ou sem a resposta do rosto (o Groq estava fora, por exemplo). Não gasta cota."""
+def completar_pendentes(log=print, quantos: int = 80, minutos: float | None = None) -> int:
+    """Canais do Radar sem nicho ou sem a resposta do rosto (o Groq estava fora, por exemplo). Não gasta cota.
+
+    minutos: para depois desse tempo (o Groq de imagem aguenta uma pergunta por minuto). Os pendentes vêm sorteados,
+    para um canal que nunca tem resposta não ocupar a vez dos outros todo dia."""
     pendentes = banco.todos("SELECT * FROM canais WHERE no_radar=1 AND (sem_rosto IS NULL OR nicho='' OR subnicho='') "
-                            "LIMIT ?", quantos)
+                            "ORDER BY RANDOM() LIMIT ?", quantos)
+    ate = time.monotonic() + minutos * 60 if minutos else None
+    feitos = 0
     for c in pendentes:
+        if ate and time.monotonic() > ate:
+            break
         _completar(c)
-    if pendentes:
-        log(f"{len(pendentes)} canais do Radar completados (nicho e rosto)")
-    return len(pendentes)
+        feitos += 1
+    if feitos:
+        log(f"{feitos} canais do Radar completados (nicho e rosto)")
+    return feitos
 
 
-REMEDIR_HORAS = 20         # canal do Radar ou salvo é medido de novo uma vez por dia
+MINUTOS_PENDENTES = 45     # o tempo que o fim do garimpo dá ao Groq para os canais sem nicho ou sem o rosto
+REMEDIR_HORAS = 20        # canal do Radar ou salvo é medido de novo uma vez por dia
 FRACAO_REMEDIR = 0.35      # até 35% da cota do garimpo vai para medir de novo (em alta, novidades)
 
 
@@ -279,6 +289,16 @@ def aprender_termos(log, nichos_por_vez: int = 5) -> int:
     return novos
 
 
+def hora_de_garimpar(ultimo: dict | None) -> bool:
+    """O garimpo de todo dia: 23 horas depois do último; o que caiu no meio ou deu erro, uma hora depois."""
+    if _RODANDO.locked():
+        return False
+    if not ultimo:
+        return True
+    dias = metricas.dias_desde(ultimo["inicio"])
+    return dias > 23 / 24 or (ultimo.get("estado") in ("rodando", "erro") and dias > 1 / 24)
+
+
 @youtube.por("garimpo")
 def rodar(log=print, unidades: int | None = None) -> dict:
     if not _RODANDO.acquire(blocking=False):
@@ -305,11 +325,18 @@ def rodar(log=print, unidades: int | None = None) -> dict:
                 break
             # em inglês, nos países de língua inglesa (os EUA em duas de cada três buscas): o CPM é maior lá
             busca = termo if gosto.lingua(termo) not in ("pt", "es") else (ia.traduzir_titulo(termo, ["en"]).get("en") or termo)
-            achados = youtube.buscar(busca, publicado_depois=depois, duracao="medium" if n % 2 else "long",
-                                     regiao=mercado.regiao(n), idioma=LINGUA)
-            contagem["buscas"] += 1
-            ids = list(dict.fromkeys(a["canal_id"] for a in achados))
-            entraram = _avaliar(ids, anotar, contagem)
+            try:
+                achados = youtube.buscar(busca, publicado_depois=depois, duracao="medium" if n % 2 else "long",
+                                         regiao=mercado.regiao(n), idioma=LINGUA)
+                contagem["buscas"] += 1
+                ids = list(dict.fromkeys(a["canal_id"] for a in achados))
+                # rapido: o nicho e o rosto dos que entraram ficam para o completar_pendentes, no fim
+                entraram = _avaliar(ids, anotar, contagem, rapido=True)
+            except youtube.SemCota:
+                raise
+            except Exception as erro:   # um termo ruim não para o garimpo
+                anotar(f"[{nicho}] \"{termo}\" falhou: {erro}")
+                continue
             # quanto cada termo rende, para o próximo garimpo gastar nos que trazem canal e largar o lixo
             antes = banco.um("SELECT vezes, total, zeros FROM buscas_feitas WHERE termo=?", termo) or {}
             banco.executar("INSERT OR REPLACE INTO buscas_feitas (termo, nicho, quando, canais, vezes, total, zeros) "
@@ -322,14 +349,17 @@ def rodar(log=print, unidades: int | None = None) -> dict:
             anotar(f"[{nicho}] \"{termo}\": {len(ids)} canais vistos, {len(entraram)} entraram")
         achar_parecidos_dos_salvos(anotar, orcamento - (youtube.cota_hoje()["usado"] - inicio), contagem)
         aprender_termos(anotar)
-        # por último: o Groq pode esperar o limite do minuto, e a cota já foi gasta nas buscas (2026-10-30, o garimpo
-        # ficou 20 horas preso aqui antes da primeira busca)
-        completar_pendentes(anotar)
     except youtube.SemCota as erro:
         anotar(str(erro))
     except Exception as erro:  # o garimpo nunca derruba o servidor
         estado = "erro"
         anotar(f"Erro: {erro}")
+    try:
+        # por último e com prazo: o Groq espera o limite do minuto, e a cota já foi gasta nas buscas (2026-10-30, o
+        # garimpo ficou 20 horas preso aqui antes da primeira busca). Não gasta cota, então roda mesmo sem cota.
+        completar_pendentes(anotar, minutos=MINUTOS_PENDENTES)
+    except Exception as erro:
+        anotar(f"Erro ao completar os pendentes: {erro}")
     finally:
         gasto = youtube.cota_hoje()["usado"] - inicio
         banco.executar("UPDATE garimpos SET fim=?, unidades=?, buscas=?, canais_novos=?, estado=? WHERE id=?",

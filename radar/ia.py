@@ -166,8 +166,17 @@ def escrever_pauta(tema: str, titulo: str, exemplos: list[str], minutos: int = 8
     return {"titulo": str(resposta.get("titulo") or titulo).strip(), "roteiro": resposta["roteiro"].strip()}
 
 
+def _existe(url: str) -> bool:
+    try:
+        return _CLIENTE.head(url, timeout=10).status_code == 200
+    except httpx.HTTPError:
+        return False
+
+
 def sem_rosto(capas: list[str]) -> bool | None:
     """True se as capas não mostram um apresentador que se repete. None quando não deu para saber."""
+    # capa de vídeo apagado dá 404 e o Groq recusa o pedido inteiro: o canal ficava sem resposta para sempre
+    capas = [url for url in capas if _existe(url)][:3]
     if not capas:
         return None
     conteudo = [{"type": "text", "text":

@@ -2828,13 +2828,13 @@ async def admin_garimpar(request: Request, u: dict = Depends(admin)):
 # ---------------------------------------------------------------- garimpo de todo dia
 
 def _relogio():
-    """Uma vez por hora confere se o último garimpo tem mais de 23 horas, e roda se tiver."""
+    """Uma vez por hora confere se o último garimpo tem mais de 23 horas, e roda se tiver. O que não terminou (o Radar
+    foi desligado no meio) ou deu erro é refeito uma hora depois, sem esperar o dia seguinte."""
     time.sleep(30)
     while True:
         try:
-            ultimo = banco.um("SELECT inicio FROM garimpos ORDER BY id DESC LIMIT 1")
-            if os.environ.get("RADAR_GARIMPO_AUTOMATICO", "1") == "1" and (
-                    not ultimo or metricas.dias_desde(ultimo["inicio"]) > 23 / 24):
+            ultimo = banco.um("SELECT inicio, estado FROM garimpos ORDER BY id DESC LIMIT 1")
+            if os.environ.get("RADAR_GARIMPO_AUTOMATICO", "1") == "1" and garimpo.hora_de_garimpar(ultimo):
                 garimpo.rodar()
         except Exception as erro:
             print("garimpo automático falhou:", erro)

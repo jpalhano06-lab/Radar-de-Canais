@@ -59,3 +59,55 @@ def test_as_buscas_vem_antes_de_completar_os_pendentes(db, monkeypatch):
     monkeypatch.setattr(garimpo, "aprender_termos", lambda *a, **k: 0)
     garimpo.rodar(print)
     assert ordem == ["busca", "pendentes"]
+
+
+def test_capa_que_sumiu_fica_de_fora(monkeypatch):
+    enviadas = []
+    monkeypatch.setattr(ia, "_existe", lambda url: "apagado" not in url)
+    monkeypatch.setattr(ia, "_perguntar", lambda modelo, sistema, conteudo, **k: enviadas.extend(
+        p["image_url"]["url"] for p in conteudo if p["type"] == "image_url") or {"apresentador": False})
+    assert ia.sem_rosto(["apagado1", "a", "apagado2", "b", "c", "d"]) is True
+    assert enviadas == ["a", "b", "c"]
+    monkeypatch.setattr(ia, "_perguntar", lambda *a, **k: pytest.fail("perguntou sem nenhuma capa"))
+    assert ia.sem_rosto(["apagado1", "apagado2"]) is None
+
+
+def test_um_termo_ruim_nao_para_o_garimpo(db, monkeypatch):
+    feitas = []
+    monkeypatch.setattr(youtube, "cota_hoje", lambda: {"usado": 0, "livre": 10000})
+    monkeypatch.setattr(garimpo, "completar_pendentes", lambda *a, **k: 0)
+    monkeypatch.setattr(garimpo, "remedir", lambda *a, **k: 0)
+    monkeypatch.setattr(garimpo, "_proximos_termos", lambda: [("Finanças", "ruim"), ("Finanças", "bom")])
+
+    def buscar(termo, **k):
+        if termo == "ruim":
+            raise RuntimeError("quebrou")
+        feitas.append(termo)
+        return []
+    monkeypatch.setattr(youtube, "buscar", buscar)
+    monkeypatch.setattr(garimpo, "achar_parecidos_dos_salvos", lambda *a, **k: None)
+    monkeypatch.setattr(garimpo, "aprender_termos", lambda *a, **k: 0)
+    resultado = garimpo.rodar(print)
+    assert feitas == ["bom"] and resultado["buscas"] == 1
+    assert banco.um("SELECT estado FROM garimpos")["estado"] == "pronto"
+
+
+def test_completar_pendentes_tem_prazo(db, monkeypatch):
+    for n in range(5):
+        banco.gravar("canais", "id", {"id": f"UC{n:022d}", "titulo": "c", "no_radar": 1})
+    relogio = iter(range(0, 10000, 100))
+    monkeypatch.setattr(garimpo.time, "monotonic", lambda: next(relogio))   # cada canal leva 100 s
+    monkeypatch.setattr(garimpo, "_completar", lambda c: None)
+    assert garimpo.completar_pendentes(print, minutos=5) == 3
+
+
+def test_garimpo_que_caiu_e_refeito_uma_hora_depois():
+    from datetime import datetime, timedelta, timezone
+    def ha(horas, estado):
+        return {"inicio": (datetime.now(timezone.utc) - timedelta(hours=horas)).isoformat(), "estado": estado}
+    assert garimpo.hora_de_garimpar(None)
+    assert not garimpo.hora_de_garimpar(ha(2, "pronto"))
+    assert garimpo.hora_de_garimpar(ha(24, "pronto"))
+    assert garimpo.hora_de_garimpar(ha(2, "rodando"))       # o Radar foi desligado no meio
+    assert garimpo.hora_de_garimpar(ha(2, "erro"))
+    assert not garimpo.hora_de_garimpar(ha(0.5, "erro"))
