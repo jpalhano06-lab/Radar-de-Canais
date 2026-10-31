@@ -73,6 +73,8 @@ def _perguntar(modelo: str, sistema: str, conteudo, tentativas: int = 4, esperar
         if r.status_code in (401, 403):
             _RECUSADAS.add(chave)
             continue
+        if r.status_code == 400:
+            return None     # pedido recusado (capa que não existe mais): é o mesmo em toda chave
         if r.status_code == 429 and esperar > 0:
             # o Groq diz em quantos segundos o minuto da chave volta
             m = re.search(r"try again in ([\d.]+)s", r.text)

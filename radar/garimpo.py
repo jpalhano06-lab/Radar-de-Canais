@@ -244,7 +244,7 @@ def remedir(log, orcamento: int) -> int:
         lote = ids[i:i + 20]
         for c in medir.medir_canais(lote, forcar=True).values():
             if c["no_radar"]:
-                _completar(c)
+                _completar(c, rapido=True)     # o Groq fica com o completar_pendentes, no fim do garimpo
         feitos += len(lote)
     if feitos:
         log(f"{feitos} canais medidos de novo (em alta e novidades)")
@@ -297,7 +297,6 @@ def rodar(log=print, unidades: int | None = None) -> dict:
     estado = "pronto"
     try:
         anotar(f"Garimpo começou com {orcamento} unidades de cota.")
-        completar_pendentes(anotar)
         remedir(anotar, int(orcamento * FRACAO_REMEDIR))
         depois = (datetime.now(timezone.utc) - timedelta(days=DIAS_DO_VIDEO)).strftime("%Y-%m-%dT%H:%M:%SZ")
         for n, (nicho, termo) in enumerate(_proximos_termos()):
@@ -323,6 +322,9 @@ def rodar(log=print, unidades: int | None = None) -> dict:
             anotar(f"[{nicho}] \"{termo}\": {len(ids)} canais vistos, {len(entraram)} entraram")
         achar_parecidos_dos_salvos(anotar, orcamento - (youtube.cota_hoje()["usado"] - inicio), contagem)
         aprender_termos(anotar)
+        # por último: o Groq pode esperar o limite do minuto, e a cota já foi gasta nas buscas (2026-10-30, o garimpo
+        # ficou 20 horas preso aqui antes da primeira busca)
+        completar_pendentes(anotar)
     except youtube.SemCota as erro:
         anotar(str(erro))
     except Exception as erro:  # o garimpo nunca derruba o servidor

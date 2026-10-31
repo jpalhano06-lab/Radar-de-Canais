@@ -46,7 +46,10 @@ se o canal é sem rosto (até 3 capas pequenas por pedido: o Qwen do Groq aceita
 salvo procura os parecidos uma vez por semana e eles vão para os Achados de quem salvou.
 
 **Cota**: 10.000 unidades por dia por chave (volta às 5 h de Brasília). Busca custa 100, medir canal novo uns 3.
-O garimpo usa 60% do que sobrou (`RADAR_COTA_GARIMPO`). Primeiro teste (2026-10-13): 4 buscas, 522 unidades,
+O garimpo usa 60% do que sobrou (`RADAR_COTA_GARIMPO`). As buscas vêm primeiro; as perguntas ao Groq dos canais
+que ficaram sem nicho ou sem a resposta do rosto, por último (2026-10-31: o garimpo do dia 30 ficou 20 horas preso
+nelas, antes da primeira busca, porque 149 canais tinham capas que não existem mais e cada um esperava o limite do
+minuto do Groq; o medir de novo não pergunta mais ao Groq, e pedido recusado não é repetido nas outras chaves). Primeiro teste (2026-10-13): 4 buscas, 522 unidades,
 25 canais no Radar, 114 outliers. Uma chave rende uns 300 canais novos por dia; mais chaves (de outros projetos do
 Google Cloud) rendem mais.
 
