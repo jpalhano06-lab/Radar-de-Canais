@@ -88,6 +88,76 @@ def salvar_rodape(nome: str, texto: str) -> str:
     return rodape_do_perfil(nome)
 
 
+# ------------------------------------------------- quem gera as imagens de IA do canal, no perfil da fábrica
+# Pedido do usuário em 2026-11-01, no formato do Robô do Dotti: a pessoa escolhe entre a **assinatura do ChatGPT**
+# (a conta logada neste computador pelo `codex login`, que não cobra por imagem, só gasta o limite dela) e a
+# **chave de API** de sempre. Quem gera é a fábrica, então a escolha mora no perfil do canal lá (imagens.provedor),
+# como o rodapé: um lugar só. Virando para a assinatura, o provedor de antes fica guardado em imagens.provedor_reserva
+# e é ele que atende as imagens que faltarem se o limite acabar no meio do vídeo.
+IMAGENS_QUEM = {"assinatura": "Assinatura do ChatGPT", "api": "Chave de API (o padrão da fábrica)"}
+RESERVA_PADRAO = "openrouter"
+
+
+def _bloco_imagens(texto: str):
+    return re.search(r"(?ms)^imagens:\n((?:[ \t].*\n|\n(?=[ \t]))*)", texto)
+
+
+def _campo(bloco: str, campo: str) -> str:
+    achado = re.search(rf"(?m)^[ \t]+{campo}:[ \t]*(.*?)[ \t]*(#.*)?$", bloco or "")
+    return achado.group(1).strip().strip("\"'") if achado else ""
+
+
+def imagens_do_perfil(nome: str) -> dict:
+    """Quem gera as imagens deste canal ("assinatura" ou "api") e qual provedor de chave atende. Só olha o próprio
+    arquivo do canal: sem nada escrito nele, vale o que ele herda (o base-documentario), que é chave de API."""
+    arquivo = _arquivo_do_perfil(nome)
+    bloco = _bloco_imagens(arquivo.read_text(encoding="utf-8", errors="ignore")) if arquivo else None
+    provedor = _campo(bloco.group(1), "provedor").lower() if bloco else ""
+    return {"quem": "assinatura" if provedor == "assinatura" else "api",
+            "reserva": (_campo(bloco.group(1), "provedor_reserva").lower() if bloco else "") or RESERVA_PADRAO,
+            "provedor": provedor}
+
+
+def salvar_imagens_quem(nome: str, quem: str) -> dict:
+    """Escreve imagens.provedor no perfil do canal, sem encostar no resto do arquivo nem no resto do bloco."""
+    arquivo = _arquivo_do_perfil(nome)
+    if not arquivo:
+        raise ValueError("Este canal não tem perfil na fábrica.")
+    if quem not in IMAGENS_QUEM:
+        raise ValueError("Escolha entre a assinatura do ChatGPT e a chave de API.")
+    atual = imagens_do_perfil(nome)
+    if quem == "assinatura":
+        # o provedor de chave que estava valendo vira a reserva, para as imagens que faltarem
+        guardar = atual["provedor"] if atual["provedor"] and atual["provedor"] != "assinatura" else atual["reserva"]
+        novos = {"provedor": "assinatura", "provedor_reserva": guardar or RESERVA_PADRAO}
+    else:
+        # volta para a chave de API: o provedor que estava guardado na reserva, e a reserva sai do arquivo
+        novos = {"provedor": atual["reserva"] if atual["provedor"] == "assinatura" else atual["provedor"],
+                 "provedor_reserva": ""}
+    _gravar_campos_de_imagens(arquivo, novos)
+    return imagens_do_perfil(nome)
+
+
+def _gravar_campos_de_imagens(arquivo, campos: dict[str, str]) -> None:
+    """Põe, troca ou tira cada campo dentro do bloco imagens: do perfil. Campo com valor "" sai do arquivo; o bloco
+    só nasce se algum campo tiver valor, e some quando fica vazio."""
+    texto = arquivo.read_text(encoding="utf-8", errors="ignore")
+    bloco = _bloco_imagens(texto)
+    linhas = (bloco.group(1).rstrip("\n").split("\n") if bloco and bloco.group(1).strip() else [])
+    for campo, valor in campos.items():
+        marca = re.compile(rf"(?m)^[ \t]+{campo}:")
+        linhas = [l for l in linhas if not marca.match(l)]
+        if valor:
+            linhas.append(f"  {campo}: {valor}")
+    corpo = "\n".join(l for l in linhas if l.strip())
+    novo = f"imagens:\n{corpo}\n" if corpo else ""
+    if bloco:
+        texto = texto[:bloco.start()] + novo + texto[bloco.end():]
+    elif novo:
+        texto = texto.rstrip("\n") + "\n\n" + novo
+    arquivo.write_text(texto, encoding="utf-8")
+
+
 def perfis() -> list[dict]:
     return [_perfil(p) | {"perfil": p} for p in roteiro_claude.perfis_da_fabrica()]
 

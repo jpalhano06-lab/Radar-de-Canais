@@ -174,6 +174,12 @@ IDIOMA = {"português": "pt", "inglês": "en", "espanhol": "es", "francês": "fr
           "romeno": "ro", "búlgaro": "bg", "croata": "hr"}
 
 
+def chatgpt_estado() -> dict:
+    """A conta ChatGPT logada no computador da fábrica, o plano e quanto já foi usado das janelas de limite. É a
+    fábrica quem gera as imagens, então é lá que o login mora (pedido do usuário em 2026-11-01)."""
+    return _pedir("GET", "/api/chatgpt/estado", tempo=30)
+
+
 def vozes(lingua: str, busca: str = "", genero: str = "", pagina: int = 0) -> dict:
     """A biblioteca de vozes da GenAI Pro pela fábrica, só as da língua, com a prévia em áudio. Não gasta crédito."""
     from urllib.parse import urlencode

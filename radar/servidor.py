@@ -1752,7 +1752,9 @@ def producao_config(canal_id: str, u: dict = Depends(usuario)):
                   "rodape": producao.rodape_do_perfil(perfil),
                   "rodapes_padrao": {t: publicar.rodape_padrao(cfg.get("lingua") or "", t, cfg.get("canal") or "",
                                                                cfg.get("marcas") or "") for t in publicar.TIPOS},
-                  "tipos_de_modelo": publicar.TIPOS}
+                  "tipos_de_modelo": publicar.TIPOS,
+                  # quem gera as imagens de IA deste canal também mora no perfil da fábrica (imagens.provedor)
+                  "imagens": producao.imagens_do_perfil(perfil), "imagens_quem": producao.IMAGENS_QUEM}
 
 
 @app.post("/api/producao/{canal_id}")
@@ -1764,6 +1766,12 @@ async def producao_salvar(canal_id: str, request: Request, u: dict = Depends(usu
     if "rodape" in dados and cfg.get("perfil"):
         try:
             cfg["rodape"] = producao.salvar_rodape(cfg["perfil"], str(dados.get("rodape") or ""))
+        except ValueError as erro:
+            raise HTTPException(400, str(erro))
+    # quem gera as imagens de IA: também no perfil da fábrica, que é quem gera
+    if dados.get("imagens_quem") and cfg.get("perfil"):
+        try:
+            cfg["imagens"] = producao.salvar_imagens_quem(cfg["perfil"], str(dados["imagens_quem"]))
         except ValueError as erro:
             raise HTTPException(400, str(erro))
     return cfg
@@ -2272,6 +2280,16 @@ def _integracao(funcao, *args):
 @app.get("/api/integracoes")
 async def integracoes_estado(u: dict = Depends(_chaves_aqui)):
     return await run_in_threadpool(integracoes.estado)
+
+
+@app.get("/api/chatgpt/estado")
+async def chatgpt_estado(u: dict = Depends(usuario)):
+    """A assinatura do ChatGPT que gera as imagens: de quem é a conta, o plano e quanto já foi usado das janelas de
+    limite. Quem tem o login é a fábrica; o Radar só mostra."""
+    try:
+        return {"fabrica_ligada": True, **await run_in_threadpool(fabrica_api.chatgpt_estado)}
+    except fabrica_api.SemFabrica as erro:
+        return {"conectada": False, "fabrica_ligada": False, "motivo": str(erro)}
 
 
 @app.post("/api/integracoes/{servico}/testar")

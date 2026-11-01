@@ -1587,3 +1587,26 @@ encontrado". O pedido voltava para a fila a cada 20 s e os de trás nem o roteir
 - **Qual fábrica está na porta 8080**: a de `RADAR_FABRICA` (`fabrica-videos`) é a que o Radar enche de projetos. O
   `LIGAR-TIPLABS` de outra pasta rouba a porta e o Radar não acha nada; o vigia do `fabrica-videos` não religa, porque
   a intrusa responde no `/api/saude`. Testes em `tests/test_fila.py`.
+
+## As imagens de IA pela assinatura do ChatGPT (2026-11-01)
+
+O Robô do Dotti passou a deixar a pessoa gerar as imagens pela assinatura do ChatGPT, em vez da chave de API. Agora
+o Radar e a fábrica fazem o mesmo. É o mesmo caminho que o roteiro já usava com o Claude (`claude -p` pela
+assinatura do claude.ai): quem entra aqui é o **Codex deste computador**, logado com `codex login` na conta ChatGPT.
+
+- **Quem gera é a fábrica**, então o login e a geração moram nela: `fabrica/chatgpt_assinatura.py` lê
+  `~/.codex/auth.json` (nunca a `OPENAI_API_KEY`, que cobraria por fora), renova o token sozinho e pede a imagem na
+  mesma porta que o Codex usa (`chatgpt.com/backend-api/codex/responses`, com a ferramenta `image_generation` e o
+  `gpt-image-2`). **Não é API pública**: a OpenAI pode mudá-la sem aviso, e por isso nada depende dela.
+- **O perfil do canal escolhe**: `imagens.provedor: assinatura` liga, e `imagens.provedor_reserva` (padrão
+  `openrouter`) guarda quem atende se o limite acabar **no meio de um vídeo** — as imagens que faltam saem pela
+  chave de API, o vídeo nunca para. Sem login nenhum, a reserva assume desde a primeira imagem, com aviso no log.
+- **No Radar**, na *Configuração do canal*, entrou **🖼 Quem gera as imagens de IA**: assinatura do ChatGPT ou chave
+  de API. A escolha é gravada direto no perfil da fábrica (como o rodapé), em um lugar só.
+- **Integrações › Conexões da conta** mostra o cartão do ChatGPT: a conta ligada, o plano e quanto já foi usado das
+  duas janelas que o ChatGPT conta (5 horas e semana). Elas vêm nos cabeçalhos de cada pedido e ficam em
+  `chatgpt_limites.json` na fábrica, para a tela não precisar gerar nada só para saber.
+- **Custo**: imagem pela assinatura entra nos Custos como **US$ 0,00** (`custos.preco_da_imagem`); o que gasta é o
+  limite da assinatura.
+- Rotas novas: `GET /api/chatgpt/estado` na fábrica e no Radar; a assinatura também aparece em
+  `GET /api/imagens/provedores` da fábrica. Testes em `tests/test_imagens_assinatura.py`.

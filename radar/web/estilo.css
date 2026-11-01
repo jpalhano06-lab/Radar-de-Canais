@@ -1122,6 +1122,19 @@ nav .subs a.ativo { transform: none; }
 .ig-conta a { color: var(--acento); margin-left: auto; }
 @media (max-width: 600px) { .ig-grade { grid-template-columns: 1fr; } .ig-acoes { margin-left: 0; } }
 
+/* Conexões da conta: a assinatura do ChatGPT que gera as imagens de IA (2026-11-01) */
+.ig-contas { display: grid; gap: 12px; }
+.gpt-conta { display: grid; gap: 8px; align-items: start; }
+.gpt-cab { display: flex; align-items: center; gap: 10px; }
+.gpt-conta .sub { margin: 0; }
+.gpt-janelas { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 14px; margin-top: 4px; }
+.gpt-janela { display: grid; grid-template-columns: 1fr auto; gap: 4px 10px; font-size: 13px; }
+.gpt-janela small { grid-column: 1 / -1; color: var(--fraco); font-size: 11px; }
+.gpt-barra { grid-column: 1 / -1; height: 6px; border-radius: 999px; background: var(--painel2); overflow: hidden; }
+.gpt-barra i { display: block; height: 100%; background: var(--acento); border-radius: 999px; }
+.pc-imagens { width: 100%; margin-top: 2px; }
+.pc-imagens-sub { color: var(--fraco); font-size: 11px; line-height: 1.4; }
+
 /* Nova produção (2026-10-18) */
 .bt-nova { background: var(--acento) !important; color: #fff !important; border-color: transparent !important; font-weight: 700; }
 .np { background: var(--painel); border: 1px solid var(--linha); border-radius: 20px; width: min(1060px, calc(100vw - 32px)); max-height: 92vh;

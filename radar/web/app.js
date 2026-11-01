@@ -1406,12 +1406,62 @@ async function formProducao(caixa, canalId, depois = () => {}, perguntarDeNovo =
         <div><span class="ic">🎙</span><small>Voz</small><b>${esc(p.voz || p.perfil || "sem voz")}</b></div>
         <div><span class="ic">✍️</span><small>Agente de roteiro</small><b>${esc(agenteDe(p.projeto_roteiro_id))}</b>
           <button class="link-editar" id="pc-editar-agente" style="margin:4px 0 0">${p.projeto_roteiro_id ? "editar o agente" : "criar um agente"}</button></div>
-        <div><span class="ic">⏱</span><small>Tempo dos vídeos</small><b>${esc(p.minutos)} minutos</b></div></div></div>`;
+        <div><span class="ic">⏱</span><small>Tempo dos vídeos</small><b>${esc(p.minutos)} minutos</b></div>
+        <div><span class="ic">🖼</span><small>Quem gera as imagens de IA</small>
+          <select id="pc-imagens" class="pc-imagens">${Object.entries(p.imagens_quem || { api: "Chave de API" })
+            .map(([v, nome]) => `<option value="${esc(v)}" ${((p.imagens || {}).quem || "api") === v ? "selected" : ""}>${esc(nome)}</option>`).join("")}</select>
+          <small id="pc-imagens-sub" class="pc-imagens-sub">${esc(textoDaAssinatura(p))}</small></div></div></div>`;
     caixa.querySelector("#pc-editar").onclick = () => perguntas[0]();
     caixa.querySelector("#pc-editar-agente").onclick = () => editarAgente();
+    const quem = caixa.querySelector("#pc-imagens");
+    quem.onchange = async () => {
+      const antes = (p.imagens || {}).quem || "api";
+      try {
+        const novo = await api(`/api/producao/${encodeURIComponent(canalId)}`, { method: "POST", body: { ...p, imagens_quem: quem.value } });
+        p.imagens = novo.imagens;
+        aviso(quem.value === "assinatura"
+          ? "As imagens deste canal passam a sair pela assinatura do ChatGPT. Não gasta crédito: gasta o limite dela."
+          : "As imagens deste canal voltam a sair pela chave de API da fábrica.");
+        resumo();
+      } catch (e) { aviso(porque(e)); quem.value = antes; }
+    };
+    // a conta ligada e quanto já foi usado chegam depois, sem segurar a tela
+    if (((p.imagens || {}).quem || "api") === "assinatura") {
+      assinaturaDoChatGPT().then((a) => {
+        const alvo = caixa.querySelector("#pc-imagens-sub");
+        if (alvo) alvo.textContent = textoDaAssinatura(p, a);
+      });
+    }
   };
   p.salvo && !perguntarDeNovo ? resumo() : perguntas[0]();
   return p;
+}
+
+// A assinatura do ChatGPT que gera as imagens de IA (2026-11-01, no formato do Robô do Dotti): quem tem o login é a
+// fábrica (`codex login` no computador dela), o Radar só mostra de quem é a conta e quanto já foi usado do limite.
+let _assinatura = null;
+async function assinaturaDoChatGPT(recarregar = false) {
+  if (!_assinatura || recarregar) _assinatura = api("/api/chatgpt/estado").catch((e) => ({ conectada: false, motivo: e.message }));
+  return _assinatura;
+}
+
+function usoDaJanela(a, chave) {
+  const j = ((a || {}).janelas || {})[chave];
+  return j && typeof j.usado_pct === "number" ? `${j.usado_pct}% usado` : "—";
+}
+
+function textoDaAssinatura(p, a) {
+  if (((p.imagens || {}).quem || "api") !== "assinatura")
+    return "A fábrica gera pela chave de API de sempre (OpenRouter, Google ou Kie), e cada imagem custa. "
+      + "Pela assinatura do ChatGPT não custa nada por imagem: gasta o limite dela.";
+  const reserva = (p.imagens || {}).reserva || "openrouter";
+  if (!a) return "Pela conta ChatGPT ligada à fábrica. Não custa por imagem: gasta o limite dela.";
+  if (!a.conectada)
+    return a.fabrica_ligada === false
+      ? "A fábrica está desligada, então não dá para conferir a conta do ChatGPT agora."
+      : `Sem login do ChatGPT na fábrica: rode \`codex login\` no computador dela. Até lá as imagens saem pelo ${reserva}.`;
+  return `${a.email || "conta ligada"} · ${a.plano || "ChatGPT"}. Janela de 5 horas: ${usoDaJanela(a, "janela")} · `
+    + `Semana: ${usoDaJanela(a, "semana")}. Se o limite acabar no meio de um vídeo, as imagens que faltam saem pelo ${reserva}.`;
 }
 
 // O ChatGPT e o Gemini não deixam ser abertos dentro de outro site (bloqueiam o iframe). A lateral é uma janela do
@@ -2772,12 +2822,39 @@ async function integracoes(dados) {
     conta = !y.configurado ? "Login do Google não configurado" : y.conectados.length
       ? `${y.conectados.length === 1 ? "1 canal conectado" : `${y.conectados.length} canais conectados`} ao YouTube Studio` : "Nenhum canal conectado";
   } catch { conta = "—"; }
+  // a assinatura do ChatGPT é uma conta, não uma chave: ela gera as imagens de IA sem custo por imagem, gastando o
+  // limite dela. Quem guarda o login é a fábrica (`codex login` no computador dela)
+  const a = await assinaturaDoChatGPT(true);
+  const barra = (chave, nome) => {
+    const j = ((a.janelas || {})[chave]) || {};
+    const pct = typeof j.usado_pct === "number" ? j.usado_pct : null;
+    const volta = j.volta_em ? ` · volta a 0% ${new Date(j.volta_em * 1000).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}` : "";
+    return `<div class="gpt-janela"><span>${esc(nome)}</span><b>${pct === null ? "—" : `${pct}% usado`}</b>
+      <div class="gpt-barra"><i style="width:${Math.max(0, Math.min(100, pct || 0))}%"></i></div>
+      <small>${pct === null ? "Ainda sem imagem gerada por aqui: o limite aparece depois do primeiro vídeo." : esc(volta.replace(" · ", ""))}</small></div>`;
+  };
+  const cartaoGpt = `<div class="bloco ig-conta gpt-conta">
+      <div class="gpt-cab"><b>ChatGPT (assinatura)</b>
+        <span class="ig-st ${a.conectada ? "ok" : "erro"}">${a.conectada ? "✓ conectada" : "não conectada"}</span></div>
+      ${a.conectada
+        ? `<span>${esc(a.email || "conta ligada")} · ${esc(a.plano || "ChatGPT")}</span>
+           <p class="sub">Você escolhe em cada canal, na <b>Configuração do canal › Quem gera as imagens de IA</b>, entre
+             esta assinatura e a chave de API. Pela assinatura <b>nenhuma imagem é cobrada</b>: gasta o limite dela.
+             Se o limite acabar no meio de um vídeo, as imagens que faltam saem pela chave de API da fábrica.</p>
+           <div class="gpt-janelas">${barra("janela", "Janela de 5 horas")}${barra("semana", "Semana")}</div>`
+        : `<span>${esc(a.fabrica_ligada === false ? "A fábrica está desligada: ligue a fábrica para ver a conta."
+                     : a.motivo || "Sem login do ChatGPT no computador da fábrica.")}</span>
+           <p class="sub">Para ligar, rode <code>codex login</code> no computador da fábrica e entre com a conta da
+             assinatura. Enquanto isso as imagens de IA saem pela chave de API.</p>`}
+    </div>`;
   tela.innerHTML = titulo("Integrações", "Saldos e chaves dos serviços que o Radar e a fábrica usam.") +
     (d.fabrica_ligada ? "" : '<div class="chamada aviso">A fábrica está desligada: as chaves dela ficam só para ver.</div>') +
     (d.aviso ? `<div class="chamada aviso">${esc(d.aviso)}</div>` : "") +
     `<h2 class="ig-h2">Saldos</h2><div class="ig-saldos">${saldos}</div>
      <h2 class="ig-h2">Chaves de API</h2><div class="ig-grade">${cartoes}</div>
-     <h2 class="ig-h2">Contas</h2><div class="bloco ig-conta"><b>Google / YouTube Studio</b><span>${conta}</span><a href="#/canais">Abrir Canais</a></div>`;
+     <h2 class="ig-h2">Conexões da conta</h2><p class="sub">Autorizações separadas das chaves de API.</p>
+     <div class="ig-contas">${cartaoGpt}
+       <div class="bloco ig-conta"><b>Google / YouTube Studio</b><span>${conta}</span><a href="#/canais">Abrir Canais</a></div></div>`;
 
   const cartao = (el) => el.closest(".ig-cartao");
   const indice = (el) => Number(el.closest(".ig-chave")?.dataset.i ?? -1);
