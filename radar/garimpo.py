@@ -1,7 +1,8 @@
 """O garimpo: procura canais novos que estão indo bem, mede, separa por nicho e marca os sem rosto.
 
-Roda uma vez por dia sozinho (servidor) ou com `python -m radar garimpar`. Gasta só a parte da cota de hoje que
-config.COTA_DO_GARIMPO deixa, e para quando ela acaba: o resto fica para a extensão."""
+Fica rodando sozinho (servidor), de PAUSA_MINUTOS em PAUSA_MINUTOS, ou roda uma vez com `python -m radar garimpar`.
+Gasta só a fatia da cota de hoje que o ajuste `garimpo_percentual` deixa, e para quando ela acaba: o resto fica para
+a extensão. O ajuste `garimpo_ligado` desliga o automático sem desligar o botão "Gastar tudo agora"."""
 import json
 import re
 import threading
@@ -289,14 +290,65 @@ def aprender_termos(log, nichos_por_vez: int = 5) -> int:
     return novos
 
 
+# ---------------------------------------------------------------- os ajustes do garimpo (2026-11-01)
+# Antes o garimpo rodava uma vez por dia e a fatia da cota era a RADAR_COTA_GARIMPO do .env, que só mudava mexendo
+# no arquivo e religando. Pedido do usuário: "coloque uma opção de pode gastar e a opção de quantos por cento", e
+# "o radar tem que ficar garimpando". Agora as duas moram na tabela `ajustes` (o mesmo jeito do fila_limite) e
+# valem na hora, e o garimpo recomeça sozinho enquanto a fatia do dia não acabar.
+
+PERCENTUAL_PADRAO = max(1, min(100, int(round(COTA_DO_GARIMPO * 100))))
+PAUSA_MINUTOS = 10         # descanso entre um garimpo e o próximo, para não emendar um no outro sem respirar
+UMA_BUSCA = 110            # custo de uma busca mais a medida do que ela traz: abaixo disso não vale recomeçar
+
+
+def ligado() -> bool:
+    """Se o garimpo automático pode gastar cota. Desligado, só o botão 'Gastar tudo agora' roda."""
+    linha = banco.um("SELECT valor FROM ajustes WHERE chave='garimpo_ligado'")
+    return linha["valor"] == "1" if linha else True
+
+
+def definir_ligado(v: bool) -> bool:
+    banco.executar("INSERT OR REPLACE INTO ajustes (chave, valor) VALUES ('garimpo_ligado', ?)", "1" if v else "0")
+    return bool(v)
+
+
+def percentual() -> int:
+    """Quanto da cota do dia o garimpo pode gastar, de 1 a 100. O resto fica para a extensão e para as telas."""
+    linha = banco.um("SELECT valor FROM ajustes WHERE chave='garimpo_percentual'")
+    try:
+        return max(1, min(100, int(linha["valor"]))) if linha else PERCENTUAL_PADRAO
+    except (TypeError, ValueError):
+        return PERCENTUAL_PADRAO
+
+
+def definir_percentual(n: int) -> int:
+    n = max(1, min(100, int(n)))
+    banco.executar("INSERT OR REPLACE INTO ajustes (chave, valor) VALUES ('garimpo_percentual', ?)", str(n))
+    return n
+
+
+def fatia_do_dia() -> dict:
+    """A fatia da cota de hoje que é do garimpo, quanto ele já gastou e quanto ainda pode gastar.
+
+    A conta é sobre o total do dia, não sobre o que está livre agora: assim a porcentagem é mesmo um teto diário e
+    sobra cota para a extensão, em vez de o garimpo ir comendo uma fatia do que resta a cada rodada até não sobrar
+    nada. O gasto sai do `cota_motivo`, onde o @youtube.por("garimpo") já carimba tudo que o garimpo pede."""
+    cota = youtube.cota_hoje()
+    teto = int(cota["total"] * percentual() / 100)
+    gasto = next((m["unidades"] for m in youtube.gasto_por_motivo() if m["motivo"] == "garimpo"), 0)
+    return {"teto": teto, "gasto": gasto, "resta": max(0, min(teto - gasto, cota["livre"]))}
+
+
 def hora_de_garimpar(ultimo: dict | None) -> bool:
-    """O garimpo de todo dia: 23 horas depois do último; o que caiu no meio ou deu erro, uma hora depois."""
-    if _RODANDO.locked():
+    """O garimpo fica rodando enquanto a fatia do dia aguentar: recomeça PAUSA_MINUTOS depois do anterior e só para
+    quando o que resta da fatia não paga nem uma busca (ou quando a pessoa desliga o 'pode gastar')."""
+    if _RODANDO.locked() or not ligado():
+        return False
+    if fatia_do_dia()["resta"] < UMA_BUSCA:
         return False
     if not ultimo:
         return True
-    dias = metricas.dias_desde(ultimo["inicio"])
-    return dias > 23 / 24 or (ultimo.get("estado") in ("rodando", "erro") and dias > 1 / 24)
+    return metricas.dias_desde(ultimo["inicio"]) > PAUSA_MINUTOS / 1440
 
 
 @youtube.por("garimpo")
@@ -313,7 +365,7 @@ def rodar(log=print, unidades: int | None = None) -> dict:
 
     contagem = {"novos": 0, "buscas": 0}
     inicio = youtube.cota_hoje()["usado"]
-    orcamento = unidades if unidades is not None else int(youtube.cota_hoje()["livre"] * COTA_DO_GARIMPO)
+    orcamento = unidades if unidades is not None else fatia_do_dia()["resta"]
     estado = "pronto"
     try:
         anotar(f"Garimpo começou com {orcamento} unidades de cota.")
@@ -406,6 +458,8 @@ def estado_gasto() -> dict:
     rodando = GASTANDO["rodando"] or _RODANDO.locked()
     ultimo = banco.um("SELECT inicio FROM garimpos ORDER BY id DESC LIMIT 1")
     return {**cota, "garimpando": rodando, "ultimo_garimpo": ultimo["inicio"] if ultimo else "",
+            # os dois ajustes e a fatia do dia, para o quadro dos créditos mostrar e deixar mudar
+            "garimpo_ligado": ligado(), "garimpo_percentual": percentual(), "fatia": fatia_do_dia(),
             # em que a cota de hoje foi gasta, para a tela não só dizer quanto sobrou mas onde foi
             "motivos": [{**m, "rotulo": youtube.MOTIVOS.get(m["motivo"], m["motivo"])}
                         for m in youtube.gasto_por_motivo()],

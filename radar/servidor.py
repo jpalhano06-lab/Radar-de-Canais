@@ -2799,6 +2799,21 @@ def cota_gastar(u: dict = Depends(admin)):
     return {"ok": True}
 
 
+@app.post("/api/cota/garimpo")
+async def cota_garimpo(request: Request, u: dict = Depends(admin)):
+    """Os dois ajustes do garimpo automático: se pode gastar e quantos por cento da cota do dia ele pode usar."""
+    d = await request.json() if request.headers.get("content-length", "0") != "0" else {}
+    if "ligado" in d:
+        garimpo.definir_ligado(bool(d["ligado"]))
+    if d.get("percentual") is not None:
+        try:
+            garimpo.definir_percentual(d["percentual"])
+        except (TypeError, ValueError):
+            raise HTTPException(400, "A porcentagem tem de ser um número de 1 a 100.")
+    return {"ok": True, "ligado": garimpo.ligado(), "percentual": garimpo.percentual(),
+            "fatia": garimpo.fatia_do_dia()}
+
+
 @app.get("/api/admin/cota")
 def admin_cota(u: dict = Depends(admin)):
     return {"cota": youtube.cota_hoje(),
@@ -2828,8 +2843,9 @@ async def admin_garimpar(request: Request, u: dict = Depends(admin)):
 # ---------------------------------------------------------------- garimpo de todo dia
 
 def _relogio():
-    """Uma vez por hora confere se o último garimpo tem mais de 23 horas, e roda se tiver. O que não terminou (o Radar
-    foi desligado no meio) ou deu erro é refeito uma hora depois, sem esperar o dia seguinte."""
+    """De dois em dois minutos pergunta ao garimpo se é hora, e roda se for. Quem decide é o `hora_de_garimpar`:
+    ele recomeça dez minutos depois do anterior enquanto a fatia do dia aguentar, então o Radar fica garimpando em
+    vez de esperar o dia seguinte (pedido do usuário em 2026-11-01). Conferir é barato: só lê o banco."""
     time.sleep(30)
     while True:
         try:
@@ -2838,7 +2854,7 @@ def _relogio():
                 garimpo.rodar()
         except Exception as erro:
             print("garimpo automático falhou:", erro)
-        time.sleep(3600)
+        time.sleep(120)
 
 
 def _acordado():

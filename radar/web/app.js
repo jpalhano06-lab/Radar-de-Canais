@@ -4207,17 +4207,43 @@ async function quadroCota() {
   const botao = !EU.admin ? "" : c.garimpando
     ? `<button class="botao" disabled>Garimpando…${c.orcamento ? ` ${num(c.gasto)} de ${num(c.orcamento)}` : ""}</button>`
     : `<button class="botao" id="gastar-tudo" ${c.livre < 110 ? "disabled" : ""} data-dica="Usa toda a cota do YouTube que sobrou hoje para achar canais novos e vídeos que estouraram. Bom de apertar antes de desligar o PC: a cota volta às 5 h e o que não for usado se perde.">⚡ Gastar tudo agora</button>`;
-  // o garimpo automático roda 23 h depois do último, se o Radar estiver ligado
-  const proximo = c.ultimo_garimpo ? new Date(Date.parse(c.ultimo_garimpo) + 23 * 36e5) : null;
-  const quando = !proximo || proximo < new Date() ? "na próxima hora"
-    : (proximo.toDateString() === new Date().toDateString() ? "hoje" : "amanhã") + ` às ${proximo.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}`;
+  // o garimpo fica rodando enquanto a fatia do dia aguentar: recomeça 10 min depois do anterior
+  const fatia = c.fatia || { teto: 0, gasto: 0, resta: 0 };
+  const quando = !c.garimpo_ligado ? "desligado"
+    : c.garimpando ? "rodando agora"
+    : fatia.resta < 110 ? "a parte de hoje acabou"
+    : "daqui a alguns minutos";
+  // os dois ajustes só aparecem para o admin, que é quem pode mexer na cota
+  const ajuste = !EU.admin ? "" : `<div class="garimpo-ajuste">
+    <label class="liga" data-dica="Desligado, o Radar para de garimpar sozinho e não gasta mais nada da cota. O botão Gastar tudo agora continua funcionando.">
+      <input type="checkbox" id="garimpo-ligado" ${c.garimpo_ligado ? "checked" : ""}> Pode gastar</label>
+    <label class="pct" data-dica="Quanto da cota do dia inteiro o garimpo pode usar. O resto fica para a extensão e para as buscas que você faz nas telas.">
+      Até <input type="number" id="garimpo-pct" min="1" max="100" step="5" value="${c.garimpo_percentual}">% do dia</label>
+    <span class="sub">${num(fatia.gasto)} de ${num(fatia.teto)} usados${fatia.resta < 110 && c.garimpo_ligado ? " — acabou por hoje" : ""}</span>
+  </div>`;
   caixa.innerHTML = `<div class="quadro-cota"><b>Créditos do YouTube</b>
     <div class="barra-cota"><i style="width:${pct}%"></i></div>
     <span class="sub"><b>${num(c.livre)}</b> livres de ${num(c.total)}</span>
-    <span class="sub auto-garimpo" data-dica="Todo dia, sozinho, o Radar procura canais novos e mede de novo os seus com 60% da cota livre. Só roda com o Radar ligado: com o PC desligado ele não roda e não recupera o dia. O próximo é 23 h depois do último. A cota volta às 5 h e o que sobrar se perde; por isso o Gastar tudo antes de desligar.">🕑 Garimpo automático: ${c.garimpando ? "rodando agora" : quando} <u>?</u></span>${botao}</div>`;
+    <span class="sub auto-garimpo" data-dica="O Radar fica procurando canais novos e medindo de novo os seus, recomeçando alguns minutos depois de cada rodada, até gastar a parte da cota que você deixou para ele. Só roda com o Radar ligado: com o PC desligado ele para. A cota volta às 5 h e o que sobrar se perde; por isso o Gastar tudo antes de desligar.">🕑 Garimpo automático: ${quando} <u>?</u></span>${ajuste}${botao}</div>`;
   const b = document.getElementById("gastar-tudo");
   if (b) b.onclick = () => janelaGastar(c);
+  const liga = document.getElementById("garimpo-ligado");
+  if (liga) liga.onchange = () => mudarGarimpo({ ligado: liga.checked });
+  const campo = document.getElementById("garimpo-pct");
+  // onchange (não oninput): só grava quando a pessoa termina de digitar ou sai do campo
+  if (campo) campo.onchange = () => mudarGarimpo({ percentual: Number(campo.value) });
   relogioCota = setTimeout(quadroCota, c.garimpando ? 5000 : 60000);
+}
+
+async function mudarGarimpo(mudanca) {
+  clearTimeout(relogioCota);            // o relógio não pode redesenhar o quadro por cima da resposta
+  try {
+    const r = await api("/api/cota/garimpo", { method: "POST", body: mudanca });
+    aviso(r.ligado ? `Garimpo ligado, com até ${r.percentual}% da cota do dia.` : "Garimpo automático desligado.");
+  } catch {
+    aviso("Não deu para mudar o garimpo agora.");
+  }
+  quadroCota();
 }
 
 // a janela no meio da tela para ter certeza antes de gastar a cota

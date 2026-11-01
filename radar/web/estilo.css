@@ -1964,3 +1964,12 @@ nav .subs a .olho svg { width: 15px; height: 15px; }
   }
   .capa:hover img { transform: none; }
 }
+
+/* os dois ajustes do garimpo no quadro dos créditos (2026-11-01) */
+.garimpo-ajuste { display: grid; gap: 6px; border-top: 1px solid var(--linha); padding-top: 8px; font-size: 12px; }
+.garimpo-ajuste label { display: flex; align-items: center; gap: 6px; cursor: pointer; color: var(--texto); }
+.garimpo-ajuste input[type=checkbox] { accent-color: var(--acento); width: 15px; height: 15px; cursor: pointer; }
+.garimpo-ajuste input[type=number] { width: 58px; background: var(--painel2); color: var(--texto);
+  border: 1px solid var(--linha); border-radius: 7px; padding: 3px 6px; font: inherit; text-align: right; }
+/* a porcentagem fica editável mesmo com o garimpo desligado: dá para deixar o valor pronto antes de ligar */
+.garimpo-ajuste .pct { color: var(--fraco); }
