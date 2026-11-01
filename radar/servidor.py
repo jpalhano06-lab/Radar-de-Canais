@@ -2452,9 +2452,9 @@ async def roteiro_manual(request: Request, u: dict = Depends(usuario)):
 
 
 @app.get("/api/roteiros/ritmo")
-def roteiro_ritmo(perfil: str = "", lingua: str = "", u: dict = Depends(usuario)):
+def roteiro_ritmo(perfil: str = "", lingua: str = "", minutos: float = 0, u: dict = Depends(usuario)):
     """Quantas palavras por minuto a voz fala de verdade, medido nos vídeos entregues (o ajuste do tempo)."""
-    return tempo.ritmo(u["id"], perfil, lingua)
+    return tempo.ritmo(u["id"], perfil, lingua, minutos)
 
 
 @app.get("/api/roteiros/tarefa/{tid}")

@@ -199,9 +199,10 @@ def gerar(usuario_id: int, titulo: str, link: str, minutos: int, lingua: str, pr
     projeto = banco.um("SELECT * FROM projetos_roteiro WHERE id=? AND usuario_id=?", projeto_id, usuario_id) if projeto_id else None
     # o ritmo real da voz, medido nos vídeos que a fábrica já entregou (tempo.py)
     from . import tempo
-    ritmo = tempo.ritmo(usuario_id, perfil, lingua)
+    ritmo = tempo.ritmo(usuario_id, perfil, lingua, minutos)
     # o ppm_alvo já desconta a mania do Claude de escrever mais do que se pede (tempo.py): é ele que dimensiona o
-    # pedido, para o vídeo cair dentro de 1 min 30 s do tempo escolhido
+    # primeiro rascunho, para ele já nascer perto do tempo. Quem garante a margem é a conferência depois de escrever
+    # (`_conferir_tamanho`), que mede o roteiro pronto no ritmo real da voz
     palavras = minutos * (ritmo.get("ppm_alvo") or ritmo["ppm"])
     sistema = INSTRUCOES + (f"\n\nInstruções do projeto \"{projeto['nome']}\" (estilo do canal, valem por cima das "
                             f"regras acima quando conflitarem):\n{projeto['instrucoes']}" if projeto and projeto["instrucoes"] else "")
@@ -225,30 +226,92 @@ def gerar(usuario_id: int, titulo: str, link: str, minutos: int, lingua: str, pr
     aviso(f"O Claude está escrevendo (cerca de {palavras} palavras)…")
     inicio = time.time()
     roteiro = _limpar(_claude(sistema, pedido))
-    # roteiro longo (até 1 hora, uns 9 mil palavras): o Claude às vezes para antes do tamanho. Ele continua de onde
-    # parou, até 4 vezes, sem repetir o que já escreveu
-    # antes ele parava quando faltava menos de 15% (num vídeo de 15 min, 2 min a menos): agora o que sobra tem de
-    # caber na margem de 1 min 30 s do usuário, então a conta é em minutos de narração, não em porcentagem
-    falta_demais = max(200, (ritmo.get("ppm_alvo") or ritmo["ppm"]) * (tempo.MARGEM_MIN - 0.5))
-    for _ in range(4):
-        faltam = palavras - len(roteiro.split())
-        if faltam < falta_demais:
-            break
-        aviso(f"O Claude está continuando o roteiro ({len(roteiro.split())} de {palavras} palavras)…")
-        resto = _limpar(_claude(sistema, pedido + "\n\nVocê já escreveu este começo (NÃO repita nada dele):\n" + roteiro[-12000:]
-                                + f"\n\nContinue o roteiro exatamente de onde ele parou, com mais cerca de {faltam} palavras, "
-                                  "até o fechamento. Responda só com a continuação."))
-        if len(resto.split()) < 50:
-            break
-        roteiro = roteiro + "\n\n" + resto
+    roteiro, conferencia = _conferir_tamanho(roteiro, sistema, pedido, minutos, ritmo, aviso)
     (pasta / "roteiro.txt").write_text(roteiro, encoding="utf-8")
     meta = {"titulo": titulo, "titulo_original": original, "link": link, "video_id": video_id, "minutos": minutos, "lingua": lingua,
             "projeto": projeto["nome"] if projeto else "", "palavras": len(roteiro.split()),
             "palavras_base": len(base.split()), "base_erro": base_erro[:300], "thumbnail": thumb,
-            "segundos": round(time.time() - inicio), "criado": banco.agora(), "usuario_id": usuario_id, "ritmo": ritmo, "canal": canal or {}}
+            "segundos": round(time.time() - inicio), "criado": banco.agora(), "usuario_id": usuario_id, "ritmo": ritmo,
+            "conferencia": conferencia, "canal": canal or {}}
     (pasta / "roteiro.json").write_text(json.dumps(meta, ensure_ascii=False, indent=1), encoding="utf-8")
     _escrever_descricao(usuario_id, pasta, projeto_descricao_id, aviso)
     return _publico(pasta)
+
+
+VOLTAS_TAMANHO = 6      # quantas vezes o Radar manda o Claude corrigir o tamanho antes de ficar com a melhor volta
+
+# o que o Radar pede ao Claude quando o roteiro conferido ficou curto ou comprido
+CONTINUAR = """
+
+Você já escreveu este começo (NÃO repita nada dele):
+{comeco}
+
+Continue o roteiro exatamente de onde ele parou, com mais cerca de {faltam} palavras, até o fechamento. Responda só
+com a continuação."""
+
+CONDENSAR = """Este é o roteiro de um vídeo de {minutos} minutos narrados, mas ele está com {atual} palavras e tem de
+ficar com cerca de {alvo}.
+
+{roteiro}
+
+Reescreva o roteiro INTEIRO com cerca de {alvo} palavras: corte o que se repete e condense as explicações longas,
+mantendo o gancho do começo, todos os assuntos na mesma ordem e o fechamento. Responda só com o roteiro."""
+
+
+def _conferir_tamanho(roteiro: str, sistema: str, pedido: str, minutos: int, ritmo: dict,
+                      aviso=lambda _t: None) -> tuple[str, dict]:
+    """Confere o roteiro escrito contra o tempo pedido e corrige até ele caber na margem de 1 minuto.
+
+    Pedido do usuário em 2026-11-01: "o radar tá entregando vídeos com a duração errada, tem que conferir e colocar
+    algo que sempre confira o resultado e regule pra acertar cada vez mais; o vídeo de 30 min saiu com 17, o máximo de
+    erro é 1 minuto". Antes o Radar só dimensionava o pedido ao Claude e mandava para a fábrica o que viesse:
+
+    - **Faltando.** O laço antigo desistia depois de 4 voltas e parava de vez quando uma continuação voltava com menos
+      de 50 palavras — um pedido de 30 min que parasse em 3.700 palavras saía como vídeo de 17 minutos, sem aviso.
+    - **Sobrando.** Nada cortava: 15 min pedidos saíram com 23,2, 22,8 e 21,7 minutos.
+    - **Sem conferência.** O número das palavras era uma aposta feita ANTES de escrever. Nenhuma conta olhava o
+      roteiro pronto. Nos 32 vídeos medidos, 19 ficaram fora de 1 minuto, com erro médio de 2,2 min.
+
+    Agora o tamanho é medido no ritmo real da voz (`tempo.conferir`) e corrigido volta a volta: falta, o Claude
+    continua de onde parou; sobra, o Claude condensa o roteiro inteiro. Uma volta que piora não entra — fica sempre a
+    melhor de todas, e o que aconteceu em cada uma vai para o `conferencia` do roteiro.json, para a tela de Revisão
+    mostrar e para `tempo.medicoes` comparar depois com o vídeo que a fábrica entregou."""
+    from . import tempo
+    ppm = ritmo.get("ppm") or PALAVRAS_POR_MINUTO
+    melhor = roteiro
+    conf = tempo.conferir(len(roteiro.split()), minutos, ppm)
+    voltas: list[dict] = []
+    sem_jeito = 0
+    if not minutos:
+        return melhor, {**conf, "voltas": voltas, "de": ritmo.get("de", "padrao")}
+    for _ in range(VOLTAS_TAMANHO):
+        if conf["dentro"]:
+            break
+        faltam, atual, alvo = conf["faltam"], conf["palavras"], conf["alvo_palavras"]
+        if faltam > 0:
+            aviso(f"Conferindo o tempo: o roteiro dá {conf['previsto_min']} min e você pediu {minutos}. "
+                  f"O Claude está continuando ({atual} de {alvo} palavras)…")
+            resto = _limpar(_claude(sistema, pedido + CONTINUAR.format(comeco=melhor[-12000:], faltam=faltam)))
+            tentativa = (melhor + "\n\n" + resto) if len(resto.split()) >= 30 else melhor
+        else:
+            aviso(f"Conferindo o tempo: o roteiro dá {conf['previsto_min']} min e você pediu {minutos}. "
+                  f"O Claude está condensando ({atual} para {alvo} palavras)…")
+            tentativa = _limpar(_claude(sistema, CONDENSAR.format(minutos=minutos, atual=atual, alvo=alvo,
+                                                                  roteiro=melhor)))
+        nova = tempo.conferir(len(tentativa.split()), minutos, ppm)
+        voltas.append({"palavras": nova["palavras"], "previsto_min": nova["previsto_min"],
+                       "erro_min": nova["erro_min"], "o_que": "continuar" if faltam > 0 else "condensar"})
+        if tentativa is melhor or abs(nova["erro_min"]) >= abs(conf["erro_min"]):
+            # a volta não melhorou. Uma volta fraca não desiste do roteiro (era o que fazia um pedido de 30 min sair
+            # com 17): o Radar tenta de novo uma vez. Duas seguidas sem melhorar, fica com a melhor que tem e para
+            # de gastar o limite da assinatura
+            sem_jeito += 1
+            if sem_jeito >= 2:
+                break
+            continue
+        sem_jeito = 0
+        melhor, conf = tentativa, nova
+    return melhor, {**conf, "voltas": voltas, "de": ritmo.get("de", "padrao")}
 
 
 def _escrever_descricao(usuario_id: int, pasta, projeto_descricao_id, aviso=lambda _t: None) -> None:
@@ -283,9 +346,15 @@ def manual(usuario_id: int, titulo: str, texto: str, link: str = "", minutos: in
     thumb = copiar_thumbnail(video_id, pasta / "thumbnail.jpg") if video_id else False
     (pasta / "roteiro.txt").write_text(texto, encoding="utf-8")
     original, titulo = titulo, traduzir_titulo(titulo, lingua)
+    # o roteiro colado é o texto da pessoa (o Radar não mexe nele), mas o tempo que ele vai dar é conferido do mesmo
+    # jeito, para a tela de Revisão poder dizer antes de mandar para a fábrica
+    from . import tempo
+    ritmo = tempo.ritmo(usuario_id, "", lingua, minutos)
+    conferencia = {**tempo.conferir(len(texto.split()), minutos, ritmo["ppm"]), "voltas": [], "de": ritmo["de"]}
     meta = {"titulo": titulo, "titulo_original": original, "link": link, "video_id": video_id, "minutos": minutos, "lingua": lingua, "projeto": "",
             "palavras": len(texto.split()), "palavras_base": 0, "thumbnail": thumb, "segundos": 0, "manual": True,
-            "criado": banco.agora(), "usuario_id": usuario_id, "canal": canal or {}}
+            "criado": banco.agora(), "usuario_id": usuario_id, "ritmo": ritmo, "conferencia": conferencia,
+            "canal": canal or {}}
     (pasta / "roteiro.json").write_text(json.dumps(meta, ensure_ascii=False, indent=1), encoding="utf-8")
     return _publico(pasta)
 

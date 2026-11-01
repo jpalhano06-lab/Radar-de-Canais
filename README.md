@@ -1610,3 +1610,45 @@ assinatura do claude.ai): quem entra aqui é o **Codex deste computador**, logad
   limite da assinatura.
 - Rotas novas: `GET /api/chatgpt/estado` na fábrica e no Radar; a assinatura também aparece em
   `GET /api/imagens/provedores` da fábrica. Testes em `tests/test_imagens_assinatura.py`.
+
+## O roteiro é conferido antes de sair, e a margem passa a ser de 1 minuto (2026-11-01)
+
+Pedido do usuário: "o Radar tá entregando vídeos com a duração errada, tem que conferir e colocar algo que sempre
+confira o resultado e regule pra acertar cada vez mais. O vídeo de 30 min saiu com 17, o máximo de erro é 1 minuto."
+
+Nos 32 vídeos medidos até aqui, **19 estavam fora de 1 minuto**, com erro médio de 2,2 min e o pior com 8,2
+(pediu 15, saiu 23,2). O ajuste de 2026-10-22 acertava quantas palavras *pedir*, mas essa era uma aposta feita
+**antes** de escrever: nenhuma conta olhava o roteiro pronto. Daí os dois lados do erro:
+
+- **Faltando.** O laço de continuação desistia depois de 4 voltas e parava de vez quando uma continuação voltava com
+  menos de 50 palavras. Um pedido de 30 min que parasse em 3.700 palavras saía como vídeo de 17 minutos, sem aviso.
+- **Sobrando.** Nada cortava. 15 min pedidos saíram com 23,2, 22,8 e 21,7 minutos.
+- **A reserva por língua cruzava vozes incompatíveis.** A mesma língua tem voz de 134 e voz de 215 palavras por
+  minuto: sem medida da voz nova, dimensionar 30 min pela voz lenta dá **17 minutos** de vídeo na voz rápida.
+- **Vídeo curto e vídeo longo entravam na mesma mediana.** Um de 3 min e um de 30 min da mesma voz não medem a mesma
+  coisa, e a mediana pulava de 120 para 182 palavras por minuto no mesmo canal.
+
+O que entrou:
+
+- **A margem é de 1 minuto** (`tempo.MARGEM_MIN`, era 1,5).
+- **`tempo.conferir()`**: a conta que diz quantos minutos **este** roteiro vai dar, no ritmo real da voz, quantas
+  palavras faltam ou sobram, e se cabe na margem.
+- **`roteiro_claude._conferir_tamanho()`**: a conferência roda **sempre**, logo depois de o Claude escrever e antes
+  de o roteiro poder ir para a fábrica. Falta, o Claude continua de onde parou; sobra, o Claude **condensa o roteiro
+  inteiro** (corta o que repete, mantém o gancho, os assuntos na ordem e o fechamento). Até 6 voltas. Uma volta que
+  piora não entra — fica sempre a melhor — e uma volta fraca não desiste mais do roteiro: ele tenta de novo.
+  O que aconteceu em cada volta fica em `conferencia` no `roteiro.json`.
+- **O erro da previsão é medido** (`medido.erro_previsao_min`): o tempo que a conferência previu contra o vídeo que a
+  fábrica entregou. É esse número que tem de ir a zero, porque o erro de tamanho do roteiro a conferência já corrige
+  antes de enviar. Ele aparece no acerto da voz como `erro_previsao_medio`.
+- **A base aprende por tamanho parecido** (`tempo._parecidos`) e **a língua só serve de reserva entre vozes que falam
+  parecido** (até 20% de diferença). Vozes que discordam mais do que isso não servem uma para a outra: fica o padrão,
+  e a tela diz que a voz ainda não tem medida.
+- **Na tela de Revisão**, embaixo do roteiro: "6.480 palavras · 30,0 min de narração (216 palavras por minuto)" e,
+  quando passa da margem, o aviso vermelho "⚠ Fora da margem de 1,0 min: você pediu 30 min e o roteiro dá 17,0 min
+  (-13,0 min). Acrescente umas 2.795 palavras." A conta atualiza enquanto você edita o texto. Antes essa linha usava
+  as 150 palavras por minuto fixas, e dizia "17 minutos" num roteiro que ia dar 30.
+- `tests/test_conferencia_tempo.py`: a conta da conferência, o roteiro curto continuado até caber, a continuação
+  fraca que não desiste, o roteiro comprido condensado, a volta que piora e não entra, o erro da previsão medido
+  contra o vídeo entregue, a voz lenta que não dimensiona a rápida e o vídeo curto que não puxa o longo.
+- O Radar precisa ser religado (LIGAR-RADAR.bat) para a conferência valer.

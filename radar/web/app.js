@@ -1158,8 +1158,26 @@ async function trabalho() {
   ir(0);
 }
 
+// A conferência do tempo (pedido do usuário em 2026-11-01: "tem que conferir e colocar algo que sempre confira o
+// resultado"). O ritmo é o da voz, medido nos vídeos entregues — não as 150 palavras por minuto da conta padrão, que
+// mostravam "17 minutos de narração" num roteiro que ia dar 30.
+function conferenciaRoteiro(r, palavras) {
+  const c = r.conferencia || {}, ppm = c.ppm || (r.ritmo || {}).ppm || 150;
+  const previsto = palavras / ppm, pedido = +r.minutos || 0, margem = c.margem || 1;
+  const min = (x) => x.toFixed(1).replace(".", ",");
+  const conta = `${palavras.toLocaleString("pt-BR")} palavras · ${min(previsto)} min de narração (${ppm} palavras por minuto)`;
+  if (!pedido) return { conta, classe: "", recado: "" };
+  const erro = previsto - pedido, dentro = Math.abs(erro) <= margem;
+  return { conta, classe: dentro ? "dentro" : "fora",
+    recado: dentro ? `✓ Dentro da margem: você pediu ${pedido} min e o roteiro dá ${min(previsto)} min.`
+      : `⚠ Fora da margem de ${min(margem)} min: você pediu ${pedido} min e o roteiro dá ${min(previsto)} min `
+        + `(${erro > 0 ? "+" : ""}${min(erro)} min). ${erro > 0 ? "Corte" : "Acrescente"} umas `
+        + `${Math.abs(Math.round(erro * ppm)).toLocaleString("pt-BR")} palavras.` };
+}
+
 function editorRoteiro(caixa, r, fab) {
-  const minutos = (texto) => Math.max(1, Math.round(texto.split(/\s+/).filter(Boolean).length / 150));
+  const conf = (texto) => conferenciaRoteiro(r, texto.split(/\s+/).filter(Boolean).length);
+  const inicial = conf(r.roteiro);
   caixa.innerHTML = `
     <div class="passo"><h2><span class="n">2</span>O roteiro</h2>
       <input id="e-titulo" value="${esc(r.titulo)}" title="Título que vai para a fábrica">
@@ -1167,8 +1185,9 @@ function editorRoteiro(caixa, r, fab) {
         <div style="display:grid;gap:8px;flex:none"><span class="sub">Thumbnail do vídeo de referência</span>
         <a class="botao sec" href="${esc(r.thumbnail_url)}?baixar=1">Baixar thumbnail</a><button class="botao sec" id="e-copiar-thumb">Copiar imagem</button></div></div>` : ""}
       <textarea class="roteiro" id="e-texto">${esc(r.roteiro)}</textarea>
-      <div class="linha"><span class="sub" id="e-conta">${r.roteiro.split(/\s+/).filter(Boolean).length} palavras · uns ${minutos(r.roteiro)} minutos de narração</span>
+      <div class="linha"><span class="sub" id="e-conta">${inicial.conta}</span>
         <button class="botao sec" id="e-copiar">Copiar o roteiro</button><button class="botao sec" id="e-salvar">Salvar alterações</button></div>
+      <p class="conferencia ${inicial.classe}" id="e-conferencia">${inicial.recado}</p>
     </div>
     <div class="passo"><h2><span class="n">3</span>Enviar para a fábrica</h2>
       ${fab.conectada ? `<p class="sub" style="margin:0">Cria o projeto na fábrica com este roteiro e este título. <b>Não gasta nada</b>: narrar e gerar as imagens continuam pedindo a sua confirmação lá.</p>
@@ -1178,7 +1197,12 @@ function editorRoteiro(caixa, r, fab) {
         : '<p class="sub">A fábrica não está nesta pasta: o Radar precisa estar dentro da pasta da fábrica para enviar.</p>'}
     </div>`;
   const $ = (id) => document.getElementById(id);
-  $("e-texto").oninput = () => { const t = $("e-texto").value; $("e-conta").textContent = `${t.split(/\s+/).filter(Boolean).length} palavras · uns ${minutos(t)} minutos de narração`; };
+  $("e-texto").oninput = () => {
+    const c = conf($("e-texto").value);
+    $("e-conta").textContent = c.conta;
+    $("e-conferencia").textContent = c.recado;
+    $("e-conferencia").className = `conferencia ${c.classe}`;
+  };
   $("e-copiar").onclick = (e) => { navigator.clipboard.writeText($("e-texto").value); e.target.textContent = "Copiado ✓"; };
   const salvar = () => api(`/api/roteiros/${encodeURIComponent(r.nome)}/texto`, { method: "POST", body: { roteiro: $("e-texto").value, titulo: $("e-titulo").value } });
   $("e-salvar").onclick = (e) => carregando(e.currentTarget, "Salvando…", async () => { await salvar(); aviso("Roteiro salvo."); });
@@ -1772,7 +1796,7 @@ function explicarAjusteTempo(ritmo, minutos) {
       <p>${n(ex.palavras)} palavras viraram ${min(ex.entregue_min)} minutos: esta voz fala <b>${ex.ppm} palavras por minuto</b>, e não as ${ritmo.padrao} da conta padrão.</p></div>` : ""}
     <div class="mt-conta"><div><small>Antes</small><b>${n(antes)}</b><span>palavras para ${minutos} min</span></div><div class="seta">→</div>
       <div class="agora"><small>Agora</small><b>${n(agora)}</b><span>palavras para ${minutos} min</span></div></div>
-    ${(ritmo.ultimos || []).length ? `<div class="mt-lista"><small>O que deu em cada vídeo (a margem é ${String((ritmo.acerto || {}).margem || 1.5).replace(".", ",")} min)</small>
+    ${(ritmo.ultimos || []).length ? `<div class="mt-lista"><small>O que deu em cada vídeo (a margem é ${String((ritmo.acerto || {}).margem || 1).replace(".", ",")} min)</small>
       ${ritmo.ultimos.map((u) => `<div class="mt-linha ${u.dentro ? "dentro" : "fora"}"><span>${esc(u.titulo)}</span>
         <b>${u.pedido_min} → ${min(u.entregue_min)} min</b><i>${u.erro_min > 0 ? "+" : ""}${min(u.erro_min)}</i></div>`).join("")}</div>` : ""}
     <p class="sub">Vale a mediana dos últimos ${ritmo.medidos === 1 ? "vídeo" : `${ritmo.medidos} vídeos`} ${ritmo.de === "lingua" ? "nesta língua" : "desta voz"}, e o número vai se acertando a cada vídeo entregue. Você não precisa fazer nada.</p>

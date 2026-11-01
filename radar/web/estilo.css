@@ -1589,6 +1589,13 @@ nav .subs a.ativo { transform: none; }
 .mt-linha i { font-style: normal; font-weight: 700; min-width: 42px; text-align: right; }
 .mt-linha.dentro i { color: var(--verde); }
 .mt-linha.fora i { color: var(--vermelho); }
+/* a conferência do tempo no editor do roteiro: vazia não ocupa lugar nenhum */
+.conferencia { margin: 0; font-size: 13px; font-weight: 600; }
+.conferencia:empty { display: none; }
+.conferencia.dentro { color: var(--verde); }
+.conferencia.fora { color: var(--vermelho); padding: 8px 12px; border-radius: 10px; font-weight: 700;
+  background: color-mix(in srgb, var(--vermelho) 10%, var(--painel2));
+  border: 1px solid color-mix(in srgb, var(--vermelho) 45%, var(--linha)); }
 .modal-fundo { position: fixed; inset: 0; z-index: 100; display: grid; place-items: center; padding: 16px;
   background: rgba(0,0,0,.6); backdrop-filter: blur(3px); animation: aparecer .2s ease; }
 @keyframes aparecer { from { opacity: 0; } to { opacity: 1; } }
