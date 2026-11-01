@@ -1905,3 +1905,62 @@ nav .subs a .olho svg { width: 15px; height: 15px; }
   .vida-degrau { grid-template-columns: 1fr; gap: 6px; }
   .tab-vida { font-size: 13px; }
 }
+
+/* ================================================================= legibilidade e teclado (2026-10-31)
+   Auditoria com a skill ui-ux-pro-max (prioridades 1 e 2: acessibilidade e interação). Três defeitos reais:
+
+   1. CONTRASTE. 52 regras escreviam `color: #fff` sobre um fundo de --acento ou --verde, mas o acento é
+      escolhido pelo usuário (10 presets + seletor livre). Branco sobre o marrom padrão (#a2845e) dá 3,5:1;
+      sobre o laranja (#ff9f0a) 2,1:1; sobre o verde (#34c759) 2,0:1 — o mínimo da WCAG para texto é 4,5:1.
+      A letra agora vem de --sobre-acento, que o app.js calcula pela luminância da cor escolhida, e de
+      --sobre-verde, fixo por tema. Nenhuma cor do app muda: só a letra em cima dela.
+   2. FOCO. Havia um único :focus-visible em 1907 linhas, num painel todo navegável por teclado.
+   3. MOVIMENTO. 48 transições e animações cobertas por apenas 2 regras estreitas de reduced-motion. */
+
+:root { --sobre-acento: #fff; --sobre-verde: #fff; }
+:root[data-tema="escuro"], :root[data-tema="cinza"] { --sobre-verde: #06220e; }
+/* no preto e branco o --acento é forçado para branco pelo próprio tema, então a letra tem de ser preta — e
+   precisa de !important para vencer o --sobre-acento que o app.js escreve inline a partir da cor guardada */
+:root[data-tema="pb"] { --sobre-verde: #000; --sobre-acento: #000 !important; }
+
+/* a letra sobre o acento: o valor real vem do app.js (aplicarCores), este é só o fallback */
+:is(nav a.ativo, nav .aba:hover, nav .aba.dentro, nav .subs a:hover, nav .subs a.ativo,
+  .botao, .botao.vermelho, .botao.sec:hover:not(:disabled), .video-acoes .botao:hover,
+  .chip.ativo, .chip:hover, .ajuda .i, .abas-grandes a.ativa, .aba-direita .n, .aba-direita.aberta,
+  .passo h2 .n, .msg.pessoa, .usar-titulo:hover, #cores > .bt-topo .n, .voz-ouvir,
+  .passo-rt.atual .num, .passo-rt.feito .num, .passo-rt:not([disabled]):hover,
+  .link-editar:hover, .canal-op:hover, .canal-op.marcado, .opcao:hover, .opcao.marcada,
+  .mapa-card:hover, .tile:hover, .res-aba:hover, .res-aba.ativa, .selo-pub:hover,
+  .res-shorts button:hover, .cp-video:hover, .cp-dias button:hover, .cp-dias button.marcado,
+  .cp-postei, .cp-postei:hover, .mini-bt:hover, .bt-nova, .np-canal:hover, .np-canal.escolhido,
+  .acn-abas button:hover, .acn-abas button.ativa, .aba-lateral .n, .modo.ligado) { color: var(--sobre-acento) !important; }
+
+/* o !important é necessário: 9 regras antigas fixam `color: #fff !important` nesses mesmos elementos. No tema
+   preto e branco isso continua dando letra preta, porque lá o --sobre-acento é #000 !important. */
+
+/* a letra sobre o verde */
+:is(.capa .nota.alta, .tag.novo, .video.escolha.marcado-sim .sim,
+  .passo-faixa.feito span, .ac-etapas li.feita .bola) { color: var(--sobre-verde) !important; }
+
+/* 2. foco visível em tudo que recebe teclado */
+:where(a, button, input, select, textarea, summary, [tabindex]):focus-visible {
+  outline: 2px solid var(--acento);
+  outline-offset: 2px;
+  border-radius: 8px;
+}
+/* sobre o próprio acento o anel precisa de contraste com ele: usa a cor da letra */
+:is(nav a.ativo, .botao, .chip.ativo, .bt-nova, .cp-postei, .modo.ligado):focus-visible {
+  outline-color: var(--sobre-acento);
+  outline-offset: -4px;
+}
+
+/* 3. movimento: respeitar a preferência do sistema em todo o painel */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: .01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: .01ms !important;
+    scroll-behavior: auto !important;
+  }
+  .capa:hover img { transform: none; }
+}

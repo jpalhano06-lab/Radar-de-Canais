@@ -4309,10 +4309,40 @@ try {
   }
 } catch {}
 
+// a letra que fica legível em cima de uma cor: preto ou branco, pelo contraste da WCAG. O acento é escolhido
+// pelo usuário, então não dá para fixar #fff no CSS — no marrom padrão o branco dá 3,5:1 e no laranja 2,1:1.
+function luminanciaRelativa(cor) {
+  const t = String(cor).trim().replace(/^#/, "");
+  const h = t.length === 3 ? t.replace(/./g, (c) => c + c) : t;
+  if (!/^[0-9a-f]{6}$/i.test(h)) return null;
+  const n = parseInt(h, 16);
+  const canal = (c) => { c /= 255; return c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4); };
+  return 0.2126 * canal(n >> 16 & 255) + 0.7152 * canal(n >> 8 & 255) + 0.0722 * canal(n & 255);
+}
+
+function contraste(a, b) {
+  const la = luminanciaRelativa(a), lb = luminanciaRelativa(b);
+  if (la === null || lb === null) return 0;
+  return (Math.max(la, lb) + 0.05) / (Math.min(la, lb) + 0.05);
+}
+
+// o preto quente combina melhor com o marrom e o laranja, mas só serve se passar dos 4,5:1. Fora disso cai no
+// branco ou no preto puro — um dos dois sempre passa, porque no pior acento possível o melhor dos dois dá 4,58:1.
+const LETRA_ESCURA = "#16120c";
+function letraLegivelSobre(cor) {
+  if (luminanciaRelativa(cor) === null) return "#fff";
+  const branco = contraste(cor, "#ffffff"), quente = contraste(cor, LETRA_ESCURA), preto = contraste(cor, "#000000");
+  if (branco >= quente && branco >= 4.5) return "#fff";
+  if (quente >= 4.5) return LETRA_ESCURA;
+  return preto >= branco ? "#000" : "#fff";
+}
+
 function aplicarCores() {
   const raiz = document.documentElement;
-  raiz.style.setProperty("--acento", guardado("cor", IDENTIDADE.cor));
-  raiz.style.setProperty("--acento2", guardado("cor", IDENTIDADE.cor));   // sem cor secundária: a mesma cor em tudo
+  const cor = guardado("cor", IDENTIDADE.cor);
+  raiz.style.setProperty("--acento", cor);
+  raiz.style.setProperty("--acento2", cor);   // sem cor secundária: a mesma cor em tudo
+  raiz.style.setProperty("--sobre-acento", letraLegivelSobre(cor));
   raiz.dataset.tema = guardado("tema", IDENTIDADE.tema);
 }
 
