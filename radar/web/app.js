@@ -1709,23 +1709,9 @@ async function painelCanal(caixa, canalId) {
 // deste vídeo (pedido do usuário em 2026-10-22: "mais padronizado, só mudando para o tema do vídeo, sem spoilers")
 async function modeloDaDescricao(caixa, canalId) {
   const p = await api(`/api/producao/${encodeURIComponent(canalId)}`);
-  const telas = p.telas_finais || { melhor: "Vídeo (melhor para o espectador) + inscrever-se" };
   const tipos = p.tipos_de_modelo || { geral: "Geral" };
   const padroes = p.rodapes_padrao || {};
-  caixa.innerHTML = `<h3>📤 Publicação</h3>
-    <p class="sub">Esta tela <b>não publica nada</b>. Ela guarda as escolhas que você faria à mão em todo vídeo deste
-      canal, e a extensão do Radar repete sozinha na tela de enviar vídeo do YouTube Studio: liga a monetização e
-      espalha os anúncios, escolhe a tela final, marca o uso de IA e preenche título, descrição e tags do vídeo que
-      a fábrica entregou. <b>Quem aperta Publicar continua sendo você</b> — a extensão para antes disso.</p>
-    <div class="linha">
-      <label class="campo"><span>Anúncio no meio do vídeo, a cada</span>
-        <div class="par"><input id="pb-anuncio" type="number" min="1" max="60" value="${+p.anuncio_cada || 1}"> <span>minutos</span></div></label>
-      <label class="campo"><span>Tela final</span><select id="pb-tela">${Object.entries(telas).map(([v, nome]) =>
-        `<option value="${esc(v)}" ${(p.tela_final || "melhor") === v ? "selected" : ""}>${esc(nome)}</option>`).join("")}</select></label>
-    </div>
-    <p class="sub">O uso de IA vai marcado como <b>Sim</b> em todo vídeo: os da fábrica são feitos com IA.</p>
-
-    <h3>🧾 Rodapé da descrição</h3>
+  caixa.innerHTML = `<h3>🧾 Rodapé da descrição</h3>
     <p class="sub">A apresentação do canal e o aviso legal, iguais em todo vídeo. <b>Quem escreve a descrição é a
       fábrica</b>: ela põe o resumo do vídeo, os capítulos e, no fim, este texto. Então o vídeo já sai do projeto
       com a descrição pronta — a extensão só cola. A lista de onde vêm as imagens <b>não entra mais na descrição</b>
@@ -1748,9 +1734,7 @@ async function modeloDaDescricao(caixa, canalId) {
   caixa.querySelector("#md-salvar").onclick = (e) => carregando(e.currentTarget, "Salvando…", async () => {
     await api(`/api/producao/${encodeURIComponent(canalId)}`, { method: "POST",
       body: { ...p, marcas: caixa.querySelector("#md-marcas").value.trim(),
-        modelo_tipo: caixa.querySelector("#md-tipo").value, rodape: caixa.querySelector("#md-texto").value,
-        anuncio_cada: +caixa.querySelector("#pb-anuncio").value || 1,
-        tela_final: caixa.querySelector("#pb-tela").value } });
+        modelo_tipo: caixa.querySelector("#md-tipo").value, rodape: caixa.querySelector("#md-texto").value } });
     aviso("Salvo no perfil da fábrica. Os próximos vídeos deste canal já saem com este rodapé.");
   });
 }
