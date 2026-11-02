@@ -1483,7 +1483,7 @@ function textoDaAssinatura(p, a) {
   if (!a.conectada)
     return a.fabrica_ligada === false
       ? "A fábrica está desligada, então não dá para conferir a conta do ChatGPT agora."
-      : `Sem login do ChatGPT na fábrica: rode \`codex login\` no computador dela. Até lá as imagens saem pelo ${reserva}.`;
+      : `Sem login do ChatGPT na fábrica: conecte uma conta em Integrações. Até lá as imagens saem pelo ${reserva}.`;
   return `${a.email || "conta ligada"} · ${a.plano || "ChatGPT"}. Janela de 5 horas: ${usoDaJanela(a, "janela")} · `
     + `Semana: ${usoDaJanela(a, "semana")}. Se o limite acabar no meio de um vídeo, as imagens que faltam saem pelo ${reserva}.`;
 }
@@ -2873,9 +2873,22 @@ async function integracoes(dados) {
       ${modelos.length ? `<details class="ig-limite"><summary>Modelos da fábrica (${modelos.length})</summary>
         <div class="gpt-canais">${modelos.map(linhaGpt).join("")}</div></details>` : ""}
     </div>`;
+  // trocar de conta: o Radar abre o login da OpenAI e a conta de antes fica guardada para voltar (chatgpt_conta.py)
+  const contasGpt = await api("/api/integracoes/chatgpt/contas").catch(() => ({ guardadas: [], login: {} }));
+  const loginGpt = contasGpt.login || {};
+  const contaGpt = `<div class="gpt-contas">
+      ${loginGpt.estado === "aguardando"
+        ? `<span class="gpt-aguardando">Esperando você entrar na conta na aba da OpenAI…</span>
+           <a class="botao sec" href="${esc(loginGpt.url || "#")}" target="_blank" rel="noopener">Abrir o login de novo</a>${bt("contorno gpt-cancelar", "Cancelar")}`
+        : bt("sec gpt-conectar", a.conectada ? "Conectar outra conta" : "Conectar uma conta do ChatGPT")}
+      ${loginGpt.estado === "erro" ? `<span class="ig-st erro">${esc(loginGpt.erro || "O login não terminou.")}</span>` : ""}
+      ${(contasGpt.guardadas || []).map((g) => `<span class="gpt-guardada"><span>${esc(g.email)}</span>
+          ${bt("sec gpt-usar", "Usar esta", `data-email="${esc(g.email)}"`)}${bt("contorno gpt-esquecer", "Esquecer", `data-email="${esc(g.email)}"`)}</span>`).join("")}
+    </div>`;
   const cartaoGpt = `<div class="bloco ig-conta gpt-conta">
       <div class="gpt-cab"><b>ChatGPT (assinatura)</b>
         <span class="ig-st ${a.conectada ? "ok" : "erro"}">${a.conectada ? "✓ conectada" : "não conectada"}</span></div>
+      ${contaGpt}
       ${a.conectada
         ? `<span>${esc(a.email || "conta ligada")} · ${esc(a.plano || "ChatGPT")}</span>
            <p class="sub">Escolha abaixo quais canais geram as imagens por esta conexão e quais pela chave de API.
@@ -2884,8 +2897,8 @@ async function integracoes(dados) {
            <div class="gpt-janelas">${barra("janela", "Janela de 5 horas")}${barra("semana", "Semana")}</div>`
         : `<span>${esc(a.fabrica_ligada === false ? "A fábrica está desligada: ligue a fábrica para ver a conta."
                      : a.motivo || "Sem login do ChatGPT no computador da fábrica.")}</span>
-           <p class="sub">Para ligar, rode <code>codex login</code> no computador da fábrica e entre com a conta da
-             assinatura. Enquanto isso as imagens de IA saem pela chave de API.</p>`}
+           <p class="sub">Para ligar, clique em <b>Conectar uma conta do ChatGPT</b> e entre com a conta da assinatura.
+             Enquanto isso as imagens de IA saem pela chave de API.</p>`}
       ${trocaGpt}
     </div>`;
   tela.innerHTML = titulo("Integrações", "Saldos e chaves dos serviços que o Radar e a fábrica usam.") +
@@ -2908,6 +2921,37 @@ async function integracoes(dados) {
     trocarGpt({ quem: s.value, perfil: s.dataset.perfil }).catch((e) => { aviso(porque(e)); integracoes(d); })));
   tela.querySelectorAll(".gpt-todos").forEach((b) => (b.onclick = () => carregando(b, "Trocando…", () =>
     trocarGpt({ quem: b.dataset.quem }))));
+  // o login da OpenAI abre numa aba nova; esta tela confere a cada 2 s até a conta chegar
+  const esperarLogin = () => {
+    const vez = setInterval(async () => {
+      if (!tela.querySelector(".gpt-contas")) return clearInterval(vez);   // saiu da tela
+      const c = await api("/api/integracoes/chatgpt/contas").catch(() => null);
+      if (!c || c.login.estado === "aguardando") return;
+      clearInterval(vez);
+      if (c.login.estado === "pronto") aviso(`A conta ${c.login.email} passa a gerar as imagens da fábrica.`);
+      integracoes(d);
+    }, 2000);
+  };
+  if (loginGpt.estado === "aguardando") esperarLogin();
+  tela.querySelector(".gpt-conectar")?.addEventListener("click", (e) => carregando(e.currentTarget, "Abrindo…", async () => {
+    const aba = window.open("about:blank", "_blank");   // aberta já no clique, senão o navegador bloqueia
+    try {
+      const { url } = await api("/api/integracoes/chatgpt/conectar", { method: "POST", body: {} });
+      if (aba) aba.location = url; else window.open(url, "_blank");
+    } catch (erro) { aba?.close(); throw erro; }
+    integracoes(d);
+  }));
+  tela.querySelector(".gpt-cancelar")?.addEventListener("click", () =>
+    api("/api/integracoes/chatgpt/cancelar", { method: "POST", body: {} }).then(() => integracoes(d)));
+  tela.querySelectorAll(".gpt-usar").forEach((b) => (b.onclick = () => carregando(b, "Trocando…", async () => {
+    await api("/api/integracoes/chatgpt/usar", { method: "POST", body: { email: b.dataset.email } });
+    aviso(`A conta ${b.dataset.email} passa a gerar as imagens da fábrica.`);
+    integracoes(d);
+  })));
+  tela.querySelectorAll(".gpt-esquecer").forEach((b) => (b.onclick = () => carregando(b, "Esquecendo…", async () => {
+    await api("/api/integracoes/chatgpt/esquecer", { method: "POST", body: { email: b.dataset.email } });
+    integracoes(d);
+  })));
 
   const cartao = (el) => el.closest(".ig-cartao");
   const indice = (el) => Number(el.closest(".ig-chave")?.dataset.i ?? -1);

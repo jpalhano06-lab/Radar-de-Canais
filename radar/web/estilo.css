@@ -1131,6 +1131,10 @@ nav .subs a.ativo { transform: none; }
 .gpt-janela { display: grid; grid-template-columns: 1fr auto; gap: 4px 10px; font-size: 13px; }
 .gpt-janela small { grid-column: 1 / -1; color: var(--fraco); font-size: 11px; }
 .gpt-barra { grid-column: 1 / -1; height: 6px; border-radius: 999px; background: var(--painel2); overflow: hidden; }
+.gpt-contas { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px; }
+.gpt-aguardando { color: var(--fraco); font-size: 13px; }
+.gpt-guardada { display: inline-flex; align-items: center; gap: 8px; padding: 4px 4px 4px 10px; font-size: 13px;
+  border: 1px solid var(--linha); border-radius: var(--raio); }
 .gpt-troca { display: grid; gap: 10px; margin-top: 6px; padding-top: 10px; border-top: 1px solid var(--linha); }
 .gpt-troca-cab { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px; }
 .gpt-troca-cab small { color: var(--fraco); margin-right: auto; }

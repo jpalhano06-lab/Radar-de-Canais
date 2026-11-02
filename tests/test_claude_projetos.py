@@ -111,3 +111,25 @@ def test_o_agente_apagado_nao_volta(agentes):
     r = claude_projetos.sincronizar(1, [_projeto("u-trad", "TRADUÇÃO", "Você é um agente de tradução. " * 20)])
     assert r["ignorados"] == ["TRADUÇÃO"]
     assert banco.um("SELECT * FROM projetos_roteiro WHERE claude_uuid='u-trad'") is None
+
+
+def test_projeto_excluido_no_claude_volta_como_faltando_e_sai_so_depois_do_404(agentes):
+    """O agente ligado a um projeto que sumiu do claude.ai não sai na hora: a extensão confere primeiro (2026-11-02)."""
+    claude_projetos.sincronizar(1, [_projeto("u-holanda", "ANIMAIS HOLANDA", HOLANDA), _projeto("u-uk", "AGENTE UK", UK)])
+    r = claude_projetos.sincronizar(1, [_projeto("u-uk", "AGENTE UK", UK)], vistos=["u-uk"])
+    assert r["faltando"] == ["u-holanda"]
+    assert _agente(agentes["jan"])                                  # ainda está: a lista podia ter vindo pela metade
+    assert claude_projetos.excluidos_no_claude(1, ["u-holanda"]) == {"excluidos": ["JAN DE WOLF"]}
+    assert _agente(agentes["jan"]) is None and _agente(agentes["uk"])
+
+
+def test_arquivado_ou_extensao_antiga_nao_marca_nada_como_faltando(agentes):
+    claude_projetos.sincronizar(1, [_projeto("u-holanda", "ANIMAIS HOLANDA", HOLANDA)])
+    assert claude_projetos.sincronizar(1, [], vistos=["u-holanda"])["faltando"] == []   # arquivado: vem só em vistos
+    assert claude_projetos.sincronizar(1, [])["faltando"] == []                          # sem vistos: extensão antiga
+
+
+def test_excluido_no_claude_nao_mexe_em_agente_de_outra_pessoa(agentes):
+    claude_projetos.sincronizar(1, [_projeto("u-holanda", "ANIMAIS HOLANDA", HOLANDA)])
+    assert claude_projetos.excluidos_no_claude(2, ["u-holanda"]) == {"excluidos": []}
+    assert _agente(agentes["jan"])

@@ -1611,6 +1611,29 @@ assinatura do claude.ai): quem entra aqui é o **Codex deste computador**, logad
 - Rotas novas: `GET /api/chatgpt/estado` na fábrica e no Radar; a assinatura também aparece em
   `GET /api/imagens/provedores` da fábrica. Testes em `tests/test_imagens_assinatura.py`.
 
+### Trocar a conta do ChatGPT e a escolha de cada canal em Integrações (2026-11-02)
+
+Pedido do usuário: "em Integrações tem que ter a opção de mudar o ChatGPT para a conexão" e "poder integrar outra
+conta de ChatGPT".
+
+- **Outra conta**: o Codex nem está instalado neste computador, então o Radar faz o mesmo login que o `codex login`
+  (`radar/chatgpt_conta.py`): **Conectar outra conta** abre `auth.openai.com` numa aba (PKCE, o client_id do Codex,
+  `prompt=login` para dar para escolher outra conta), a OpenAI volta para `http://localhost:1455/auth/callback` (a
+  porta é fixa porque é a que o Codex registrou) e o login novo vai para `~/.codex/auth.json`, que a fábrica lê a
+  cada imagem. A conta de antes, com o limite usado dela, vai para `~/.codex/contas-radar/` e volta com **Usar
+  esta**. Rotas `/api/integracoes/chatgpt/{contas,conectar,cancelar,usar,esquecer}`, só no computador da fábrica.
+- **Cada canal**: o cartão lista os perfis da fábrica com o seletor *Conexão do ChatGPT* / *Chave de API* (o mesmo
+  `imagens.provedor` da Configuração do canal) e os botões **Todos pela conexão** / **Todos pela chave de API**, que
+  só mexem nos perfis `canal-*`; os modelos (documentário, meditação…) ficam num "ver mais".
+- Testes em `tests/test_chatgpt_conta.py`, inclusive a volta da OpenAI de ponta a ponta com o código simulado.
+
+### O agente excluído no Claude sai do Radar (2026-11-02)
+
+A extensão agora manda também `vistos`, o uuid de todo projeto que achou no claude.ai (arquivados também). Os
+agentes ligados a um projeto que não está ali voltam em `faltando`, e a extensão abre cada um direto no claude.ai:
+só o que dá **404 em todas as organizações** vai para `POST /api/ext/projetos-claude/excluidos` e sai do Radar. Uma
+lista que veio pela metade não apaga nada, e a extensão antiga (sem `vistos`) também não.
+
 ## O roteiro é conferido antes de sair, e a margem passa a ser de 1 minuto (2026-11-01)
 
 Pedido do usuário: "o Radar tá entregando vídeos com a duração errada, tem que conferir e colocar algo que sempre

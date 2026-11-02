@@ -49,14 +49,22 @@ def _arquivos(lista) -> list[dict]:
     return saida
 
 
-def sincronizar(usuario_id: int, projetos: list[dict]) -> dict:
+def sincronizar(usuario_id: int, projetos: list[dict], vistos: list[str] | None = None) -> dict:
     """Liga cada projeto a um agente e copia as instruções e os arquivos. Um projeto ainda sem ligação acha o agente
-    que já era cópia dele (o mesmo começo de texto, ou o mesmo nome); sem nenhum, vira um agente novo."""
+    que já era cópia dele (o mesmo começo de texto, ou o mesmo nome); sem nenhum, vira um agente novo.
+
+    vistos são os uuids de TODOS os projetos que a extensão achou no claude.ai, arquivados também. Os agentes ligados
+    a um projeto que não está entre eles voltam em "faltando": a extensão abre cada um direto no claude.ai e só os
+    que dão 404 (excluídos lá) ela manda para excluidos_no_claude. Assim uma lista que veio pela metade não apaga
+    agente nenhum (pedido do usuário em 2026-11-02: o agente excluído do Claude sai do Radar)."""
     agentes = banco.todos("SELECT * FROM projetos_roteiro WHERE usuario_id=?", usuario_id)
+    resultado = {"atualizados": [], "ligados": [], "criados": [], "ignorados": [], "faltando": []}
+    if vistos:
+        presentes = {str(v) for v in vistos} | {str(p.get("uuid") or "") for p in projetos or []}
+        resultado["faltando"] = [a["claude_uuid"] for a in agentes if a["claude_uuid"] and a["claude_uuid"] not in presentes]
     ligados = {a["claude_uuid"]: a for a in agentes if a["claude_uuid"]}
     livres = [a for a in agentes if not a["claude_uuid"]]
     apagados = {l["claude_uuid"] for l in banco.todos("SELECT claude_uuid FROM claude_ignorados WHERE usuario_id=?", usuario_id)}
-    resultado = {"atualizados": [], "ligados": [], "criados": [], "ignorados": []}
     for p in projetos or []:
         uuid, nome = str(p.get("uuid") or ""), str(p.get("nome") or "").strip()[:60]
         instrucoes = str(p.get("instrucoes") or "").strip()[:100000]
@@ -85,6 +93,17 @@ def sincronizar(usuario_id: int, projetos: list[dict]) -> dict:
                        instrucoes, uuid, nome, json.dumps(arquivos, ensure_ascii=False), banco.agora(),
                        agente["id"], usuario_id)
     return resultado
+
+
+def excluidos_no_claude(usuario_id: int, uuids: list[str]) -> dict:
+    """Os projetos que o claude.ai disse não existirem mais (404): o agente ligado a cada um sai do Radar."""
+    excluidos = []
+    for uuid in {str(u) for u in uuids or [] if u}:
+        agente = banco.um("SELECT id, nome FROM projetos_roteiro WHERE usuario_id=? AND claude_uuid=?", usuario_id, uuid)
+        if agente:
+            banco.executar("DELETE FROM projetos_roteiro WHERE id=? AND usuario_id=?", agente["id"], usuario_id)
+            excluidos.append(agente["nome"])
+    return {"excluidos": excluidos}
 
 
 def texto_dos_arquivos(agente: dict | None) -> str:

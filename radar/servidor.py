@@ -19,7 +19,7 @@ from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 
-from . import alvos, banco, canal_painel, claude_projetos, custos, descricao, diagnostico, fabrica_api, fila, funcoes, garimpo, gosto, horarios, ia, integracoes, medir, mercado, metricas, nichos, pagina, perfil, producao, publicar, radar_paises, roteiro_claude, studio, tempo, thumb, trabalho, treinamento, youtube
+from . import alvos, banco, canal_painel, chatgpt_conta, claude_projetos, custos, descricao, diagnostico, fabrica_api, fila, funcoes, garimpo, gosto, horarios, ia, integracoes, medir, mercado, metricas, nichos, pagina, perfil, producao, publicar, radar_paises, roteiro_claude, studio, tempo, thumb, trabalho, treinamento, youtube
 from .config import DADOS, NOME, PLANOS, RAIZ, pode
 
 WEB = RAIZ / "radar" / "web"
@@ -2292,6 +2292,32 @@ async def chatgpt_estado(u: dict = Depends(usuario)):
         return {"conectada": False, "fabrica_ligada": False, "motivo": str(erro)}
 
 
+@app.get("/api/integracoes/chatgpt/contas")
+async def chatgpt_contas(u: dict = Depends(_chaves_aqui)):
+    """A conta do ChatGPT ligada, as guardadas e como anda um login aberto (chatgpt_conta.py)."""
+    return chatgpt_conta.contas()
+
+
+@app.post("/api/integracoes/chatgpt/conectar")
+async def chatgpt_conectar(u: dict = Depends(_chaves_aqui)):
+    return _integracao(chatgpt_conta.comecar_login)
+
+
+@app.post("/api/integracoes/chatgpt/cancelar")
+async def chatgpt_cancelar(u: dict = Depends(_chaves_aqui)):
+    return chatgpt_conta.cancelar_login()
+
+
+@app.post("/api/integracoes/chatgpt/usar")
+async def chatgpt_usar(corpo: dict, u: dict = Depends(_chaves_aqui)):
+    return _integracao(chatgpt_conta.usar, str(corpo.get("email") or ""))
+
+
+@app.post("/api/integracoes/chatgpt/esquecer")
+async def chatgpt_esquecer(corpo: dict, u: dict = Depends(_chaves_aqui)):
+    return _integracao(chatgpt_conta.esquecer, str(corpo.get("email") or ""))
+
+
 @app.get("/api/integracoes/chatgpt/canais")
 async def chatgpt_canais(u: dict = Depends(_chaves_aqui)):
     """Quem gera as imagens em cada canal da fábrica, para trocar pela conexão do ChatGPT direto em Integrações
@@ -2536,7 +2562,14 @@ def projetos(u: dict = Depends(usuario)):
 async def ext_projetos_claude(request: Request, u: dict = Depends(exigir("extensao"))):
     """Os projetos do claude.ai, lidos pela extensão no Chrome logado: cada um atualiza o agente ligado a ele."""
     d = await request.json()
-    return claude_projetos.sincronizar(u["id"], d.get("projetos") or [])
+    return claude_projetos.sincronizar(u["id"], d.get("projetos") or [], d.get("vistos"))
+
+
+@app.post("/api/ext/projetos-claude/excluidos")
+async def ext_projetos_claude_excluidos(request: Request, u: dict = Depends(exigir("extensao"))):
+    """Os projetos que a extensão abriu no claude.ai e deram 404: o agente ligado a cada um sai do Radar."""
+    d = await request.json()
+    return claude_projetos.excluidos_no_claude(u["id"], d.get("uuids") or [])
 
 
 @app.post("/api/projetos")

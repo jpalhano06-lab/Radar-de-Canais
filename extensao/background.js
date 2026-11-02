@@ -100,8 +100,7 @@ chrome.commands.onCommand.addListener(async (comando) => {
 // Falhar aqui não tem problema: abrir o claude.ai faz a mesma leitura pela própria página (claude-sync.js)
 async function sincronizarClaude() {
   try {
-    const projetos = await lerProjetosClaude();
-    const r = await pedir({ caminho: "/api/ext/projetos-claude", metodo: "POST", corpo: { projetos } });
+    const r = await sincronizarProjetosClaude("https://claude.ai", (caminho, corpo) => pedir({ caminho, metodo: "POST", corpo }));
     if (!r.erro) await chrome.storage.local.set({ claudeSincronizado: Date.now(), claudeResultado: r.dados });
     return r;
   } catch (e) {
