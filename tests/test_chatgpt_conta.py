@@ -78,3 +78,8 @@ def test_a_volta_da_openai_liga_a_conta_nova_e_guarda_a_antiga(codex, monkeypatc
         assert [g["email"] for g in c["guardadas"]] == ["a@x.com"]
     finally:
         chatgpt_conta.cancelar_login()
+
+
+def test_o_login_da_fabrica_nao_e_o_do_codex_deste_computador():
+    """O ~/.codex é do Robô do Dotti; dividir o login com ele fez a OpenAI revogá-lo (2026-11-02)."""
+    assert chatgpt_conta.PASTA != Path.home() / ".codex"

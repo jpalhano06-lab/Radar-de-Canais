@@ -1619,13 +1619,20 @@ conta de ChatGPT".
 - **Outra conta**: o Codex nem está instalado neste computador, então o Radar faz o mesmo login que o `codex login`
   (`radar/chatgpt_conta.py`): **Conectar outra conta** abre `auth.openai.com` numa aba (PKCE, o client_id do Codex,
   `prompt=login` para dar para escolher outra conta), a OpenAI volta para `http://localhost:1455/auth/callback` (a
-  porta é fixa porque é a que o Codex registrou) e o login novo vai para `~/.codex/auth.json`, que a fábrica lê a
-  cada imagem. A conta de antes, com o limite usado dela, vai para `~/.codex/contas-radar/` e volta com **Usar
-  esta**. Rotas `/api/integracoes/chatgpt/{contas,conectar,cancelar,usar,esquecer}`, só no computador da fábrica.
+  porta é fixa porque é a que o Codex registrou) e o login novo vai para `~/.codex-fabrica/auth.json`, que a fábrica
+  lê a cada imagem. A conta de antes, com o limite usado dela, vai para `~/.codex-fabrica/contas-radar/` e volta com
+  **Usar esta**. Rotas `/api/integracoes/chatgpt/{contas,conectar,cancelar,usar,esquecer}`, só no computador da fábrica.
 - **Cada canal**: o cartão lista os perfis da fábrica com o seletor *Conexão do ChatGPT* / *Chave de API* (o mesmo
   `imagens.provedor` da Configuração do canal) e os botões **Todos pela conexão** / **Todos pela chave de API**, que
   só mexem nos perfis `canal-*`; os modelos (documentário, meditação…) ficam num "ver mais".
 - Testes em `tests/test_chatgpt_conta.py`, inclusive a volta da OpenAI de ponta a ponta com o código simulado.
+- **A pasta do login é só da fábrica** (`~/.codex-fabrica`, ou `FABRICA_CODEX_HOME`), mudança do mesmo dia: no
+  `~/.codex` ela dividia o login com o Robô do Dotti, que usa o Codex deste computador. Trocar a conta no Radar trocava
+  a do Dotti junto (de manhã ele pegou uma conta grátis, que não gera imagem), e os dois renovando o mesmo login
+  fizeram a OpenAI revogá-lo (`token_revoked`): o Dotti caiu na chave paga da OpenAI, sem crédito, e parou de fazer
+  vídeo. Agora cada um tem a sua conta: a da fábrica se liga em **Conectar outra conta**, a do Dotti com o
+  `codex login` dele. A fábrica (`fabrica/chatgpt_assinatura.py`) lê a mesma pasta; a versão do Codex continua vindo
+  do `~/.codex`.
 
 ### O agente excluído no Claude sai do Radar (2026-11-02)
 

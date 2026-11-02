@@ -1,13 +1,16 @@
 """Trocar a conta do ChatGPT que gera as imagens, direto em Integrações (pedido do usuário em 2026-11-02: "poder
 integrar outra conta de chatgpt").
 
-A fábrica lê o login em ~/.codex/auth.json a cada imagem (fabrica/chatgpt_assinatura.py), o mesmo arquivo do `codex
-login`. Como o Codex nem está instalado neste computador, o Radar faz o mesmo login que ele: abre a página da OpenAI
-no navegador, a pessoa entra com a conta que quiser, a OpenAI devolve para http://localhost:1455/auth/callback (o
-endereço que o Codex registrou, por isso a porta fixa) e o Radar grava o login novo no auth.json.
+A fábrica lê o login em ~/.codex-fabrica/auth.json a cada imagem (fabrica/chatgpt_assinatura.py). O Radar faz o
+mesmo login que o `codex login`: abre a página da OpenAI no navegador, a pessoa entra com a conta que quiser, a OpenAI
+devolve para http://localhost:1455/auth/callback (o endereço que o Codex registrou, por isso a porta fixa) e o Radar
+grava o login novo no auth.json da fábrica.
 
-A conta que estava ligada não se perde: vai para ~/.codex/contas-radar/<e-mail>.json, junto com o quanto ela já tinha
-usado do limite, e volta com um clique ("Usar esta")."""
+A pasta é só da fábrica desde 2026-11-02: antes era o ~/.codex, o mesmo do Robô do Dotti, e trocar a conta aqui
+trocava a dele junto; os dois renovando o mesmo login fizeram a OpenAI revogá-lo (token_revoked) e o Dotti parou.
+
+A conta que estava ligada não se perde: vai para ~/.codex-fabrica/contas-radar/<e-mail>.json, junto com o quanto ela
+já tinha usado do limite, e volta com um clique ("Usar esta")."""
 import base64
 import hashlib
 import json
@@ -25,7 +28,7 @@ import httpx
 
 from . import config
 
-PASTA = Path(os.environ.get("CODEX_HOME") or (Path.home() / ".codex"))
+PASTA = Path(os.environ.get("FABRICA_CODEX_HOME") or (Path.home() / ".codex-fabrica"))   # a mesma da fábrica
 GUARDADAS = PASTA / "contas-radar"
 EMISSOR = "https://auth.openai.com"
 CLIENTE_CODEX = "app_EMoamEEZ73f0CkXaXp7hrann"   # o client_id publicado do Codex CLI, o mesmo da fábrica
