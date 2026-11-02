@@ -85,3 +85,12 @@ def test_canal_sem_perfil_na_fabrica_avisa(tmp_path, monkeypatch):
     _perfil(tmp_path, monkeypatch, SEM_IMAGENS)
     with pytest.raises(ValueError):
         producao.salvar_imagens_quem("canal-que-nao-existe", "assinatura")
+
+
+def test_integracoes_lista_cada_canal_com_quem_gera(tmp_path, monkeypatch):
+    """Integrações troca os canais pela conexão do ChatGPT: a lista traz o nome do canal e a escolha de cada um."""
+    _perfil(tmp_path, monkeypatch, SEM_IMAGENS)
+    monkeypatch.setattr(producao.roteiro_claude, "perfis_da_fabrica", lambda: ["canal-teste"])
+    producao.salvar_imagens_quem("canal-teste", "assinatura")
+    assert producao.imagens_dos_perfis() == [{"perfil": "canal-teste", "canal": "UK MARKET", "e_canal": True,
+                                              "quem": "assinatura", "reserva": "openrouter", "provedor": "assinatura"}]

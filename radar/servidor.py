@@ -2292,6 +2292,23 @@ async def chatgpt_estado(u: dict = Depends(usuario)):
         return {"conectada": False, "fabrica_ligada": False, "motivo": str(erro)}
 
 
+@app.get("/api/integracoes/chatgpt/canais")
+async def chatgpt_canais(u: dict = Depends(_chaves_aqui)):
+    """Quem gera as imagens em cada canal da fábrica, para trocar pela conexão do ChatGPT direto em Integrações
+    (pedido do usuário em 2026-11-01). É o mesmo imagens.provedor da Configuração do canal."""
+    return await run_in_threadpool(producao.imagens_dos_perfis)
+
+
+@app.post("/api/integracoes/chatgpt/canais")
+async def chatgpt_canais_salvar(corpo: dict, u: dict = Depends(_chaves_aqui)):
+    """{"quem": "assinatura" | "api", "perfil": "canal-x"} troca um perfil; sem perfil, troca todos os canais."""
+    quem, perfil = str(corpo.get("quem") or ""), str(corpo.get("perfil") or "")
+    nomes = [perfil] if perfil else [p["perfil"] for p in producao.imagens_dos_perfis() if p["e_canal"]]
+    for nome in nomes:
+        await run_in_threadpool(_integracao, producao.salvar_imagens_quem, nome, quem)
+    return await run_in_threadpool(producao.imagens_dos_perfis)
+
+
 @app.post("/api/integracoes/{servico}/testar")
 async def integracoes_testar(servico: str, corpo: dict, u: dict = Depends(_chaves_aqui)):
     return await run_in_threadpool(_integracao, integracoes.testar, servico, int(corpo.get("indice") or 0))

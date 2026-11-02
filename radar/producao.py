@@ -162,6 +162,13 @@ def perfis() -> list[dict]:
     return [_perfil(p) | {"perfil": p} for p in roteiro_claude.perfis_da_fabrica()]
 
 
+def imagens_dos_perfis() -> list[dict]:
+    """Cada perfil da fábrica e quem gera as imagens dele, para a troca em massa de Integrações. e_canal separa os
+    perfis de canal (canal-*) dos modelos da fábrica (documentário, meditação...), que a troca de todos não mexe."""
+    return [{"perfil": p["perfil"], "canal": p.get("canal") or p["perfil"], "e_canal": p["perfil"].startswith("canal-")}
+            | imagens_do_perfil(p["perfil"]) for p in perfis() if _arquivo_do_perfil(p["perfil"])]
+
+
 def _perfil_do_canal(titulo: str) -> str:
     """O perfil da fábrica que tem o mesmo nome do canal ("João o Lobo" → canal-joao-o-lobo)."""
     for p in perfis():

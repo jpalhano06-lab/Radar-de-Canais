@@ -1131,6 +1131,12 @@ nav .subs a.ativo { transform: none; }
 .gpt-janela { display: grid; grid-template-columns: 1fr auto; gap: 4px 10px; font-size: 13px; }
 .gpt-janela small { grid-column: 1 / -1; color: var(--fraco); font-size: 11px; }
 .gpt-barra { grid-column: 1 / -1; height: 6px; border-radius: 999px; background: var(--painel2); overflow: hidden; }
+.gpt-troca { display: grid; gap: 10px; margin-top: 6px; padding-top: 10px; border-top: 1px solid var(--linha); }
+.gpt-troca-cab { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px; }
+.gpt-troca-cab small { color: var(--fraco); margin-right: auto; }
+.gpt-canais { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 8px 14px; }
+.gpt-canal { display: flex; align-items: center; justify-content: space-between; gap: 10px; font-size: 13px; }
+.gpt-canal span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .gpt-barra i { display: block; height: 100%; background: var(--acento); border-radius: 999px; }
 .pc-imagens { width: 100%; margin-top: 2px; }
 .pc-imagens-sub { color: var(--fraco); font-size: 11px; line-height: 1.4; }

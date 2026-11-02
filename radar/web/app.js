@@ -2857,19 +2857,36 @@ async function integracoes(dados) {
       <div class="gpt-barra"><i style="width:${Math.max(0, Math.min(100, pct || 0))}%"></i></div>
       <small>${pct === null ? "Ainda sem imagem gerada por aqui: o limite aparece depois do primeiro vídeo." : esc(volta.replace(" · ", ""))}</small></div>`;
   };
+  // a troca de cada canal entre a conexão e a chave de API, aqui mesmo (a mesma da Configuração do canal)
+  const canaisGpt = d.fabrica_ligada ? await api("/api/integracoes/chatgpt/canais").catch(() => []) : [];
+  const soCanais = canaisGpt.filter((c) => c.e_canal), modelos = canaisGpt.filter((c) => !c.e_canal);
+  const nPelaConexao = soCanais.filter((c) => c.quem === "assinatura").length;
+  const linhaGpt = (c) => `<label class="gpt-canal"><span title="${esc(c.perfil)}">${esc(c.canal)}</span>
+      <select class="gpt-quem" data-perfil="${esc(c.perfil)}">
+        <option value="assinatura" ${c.quem === "assinatura" ? "selected" : ""}>Conexão do ChatGPT</option>
+        <option value="api" ${c.quem === "api" ? "selected" : ""}>Chave de API</option></select></label>`;
+  const trocaGpt = !canaisGpt.length ? "" : `<div class="gpt-troca">
+      <div class="gpt-troca-cab"><b>Quem gera as imagens de IA</b>
+        <small>${nPelaConexao} de ${soCanais.length} ${soCanais.length === 1 ? "canal" : "canais"} pela conexão</small>
+        ${soCanais.length ? bt("sec gpt-todos", "Todos pela conexão", 'data-quem="assinatura"') + bt("contorno gpt-todos", "Todos pela chave de API", 'data-quem="api"') : ""}</div>
+      <div class="gpt-canais">${soCanais.map(linhaGpt).join("")}</div>
+      ${modelos.length ? `<details class="ig-limite"><summary>Modelos da fábrica (${modelos.length})</summary>
+        <div class="gpt-canais">${modelos.map(linhaGpt).join("")}</div></details>` : ""}
+    </div>`;
   const cartaoGpt = `<div class="bloco ig-conta gpt-conta">
       <div class="gpt-cab"><b>ChatGPT (assinatura)</b>
         <span class="ig-st ${a.conectada ? "ok" : "erro"}">${a.conectada ? "✓ conectada" : "não conectada"}</span></div>
       ${a.conectada
         ? `<span>${esc(a.email || "conta ligada")} · ${esc(a.plano || "ChatGPT")}</span>
-           <p class="sub">Você escolhe em cada canal, na <b>Configuração do canal › Quem gera as imagens de IA</b>, entre
-             esta assinatura e a chave de API. Pela assinatura <b>nenhuma imagem é cobrada</b>: gasta o limite dela.
+           <p class="sub">Escolha abaixo quais canais geram as imagens por esta conexão e quais pela chave de API.
+             Pela conexão <b>nenhuma imagem é cobrada</b>: gasta o limite dela.
              Se o limite acabar no meio de um vídeo, as imagens que faltam saem pela chave de API da fábrica.</p>
            <div class="gpt-janelas">${barra("janela", "Janela de 5 horas")}${barra("semana", "Semana")}</div>`
         : `<span>${esc(a.fabrica_ligada === false ? "A fábrica está desligada: ligue a fábrica para ver a conta."
                      : a.motivo || "Sem login do ChatGPT no computador da fábrica.")}</span>
            <p class="sub">Para ligar, rode <code>codex login</code> no computador da fábrica e entre com a conta da
              assinatura. Enquanto isso as imagens de IA saem pela chave de API.</p>`}
+      ${trocaGpt}
     </div>`;
   tela.innerHTML = titulo("Integrações", "Saldos e chaves dos serviços que o Radar e a fábrica usam.") +
     (d.fabrica_ligada ? "" : '<div class="chamada aviso">A fábrica está desligada: as chaves dela ficam só para ver.</div>') +
@@ -2879,6 +2896,18 @@ async function integracoes(dados) {
      <h2 class="ig-h2">Conexões da conta</h2><p class="sub">Autorizações separadas das chaves de API.</p>
      <div class="ig-contas">${cartaoGpt}
        <div class="bloco ig-conta"><b>Google / YouTube Studio</b><span>${conta}</span><a href="#/canais">Abrir Canais</a></div></div>`;
+
+  const trocarGpt = async (corpo) => {
+    await api("/api/integracoes/chatgpt/canais", { method: "POST", body: corpo });
+    aviso(corpo.quem === "assinatura"
+      ? "As imagens passam a sair pela conexão do ChatGPT. Não gasta crédito: gasta o limite dela."
+      : "As imagens voltam a sair pela chave de API da fábrica.");
+    integracoes(d);
+  };
+  tela.querySelectorAll(".gpt-quem").forEach((s) => (s.onchange = () =>
+    trocarGpt({ quem: s.value, perfil: s.dataset.perfil }).catch((e) => { aviso(porque(e)); integracoes(d); })));
+  tela.querySelectorAll(".gpt-todos").forEach((b) => (b.onclick = () => carregando(b, "Trocando…", () =>
+    trocarGpt({ quem: b.dataset.quem }))));
 
   const cartao = (el) => el.closest(".ig-cartao");
   const indice = (el) => Number(el.closest(".ig-chave")?.dataset.i ?? -1);
