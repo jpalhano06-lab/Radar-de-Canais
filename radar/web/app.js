@@ -3593,8 +3593,8 @@ function idadeEmPalavras(de, ate) {
 
 // Quatro jeitos de olhar a mesma faixa. Pedido do usuário em 2026-10-25: a curva da vida tinha um desenho só, o
 // de barras, e ele quis escolher. Os quatro saem dos MESMOS números do /api/nichos/vida — nenhum recalcula nada,
-// só mostra de outro jeito. E clicar numa etapa, em qualquer uma das formas, abre os VÍDEOS dela aqui embaixo
-// (antes o clique trocava de tela e levava para a lista de canais; isso virou um botão dentro do bloco).
+// só mostra de outro jeito. E clicar numa etapa, em qualquer uma das formas, abre os CANAIS dela aqui embaixo
+// (em 2026-11-02 deixou de abrir vídeos: a tela é Canais; a lista inteira da etapa é um botão dentro do bloco).
 const FORMAS_VIDA = [["barras", "Barras", "a altura de cada etapa diz quantos canais"],
   ["faixa", "Faixa inteira", "uma régua só: cada etapa com a sua fatia do nicho"],
   ["funil", "Funil", "uma linha por etapa, do começo da vida ao fim"],
@@ -3632,7 +3632,7 @@ function desenhoVida(d, forma, escolhida) {
         <td class="n" style="color:var(--verde)">${e.crescendo || "—"}</td>
         <td class="n">${e.views_mes ? num(e.views_mes) : "—"}</td>
         <td><span class="vida-selo" style="color:${cor(e)};border-color:${cor(e)}">${esc(e.veredito_nome)}</span></td>
-        <td><button class="botao sec" data-etapa="${esc(e.chave)}">ver os vídeos</button></td></tr>`).join("")}</tbody></table>`;
+        <td><button class="botao sec" data-etapa="${esc(e.chave)}">ver os canais</button></td></tr>`).join("")}</tbody></table>`;
   }
   return `<div class="vida">${d.etapas.map((e) => `<button class="vida-et${marcada(e)}" data-etapa="${esc(e.chave)}">
     <span class="vida-barra"><i style="height:${altura(e.canais, topo)}%;background:${cor(e)}"></i></span>
@@ -3643,25 +3643,28 @@ function desenhoVida(d, forma, escolhida) {
     <small class="vida-o-que">${esc(e.o_que)}</small></button>`).join("")}</div>`;
 }
 
-// os vídeos dos canais de uma etapa: a mesma lista da tela Vídeos, recortada pela idade de QUEM POSTA
-async function videosDaEtapa(caixa, f, e, abrirCanais, aoFechar) {
+// os canais de uma etapa: a mesma lista da tela Canais, recortada pela idade de QUEM POSTA. Pedido do usuário
+// em 2026-11-02: aqui é a tela Canais, então o clique numa etapa mostra canais, nunca vídeos (vídeo é da tela Vídeos).
+const POR_ETAPA = 12;
+async function canaisDaEtapa(caixa, f, e, abrirCanais, aoFechar) {
   if (!e) { caixa.innerHTML = ""; return; }
-  caixa.innerHTML = `<div class="vazio">Procurando os vídeos de ${esc(e.nome)}…</div>`;
+  caixa.innerHTML = `<div class="vazio">Procurando os canais de ${esc(e.nome)}…</div>`;
+  const rosto = PREFS && PREFS.sem_rosto ? "sem" : "";
   let d;
   try {
-    d = await api("/api/videos?" + consulta({ etapa: e.chave, nicho: f.nicho, nota_min: 5, tipo: "longo",
-      lingua: "ptenes", ordem: "nota", por: 12, pagina: 0 }));
+    d = await api("/api/radar?" + consulta({ ...paraApi({ ...f, etapa: e.chave, rosto }), pagina: 0, por: POR_ETAPA }));
   } catch (err) { caixa.innerHTML = `<div class="vazio">${esc(porque(err))}</div>`; return; }
   caixa.innerHTML = `<div class="vida-cab vida-videos-cab">
-      <h3>O que estourou nos canais em ${esc(e.nome)}${f.nicho ? ` · ${esc(f.nicho)}` : ""}</h3>
-      <p class="sub">Vídeos que fizeram 5x o normal do próprio canal, em canais que estão postando há
-        ${esc(idadeEmPalavras(e.de, e.ate))}.${d.total ? ` São ${num(d.total)}; aqui estão os ${Math.min(12, d.total)} de maior nota.` : ""}</p>
-      <div class="vida-videos-acoes"><button class="botao sec" id="vida-canais">Ver os canais desta etapa</button>
+      <h3>Os canais em ${esc(e.nome)}${f.nicho ? ` · ${esc(f.nicho)}` : ""}</h3>
+      <p class="sub">Canais que estão postando há ${esc(idadeEmPalavras(e.de, e.ate))}.${d.total
+        ? ` São ${num(d.total)}; aqui estão os ${Math.min(POR_ETAPA, d.total)} primeiros.` : ""}</p>
+      <div class="vida-videos-acoes">${d.total > POR_ETAPA ? `<button class="botao sec" id="vida-canais">Ver todos os ${num(d.total)} na lista</button>` : ""}
         <button class="botao sec" id="vida-fechar">Fechar</button></div></div>
-    <div class="grade-videos grandes">${d.videos.map((v) => cartaoVideoGrande(v)).join("")
-      || '<div class="vazio" style="grid-column:1/-1">Nenhum vídeo desta etapa ainda. O Radar só mostra o que já mediu: garimpe mais canais, ou escolha outra etapa.</div>'}</div>`;
-  ligarRoteiro(caixa);
-  caixa.querySelector("#vida-canais").onclick = () => abrirCanais(e.chave);
+    <div class="lista-canais">${d.canais.map((c) => cartaoCanal(c)).join("")
+      || '<div class="vazio">Nenhum canal nesta etapa ainda. O Radar só mostra o que já mediu: garimpe mais canais, ou escolha outra etapa.</div>'}</div>`;
+  ligarCartoes(caixa);
+  const todos = caixa.querySelector("#vida-canais");
+  if (todos) todos.onclick = () => abrirCanais(e.chave);
   caixa.querySelector("#vida-fechar").onclick = () => { caixa.innerHTML = ""; aoFechar(); };
 }
 
@@ -3678,7 +3681,7 @@ async function visaoVida(caixa, f, abrirCanais, acompanhar) {
         com dono. A média do mês é das views dos vídeos que cada canal publicou nos últimos 30 dias.</p></div>
     <div class="modos modos-forma" id="formas-vida"></div>
     <div id="vida-desenho"></div>
-    <p class="sub">${num(d.canais)} canais nesta conta${d.sem_data ? ` · ${d.sem_data} ficaram de fora (o Radar ainda não sabe quando eles começaram)` : ""}. Clique numa etapa para ver os vídeos dela aqui embaixo.</p>
+    <p class="sub">${num(d.canais)} canais nesta conta${d.sem_data ? ` · ${d.sem_data} ficaram de fora (o Radar ainda não sabe quando eles começaram)` : ""}. Clique numa etapa para ver os canais dela aqui embaixo.</p>
     <div id="vida-videos"></div>`;
   const videos = caixa.querySelector("#vida-videos");
   const pintar = () => {
@@ -3690,14 +3693,14 @@ async function visaoVida(caixa, f, abrirCanais, acompanhar) {
     }));
     caixa.querySelectorAll("[data-etapa]").forEach((b) => (b.onclick = () => {
       f.vida_etapa = b.dataset.etapa; acompanhar(); pintar();
-      videosDaEtapa(videos, f, d.etapas.find((e) => e.chave === f.vida_etapa), abrirCanais,
+      canaisDaEtapa(videos, f, d.etapas.find((e) => e.chave === f.vida_etapa), abrirCanais,
         () => { f.vida_etapa = ""; acompanhar(); pintar(); });
       videos.scrollIntoView({ behavior: "smooth", block: "start" });
     }));
   };
   pintar();
   if (f.vida_etapa) {
-    videosDaEtapa(videos, f, d.etapas.find((e) => e.chave === f.vida_etapa), abrirCanais,
+    canaisDaEtapa(videos, f, d.etapas.find((e) => e.chave === f.vida_etapa), abrirCanais,
       () => { f.vida_etapa = ""; acompanhar(); pintar(); });
   }
 }
