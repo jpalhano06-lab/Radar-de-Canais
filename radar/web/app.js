@@ -2120,10 +2120,10 @@ async function resultados() {
       <div class="res-direita"><div class="res-custo">${CUSTOS_VISTOS[p.nome] ? CUSTOS_VISTOS[p.nome].html : '<span class="sub">calculando…</span>'}</div>
         <div class="video-acoes"><button class="botao sec" data-assistir="${esc(p.nome)}">▶ Assistir</button><button class="botao sec" data-pasta="${esc(p.nome)}">📁 Pasta</button></div></div>
     </article>`;
-  const grupos = (filtro ? [filtro] : nomes).map((n) => [n, lista.filter((p) => p.canal === n)])
-    .filter(([n, vs]) => vs.length || filtro);
+  // "Todos" é uma lista só, os mais recentes primeiro: em blocos por canal, o primeiro canal enchia a tela inteira
+  // e parecia que só ele tinha vídeos (pedido do usuário em 2026-11-03)
+  const grupos = filtro ? [[filtro, lista]] : lista.length ? [["", lista]] : [];
   caixa.innerHTML = grupos.map(([canal, vs]) => `<section class="res-grupo" data-canal-alvo="${esc(canal)}">
-      ${filtro ? "" : `<h2>${esc(canal)} <small>${vs.length} ${vs.length === 1 ? "vídeo" : "vídeos"} · <span class="res-tot"></span></small></h2>`}
       <div class="res-linhas">${vs.map(linha).join("") || '<div class="res-vazio">Nenhum vídeo neste canal. Arraste um vídeo para a aba dele.</div>'}</div></section>`).join("")
     || '<div class="vazio">Nenhum vídeo pronto ainda.</div>';
 
@@ -2173,10 +2173,6 @@ async function resultados() {
       <div class="kpi"><span>Publicados</span><b>${lista.filter((p) => p.publicado).length}</b></div>
       <div class="kpi"><span>Gasto total</span><b>${dolar(total)}</b></div>
       <div class="kpi"><span>Custo por minuto</span><b>${dolar(minutos ? total / minutos : 0)}</b></div>`;
-    grupos.forEach(([canal, vs]) => {
-      const el = caixa.querySelector(`[data-canal-alvo="${CSS.escape(canal)}"] .res-tot`);
-      if (el) el.textContent = `${dolar(vs.reduce((s, p) => s + ((CUSTOS_VISTOS[p.nome] || {}).total || 0), 0))} gastos`;
-    });
   };
   resumo();
   for (const p of lista) {
