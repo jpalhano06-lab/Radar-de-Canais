@@ -46,6 +46,12 @@ SERVICOS = [
     {"id": "pixabay", "nome": "Pixabay", "dono": "fabrica", "env": "PIXABAY_API_KEY", "varias": False,
      "obrigatoria": False, "para_que": "Fotos e vídeos reais grátis para as cenas.",
      "limite": "100 pedidos por minuto.", "onde": "https://pixabay.com/api/docs/"},
+    {"id": "trello", "nome": "Trello (chave)", "dono": "radar", "env": "TRELLO_KEY", "varias": False,
+     "obrigatoria": False, "para_que": "Cada pedido de vídeo vira um cartão na lista do canal, no quadro youtube.",
+     "limite": "Grátis. Precisa da chave e do token (o item de baixo).", "onde": "https://trello.com/power-ups/admin"},
+    {"id": "trello-token", "nome": "Trello (token)", "dono": "radar", "env": "TRELLO_TOKEN", "varias": False,
+     "obrigatoria": False, "para_que": "O token da sua conta, que deixa o Radar criar os cartões.",
+     "limite": "Grátis. Gere na página da chave, no link Token.", "onde": "https://trello.com/power-ups/admin"},
 ]
 
 
@@ -159,7 +165,7 @@ def _saldo(s: dict, fabrica_ligada: bool) -> dict:
             return {"valor": None, "unidade": "", "informado": False, "texto": str(erro)}
         return {"valor": d.get("creditos"), "unidade": "créditos", "informado": False,
                 "texto": f"{d.get('creditos', 0):,.0f} créditos · ~{d.get('minutos_de_narracao', 0)} min de narração".replace(",", ".")}
-    if s["id"] in ("groq", "pexels", "pixabay"):
+    if s["id"] in ("groq", "pexels", "pixabay", "trello", "trello-token"):
         return {"valor": None, "unidade": "", "informado": False, "texto": "Gratuito"}
     externo = _saldo_externo(s)
     if externo:
@@ -199,6 +205,14 @@ def _chamar_teste(sid: str, chave: str) -> None:
     if sid == "genaipro":
         if not fabrica_api._pedir("GET", "/api/genaipro/creditos", tempo=20).get("configurada"):
             raise RuntimeError("a fábrica não achou a chave da GenAI Pro")
+        return
+    if sid in ("trello", "trello-token"):
+        par = {"key": config.AMBIENTE.get("TRELLO_KEY", ""), "token": config.AMBIENTE.get("TRELLO_TOKEN", "")}
+        if not all(par.values()):
+            raise RuntimeError("falta a chave ou o token do Trello")
+        r = httpx.get("https://api.trello.com/1/members/me", params=par | {"fields": "username"}, timeout=15)
+        if r.status_code >= 400:
+            raise RuntimeError(f"recusada ({r.status_code})")
         return
     bearer = {"Authorization": f"Bearer {chave}"}
     pedidos = {

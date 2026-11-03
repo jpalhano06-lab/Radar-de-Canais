@@ -19,7 +19,7 @@ from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 
-from . import alvos, banco, canal_painel, chatgpt_conta, claude_projetos, custos, descricao, diagnostico, fabrica_api, fila, funcoes, garimpo, gosto, horarios, ia, integracoes, medir, mercado, metricas, nichos, pagina, perfil, producao, publicar, radar_paises, roteiro_claude, studio, tempo, thumb, trabalho, treinamento, youtube
+from . import alvos, banco, canal_painel, chatgpt_conta, claude_projetos, custos, descricao, diagnostico, fabrica_api, fila, funcoes, garimpo, gosto, horarios, ia, integracoes, medir, mercado, metricas, nichos, pagina, perfil, producao, publicar, radar_paises, roteiro_claude, studio, tempo, thumb, trabalho, treinamento, trello, youtube
 from .config import DADOS, NOME, PLANOS, RAIZ, pode
 
 WEB = RAIZ / "radar" / "web"
@@ -2047,7 +2047,11 @@ def fila_lista(u: dict = Depends(usuario)):
 
 @app.post("/api/fila")
 def fila_criar(corpo: dict, u: dict = Depends(dono_da_fabrica)):
-    return _na_fila(fila.criar, u["id"], corpo.get("pedido") or {}, bool(corpo.get("comecar")))
+    novo = _na_fila(fila.criar, u["id"], corpo.get("pedido") or {}, bool(corpo.get("comecar")))
+    # a ideia vai para a lista do canal no Trello (o Canal de teste não tem canal e fica de fora)
+    if novo["pedido"].get("canal_id"):
+        trello.do_pedido(producao.config(u["id"], novo["pedido"]["canal_id"]).get("canal", ""), novo["pedido"])
+    return novo
 
 
 @app.post("/api/fila/ajustes")
