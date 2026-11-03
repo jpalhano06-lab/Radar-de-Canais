@@ -379,6 +379,10 @@ def _conexao() -> sqlite3.Connection:
     con = sqlite3.connect(ARQUIVO, timeout=30, check_same_thread=False)
     con.row_factory = sqlite3.Row
     con.execute("PRAGMA journal_mode=WAL")
+    # o banco passa de 300 MB e a conexão é uma só, atrás da _TRAVA: com o cache padrão (2 MB) a lista de vídeos relia
+    # o disco a cada visita e segurava todas as outras telas. 64 MB de cache e o arquivo mapeado na memória.
+    con.execute("PRAGMA cache_size=-65536")
+    con.execute("PRAGMA mmap_size=536870912")
     return con
 
 

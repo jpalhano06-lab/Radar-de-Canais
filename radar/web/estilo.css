@@ -2010,13 +2010,8 @@ nav .subs a .olho svg { width: 15px; height: 15px; }
    vez do preto puro, números com cara de mostrador, menos caixa em volta de tudo. Continua valendo o que o usuário
    já pediu: nada de barra colorida ao lado (2026-10-15), botões e menu pintados na cor com a letra por cima. */
 
-/* fase 1: as cores do tema escuro, as letras, o menu, os botões, os campos e o "Para que serve" */
-:root[data-tema="escuro"] {
-  --fundo: #1a1714; --painel: #231f1a; --painel2: #2d2822; --linha: #3a332b; --texto: #ece4d8; --fraco: #9c9284;
-  --verde: #8fc46a; --verde-claro: #23301b; --verde-escuro: #23301b; --detalhe: #e0654f;
-  --vidro: rgba(35,31,26,.82); --sombra: 0 1px 2px rgba(0,0,0,.35), 0 10px 28px rgba(8,6,4,.45);
-}
-:root[data-tema="escuro"] { --sobre-verde: #142008; }
+/* as cores dos temas voltaram às de antes (pedido do usuário em 2026-11-03: "as cores pode voltar a de antes, do
+   escuro tem que voltar"); o grafite quente, a pedra do claro e o cinza quente saíram. Fica o resto da repaginação. */
 
 /* duas famílias: a Schibsted Grotesk em tudo e a Big Shoulders Display, condensada, só nos títulos e nos números */
 :root { --letra: "Schibsted Grotesk", "Segoe UI Variable", "Segoe UI", system-ui, sans-serif;
@@ -2053,10 +2048,7 @@ input, select, textarea, .selects select, .selects .limpar { border-radius: 8px;
 .botao.contorno:not(#_) { background: var(--painel2); border: 1px solid var(--linha); color: var(--texto) !important; }
 .botao.contorno:not(#_):hover { background: var(--acento); border-color: var(--acento); color: var(--sobre-acento) !important; }
 
-/* "Para que serve": uma linha de explicação, sem caixa tingida em volta */
-.ajuda { background: none; border: 0 !important; padding: 2px 0; color: var(--fraco); max-width: 88ch; }
-.ajuda b { color: var(--texto); }
-.ajuda .i { width: 18px; height: 18px; font-size: 11px; }
+/* o "Para que serve" voltou a ser a caixa de antes (pedido do usuário em 2026-11-03: "traga de volta estas observações") */
 
 /* fase 2: a nota vira o mostrador da capa. É o número que o Radar existe para medir, então é a única coisa grande
    e chamativa: embaixo à esquerda, na letra condensada, com o "×" menor. O verde continua sendo o "estourou" */
@@ -2078,28 +2070,13 @@ input, select, textarea, .selects select, .selects .limpar { border-radius: 8px;
    escura da regra sobre o acento em cima de um fundo vazio. Continuam pequenos (pedido de 2026-10-15), mas pintados */
 .video-acoes .botao:not(#_):not(:hover) { background: var(--painel2) !important; color: var(--texto) !important; }
 .video-acoes .botao:not(#_):hover { color: var(--sobre-acento) !important; }
-/* sem a caixa, o 5º vídeo sozinho numa segunda fileira ficava solto: a grade preenche a largura que houver */
-.lista-canais .capas { grid-template-columns: repeat(auto-fill, minmax(min(100%, 170px), 1fr)); }
-@media (max-width: 860px) { .lista-canais .capas { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+/* as capas dos canais voltaram ao tamanho de antes, 4 por fileira no PC: com 6 ficavam pequenas demais (pedido do
+   usuário em 2026-11-03, no Niche Finder) */
 /* no celular o nome e os números ficavam numa coluna estreita ao lado dos botões: os botões descem para uma linha só deles */
 @media (max-width: 860px) {
   .lista-canais .canal-info { flex: 1 1 calc(100% - 70px); }
   .lista-canais .canal-acoes { flex: 1 1 100%; }
 }
-
-/* fase 3: os temas claro e cinza no mesmo calor do escuro. O claro é pedra quente com papel por cima (não o
-   creme), o cinza é o grafite um pouco mais aberto. O preto e branco fica como está: ele é de propósito sem cor */
-:root:not([data-tema]), :root[data-tema="claro"] {
-  --fundo: #eeebe6; --painel: #fbfaf8; --painel2: #e6e1da; --linha: #d6cfc5; --texto: #221d17; --fraco: #6b6257;
-  --verde: #3d7a2a; --verde-claro: #e1eed8; --verde-escuro: #e1eed8; --detalhe: #b8432f;
-  --vidro: rgba(251,250,248,.78); --sombra: 0 1px 2px rgba(40,30,20,.05), 0 8px 24px rgba(40,30,20,.07);
-}
-:root[data-tema="cinza"] {
-  --fundo: #2e2a26; --painel: #3a3530; --painel2: #46403a; --linha: #57504a; --texto: #f2ece4; --fraco: #c4bbb0;
-  --verde: #9bcf74; --verde-claro: #2f3d25; --verde-escuro: #2f3d25; --detalhe: #e8705a;
-  --vidro: rgba(58,53,48,.82); --sombra: 0 1px 2px rgba(0,0,0,.25), 0 8px 24px rgba(10,8,6,.32);
-}
-:root[data-tema="cinza"] { --sobre-verde: #142008; }
 
 /* fase 3: no celular os botões de cima (Ideias e vídeos, ChatGPT, Nova produção, Cores) flutuavam em cima do
    conteúdo e quebravam em duas linhas: viram uma barra presa embaixo, numa linha só, com o conteúdo terminando antes */

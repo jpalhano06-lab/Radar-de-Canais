@@ -1193,7 +1193,9 @@ def outliers(request: Request, u: dict = Depends(exigir("outliers"))):
         data = _data(q, nome)
         if data:
             onde.append(f"v.publicado {operador} ?"); args.append(data + sufixo)
-    base = (f"FROM outliers o JOIN videos v ON v.id=o.video_id JOIN canais c ON c.id=o.canal_id "
+    # CROSS JOIN no SQLite fixa a ordem: começa pelos outliers (39 mil) e busca cada vídeo pela chave. Com JOIN o
+    # planejador varria a tabela inteira de vídeos (558 mil) atrás dos que são outliers — 4x mais trabalho
+    base = (f"FROM outliers o CROSS JOIN videos v ON v.id=o.video_id JOIN canais c ON c.id=o.canal_id "
             f"WHERE c.no_radar=1 AND {' AND '.join(onde)}")
     pagina = int(_numero(q, "pagina") or 0)
     # o marcador da esteira vem junto com o vídeo: o cartão precisa saber se já está na fila ou já foi modelado
@@ -2515,8 +2517,8 @@ def roteiro_tarefas(u: dict = Depends(usuario)):
 
 
 @app.get("/api/roteiros")
-def roteiros(u: dict = Depends(usuario)):
-    return {"roteiros": roteiro_claude.lista(u["id"])}
+def roteiros(leve: int = 0, u: dict = Depends(usuario)):
+    return {"roteiros": roteiro_claude.lista(u["id"], leve=bool(leve))}
 
 
 @app.get("/api/roteiros/{nome}/thumbnail.jpg")

@@ -380,25 +380,27 @@ def _nome_do_canal(meta: dict) -> str:
     return (meta.get("projeto") or "").title()
 
 
-def _publico(pasta) -> dict:
+def _publico(pasta, leve: bool = False) -> dict:
+    """O roteiro como a tela vê. Leve, sem o texto do roteiro e sem a descrição: o painel da direita só mostra a lista
+    (título, link, canal, capa) e é pedido a cada troca de tela — com os textos eram 1,3 MB e 1 s toda vez."""
     meta = json.loads((pasta / "roteiro.json").read_text(encoding="utf-8"))
     meta["canal_nome"] = _nome_do_canal(meta)
     arquivo = pasta / "roteiro.txt"
     from . import descricao as _descricao
-    return meta | {"nome": pasta.name, "roteiro": arquivo.read_text(encoding="utf-8"), "arquivo": str(arquivo),
-                   "descricao": _descricao.ler(pasta),
+    return meta | {"nome": pasta.name, "arquivo": str(arquivo),
+                   **({} if leve else {"roteiro": arquivo.read_text(encoding="utf-8"), "descricao": _descricao.ler(pasta)}),
                    "thumbnail_url": f"/api/roteiros/{pasta.name}/thumbnail.jpg" if (pasta / "thumbnail.jpg").exists() else "",
                    "comando": f'uv run fabrica novo {pasta.name} --roteiro "{arquivo}" --perfil perfis/documentario.yaml'}
 
 
-def lista(usuario_id: int) -> list[dict]:
+def lista(usuario_id: int, leve: bool = False) -> list[dict]:
     if not PASTA.exists():
         return []
     saida = []
     for meta in sorted(PASTA.glob("*/roteiro.json"), reverse=True)[:60]:
         try:
             if json.loads(meta.read_text(encoding="utf-8")).get("usuario_id") == usuario_id:
-                saida.append(_publico(meta.parent))
+                saida.append(_publico(meta.parent, leve))
         except (ValueError, OSError):
             continue
     return saida

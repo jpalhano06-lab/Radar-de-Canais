@@ -3286,7 +3286,8 @@ async function painel(abrir) {
   if (abrir !== undefined) { caixa.hidden = !abrir; guardar("painel-aberto", abrir); abas.classList.toggle("com-painel", !!abrir); }
   // o painel abre nos vídeos mandados fazer: o link da referência e a thumbnail para copiar (pedido do usuário em
   // 2026-10-18); as ideias salvas ficam na segunda aba
-  const [d, { roteiros }, { tarefas }] = await Promise.all([api("/api/ideias-salvas"), api("/api/roteiros").catch(() => ({ roteiros: [] })),
+  // a lista leve, sem o texto de cada roteiro: o painel é pedido a cada troca de tela e só mostra título, link e capa
+  const [d, { roteiros }, { tarefas }] = await Promise.all([api("/api/ideias-salvas"), api("/api/roteiros?leve=1").catch(() => ({ roteiros: [] })),
     api("/api/roteiros/tarefas").catch(() => ({ tarefas: [] }))]);
   const escrevendo = tarefas.filter((t) => t.estado === "rodando");
   // a aba na borda direita fica sempre à mão, em qualquer página, para abrir e fechar o painel (pedido do usuário em
