@@ -2086,3 +2086,28 @@ input, select, textarea, .selects select, .selects .limpar { border-radius: 8px;
   .lista-canais .canal-info { flex: 1 1 calc(100% - 70px); }
   .lista-canais .canal-acoes { flex: 1 1 100%; }
 }
+
+/* fase 3: os temas claro e cinza no mesmo calor do escuro. O claro é pedra quente com papel por cima (não o
+   creme), o cinza é o grafite um pouco mais aberto. O preto e branco fica como está: ele é de propósito sem cor */
+:root:not([data-tema]), :root[data-tema="claro"] {
+  --fundo: #eeebe6; --painel: #fbfaf8; --painel2: #e6e1da; --linha: #d6cfc5; --texto: #221d17; --fraco: #6b6257;
+  --verde: #3d7a2a; --verde-claro: #e1eed8; --verde-escuro: #e1eed8; --detalhe: #b8432f;
+  --vidro: rgba(251,250,248,.78); --sombra: 0 1px 2px rgba(40,30,20,.05), 0 8px 24px rgba(40,30,20,.07);
+}
+:root[data-tema="cinza"] {
+  --fundo: #2e2a26; --painel: #3a3530; --painel2: #46403a; --linha: #57504a; --texto: #f2ece4; --fraco: #c4bbb0;
+  --verde: #9bcf74; --verde-claro: #2f3d25; --verde-escuro: #2f3d25; --detalhe: #e8705a;
+  --vidro: rgba(58,53,48,.82); --sombra: 0 1px 2px rgba(0,0,0,.25), 0 8px 24px rgba(10,8,6,.32);
+}
+:root[data-tema="cinza"] { --sobre-verde: #142008; }
+
+/* fase 3: no celular os botões de cima (Ideias e vídeos, ChatGPT, Nova produção, Cores) flutuavam em cima do
+   conteúdo e quebravam em duas linhas: viram uma barra presa embaixo, numa linha só, com o conteúdo terminando antes */
+@media (max-width: 760px) {
+  #cores { left: 0; right: 0; bottom: 0; top: auto; padding: 8px 12px calc(8px + env(safe-area-inset-bottom));
+    background: var(--vidro); backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px); border-top: 1px solid var(--linha);
+    overflow-x: auto; justify-content: flex-start; gap: 6px; }
+  #cores > button, #cores > .bt-topo { flex: none; white-space: nowrap; box-shadow: none; font-size: 12px; padding: 6px 10px; }
+  #cores .caixa-cores { position: fixed; top: auto; bottom: 64px; right: 12px; }
+  main { padding-bottom: 90px; }
+}
