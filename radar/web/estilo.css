@@ -2003,3 +2003,57 @@ nav .subs a .olho svg { width: 15px; height: 15px; }
   border: 1px solid var(--linha); border-radius: 7px; padding: 3px 6px; font: inherit; text-align: right; }
 /* a porcentagem fica editável mesmo com o garimpo desligado: dá para deixar o valor pronto antes de ligar */
 .garimpo-ajuste .pct { color: var(--fraco); }
+
+/* ================================================================= repaginação: bancada de instrumentos (2026-11-02)
+   Plano aprovado pelo usuário, feito com a skill frontend-design. O Radar mede sinal (quantas vezes o vídeo fez o
+   normal do canal), e o marrom-dourado da identidade (2026-10-15) é latão de instrumento: fundo de grafite quente em
+   vez do preto puro, números com cara de mostrador, menos caixa em volta de tudo. Continua valendo o que o usuário
+   já pediu: nada de barra colorida ao lado (2026-10-15), botões e menu pintados na cor com a letra por cima. */
+
+/* fase 1: as cores do tema escuro, as letras, o menu, os botões, os campos e o "Para que serve" */
+:root[data-tema="escuro"] {
+  --fundo: #1a1714; --painel: #231f1a; --painel2: #2d2822; --linha: #3a332b; --texto: #ece4d8; --fraco: #9c9284;
+  --verde: #8fc46a; --verde-claro: #23301b; --verde-escuro: #23301b; --detalhe: #e0654f;
+  --vidro: rgba(35,31,26,.82); --sombra: 0 1px 2px rgba(0,0,0,.35), 0 10px 28px rgba(8,6,4,.45);
+}
+:root[data-tema="escuro"] { --sobre-verde: #142008; }
+
+/* duas famílias: a Schibsted Grotesk em tudo e a Big Shoulders Display, condensada, só nos títulos e nos números */
+:root { --letra: "Schibsted Grotesk", "Segoe UI Variable", "Segoe UI", system-ui, sans-serif;
+  --mostrador: "Big Shoulders Display", "Bahnschrift", "Arial Narrow", sans-serif; --raio: 12px; }
+body { font-family: var(--letra); letter-spacing: 0; }
+button, select, input, textarea { font-family: inherit; }
+h1 { font-family: var(--mostrador); font-weight: 800; font-size: 38px; line-height: 1; letter-spacing: .005em; }
+h2, h3 { letter-spacing: -.01em; }
+/* algarismos de largura fixa só nos números: no texto corrido o "tnum" alargava também a vírgula e os dois-pontos */
+.numeros b, .cota-livre b, .canal-cab .posicao { font-family: var(--mostrador); font-weight: 700; letter-spacing: .01em;
+  font-variant-numeric: tabular-nums; }
+.tabela td, .capa .nota, .video .meta { font-variant-numeric: tabular-nums; }
+.numeros b { font-size: 17px; } .numeros .media b { font-size: 19px; color: var(--acento); }
+.cota-livre b { font-size: 32px; }
+
+/* a marca: o ponto na cor do app, sem o brilho verde que sobrou da primeira versão */
+.ponto { background: var(--acento); box-shadow: 0 0 0 4px color-mix(in srgb, var(--acento) 22%, transparent); }
+.marca b { font-family: var(--mostrador); font-size: 21px; font-weight: 800; letter-spacing: .01em; }
+
+/* menu: os nomes das seções em letra normal, não em caixa alta */
+nav .secao { text-transform: none; letter-spacing: 0; font-size: 12px; }
+nav a, nav .aba, nav .subs a { border-radius: 8px; }
+
+/* cantos pela hierarquia: painel 12, botão e campo 8, capa 6. As pílulas ficam só nos filtros (chips) */
+.cartao, .canal, .bloco, .passo, .quadro-cota, .painel-filtros { border-radius: var(--raio); }
+.botao { border-radius: 8px; }
+input, select, textarea, .selects select, .selects .limpar { border-radius: 8px; }
+.capa, .video.yt .capa { border-radius: 6px; }
+.modal { border-radius: 14px; }
+
+/* "Abrir canal" era letra escura sobre fundo vazio (a regra da letra sobre o acento pegava também o botão de
+   contorno): agora é um botão pintado na cor da superfície, legível em qualquer acento. O :not(#_) só sobe a
+   especificidade, para vencer o :is(... .botao.sec:hover:not(:disabled) ...) com !important da legibilidade */
+.botao.contorno:not(#_) { background: var(--painel2); border: 1px solid var(--linha); color: var(--texto) !important; }
+.botao.contorno:not(#_):hover { background: var(--acento); border-color: var(--acento); color: var(--sobre-acento) !important; }
+
+/* "Para que serve": uma linha de explicação, sem caixa tingida em volta */
+.ajuda { background: none; border: 0 !important; padding: 2px 0; color: var(--fraco); max-width: 88ch; }
+.ajuda b { color: var(--texto); }
+.ajuda .i { width: 18px; height: 18px; font-size: 11px; }
