@@ -186,7 +186,7 @@ const icone = (n, classe = "") => `<svg ${classe ? `class="${classe}"` : ""} vie
 // menu com um recorte pronto (Entraram hoje é a lista de canais com a visão já ligada).
 const MENU = [
   ["perfil", "Perfil", [["inicio", "Início"], ["trabalho", "Produzir"], ["acompanhar", "Acompanhar"], ["resultados", "Resultados"], ["custos", "Custos"]]],
-  ["descobrir", "Niche Finder", [["base", "Canais"], ["entraram", "Entraram hoje", "#/base?visao=entraram_hoje"],
+  ["descobrir", "Niche Finder", [["meu-nicho", "Meu nicho"], ["formulario", "Formulário"], ["base", "Canais"], ["entraram", "Entraram hoje", "#/base?visao=entraram_hoje"],
     // Títulos saiu do menu de manhã (25/10) e voltou de tarde, no mesmo dia, quando o usuário pediu os "títulos
     // recomendados": agora a tela abre com os títulos que estouraram NOS NICHOS DOS CANAIS DELE, que é o que
     // faltava para ela valer o lugar no menu. O gerador continua aqui e no Roteiro.
@@ -196,6 +196,8 @@ const MENU = [
 ];
 const DICAS = {
   planos: "O que cada plano abre, e o preço",
+  "meu-nicho": "Os vídeos do seu nicho, os mais novos primeiro",
+  formulario: "Tudo o que o algoritmo usa para achar o seu nicho",
   base: "Todos os canais do Radar, com as perguntas prontas", videos: "Todos os vídeos que estouraram, num filtro só",
   acharam: "Os parecidos que os seus canais salvos trouxeram", grupos: "Os nichos, do mais aberto ao mais concorrido",
   entraram: "Os canais que o garimpo achou nas últimas 24 horas", titulos: "Títulos no estilo dos que estouraram, e o banco deles",
@@ -345,6 +347,7 @@ const AJUDA = {
   medir: "Cole o @ de <b>qualquer canal</b> e veja na hora quanto ele faz por vídeo, a fase e os vídeos que estouraram. Dá para pôr no Radar.",
   extensao: "Enquanto você navega no YouTube, a extensão <b>lê os vídeos da tela</b> (sem gastar a cota) e guarda no Radar os que estouraram e os canais novos. Na busca, mostra se o <b>nicho está aberto</b>; o botão <b>Vídeos desta página</b> ordena e filtra o que a página mostrou.",
   admin: "A cota grátis da API do YouTube (10 mil por dia), o garimpo que procura canais novos e os convites para os sócios.",
+  "meu-nicho": "Você diz de que é o seu canal e o Radar mostra os canais <b>do seu nicho</b> que já estão dando certo. A busca no YouTube não é uma palavra solta: são <b>estruturas de título</b> que estouram (Millions of People Are Now Boycotting …) preenchidas com as palavras do seu nicho. O garimpo de todo dia também busca o seu nicho.",
 };
 
 function titulo(t, sub, chave = rotaAtual()) {
@@ -1175,11 +1178,12 @@ async function formProducao(caixa, canalId, depois = () => {}, perguntarDeNovo =
     // 2. a voz, da biblioteca da fábrica, com a prévia
     async (busca = "", genero = "") => {
       caixa.innerHTML = moldura(1, `<h3>Qual voz narra os vídeos?</h3>
-        <p class="sub">As vozes da fábrica (GenAI Pro) em ${esc(escolha.lingua)}. Aperte ▶ para ouvir antes de escolher.${p.voz ? ` Voz de agora: <b>${esc(p.voz)}</b>.` : ""}</p>
-        <div class="linha voz-filtros"><input id="vz-busca" placeholder="Procurar voz (ex.: deep, narrator, calm)" value="${esc(busca)}">
+        <p class="sub">As vozes grátis da fábrica (VoiceStudio e voicebox), as que falam ${esc(escolha.lingua)} de nascença primeiro. Aperte ▶ para ouvir antes de escolher; a primeira prévia liga o motor de voz e pode levar até 2 minutos.${p.voz ? ` Voz de agora: <b>${esc(p.voz)}</b>.` : ""}</p>
+        <div class="linha voz-filtros"><input id="vz-busca" placeholder="Procurar voz (ex.: Lucas, kokoro, low pitch, british)" value="${esc(busca)}">
           <select id="vz-genero"><option value="">Homem e mulher</option><option value="male" ${genero === "male" ? "selected" : ""}>Homem</option><option value="female" ${genero === "female" ? "selected" : ""}>Mulher</option></select>
           <button class="botao sec" id="vz-procurar">Procurar</button>${p.voz ? '<button class="botao sec" id="vz-manter">Manter a voz de agora</button>' : ""}</div>
-        <div class="vozes-lista" id="vz-lista"><div class="vazio">Buscando as vozes na fábrica…</div></div>`);
+        <div class="vozes-lista" id="vz-lista"><div class="vazio">Buscando as vozes na fábrica…</div></div>
+        <small class="sub" id="vz-total"></small>`);
       ligarVoltar(1);
       const procurar = () => perguntas[1](caixa.querySelector("#vz-busca").value.trim(), caixa.querySelector("#vz-genero").value);
       caixa.querySelector("#vz-procurar").onclick = procurar;
@@ -1191,6 +1195,8 @@ async function formProducao(caixa, canalId, depois = () => {}, perguntarDeNovo =
       catch (e) { caixa.querySelector("#vz-lista").innerHTML = `<div class="vazio">${esc(e.message)}</div>`; return; }
       const lista = caixa.querySelector("#vz-lista");
       if (!lista) return;
+      const total = caixa.querySelector("#vz-total");
+      if (total && r.total > r.vozes.length) total.textContent = `Mostrando ${r.vozes.length} de ${r.total} vozes. Procure por nome, motor (kokoro, qwen, omnivoice) ou jeito da voz para ver as outras.`;
       lista.innerHTML = r.erro ? `<div class="vazio">${esc(r.erro)}</div>` : r.vozes.map((v, k) => `<div class="voz-cartao">
           <button class="voz-ouvir" data-k="${k}" title="Ouvir">▶</button>
           <div class="voz-info"><b>${esc(v.nome)}</b><small>${esc([v.genero, v.idade, v.sotaque].filter(Boolean).join(" · "))}</small>
@@ -1200,7 +1206,11 @@ async function formProducao(caixa, canalId, depois = () => {}, perguntarDeNovo =
         const v = r.vozes[+b.dataset.k];
         const mesmo = botaoTocando === b; parar();
         if (mesmo || !v.previa) return;
-        tocando = new Audio(v.previa); botaoTocando = b; tocando.play(); b.textContent = "■";
+        // a fábrica gera a prévia na hora (a primeira liga o motor de voz): "…" até começar a tocar
+        tocando = new Audio(v.previa); botaoTocando = b; b.textContent = "…";
+        tocando.onplaying = () => { if (botaoTocando === b) b.textContent = "■"; };
+        tocando.onerror = () => { if (botaoTocando === b) { parar(); aviso("A fábrica não conseguiu gerar a prévia desta voz agora."); } };
+        tocando.play().catch(() => {});
         tocando.onended = parar;
       }));
       lista.querySelectorAll("[data-escolher]").forEach((b) => (b.onclick = () => carregando(b, "Criando o canal na fábrica…", async () => {
@@ -3760,6 +3770,203 @@ async function acharam() {
   ligarCartoes();
 }
 
+// ---------------------------------------------------------------- meu nicho (pedido do usuário em 2026-10-27)
+// Como as escolhas de gênero do Spotify: o tema do canal, as palavras do nicho e as estruturas de título. Depois,
+// os canais do Radar que são do nicho, e o botão que busca mais no YouTube com as estruturas preenchidas.
+
+const LACUNAS_NOME = {
+  assunto: ["O assunto", "Do que o canal fala: setores, marcas, mercados"],
+  itens: ["Coisas", "No plural: produtos, ações, comidas"],
+  lugares: ["Lugares ou empresas", "No plural: lojas, bancos, restaurantes"],
+  publico: ["Quem assiste", "No plural: aposentados, famílias, investidores"],
+  momento: ["Situações", "Ex.: the economy crashes, winter arrives"],
+  palavras: ["Palavras que dizem o assunto", "Soltas, para reconhecer os canais do nicho: shark, lion, walmart"],
+};
+const BUSCAS_DO_NICHO = 2;      // o meu_nicho.BUSCAS_POR_VEZ do servidor
+
+// a estrutura com as lacunas marcadas, para a tela: "Millions of People Are Now Boycotting [o assunto]"
+const lacunasNaTela = (t) => esc(t).replace(/\{(\w+)\}/g, (_m, l) => `<i class="lacuna">${esc((LACUNAS_NOME[l] || [l])[0].toLowerCase())}</i>`);
+
+async function meuNicho() {
+  const d = await api("/api/nicho");
+  if (!d.nicho.feito) { location.hash = "#/formulario"; return; }    // sem perfil, o começo é o Formulário
+  return videosDoNicho(d);
+}
+
+// ---------------------------------------------------------------- o Formulário (pedido do usuário em 2026-10-28)
+// Uma página só, editável a qualquer hora, com tudo o que o algoritmo do Radar usa para achar os canais validados
+// do nicho. A API do YouTube não aprende com as buscas de ninguém: o "treino" é este perfil.
+
+const PAISES_NOME = { US: "Estados Unidos", GB: "Reino Unido", CA: "Canadá", AU: "Austrália", NZ: "Nova Zelândia",
+  IE: "Irlanda", BR: "Brasil", PT: "Portugal", ES: "Espanha", MX: "México", AR: "Argentina", IN: "Índia", DE: "Alemanha", FR: "França" };
+const LINGUAS_NOME = { en: "Inglês", pt: "Português", es: "Espanhol", de: "Alemão", fr: "Francês" };
+const DURACOES_NOME = { alternar: "Alternar médios e longos", long: "Só longos (mais de 20 min)", medium: "Só médios (4 a 20 min)", any: "Qualquer duração" };
+const ORDENS_NOME = { relevance: "Mais relevantes para a busca", viewCount: "Mais vistos" };
+
+async function telaFormulario() {
+  const d = await api("/api/nicho");
+  const N = JSON.parse(JSON.stringify(d.nicho));
+  let estruturasTela = d.estruturas;
+  const F = N.filtros;
+  const linhas = (lista) => (lista || []).join("\n");
+  const deLinhas = (texto) => texto.split("\n").map((x) => x.trim()).filter(Boolean);
+  const secao = (n, titulo_, sub, corpo) => `<section class="form-secao"><h3><span class="form-n">${n}</span>${titulo_}</h3>${sub ? `<p class="sub">${sub}</p>` : ""}${corpo}</section>`;
+  const numero = (id, rotulo, valor, dica) => `<label class="campo"><span>${rotulo}${dica ? ` <small>${dica}</small>` : ""}</span><input id="${id}" type="number" min="0" value="${valor || 0}"></label>`;
+  const escolha = (id, rotulo, nomes, valor) => `<label class="campo"><span>${rotulo}</span><select id="${id}">${Object.entries(nomes).map(([v, n]) => `<option value="${v}" ${v === valor ? "selected" : ""}>${esc(n)}</option>`).join("")}</select></label>`;
+
+  const desenharEstruturas = () => {
+    document.getElementById("fm-estruturas").innerHTML = estruturasTela.map((e) => `<div class="estrutura form-estrutura" data-texto="${esc(e.texto)}">
+        <label><input type="checkbox" ${e.ligada ? "checked" : ""}> <b>${lacunasNaTela(e.texto)}</b></label>
+        <small>${e.vezes ? `já trouxe ${e.canais} ${e.canais === 1 ? "canal" : "canais"} em ${e.vezes} ${e.vezes === 1 ? "busca" : "buscas"}` : "ainda não buscada"}${e.origem === "aprendida" ? " · aprendida com os vídeos que estouraram" : ""}</small>
+        <textarea rows="2" placeholder="As buscas desta estrutura no seu nicho, uma por linha (vazio: não usar)">${esc(linhas(e.exemplos))}</textarea></div>`).join("");
+  };
+
+  tela.innerHTML = titulo("Formulário", "O perfil de busca do seu nicho. Tudo o que o algoritmo do Radar usa para achar os canais validados está aqui, e muda quando você quiser.") + `
+    <div class="form-nicho">
+    ${secao(1, "O canal", "Sobre o que é o canal que você quer criar.", `
+      <div class="pergunta-opcoes form-temas">${d.temas.map(([ic, nome]) => `<button class="opcao ${N.tema === nome ? "marcada" : ""}" data-tema="${esc(nome)}"><span class="ic">${ic}</span><b>${esc(nome)}</b></button>`).join("")}</div>
+      <label class="campo"><span>O tema do canal</span><input id="fm-tema" value="${esc(N.tema)}" placeholder="Ex.: animais selvagens, supermercados no Canadá, carros elétricos"></label>
+      <label class="campo"><span>O que o canal faz <small>quanto mais exato, mais certeira a busca</small></span><textarea id="fm-desc" rows="2" placeholder="Ex.: documentários curtos sobre predadores e comportamento animal, sem rosto, narrados">${esc(N.descricao)}</textarea></label>`)}
+
+    ${secao(2, "As palavras do nicho", "Em inglês, porque a busca vai para o YouTube dos EUA. As <b>palavras do assunto</b> decidem se um canal é do nicho: pelo menos 15% dos títulos dele têm de ter uma delas. Uma por linha.", `
+      <div><button class="botao sec" id="fm-sugerir">✨ Sugerir as palavras com IA</button></div>
+      <div class="form-grade">${d.lacunas.map((l) => `<label class="campo"><span><b>${esc(LACUNAS_NOME[l][0])}</b> <small>${esc(LACUNAS_NOME[l][1])}</small></span>
+        <textarea data-lacuna="${l}" rows="${l === "palavras" ? 8 : 4}">${esc(linhas(N.vocab[l]))}</textarea></label>`).join("")}</div>`)}
+
+    ${secao(3, "Canais de referência", "Os canais que já são o modelo do que você quer fazer: cole o @ ou o link, um por linha. O Radar mede cada um, mostra na lista do nicho e usa os títulos que mais renderam neles como exemplo para escrever as buscas.", `
+      <textarea id="fm-refs" rows="3" placeholder="@canalmodelo&#10;https://www.youtube.com/@outrocanal">${esc(linhas(N.referencias.map((r) => r.ref)))}</textarea>
+      ${N.referencias.length ? `<div class="sub form-refs">${N.referencias.map((r) => `<div>${esc(r.ref)}: ${r.id ? `<b>${esc(r.titulo)}</b> ✓` : r.titulo ? esc(r.titulo) : "medindo…"}</div>`).join("")}</div>` : ""}`)}
+
+    ${secao(4, "O que é um canal validado", "Só entra na lista do nicho o canal que passa em tudo isto (0 = sem limite).", `
+      <div class="form-grade">
+        ${numero("fm-min-views", "Views por vídeo, no mínimo", F.min_views, "a mediana dos vídeos longos")}
+        ${numero("fm-idade", "Idade máxima do canal, em meses", F.idade_max_meses, "0 = qualquer idade")}
+        ${numero("fm-insc-min", "Inscritos, no mínimo", F.inscritos_min)}
+        ${numero("fm-insc-max", "Inscritos, no máximo", F.inscritos_max)}
+      </div>
+      <label class="form-check"><input type="checkbox" id="fm-rosto" ${F.sem_rosto ? "checked" : ""}> Só canal sem rosto <small>(o que ainda não foi verificado passa)</small></label>
+      <label class="campo"><span>Palavras proibidas <small>canal com alguma delas nos títulos fica de fora; as de uma palavra também saem da própria busca</small></span>
+        <textarea id="fm-proibidas" rows="2" placeholder="react&#10;compilation&#10;for kids">${esc(linhas(F.proibidas))}</textarea></label>`)}
+
+    ${secao(5, "Como buscar no YouTube", "", `
+      <div class="form-grade">
+        ${numero("fm-dias", "Vídeos publicados nos últimos (dias)", F.dias)}
+        ${escolha("fm-duracao", "Duração dos vídeos", DURACOES_NOME, F.duracao)}
+        ${escolha("fm-ordem", "Ordem da busca", ORDENS_NOME, F.ordem)}
+        ${escolha("fm-lingua", "Língua dos vídeos", LINGUAS_NOME, F.lingua)}
+      </div>
+      <div class="campo"><span>Países <small>cada busca vai para um, em rodízio</small></span>
+        <div class="chips">${d.opcoes.paises.map((x) => `<button class="chip ${F.paises.includes(x) ? "ativo" : ""}" data-pais="${x}">${esc(PAISES_NOME[x] || x)}</button>`).join("")}</div></div>`)}
+
+    ${secao(6, "As buscas", "O que vai para o YouTube, nesta ordem: primeiro os <b>seus títulos de busca</b>, depois as estruturas intercaladas com os ganchos do nicho. Cada clique em Procurar canais faz as duas próximas.", `
+      <label class="campo"><span><b>Seus títulos de busca</b> <small>um por linha, buscados exatamente como estão</small></span>
+        <textarea id="fm-proprias" rows="4" placeholder="Why Sharks Are the Real Apex Predators of the Ocean">${esc(linhas(N.proprias))}</textarea></label>
+      <div><button class="botao sec" id="fm-reescrever">✨ Escrever as buscas e os ganchos com IA</button> <small class="sub">usa o tema, as palavras e os títulos dos canais de referência; troca o que está abaixo</small></div>
+      <label class="campo"><span><b>Ganchos do nicho</b> <small>títulos no estilo dos que mais estouram no nicho, um por linha</small></span>
+        <textarea id="fm-ganchos" rows="6">${esc(linhas(N.ganchos))}</textarea></label>
+      <div class="campo"><span><b>Estruturas de título</b> <small>o gancho de títulos que estouraram; desmarque a que não combina, edite as buscas de cada uma</small></span>
+        <div class="estruturas" id="fm-estruturas"></div></div>`)}
+    </div>
+    <div class="form-salvar"><button class="botao vermelho" id="fm-salvar">Salvar o formulário</button> <a class="botao contorno" href="#/meu-nicho">Ver os canais do nicho</a> <span class="sub" id="fm-estado"></span></div>`;
+  desenharEstruturas();
+
+  const $ = (id) => document.getElementById(id);
+  tela.querySelectorAll("[data-tema]").forEach((b) => (b.onclick = () => {
+    tela.querySelectorAll("[data-tema]").forEach((x) => x.classList.toggle("marcada", x === b));
+    $("fm-tema").value = b.dataset.tema;
+  }));
+  tela.querySelectorAll("[data-pais]").forEach((b) => (b.onclick = () => b.classList.toggle("ativo")));
+
+  const vocabDaTela = () => Object.fromEntries([...tela.querySelectorAll("[data-lacuna]")].map((t) =>
+    [t.dataset.lacuna, deLinhas(t.value).map((x) => (t.dataset.lacuna === "palavras" ? x : x.replace(/\d/g, "").trim())).filter(Boolean)]));
+  const daTela = () => ({
+    tema: $("fm-tema").value.trim(), descricao: $("fm-desc").value.trim(), vocab: vocabDaTela(),
+    referencias: deLinhas($("fm-refs").value), proprias: deLinhas($("fm-proprias").value), ganchos: deLinhas($("fm-ganchos").value),
+    buscas: Object.fromEntries([...tela.querySelectorAll(".form-estrutura")].map((el) => [el.dataset.texto, deLinhas(el.querySelector("textarea").value)])),
+    desligadas: [...tela.querySelectorAll(".form-estrutura")].filter((el) => !el.querySelector("input").checked).map((el) => el.dataset.texto),
+    filtros: {
+      min_views: +$("fm-min-views").value || 0, idade_max_meses: +$("fm-idade").value || 0,
+      inscritos_min: +$("fm-insc-min").value || 0, inscritos_max: +$("fm-insc-max").value || 0,
+      sem_rosto: $("fm-rosto").checked, proibidas: deLinhas($("fm-proibidas").value),
+      dias: +$("fm-dias").value || 180, duracao: $("fm-duracao").value, ordem: $("fm-ordem").value, lingua: $("fm-lingua").value,
+      paises: [...tela.querySelectorAll("[data-pais].ativo")].map((b) => b.dataset.pais),
+    },
+  });
+  const ocupado = async (botao, texto, tarefa) => {
+    const antes = botao.textContent;
+    botao.disabled = true; botao.textContent = texto;
+    // o erro sem status é o da própria tela ("escreva o tema"), não o Radar fora do ar
+    try { await tarefa(); } catch (erro) { aviso(erro.status ? porque(erro) : erro.message); }
+    botao.disabled = false; botao.textContent = antes;
+  };
+
+  $("fm-sugerir").onclick = (e) => ocupado(e.currentTarget, "Pensando nas palavras…", async () => {
+    const t = daTela();
+    if (t.tema.length < 2) throw new Error("Escreva o tema do canal primeiro.");
+    const { vocab } = await api("/api/nicho/sugerir", { method: "POST", body: { tema: t.tema, descricao: t.descricao } });
+    tela.querySelectorAll("[data-lacuna]").forEach((ta) => { ta.value = linhas(vocab[ta.dataset.lacuna]); });
+    aviso("Palavras sugeridas. Confira e salve.");
+  });
+  $("fm-reescrever").onclick = (e) => ocupado(e.currentTarget, "Escrevendo as buscas do nicho…", async () => {
+    const t = daTela();
+    const r = await api("/api/nicho/reescrever", { method: "POST", body: t });
+    $("fm-ganchos").value = linhas(r.ganchos);
+    tela.querySelectorAll("[data-lacuna]").forEach((ta) => { if (!ta.value.trim()) ta.value = linhas(r.vocab[ta.dataset.lacuna]); });
+    estruturasTela = r.estruturas.map((x) => ({ ...x, ligada: x.ligada && !t.desligadas.includes(x.texto) }));
+    desenharEstruturas();
+    aviso("Buscas escritas. Edite o que quiser e salve.");
+  });
+  $("fm-salvar").onclick = (e) => ocupado(e.currentTarget, "Salvando…", async () => {
+    const t = daTela();
+    if (t.tema.length < 2) throw new Error("Escreva o tema do canal.");
+    const r = await api("/api/nicho", { method: "POST", body: t });
+    estruturasTela = r.estruturas; desenharEstruturas();
+    if (!t.ganchos.length && r.nicho.ganchos.length) $("fm-ganchos").value = linhas(r.nicho.ganchos);
+    $("fm-estado").innerHTML = `Salvo. ${r.proximas.length ? `Próxima busca: “${esc(r.proximas[0].busca)}”.` : "Ainda sem busca: escreva seus títulos ou use a IA."}`;
+    aviso("Formulário salvo.");
+  });
+}
+
+async function videosDoNicho(d) {
+  tela.innerHTML = titulo("Meu nicho", `Os vídeos que o YouTube responde às buscas de <b>${esc(d.nicho.tema)}</b>, do mais novo para o mais antigo. <a href="#/formulario">Editar o formulário</a>`) + `
+    <div class="chamada"><span class="texto"><b>Buscar vídeos novos.</b> Cada clique faz as ${BUSCAS_DO_NICHO} próximas buscas da lista abaixo (uns 200 a 300 de cota). O garimpo de todo dia também faz.</span>
+      <button class="botao" id="nc-procurar">Procurar agora</button></div>
+    <div id="nc-fila"></div>
+    <div id="nc-resultado"></div>
+    <div class="contagem" id="contagem"></div><div class="grade-videos grandes" id="lista"><div class="vazio">Carregando…</div></div>`;
+  // os títulos de busca que vão para o YouTube, na ordem: os 2 primeiros são os do próximo clique
+  const fila = (proximas) => {
+    document.getElementById("nc-fila").innerHTML = proximas.length
+      ? `<div class="sub nc-buscas"><b>Próximas buscas no YouTube:</b>${proximas.map((x, i) => `<div class="${i < BUSCAS_DO_NICHO ? "nc-agora" : ""}">${i < BUSCAS_DO_NICHO ? "▶ " : ""}“${esc(x.busca)}” <small>${x.estrutura === "(gancho do nicho)" ? "gancho do nicho" : x.estrutura === "(sua busca)" ? "seu título de busca" : `estrutura ${lacunasNaTela(x.estrutura)}`}</small></div>`).join("")}</div>`
+      : '<div class="sub nc-buscas">Ainda sem busca. No <a href="#/formulario">Formulário</a>, escreva seus títulos de busca ou use a IA.</div>';
+  };
+  fila(d.proximas || []);
+  // embaixo de cada vídeo: de que busca ele veio e se o canal passou no "canal validado" do Formulário
+  const origem = (v) => `<div class="sub nc-origem">${v.estrutura === "(referência)" ? '<b class="nc-validado">★ seu canal de referência</b>' : `${v.validado ? '<b class="nc-validado">✓ canal validado</b> · ' : ""}busca “${esc(v.busca)}”`}</div>`;
+  const listar = async () => {
+    esquecer("/api/nicho/videos");
+    const { videos } = await api("/api/nicho/videos");
+    document.getElementById("contagem").textContent = videos.length ? `${videos.length} ${videos.length === 1 ? "vídeo" : "vídeos"} do seu nicho · views de agora` : "";
+    const caixa = document.getElementById("lista");
+    caixa.innerHTML = videos.map((v) => cartaoVideoGrande(v).replace('<div class="video-acoes">', origem(v) + '<div class="video-acoes">')).join("")
+      || '<div class="vazio" style="grid-column:1/-1">Ainda não tem vídeo do seu nicho. Clique em <b>Procurar agora</b>: as buscas do Formulário vão para o YouTube.</div>';
+    ligarRoteiro(caixa);
+  };
+  document.getElementById("nc-procurar").onclick = async (e) => {
+    const b = e.currentTarget;
+    b.disabled = true; b.textContent = "Procurando…";
+    try {
+      const r = await api("/api/nicho/procurar", { method: "POST", body: {} });
+      if (r.proximas) fila(r.proximas);
+      document.getElementById("nc-resultado").innerHTML = r.falta ? `<div class="vazio">${esc(r.falta)}</div>` :
+        `<div class="sub nc-buscas"><b>Buscado agora:</b>${r.buscas.map((x) => `<div>“${esc(x.busca)}”: ${x.videos} ${x.videos === 1 ? "vídeo fala" : "vídeos falam"} do nicho, de ${x.vistos} canais vistos; <b>${x.do_nicho}</b> ${x.do_nicho === 1 ? "canal validado" : "canais validados"}</div>`).join("")}<div><b>${r.videos_novos}</b> ${r.videos_novos === 1 ? "vídeo novo" : "vídeos novos"} na lista.</div></div>`;
+      await listar();
+    } catch (erro) { aviso(porque(erro)); }
+    b.disabled = false; b.textContent = "Procurar de novo";
+  };
+  await listar();
+}
+
 const PADRAO_GRUPOS = { nicho: "", min: "" };
 
 async function grupos() {
@@ -4138,7 +4345,7 @@ const VELHAS = {
 };
 const ROTAS = { entrar: () => entrar(false), criar: () => entrar(true), inicio, canais, perfil: canais, canal,
   "ideias-canal": ideiasCanal, treino, trabalho, acompanhar, resultados, titulo: () => { location.hash = "#/trabalho"; }, thumbnail: () => { location.hash = "#/trabalho"; },
-  base: baseCanais, videos: videosLista, acharam, grupos, titulos, medir, extensao, bloqueados, admin, integracoes, custos,
+  base: baseCanais, videos: videosLista, "meu-nicho": meuNicho, formulario: telaFormulario, acharam, grupos, titulos, medir, extensao, bloqueados, admin, integracoes, custos,
   entraram: () => { location.hash = "#/base?visao=entraram_hoje"; },
   planos: telaPlanos,
   ...Object.fromEntries(Object.entries(VELHAS).map(([de, para]) => [de, () => { location.hash = para; }])) };

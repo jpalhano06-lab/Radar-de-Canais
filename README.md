@@ -468,6 +468,19 @@ código para quando for vender ou dividir com os sócios.
   `POST /api/canais` da fábrica, que cria perfis/canal-NOME.yaml com a voz, e o Radar guarda esse perfil);
   **agente de roteiro** (com "Criar um agente novo" ali mesmo); **tempo dos vídeos**.
 
+## Vozes grátis da fábrica na configuração do canal (2026-10-28)
+
+- A fábrica cancelou as narrações pagas: a pergunta 2 (a voz) mostra as vozes open source que a fábrica roda no próprio
+  computador, as do VoiceStudio (OmniVoice) e do voicebox (Kokoro e Qwen3-TTS), pela `GET /api/vozes/local` da
+  fábrica (`fabrica_api.vozes`). As que falam a língua do canal de nascença vêm primeiro (as gravadas, depois as
+  prontas do voicebox, depois as da galeria e por último as combinações desenhadas); 80 por vez, com a busca por nome,
+  motor (`kokoro`, `qwen`, `omnivoice`) ou jeito da voz.
+- A prévia passa pelo Radar (`/api/fabrica/vozes/previa` → `GET /api/vozes/local/previa` da fábrica, com a chave
+  dela, que nunca vai ao navegador). A primeira liga o motor de voz e leva até uns 2 min; o botão mostra "…" até tocar.
+- Escolher grava o perfil do canal com `provedor: local`, o código da voz em `voz_local` (entre aspas: as desenhadas
+  têm vírgula e espaço) e `idioma`, que é o que a fábrica lê para narrar e conferir (sem ele um canal em inglês
+  narraria com o motor achando que era português). Código fora do formato `motor:voz` é recusado.
+
 ## Roteiro em passo a passo (2026-10-15)
 
 - `trabalho()` virou 5 passos com a faixa em cima (como o "Como funciona" do Início): 1 Referência (link e título,

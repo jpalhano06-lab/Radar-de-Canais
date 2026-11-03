@@ -1905,3 +1905,31 @@ nav .subs a .olho svg { width: 15px; height: 15px; }
   .vida-degrau { grid-template-columns: 1fr; gap: 6px; }
   .tab-vida { font-size: 13px; }
 }
+
+/* ================================================================= meu nicho: as estruturas de título (2026-10-27) */
+.lacuna { font-style: normal; padding: 0 6px; border-radius: 6px; background: color-mix(in srgb, var(--acento) 18%, transparent); color: var(--texto); }
+.lacuna-campo .chips { align-items: center; margin: 6px 0 0; }
+.lacuna-campo .nc-por { background: var(--painel2); color: var(--texto); border: 1px dashed var(--linha); border-radius: 999px; padding: 5px 12px; font: inherit; font-size: 13px; min-width: 180px; }
+.estruturas { display: grid; gap: 8px; }
+.estrutura { display: flex; gap: 10px; align-items: flex-start; padding: 12px 14px; border-radius: 12px; background: var(--painel2); cursor: pointer; }
+.estrutura span { display: grid; gap: 4px; } .estrutura small { color: var(--fraco); }
+.estrutura.sem-palavra { opacity: .55; }
+.nc-buscas { display: grid; gap: 4px; margin: 8px 0 14px; }
+.nc-agora { color: var(--texto); font-weight: 600; }
+
+/* ================================================================= o Formulário do nicho (2026-10-28) */
+.form-nicho { display: grid; gap: 14px; max-width: 980px; }
+.form-secao { display: grid; gap: 12px; padding: 22px 24px; border-radius: 18px; background: var(--painel); border: 1px solid var(--linha); }
+.form-secao h3 { margin: 0; font-size: 19px; display: flex; gap: 10px; align-items: center; }
+.form-secao .sub { margin: 0; }
+.form-n { display: inline-grid; place-items: center; width: 26px; height: 26px; border-radius: 50%; background: var(--acento); color: #fff; font-size: 13px; }
+.form-secao textarea, .form-secao select, .form-secao input[type=number] { width: 100%; background: var(--painel2); color: var(--texto); border: 1px solid var(--linha); border-radius: 9px; padding: 9px 10px; font: inherit; box-sizing: border-box; }
+.form-grade { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 12px; }
+.form-temas { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); }
+.form-temas .opcao { padding: 10px; } .form-temas .opcao b { font-size: 13px; }
+.form-check { display: flex; gap: 8px; align-items: center; }
+.form-estrutura { display: grid; gap: 6px; }
+.form-estrutura textarea { font-size: 13px; }
+.form-refs { display: grid; gap: 2px; }
+.form-salvar { position: sticky; bottom: 0; display: flex; gap: 10px; align-items: center; padding: 14px 0; background: var(--fundo, var(--painel)); z-index: 2; }
+.nc-origem { font-size: 12px; margin: 2px 0 6px; } .nc-validado { color: var(--verde); }

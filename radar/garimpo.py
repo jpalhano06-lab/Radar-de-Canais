@@ -6,7 +6,7 @@ import json
 import threading
 from datetime import datetime, timedelta, timezone
 
-from . import banco, gosto, ia, medir, mercado, metricas, risco, youtube
+from . import banco, estruturas, gosto, ia, medir, mercado, metricas, risco, youtube
 from .config import COTA_DO_GARIMPO, DADOS
 
 # termos de partida por nicho. Um arquivo dados/termos.json ({"Nicho": ["termo", ...]}) soma ou troca estes.
@@ -319,8 +319,12 @@ def rodar(log=print, unidades: int | None = None) -> dict:
             for cid in entraram if nicho != "Procurados" else []:
                 banco.executar("UPDATE canais SET nicho=COALESCE(NULLIF(nicho,''), ?) WHERE id=?", nicho, cid)
             anotar(f"[{nicho}] \"{termo}\": {len(ids)} canais vistos, {len(entraram)} entraram")
+        # as próximas buscas do Meu nicho de cada pessoa: os vídeos do nicho chegam sem ela clicar
+        from . import meu_nicho
+        meu_nicho.atualizar_todos(anotar, orcamento - (youtube.cota_hoje()["usado"] - inicio))
         achar_parecidos_dos_salvos(anotar, orcamento - (youtube.cota_hoje()["usado"] - inicio), contagem)
         aprender_termos(anotar)
+        estruturas.aprender(anotar)
     except youtube.SemCota as erro:
         anotar(str(erro))
     except Exception as erro:  # o garimpo nunca derruba o servidor

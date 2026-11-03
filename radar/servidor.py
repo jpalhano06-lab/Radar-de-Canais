@@ -19,7 +19,7 @@ from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 
-from . import alvos, banco, canal_painel, custos, diagnostico, fabrica_api, fila, funcoes, garimpo, gosto, horarios, ia, integracoes, medir, mercado, metricas, nichos, pagina, perfil, producao, publicar, radar_paises, roteiro_claude, studio, tempo, thumb, trabalho, treinamento, youtube
+from . import alvos, banco, canal_painel, custos, diagnostico, estruturas, fabrica_api, fila, funcoes, garimpo, gosto, horarios, ia, integracoes, medir, mercado, meu_nicho, metricas, nichos, pagina, perfil, producao, publicar, radar_paises, roteiro_claude, studio, tempo, thumb, trabalho, treinamento, youtube
 from .config import DADOS, NOME, PLANOS, RAIZ, pode
 
 WEB = RAIZ / "radar" / "web"
@@ -1445,6 +1445,92 @@ def explorar_mais(u: dict = Depends(usuario)):
     return {"termo": termo, "nicho": nicho, "novos": len(r["novos"]), "vistos": r["vistos"]}
 
 
+# ---------------------------------------------------------------- meu nicho: o formulário e a busca pelas estruturas
+
+@app.get("/api/nicho")
+def ver_nicho(u: dict = Depends(usuario)):
+    p = meu_nicho.ler(u)
+    return {"nicho": p, "estruturas": meu_nicho.com_exemplos(p), "lacunas": list(meu_nicho.CAMPOS),
+            "temas": TEMAS_DE_PARTIDA, "proximas": meu_nicho.proximas_buscas(p, int(p.get("vez") or 0)),
+            "opcoes": {"paises": list(meu_nicho.PAISES), "linguas": list(meu_nicho.LINGUAS),
+                       "duracoes": list(meu_nicho.DURACOES), "ordens": list(meu_nicho.ORDENS)}}
+
+
+# as sugestões de tema do primeiro passo (como os gêneros do Spotify): só atalhos, o tema é livre
+TEMAS_DE_PARTIDA = [
+    ["📈", "Mercados e investimentos"], ["🛒", "Supermercado e consumo"], ["🏠", "Imóveis e moradia"],
+    ["🚗", "Carros"], ["💼", "Negócios e empresas"], ["🏛", "Economia e governo"], ["🍔", "Restaurantes e fast food"],
+    ["👴", "Aposentadoria e terceira idade"], ["🤖", "Tecnologia e IA"], ["⚖️", "Direito e golpes"],
+    ["🌍", "Geopolítica"], ["🏺", "História"], ["🧠", "Psicologia"], ["🩺", "Saúde"], ["🐾", "Animais"],
+    ["🔎", "Mistério e crimes reais"],
+]
+
+
+@app.post("/api/nicho/sugerir")
+async def sugerir_nicho(request: Request, u: dict = Depends(usuario)):
+    d = await request.json()
+    tema = re.sub(r"\s+", " ", str(d.get("tema", ""))).strip()[:80]
+    if len(tema) < 2:
+        raise HTTPException(400, "Escreva o tema do seu canal.")
+    vocab = meu_nicho.sugerir(tema, str(d.get("descricao", ""))[:300])
+    if not any(vocab.values()):
+        raise HTTPException(503, "O Groq não respondeu agora. Escreva as palavras você mesmo ou tente de novo.")
+    return {"vocab": vocab}
+
+
+@app.post("/api/nicho")
+async def salvar_nicho(request: Request, u: dict = Depends(usuario)):
+    p = meu_nicho.salvar(u, await request.json())
+    if meu_nicho.referencias_pendentes(p):
+        threading.Thread(target=_medir_referencias_do_nicho, args=(u["id"], meu_nicho.referencias_pendentes(p)),
+                         daemon=True).start()
+    return {"nicho": p, "estruturas": meu_nicho.com_exemplos(p), "proximas": meu_nicho.proximas_buscas(p, int(p.get("vez") or 0))}
+
+
+def _medir_referencias_do_nicho(usuario_id: int, refs: list[str]) -> None:
+    """Os canais de referência do Formulário: acha o canal pelo @ ou link, mede (umas 3 unidades) e guarda no perfil.
+    Os títulos que mais renderam neles viram o exemplo do Groq no "Escrever as buscas com IA"."""
+    for ref in refs:
+        try:
+            canal = medir.medir_canais([_resolver(ref)])
+            meu_nicho.guardar_referencia(usuario_id, ref, next(iter(canal.values()), None))
+        except Exception as erro:       # um @ errado não para os outros
+            print("referência do nicho", ref, "falhou:", erro)
+            meu_nicho.guardar_referencia(usuario_id, ref, None)
+
+
+@app.post("/api/nicho/reescrever")
+async def reescrever_nicho(request: Request, u: dict = Depends(usuario)):
+    """O Groq escreve as buscas e os ganchos a partir do formulário como está na tela (sem guardar: a pessoa vê,
+    edita e salva)."""
+    d = await request.json()
+    p = meu_nicho.ler(u) | {"tema": str(d.get("tema", ""))[:80], "descricao": str(d.get("descricao", ""))[:300]}
+    if isinstance(d.get("vocab"), dict):
+        p["vocab"] = {l: [str(x)[:40] for x in d["vocab"].get(l, [])][:40] for l in meu_nicho.CAMPOS}
+    if len(p["tema"].strip()) < 2:
+        raise HTTPException(400, "Escreva o tema do seu canal.")
+    r = meu_nicho.reescrever(u, p)
+    if not (r["buscas"] or r["ganchos"]):
+        raise HTTPException(503, "O Groq não respondeu agora. Tente de novo em um minuto.")
+    return r | {"estruturas": meu_nicho.com_exemplos(p | r)}
+
+
+@app.get("/api/nicho/videos")
+def videos_do_nicho(u: dict = Depends(usuario)):
+    """A tela do Meu nicho: os vídeos que as buscas do nicho trouxeram, do mais novo para o mais antigo."""
+    return {"videos": meu_nicho.videos(u)}
+
+
+@app.post("/api/nicho/procurar")
+def procurar_no_nicho(u: dict = Depends(usuario)):
+    # a fila continua de onde parou (guardada no perfil): o clique não manda mais a tentativa
+    try:
+        r = meu_nicho.procurar(u)
+    except youtube.SemCota as erro:
+        _sem_cota(erro)
+    return r
+
+
 # ---------------------------------------------------------------- ideias de cada canal, painel da direita e treino
 
 def _meu_canal(usuario_id: int, canal_id: str) -> dict:
@@ -1849,11 +1935,21 @@ def _projeto_fabrica(nome: str):
 
 @app.get("/api/fabrica/vozes")
 def fabrica_vozes(lingua: str = "português", busca: str = "", genero: str = "", u: dict = Depends(usuario)):
-    """As vozes da fábrica (GenAI Pro), com a prévia, para escolher a voz do canal. Não gasta crédito."""
+    """As vozes grátis da fábrica (VoiceStudio e voicebox), com a prévia, para escolher a voz do canal."""
     try:
         return fabrica_api.vozes(lingua, busca, genero)
     except fabrica_api.SemFabrica as erro:
         raise HTTPException(503, str(erro))
+
+
+@app.get("/api/fabrica/vozes/previa")
+def fabrica_vozes_previa(voz: str, idioma: str = "pt", u: dict = Depends(usuario)):
+    """O áudio de prévia de uma voz. Passa pelo Radar porque a chave da fábrica nunca vai para o navegador."""
+    try:
+        audio = fabrica_api.previa(voz[:520], idioma[:5])
+    except fabrica_api.SemFabrica as erro:
+        raise HTTPException(erro.status or 503, str(erro))
+    return Response(audio, media_type="audio/wav", headers={"Cache-Control": "private, max-age=86400"})
 
 
 @app.post("/api/producao/{canal_id}/voz")
