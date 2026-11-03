@@ -1767,15 +1767,19 @@ async def producao_salvar(canal_id: str, request: Request, u: dict = Depends(usu
     dados = await request.json()
     cfg = producao.salvar(u["id"], canal_id, dados)
     # o rodapé não é do Radar: vai para o perfil da fábrica, que é quem escreve a descrição de cada vídeo
-    if "rodape" in dados and cfg.get("perfil"):
+    if isinstance(dados.get("rodape"), str) and cfg.get("perfil"):
         try:
-            cfg["rodape"] = producao.salvar_rodape(cfg["perfil"], str(dados.get("rodape") or ""))
+            cfg["rodape"] = producao.salvar_rodape(cfg["perfil"], dados["rodape"])
         except ValueError as erro:
             raise HTTPException(400, str(erro))
-    # quem gera as imagens de IA: também no perfil da fábrica, que é quem gera
-    if dados.get("imagens_quem") and cfg.get("perfil"):
+    # quem gera as imagens de IA: também no perfil da fábrica, que é quem gera.
+    # A tela devolve a configuração inteira ao salvar, e nela `imagens_quem` é o dicionário de opções do GET:
+    # nesse caso não há escolha nova para gravar — só o texto "assinatura"/"api" conta (senão o salvar dava erro 400
+    # e a tela travava no fim do passo a passo do canal).
+    quem = dados.get("imagens_quem")
+    if isinstance(quem, str) and quem in producao.IMAGENS_QUEM and cfg.get("perfil"):
         try:
-            cfg["imagens"] = producao.salvar_imagens_quem(cfg["perfil"], str(dados["imagens_quem"]))
+            cfg["imagens"] = producao.salvar_imagens_quem(cfg["perfil"], quem)
         except ValueError as erro:
             raise HTTPException(400, str(erro))
     return cfg

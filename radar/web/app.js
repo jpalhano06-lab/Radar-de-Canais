@@ -1393,10 +1393,23 @@ async function formProducao(caixa, canalId, depois = () => {}, perguntarDeNovo =
         <p class="sub">É o tamanho que o Claude mira no roteiro. Dá para mudar em cada vídeo, no Roteiro.</p>` +
         cartoes(MINUTOS.map((m) => [String(m), "⏱", `${m} minutos`, ""]), "minutos"));
       ligarVoltar(3);
+      // o clique mostra "Salvando…" no próprio cartão e o erro em aviso: antes o await ficava calado e a tela
+      // parecia travada no fim do passo a passo
+      let salvando = false;
       opcoes(null, "minutos", async () => {
-        await api(`/api/producao/${encodeURIComponent(canalId)}`, { method: "POST", body: { ...p, ...escolha } });
-        p = await api(`/api/producao/${encodeURIComponent(canalId)}`);
-        aviso(`${p.canal} configurado.`); resumo(); depois();
+        if (salvando) return;
+        salvando = true;
+        const cartao = caixa.querySelector(`.opcao[data-v="${escolha.minutos}"]`);
+        if (cartao) { cartao.classList.add("marcada"); cartao.querySelector(".ic").textContent = "⏳"; }
+        try {
+          await api(`/api/producao/${encodeURIComponent(canalId)}`, { method: "POST", body: { ...p, ...escolha } });
+          p = await api(`/api/producao/${encodeURIComponent(canalId)}`);
+          aviso(`${p.canal} configurado.`); resumo(); depois();
+        } catch (erro) {
+          salvando = false;
+          if (cartao) cartao.querySelector(".ic").textContent = "⏱";
+          aviso(porque(erro));
+        }
       });
     },
   ];
@@ -1703,40 +1716,6 @@ async function painelCanal(caixa, canalId) {
     })));
   };
   desenhar();
-}
-
-// o modelo da descrição que a extensão cola no Studio: o mesmo texto em todo vídeo do canal, trocando só o que é
-// deste vídeo (pedido do usuário em 2026-10-22: "mais padronizado, só mudando para o tema do vídeo, sem spoilers")
-async function modeloDaDescricao(caixa, canalId) {
-  const p = await api(`/api/producao/${encodeURIComponent(canalId)}`);
-  const tipos = p.tipos_de_modelo || { geral: "Geral" };
-  const padroes = p.rodapes_padrao || {};
-  caixa.innerHTML = `<h3>🧾 Rodapé da descrição</h3>
-    <p class="sub">A apresentação do canal e o aviso legal, iguais em todo vídeo. <b>Quem escreve a descrição é a
-      fábrica</b>: ela põe o resumo do vídeo, os capítulos e, no fim, este texto. Então o vídeo já sai do projeto
-      com a descrição pronta — a extensão só cola. A lista de onde vêm as imagens <b>não entra mais na descrição</b>
-      (25/10/2026); ela continua no <code>creditos.txt</code> da pasta do projeto, para conferir quando precisar.
-      Isto fica no perfil <code>${esc(p.perfil || "—")}</code> da fábrica, não no Radar.</p>
-    <div class="linha">
-      <label class="campo"><span>Marcas e lojas que o canal cita</span>
-        <input id="md-marcas" maxlength="300" placeholder="Ex.: Tesco, Asda, Sainsbury&#39;s, Morrisons, Aldi, Lidl" value="${esc(p.marcas || "")}"></label>
-      <label class="campo"><span>Padrão para copiar</span><select id="md-tipo">${Object.entries(tipos).map(([v, nome]) =>
-        `<option value="${esc(v)}" ${(p.modelo_tipo || "geral") === v ? "selected" : ""}>${esc(nome)}</option>`).join("")}</select></label>
-    </div>
-    <label class="campo"><span>O texto, como vai sair no YouTube</span>
-      <textarea id="md-texto" rows="14" maxlength="3000" placeholder="Vazio: a descrição sai sem rodapé">${esc(p.rodape || "")}</textarea></label>
-    <div class="linha"><button class="botao" id="md-salvar">Salvar</button>
-      <button class="botao sec" id="md-sugerido">Copiar o padrão para cá</button></div>`;
-  // o padrão já vem com o nome do canal e as marcas trocados: o que a pessoa copia é o texto final
-  caixa.querySelector("#md-sugerido").onclick = () => {
-    caixa.querySelector("#md-texto").value = padroes[caixa.querySelector("#md-tipo").value] || "";
-  };
-  caixa.querySelector("#md-salvar").onclick = (e) => carregando(e.currentTarget, "Salvando…", async () => {
-    await api(`/api/producao/${encodeURIComponent(canalId)}`, { method: "POST",
-      body: { ...p, marcas: caixa.querySelector("#md-marcas").value.trim(),
-        modelo_tipo: caixa.querySelector("#md-tipo").value, rodape: caixa.querySelector("#md-texto").value } });
-    aviso("Salvo no perfil da fábrica. Os próximos vídeos deste canal já saem com este rodapé.");
-  });
 }
 
 // o texto fixo da descrição e os shorts, gravados no perfil da fábrica do canal
@@ -2550,13 +2529,11 @@ async function canal(id, aba) {
   tela.innerHTML = `<div class="canal-pagina"><div class="canal-centro"><a class="voltar" href="#/inicio">← início</a>
     <article class="canal">${miolo(c)}</article>
     <div id="producao-canal"></div>
-    <section class="cp-bloco" id="modelo-descricao"></section>
     <section class="cp-bloco" id="horarios-canal"></section>
     <div id="painel-canal"></div>
     <div id="aba-corpo"></div>
     <div id="sugestoes-canal"></div></div></div>`;
   formProducao(document.getElementById("producao-canal"), id);
-  modeloDaDescricao(document.getElementById("modelo-descricao"), id).catch(() => {});
   horariosDoCanal(document.getElementById("horarios-canal"), d.horarios);
   painelCanal(document.getElementById("painel-canal"), id);
   sugestoesDoCanal(document.getElementById("sugestoes-canal"), c);
