@@ -106,6 +106,12 @@ def _rendeu(b: dict) -> float:
     return (b.get("total") or 0) / max(1, b.get("vezes") or 0)
 
 
+def fora_do_ingles(termo: str) -> bool:
+    """Pedido do usuário em 2026-11-03: "as buscas só devem ser feitas em inglês". Termo curto o gosto.lingua não
+    reconhece ("policía captura video" dá "?"): o acento já mostra que não é inglês."""
+    return not termo.isascii() or gosto.lingua(termo) in ("pt", "es")
+
+
 def _proximos_termos() -> list[tuple[str, str]]:
     """Um termo de cada nicho por vez, os de CPM alto primeiro. Dentro do nicho: os nunca buscados, depois os que mais
     renderam. Termo que rendeu 0 canais nas últimas LIXO_DEPOIS buscas fica de lado por LIXO_DIAS (era lixo)."""
@@ -127,7 +133,7 @@ def _proximos_termos() -> list[tuple[str, str]]:
         if mercado.irrelevante(nicho):
             continue        # nicho que paga pouco ou de histórias narradas não gasta busca (mercado.IRRELEVANTES)
         # termo aprendido em português ou espanhol não vai para o YouTube dos EUA
-        livres = sorted((t for t in ts if livre(t) and (nicho == "Procurados" or gosto.lingua(t) not in ("pt", "es"))), key=lambda t: (t in feitos, -_rendeu(feitos.get(t, {}))))
+        livres = sorted((t for t in ts if livre(t) and not fora_do_ingles(t)), key=lambda t: (t in feitos, -_rendeu(feitos.get(t, {}))))
         por_nicho.append([(nicho, t) for t in livres])
     # cada rodada dá mais buscas a quem paga mais e engaja mais: finanças 3, direito 2, religião 1
     ordem = []
@@ -149,7 +155,7 @@ def _proximos_termos() -> list[tuple[str, str]]:
                 b = feitos.get(t)
                 if b and (b.get("zeros") or 0) >= LIXO_DEPOIS and b["quando"] >= limite_lixo:
                     continue
-                if nicho != "Procurados" and gosto.lingua(t) in ("pt", "es"):
+                if fora_do_ingles(t):
                     continue
                 if b and b["quando"] >= (agora - timedelta(hours=REPETIR_HORAS)).isoformat():
                     continue

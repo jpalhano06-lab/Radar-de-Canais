@@ -254,7 +254,8 @@ def sugerir_termos(nicho_nome: str, titulos: list[str], quantos: int = 4) -> lis
         MODELO_TEXTO,
         "Você ajuda a achar canais novos do YouTube. A partir dos títulos de vídeos que fizeram muito sucesso, "
         f"escreva {quantos} buscas curtas (2 a 5 palavras) que achariam OUTROS vídeos do mesmo tipo, sem nomes "
-        "próprios de um vídeo só. Misture inglês, português e espanhol. Responda só JSON: {\"buscas\": [\"...\"]}.",
+        "próprios de um vídeo só. Escreva todas em inglês, mesmo que os títulos estejam em outra língua. Responda só "
+        "JSON: {\"buscas\": [\"...\"]}.",
         f"Nicho: {nicho_nome}\n" + _lista("Títulos que estouraram", titulos[:20]), esperar=60)
     buscas = (resposta or {}).get("buscas", [])
     return [re.sub(r"\s+", " ", str(b)).strip()[:60] for b in buscas if isinstance(b, str) and 2 <= len(b.split()) <= 7][:quantos]

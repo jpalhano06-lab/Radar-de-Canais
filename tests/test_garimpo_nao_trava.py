@@ -178,3 +178,11 @@ def test_bolsa_seca_nao_repete_termo_de_horas_atras(db, monkeypatch):
     banco.executar("INSERT INTO buscas_feitas (termo, nicho, quando, canais, vezes, total, zeros) VALUES (?,?,?,?,?,?,?)",
                    "stock market", "Finanças", (garimpo.datetime.now(garimpo.timezone.utc) - garimpo.timedelta(days=1)).isoformat(), 1, 1, 1, 0)
     assert garimpo._proximos_termos() == [("Finanças", "stock market")]
+
+
+def test_termo_fora_do_ingles_nao_vira_busca(db, monkeypatch):
+    """Caso real (2026-11-03): "policía captura video" tem gosto.lingua "?" e ia para o YouTube em espanhol."""
+    monkeypatch.setattr(garimpo, "termos", lambda: {
+        "Crimes Reais": ["police bodycam footage", "policía captura video", "cobranças de juros"],
+        "Procurados": ["evolución humana documental", "bible mysteries"]})
+    assert sorted(t for _, t in garimpo._proximos_termos()) == ["bible mysteries", "police bodycam footage"]
