@@ -52,7 +52,8 @@ def esgotado(modelo: str) -> bool:
 
 LINGUAS = {
     "en": "inglês", "es": "espanhol", "pt": "português", "fr": "francês", "de": "alemão",
-    "it": "italiano", "ja": "japonês", "ko": "coreano", "hi": "hindi",
+    "it": "italiano", "ja": "japonês", "ko": "coreano", "hi": "hindi", "nl": "holandês", "pl": "polonês",
+    "tr": "turco",
 }
 
 NICHOS = [

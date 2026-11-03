@@ -27,8 +27,10 @@ LINGUAS = {"pt": "português", "en": "inglês", "es": "espanhol", "fr": "francê
 GUARDA_DIAS = 7
 PARECIDO = 0.6          # 60% das palavras da ideia no título achado: é a mesma ideia
 QUASE = 0.4             # 40%: parece, mas não é a mesma ideia (só conta)
-# canal sem radar próprio confere nestas 8 línguas (o botão Radar funciona desde o primeiro clique)
-PADRAO = [("US", "en"), ("BR", "pt"), ("ES", "es"), ("FR", "fr"), ("DE", "de"), ("IT", "it"), ("PL", "pl"), ("TR", "tr")]
+# canal sem radar próprio confere nestas 11 línguas (o botão Radar funciona desde o primeiro clique); Holanda, Japão e
+# Coreia do Sul entraram em 2026-11-03
+PADRAO = [("US", "en"), ("BR", "pt"), ("ES", "es"), ("FR", "fr"), ("DE", "de"), ("IT", "it"), ("PL", "pl"), ("TR", "tr"),
+          ("NL", "nl"), ("JP", "ja"), ("KR", "ko")]
 
 
 def forca(views: int | None) -> str:
@@ -128,10 +130,26 @@ _VAZIAS3 = {"the", "and", "you", "are", "for", "was", "que", "dos", "das", "com"
             "mas", "sus", "sem", "ter", "ser", "vir", "won", "they", "top", "mais", "more", "most"}
 
 
+# japonês e coreano: kanji, katakana e hangul. O hiragana (partículas e finais de verbo) só separa
+_CJK = re.compile(r"[一-鿿゠-ヿ가-힣]+")
+_KANA = re.compile(r"[぀-ヿ]")
+_HANGUL = re.compile(r"[가-힣]")
+
+
+def _pedacos_cjk(texto: str) -> set[str]:
+    """Japonês não tem espaço e o coreano gruda a partícula na palavra ("고양이가", "고양이는"): os pares de letras
+    vizinhas fazem as vezes das palavras ("고양", "양이"). Um kanji sozinho ("猫") já é uma palavra."""
+    saida = set()
+    for trecho in _CJK.findall(texto):
+        saida |= {trecho} if len(trecho) == 1 else {trecho[i:i + 2] for i in range(len(trecho) - 1)}
+    return saida
+
+
 def palavras(texto: str) -> set[str]:
-    """As palavras do título para comparar ideias: como `gosto.chaves`, mas com as de 3 letras ("cat", "dog", "mar")."""
+    """As palavras do título para comparar ideias: como `gosto.chaves`, mas com as de 3 letras ("cat", "dog", "mar")
+    e os pedaços do japonês e do coreano (sem eles, nada batia lá e o Japão saía sempre "ninguém fez")."""
     return gosto.chaves(texto) | {p for p in re.findall(r"\b[a-z]{3}\b", gosto._simples(texto))
-                                  if p not in _VAZIAS3 and p not in gosto._VAZIAS}
+                                  if p not in _VAZIAS3 and p not in gosto._VAZIAS} | _pedacos_cjk(texto)
 
 
 def mesma_ideia(titulo: str, alvo: set[str], numero: set[str] | None = None) -> float:
@@ -165,7 +183,12 @@ def na_lingua(titulo: str, lingua: str) -> bool:
     if achada in _LATINAS:
         return achada == lingua
     if achada == "outras":
-        return lingua in {"ja", "ko", "ru", "ar"}
+        # um vídeo coreano achado no Japão não diz que o Japão já fez (nem o contrário)
+        if lingua == "ja":
+            return bool(_KANA.search(titulo))
+        if lingua == "ko":
+            return bool(_HANGUL.search(titulo))
+        return lingua in {"ru", "ar"}
     return True
 
 
@@ -233,8 +256,12 @@ def preparar(titulo: str) -> dict:
     outras = sorted({l for _, l in PADRAO if l != lingua_titulo})
     chave = f"traducao-radar:{titulo}"
     cache = banco.um("SELECT dados FROM traducoes WHERE chave=?", chave)
-    traducoes = json.loads(cache["dados"]) if cache else ia.traduzir_exato(titulo, outras)
-    if traducoes and not cache:
+    traducoes = json.loads(cache["dados"]) if cache else {}
+    # a guardada de antes não tem as línguas que entraram depois (holandês, japonês, coreano): só elas vão ao Groq
+    faltam = [l for l in outras if l not in traducoes]
+    novas = ia.traduzir_exato(titulo, faltam) if faltam else {}
+    traducoes |= novas
+    if novas:
         banco.executar("INSERT OR REPLACE INTO traducoes (chave, dados, criado) VALUES (?,?,?)",
                        chave, json.dumps(traducoes, ensure_ascii=False), banco.agora())
     paises = []

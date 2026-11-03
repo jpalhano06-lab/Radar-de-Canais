@@ -41,3 +41,23 @@ def test_palavra_de_isca_nao_faz_outra_ideia_virar_a_mesma():
 def test_reupload_em_ingles_nao_conta_para_o_brasil():
     assert not r.na_lingua("15 Bizarre Animals from Papua That Look Like They're From Another World!", "pt")
     assert r.na_lingua("15 Animais Bizarros da Papua Que Parecem Ter Vindo de Outro Mundo!", "pt")
+
+
+def test_japones_e_coreano_tambem_batem():
+    # sem os pedaços do japonês e do coreano o alvo saía vazio e o Japão e a Coreia saíam sempre "ninguém fez"
+    alvo = r.palavras(r.sem_numeros("パプアの奇妙な動物たち 別世界から来たような"))
+    assert r.mesma_ideia("【衝撃】パプアの奇妙な動物15選 別世界から来たような生き物", alvo) >= r.PARECIDO
+    assert r.mesma_ideia("チェルノブイリの猫", alvo) < r.PARECIDO
+    alvo = r.palavras(r.sem_numeros("다른 세상에서 온 것 같은 파푸아의 기묘한 동물들"))
+    assert r.mesma_ideia("다른 세상에서 온 것 같은 파푸아의 기묘한 동물 15가지", alvo) >= r.PARECIDO
+    assert r.mesma_ideia("체르노빌의 고양이", alvo) < r.PARECIDO
+    assert r.palavras_da_busca("다른 세상에서 온 파푸아의 동물들") == "다른 세상에서 온 파푸아의 동물들"
+
+
+def test_video_coreano_nao_conta_para_o_japao():
+    assert not r.na_lingua("파푸아의 기묘한 동물들", "ja") and r.na_lingua("パプアの奇妙な動物", "ja")
+    assert not r.na_lingua("パプアの奇妙な動物", "ko") and r.na_lingua("파푸아의 기묘한 동물들", "ko")
+
+
+def test_holanda_japao_e_coreia_no_metodo_fantasma():
+    assert {("NL", "nl"), ("JP", "ja"), ("KR", "ko")} <= set(r.PADRAO)

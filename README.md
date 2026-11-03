@@ -318,8 +318,9 @@ código para quando for vender ou dividir com os sócios.
 - Cada vídeo tem **📡 Radar** entre "Salvar ideia" e "Trabalho". Ele procura o título, sem os números, traduzido para
   a língua de cada país, e desenha um radar: verde perto do centro = ninguém fez ainda, vermelho fora = já fizeram
   (forte com 100 mil views ou mais, médio com 20 mil, fraco abaixo). Embaixo, um cartão por país; clicar mostra os
-  vídeos achados. Canal sem radar próprio usa 8 línguas padrão (EUA, Brasil, Espanha, França, Alemanha, Itália,
-  Polônia, Turquia), `projeto_id` 0 em `radar_paises.conferir`. Cada país gasta uns 101 de cota; fica guardado 7 dias.
+  vídeos achados. Canal sem radar próprio usa 11 línguas padrão (EUA, Brasil, Espanha, França, Alemanha, Itália,
+  Polônia, Turquia e, desde 2026-11-03, Holanda, Japão e Coreia do Sul; japonês e coreano são comparados por pares de
+  letras, já que não separam as palavras como as línguas latinas), `projeto_id` 0 em `radar_paises.conferir`. Cada país gasta uns 101 de cota; fica guardado 7 dias.
 - A borda direita tem uma aba por canal, com a foto e o nome escrito de pé; clicar abre as ideias salvas daquele canal.
 
 ## 🎯, inscrever no algoritmo, placar por país e cores (2026-10-14)
