@@ -45,6 +45,12 @@ se o canal é sem rosto (até 3 capas pequenas por pedido: o Qwen do Groq aceita
 6 mil tokens contra o limite de 7 mil por minuto). Vídeo com 5x o normal vai para os Outliers. Depois, cada canal
 salvo procura os parecidos uma vez por semana e eles vão para os Achados de quem salvou.
 
+**Reserva do Groq: o Gemini** (2026-11-03). Quando as 11 chaves do Groq gastam a cota de tokens do dia, o mesmo pedido
+(nicho, rosto, traduções) vai para o Gemini, no plano grátis, revezando as `GEMINI_API_KEY` do `.env` da fábrica
+(`ia._gemini`). Modelo `gemini-3.5-flash-lite` (`RADAR_MODELO_GEMINI`): o 2.5 Flash não aceita mais chave nova e o
+3.8 Flash dava 503 de tão cheio. As capas vão junto em base64. Chave no limite sai da roda pelo `retryDelay` (o do dia,
+1 hora).
+
 **Cota**: 10.000 unidades por dia por chave (volta às 5 h de Brasília). Busca custa 100, medir canal novo uns 3.
 O garimpo usa 60% do que sobrou (`RADAR_COTA_GARIMPO`). As buscas vêm primeiro; as perguntas ao Groq dos canais
 que ficaram sem nicho ou sem a resposta do rosto, por último (2026-10-31: o garimpo do dia 30 ficou 20 horas preso

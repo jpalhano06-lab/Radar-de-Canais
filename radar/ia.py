@@ -1,6 +1,8 @@
 """O que pede um modelo: o título em outras línguas, o nicho do canal e se o canal mostra rosto.
 
-Só o Groq (gratuito), revezando as GROQ_API_KEY. Sem chave ou fora do ar, cada função devolve vazio e o Radar segue."""
+O Groq (gratuito), revezando as GROQ_API_KEY. Quando todas gastam a cota do dia, o mesmo pedido vai para o Gemini
+(plano grátis, revezando as GEMINI_API_KEY). Sem chave ou fora do ar, cada função devolve vazio e o Radar segue."""
+import base64
 import itertools
 import json
 import re
@@ -9,7 +11,7 @@ import time
 
 import httpx
 
-from .config import MODELO_TEXTO, MODELO_VISAO, chaves_groq
+from .config import MODELO_GEMINI, MODELO_TEXTO, MODELO_VISAO, chaves_gemini, chaves_groq
 
 URL = "https://api.groq.com/openai/v1/chat/completions"
 _CLIENTE = httpx.Client(timeout=httpx.Timeout(60, connect=10))
@@ -40,7 +42,12 @@ def _espera_pedida(texto: str, cabecalhos=None) -> float | None:
 
 
 def esgotado(modelo: str) -> bool:
-    """True quando toda chave já estourou a cota de tokens do dia desse modelo: nem vale perguntar."""
+    """True quando toda chave do Groq já estourou a cota de tokens do dia desse modelo e o Gemini também está fora:
+    nem vale perguntar."""
+    return _groq_esgotado(modelo) and not _gemini_livre()
+
+
+def _groq_esgotado(modelo: str) -> bool:
     chaves = [c for c in chaves_groq() if c not in _RECUSADAS]
     if not chaves:
         return True
@@ -48,6 +55,80 @@ def esgotado(modelo: str) -> bool:
         return False        # nenhuma chave estourou nada: nem olha o relógio
     agora = time.monotonic()
     return all(_ESGOTADAS.get((modelo, c), 0) > agora for c in chaves)
+
+
+# ---------------------------------------------------------------- o Gemini, a reserva do Groq (2026-11-03)
+# Pedido do usuário: "tem alguma outra IA que possa fazer esse papel do Groq?", "só o Gemini grátis". As 11 chaves do
+# Groq gastavam a cota de tokens do dia e os canais novos ficavam sem nicho e sem rosto até o outro dia (264 numa
+# tarde). O Gemini entende o mesmo pedido do Groq (o jeito da OpenAI); só a capa vai junto em base64, não pelo link.
+
+URL_GEMINI = "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions"
+_GEMINI_FORA: dict[str, float] = {}     # chave -> o time.monotonic() em que o limite dela volta
+_VEZ_GEMINI = itertools.count()
+
+
+def _gemini_livre() -> bool:
+    agora = time.monotonic()
+    return any(_GEMINI_FORA.get(c, 0) <= agora for c in chaves_gemini() if c not in _RECUSADAS)
+
+
+def _espera_gemini(texto: str) -> float:
+    """O Gemini diz quanto esperar no retryDelay ("37s"); o limite do dia (PerDay) só volta à meia-noite do Pacífico."""
+    m = re.search(r'"retryDelay":\s*"([\d.]+)s"', texto)
+    return 3600 if "PerDay" in texto or not m else float(m.group(1)) + 1
+
+
+def _capas_embutidas(conteudo):
+    if not isinstance(conteudo, list):
+        return conteudo
+    saida = []
+    for parte in conteudo:
+        url = (parte.get("image_url") or {}).get("url", "") if parte.get("type") == "image_url" else ""
+        if url.startswith("http"):
+            try:
+                r = _CLIENTE.get(url, timeout=15)
+            except httpx.HTTPError:
+                continue
+            if r.status_code != 200:
+                continue        # capa que não existe mais fica de fora, em vez de o pedido inteiro ser recusado
+            tipo = r.headers.get("content-type", "image/jpeg").split(";")[0]
+            parte = {"type": "image_url",
+                     "image_url": {"url": f"data:{tipo};base64," + base64.b64encode(r.content).decode()}}
+        saida.append(parte)
+    return saida
+
+
+def _gemini(sistema: str, conteudo, saida: int, temperatura: float) -> dict | None:
+    chaves = [c for c in chaves_gemini() if c not in _RECUSADAS]
+    if not chaves or not _gemini_livre():
+        return None
+    conteudo = _capas_embutidas(conteudo)
+    inicio = next(_VEZ_GEMINI)
+    for chave in chaves[inicio % len(chaves):] + chaves[:inicio % len(chaves)]:
+        if _GEMINI_FORA.get(chave, 0) > time.monotonic():
+            continue
+        corpo = {"model": MODELO_GEMINI, "temperature": temperatura, "max_tokens": saida,
+                 "response_format": {"type": "json_object"},
+                 "messages": [{"role": "system", "content": sistema}, {"role": "user", "content": conteudo}]}
+        try:
+            r = _CLIENTE.post(URL_GEMINI, json=corpo, headers={"Authorization": f"Bearer {chave}"}, timeout=40)
+        except httpx.HTTPError:
+            continue
+        if r.status_code == 200:
+            try:
+                resposta = json.loads(r.json()["choices"][0]["message"]["content"])
+            except (KeyError, ValueError, IndexError, TypeError):
+                continue
+            return resposta if isinstance(resposta, dict) else None
+        if r.status_code in (401, 403):
+            _RECUSADAS.add(chave)
+            continue
+        if r.status_code == 400:
+            return None
+        if r.status_code == 429:
+            _GEMINI_FORA[chave] = time.monotonic() + _espera_gemini(r.text)
+        # 429 e 5xx (o Gemini dá 503 quando está cheio): a próxima chave
+    return None
 
 
 LINGUAS = {
@@ -91,7 +172,7 @@ def _perguntar(modelo: str, sistema: str, conteudo, tentativas: int = 4, esperar
         restantes -= 1
         chave = _chave(modelo)
         if not chave:
-            return None
+            return _gemini(sistema, conteudo, saida, temperatura)
         corpo = {"model": modelo, "temperature": temperatura, "max_completion_tokens": saida,
                  "response_format": {"type": "json_object"},
                  "messages": [{"role": "system", "content": sistema}, {"role": "user", "content": conteudo}]}

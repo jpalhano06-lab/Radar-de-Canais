@@ -132,6 +132,7 @@ def test_cota_do_dia_do_groq_nao_vira_espera_de_15_segundos(monkeypatch):
     dormiu = []
     monkeypatch.setattr(ia.time, "sleep", lambda s: dormiu.append(s))
     monkeypatch.setattr(ia, "chaves_groq", lambda: ["a", "b"])
+    monkeypatch.setattr(ia, "chaves_gemini", lambda: [])      # sem a reserva: aqui é o Groq sozinho
     monkeypatch.setattr(ia, "_ESGOTADAS", {})
     monkeypatch.setattr(ia, "_RODA", None)
     monkeypatch.setattr(ia._CLIENTE, "post", lambda *a, **k: _Resposta(
