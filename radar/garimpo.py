@@ -313,6 +313,43 @@ def remedir(log, orcamento: int) -> int:
     return feitos
 
 
+FILA_NAVEGADOR = DADOS / "fila-navegador.txt"
+FRACAO_FILA = 0.3          # até 30% da cota do garimpo vai para a fila de canais achados no navegador
+FILA_LOTE = 40             # canais por lote (o filtro barato dos canais custa 1 unidade a cada 50)
+
+
+@youtube.por("garimpo")
+def fila_do_navegador(log, orcamento: int) -> int:
+    """Mede os canais de `dados/fila-navegador.txt` e põe no Radar os que passam.
+
+    A busca da API custa 100 unidades e devolve 20 canais; a mesma busca feita no navegador (o Claude lendo a página
+    de resultados do YouTube) não custa nada, e aqui só a medida gasta cota: umas 3 unidades por canal. Então uma
+    fila grande de canais achados assim rende muito mais canal por unidade do que buscar. Cada garimpo come um
+    pedaço da fila, do começo, e reescreve o arquivo sem os que já olhou."""
+    if not FILA_NAVEGADOR.exists():
+        return 0
+    ids = [l.strip() for l in FILA_NAVEGADOR.read_text(encoding="utf-8").splitlines() if l.strip()]
+    if not ids:
+        return 0
+    contagem = {"novos": 0, "buscas": 0}
+    inicio, olhados = youtube.cota_hoje()["usado"], 0
+    for i in range(0, len(ids), FILA_LOTE):
+        if youtube.cota_hoje()["usado"] - inicio + 3 * FILA_LOTE > orcamento:
+            break
+        try:
+            _avaliar(ids[i:i + FILA_LOTE], log, contagem, rapido=True)
+        except youtube.SemCota:
+            break
+        except Exception as erro:          # um lote ruim não para o resto da fila
+            log(f"fila do navegador: lote {i} falhou: {erro}")
+        olhados = i + FILA_LOTE
+    if olhados:
+        FILA_NAVEGADOR.write_text("\n".join(ids[olhados:]), encoding="utf-8")
+        log(f"Fila do navegador: {min(olhados, len(ids))} canais olhados, {contagem['novos']} entraram no Radar, "
+            f"{max(0, len(ids) - olhados)} ainda na fila")
+    return contagem["novos"]
+
+
 MAX_TERMOS_AUTO = 400
 
 
@@ -421,6 +458,8 @@ def rodar(log=print, unidades: int | None = None) -> dict:
     try:
         anotar(f"Garimpo começou com {orcamento} unidades de cota.")
         remedir(anotar, int(orcamento * FRACAO_REMEDIR))
+        # antes das buscas: a fila do navegador é o canal mais barato por unidade (só a medida custa cota)
+        contagem["novos"] += fila_do_navegador(anotar, int(orcamento * FRACAO_FILA))
         depois = (datetime.now(timezone.utc) - timedelta(days=DIAS_DO_VIDEO)).strftime("%Y-%m-%dT%H:%M:%SZ")
         for n, (nicho, termo) in enumerate(_proximos_termos()):
             if youtube.cota_hoje()["usado"] - inicio + 110 > orcamento:
