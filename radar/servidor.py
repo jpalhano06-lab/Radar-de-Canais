@@ -586,16 +586,18 @@ def ext_nicho_videos(canal_id: str, u: dict = Depends(exigir("parecidos"))):
 @app.post("/api/ext/radar/preparar")
 async def ext_radar_preparar(request: Request, u: dict = Depends(usuario)):
     """A busca de cada país para a extensão (o radar de países saiu do site: sem gastar a cota da API)."""
-    titulo = str((await request.json()).get("titulo", "")).strip()[:300]
+    d = await request.json()
+    titulo = str(d.get("titulo", "")).strip()[:300]
     if not titulo:
         raise HTTPException(400, "Falta o título do vídeo.")
-    return radar_paises.preparar(titulo)
+    return radar_paises.preparar(titulo, str(d.get("modo", "raiz")))
 
 
 @app.post("/api/ext/radar/julgar")
 async def ext_radar_julgar(request: Request, u: dict = Depends(usuario)):
     d = await request.json()
-    return radar_paises.julgar(d.get("preparo") or {}, d.get("resultados") or {}, str(d.get("video_id", "")))
+    return radar_paises.julgar(d.get("preparo") or {}, d.get("resultados") or {}, str(d.get("video_id", "")),
+                               str(d.get("canal_id", "")), d.get("views"))
 
 
 def _kit_com_modelo(usuario_id: int, pasta) -> dict:

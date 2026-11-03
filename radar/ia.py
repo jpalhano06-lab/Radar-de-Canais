@@ -252,11 +252,18 @@ def traduzir_exato(titulo: str, linguas: list[str]) -> dict[str, str]:
     return {c: str(resposta[c]).strip()[:150] for c in linguas if isinstance(resposta.get(c), str) and resposta[c].strip()}
 
 
-def regionalizar(titulo: str, alvos: dict[str, tuple[str, str]]) -> dict | None:
-    """A versão local do título em cada país (pedido do usuário em 2026-11-03: "mercados do Canadá e dos EUA são
-    diferentes", "invenções do Japão e invenções da China"). `alvos` = {código: (país, língua)}. Devolve {"lugar":
-    "Canadá", "titulos": {código: título}}, com lugar "" quando o título não fala de lugar nenhum; None = o Groq falhou."""
+def regionalizar(titulo: str, alvos: dict[str, tuple[str, str]], acrescentar: bool = False) -> dict | None:
+    """O título reescrito para cada país, com o lugar trocado pelo país (pedido do usuário em 2026-11-03: "mercados
+    do Canadá e dos EUA são diferentes", "invenções do Japão e invenções da China"). `alvos` = {código: (país,
+    língua)}. `acrescentar`: título que não fala de lugar ganha o país mesmo assim ("Animais bizarros" vira "Animais
+    bizarros do Brasil"). Devolve {"lugar": "Canadá", "titulos": {código: título}, "marcas": {código: ["Brasil",
+    "brasileiro", ...]}}: as marcas são os jeitos de escrever o país naquela língua, para conferir se o vídeo achado
+    fala dele. Lugar "" = o título não fala de lugar. None = o Groq falhou."""
     pedido = {c: {"pais": p, "lingua": LINGUAS.get(l, l)} for c, (p, l) in alvos.items()}
+    sem_lugar = ("Se o título não fala de lugar nenhum, devolva lugar vazio e, para cada país pedido, o título "
+                 "traduzido com o país acrescentado do jeito mais natural (\"Animais bizarros que parecem de outro "
+                 "mundo\" para Brasil vira \"Animais bizarros do Brasil que parecem de outro mundo\"). "
+                 if acrescentar else "Se o título não fala de lugar nenhum, devolva lugar vazio e nenhum título. ")
     resposta = _perguntar(
         MODELO_TEXTO,
         "O título de um vídeo do YouTube fala de um lugar específico (país, cidade, região ou povo/nacionalidade)? "
@@ -264,12 +271,24 @@ def regionalizar(titulo: str, alvos: dict[str, tuple[str, str]]) -> dict | None:
         "mantendo todo o resto fiel ao original (as mesmas palavras e a mesma ordem, sem números). Exemplo: "
         "\"Supermercados do Canadá que faliram\" para Estados Unidos em inglês vira \"Supermarkets in the USA that went "
         "bankrupt\"; \"Invenções japonesas que mudaram o mundo\" para Brasil em português vira \"Invenções brasileiras "
-        "que mudaram o mundo\". Não inclua o país que já é o lugar do título (o Japão, nesse exemplo). Se o título não fala de lugar nenhum, devolva lugar vazio e nenhum título. "
-        "Responda só JSON: {\"lugar\": \"o lugar do título ou vazio\", \"titulos\": {\"codigo\": \"título\"}}.",
-        f"Título: {titulo}\nPaíses: {json.dumps(pedido, ensure_ascii=False)}", esperar=30, saida=1200)
+        "que mudaram o mundo\". Troque também o povo, o adjetivo, as cidades e os estados do lugar pelos do país pedido, "
+        "com o artigo certo: \"Why Americans Are Leaving California\" para Reino Unido vira \"Why Brits Are Leaving "
+        "Britain\". Não inclua o país do lugar do título (o Japão no exemplo das invenções; os EUA no da Califórnia). "
+        + sem_lugar +
+        "Para cada título, dê também as marcas: os jeitos de escrever aquele país na língua do título (nome, sigla, "
+        "adjetivo e povo, ex.: [\"USA\", \"United States\", \"America\", \"American\", \"Americans\"]), sem códigos de "
+        "duas letras como BR ou ES. "
+        "Responda só JSON: {\"lugar\": \"o lugar do título ou vazio\", \"titulos\": {\"codigo\": \"título\"}, "
+        "\"marcas\": {\"codigo\": [\"...\"]}}.",
+        f"Título: {titulo}\nPaíses: {json.dumps(pedido, ensure_ascii=False)}", esperar=30, saida=2000)
     if not isinstance(resposta, dict):
         return None
     lugar = str(resposta.get("lugar") or "").strip()[:60]
-    titulos = resposta.get("titulos") if lugar and isinstance(resposta.get("titulos"), dict) else {}
-    return {"lugar": lugar, "titulos": {c: str(t).strip()[:150] for c, t in titulos.items()
-                                        if c in alvos and isinstance(t, str) and t.strip()}}
+    titulos = resposta.get("titulos") if (lugar or acrescentar) and isinstance(resposta.get("titulos"), dict) else {}
+    titulos = {c: str(t).strip()[:150] for c, t in titulos.items() if c in alvos and isinstance(t, str) and t.strip()}
+    marcas = resposta.get("marcas") if isinstance(resposta.get("marcas"), dict) else {}
+    return {"lugar": lugar, "titulos": titulos,
+            # sigla de duas letras, só UK, US e NZ: "es", "fr" e "br" aparecem em qualquer título
+            "marcas": {c: [str(m).strip()[:40] for m in ms
+                           if isinstance(m, str) and (len(m.strip()) > 2 or m.strip() in ("UK", "US", "NZ"))][:8]
+                       for c, ms in marcas.items() if c in titulos and isinstance(ms, list)}}

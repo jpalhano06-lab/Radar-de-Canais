@@ -343,9 +343,14 @@ html[dark] .radar-fantasma-aviso { color: #aaa; }
 .radar-achado-cab small { color: var(--yt-spec-text-secondary, #606060); white-space: nowrap; }
 html[dark] .radar-achado-cab small { color: #aaa; }
 .radar-achado-cab .radar-bandeira { width: 18px; height: 12px; border-radius: 2px; object-fit: cover; }
-.radar-achado-cab em { font: 700 9px/14px Roboto, Arial, sans-serif; font-style: normal; text-transform: uppercase; padding: 0 4px;
-  border-radius: 4px; background: rgba(128,128,128,.25); }
-.radar-achado + .radar-achado:has(.radar-achado-cab em) { margin: -4px 0 0 18px; }
+/* os três modos: Raiz, Adaptado ao país, Premium (só países de língua inglesa) */
+.radar-fantasma-modos { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 4px; padding: 3px; border-radius: 10px; background: rgba(128,128,128,.15); }
+.radar-fantasma-modo { border: 1px solid transparent; border-radius: 8px; padding: 7px 4px; cursor: pointer; background: transparent; color: inherit;
+  font: 600 12px Roboto, Arial, sans-serif; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.radar-fantasma-modo:hover:not(:disabled) { background: rgba(128,128,128,.2); }
+.radar-fantasma-modo:disabled { cursor: wait; opacity: .6; }
+.radar-fantasma-modo.ligado { background: rgba(128,128,128,.35); border-color: rgba(57,255,136,.7); }
+.radar-fantasma-modo.radar-modo-premium.ligado { border-color: #e53935; color: #ff6b6b; }
 .radar-fantasma-vista.compacta .radar-lista { max-height: 300px; overflow-y: auto; }
 
 /* o fantasminha embaixo do vídeo, ao lado do botão Radar: verde neon, com aro verde; cresce no mouse */

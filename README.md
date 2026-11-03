@@ -368,13 +368,25 @@ código para quando for vender ou dividir com os sócios.
   (`radar_paises.preparar`, Groq, guardado) e a extensão abre a busca do YouTube de cada país
   (`/results?search_query=...&gl=BR&hl=pt`), lendo o `<script id="yt-initial-data">` da página. O servidor julga os
   resultados com as mesmas regras (`radar_paises.julgar`). Não gasta cota e funciona com a cota do dia acabada.
-- **Versão local** (2026-11-03): se o título fala de um lugar ("Supermercados do Canadá que faliram", "Invenções
-  japonesas..."), o Groq também reescreve o título trocando o lugar por cada país (`ia.regionalizar`, guardado em
-  `regional-radar:`), e a extensão faz uma segunda busca por país ("Supermarkets in the USA that went bankrupt"), que
-  chega em `<código>:regional` e ganha placar próprio no `julgar`. O país que já é o lugar do título fica sem. O
-  "livre" continua contando só a busca exata; o aviso diz à parte onde a versão local está livre.
+- **Três modos** (2026-11-03, no jeito do "Método Malandro" da extensão Dotti Finder, estudada com o REA), escolhidos
+  em botões na vista do Método Fantasma e lembrados no `chrome.storage` (`fantasmaModo`):
+  - **Raiz**: o título traduzido para cada língua; o lugar do título continua nele.
+  - **Adaptado ao país**: o Groq reescreve o título trocando o lugar (e o povo, as cidades, os estados) pelo país de
+    cada língua ("Supermercados do Canadá que faliram" vira "Supermarkets in the United States that went bankrupt");
+    título sem lugar ganha o país ("Animais bizarros do Brasil que..."). `ia.regionalizar`, guardado em
+    `troca-radar:<modo>:<título>`.
+  - **Premium**: só os países de língua inglesa (`radar_paises.PREMIUM`: EUA, Reino Unido, Canadá, Austrália, Nova
+    Zelândia, Irlanda), onde o RPM é mais alto: o título em inglês, com o país trocado pelo de cada um; o país do
+    próprio título fica fora.
+  - Com o país trocado, o vídeo achado só conta se falar do país (as "marcas" que o Groq dá: "USA", "American"...): um
+    vídeo dos EUA achado na Austrália não diz que a Austrália já fez. Se o título original já cita o país, ele fica
+    sem troca.
+- Regras do placar (`radar_paises.julgar`), para os três modos: cada país tem duas buscas, a normal e a ordenada por
+  views (`&sp=CAMSAhAB`, acha o vídeo grande que a relevância esconde); não contam o mesmo canal do vídeo aberto nem
+  vídeos de mais de um ano (`velho`, nas 11 línguas); "fraco" é o achado com menos de 5% das views do vídeo aberto
+  (sem elas, o corte fixo de 20 mil).
 - Quando a busca termina, cada país já mostra o vídeo que foi julgado igual (o de mais views), sem precisar clicar;
-  clicar no país mostra todos os achados das duas buscas.
+  clicar no país mostra todos os achados.
 - Saíram do site: o botão 📡 dos vídeos, a aba Radar de países do canal e a etiqueta "radar" dos canais.
   O código antigo (`conferir`, `/api/radar-paises/*`) ficou, sem botão.
 
