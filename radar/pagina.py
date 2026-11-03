@@ -83,19 +83,26 @@ def _limpar_video(v: dict, canal_id: str = "") -> dict | None:
 
 
 def _guardar(lista: list[dict]) -> None:
-    """Vídeo novo entra; o que já existe só atualiza as views (a data e a duração exatas da API ficam)."""
+    """Vídeo novo entra; o que já existe só atualiza as views (a data e a duração exatas da API ficam).
+
+    View não volta atrás: a página mostra o número arredondado ("1,1 mil" para 1.108, "17 mil" para 17.512) e às
+    vezes lê a linha errada, então o que a página traz só vale quando é maior que o que já está guardado. Sem isso o
+    número redondo da tela apagava a contagem exata da API e a curva de views do painel descia."""
     agora = banco.agora()
     banco.varios(
         "INSERT INTO videos (id, canal_id, titulo, publicado, duracao_s, views, medido) VALUES (?,?,?,?,?,?,'') "
-        "ON CONFLICT(id) DO UPDATE SET views=COALESCE(excluded.views, views), "
+        "ON CONFLICT(id) DO UPDATE SET views=CASE WHEN excluded.views IS NULL THEN views "
+        "WHEN views IS NULL THEN excluded.views ELSE MAX(views, excluded.views) END, "
         "titulo=CASE WHEN excluded.titulo<>'' THEN excluded.titulo ELSE titulo END, "
         "canal_id=CASE WHEN canal_id='' THEN excluded.canal_id ELSE canal_id END, "
         "duracao_s=COALESCE(duracao_s, excluded.duracao_s), "
         "publicado=CASE WHEN publicado='' THEN excluded.publicado ELSE publicado END",
         [(v["id"], v["canal_id"], v["titulo"], v["publicado"], v["duracao_s"], v["views"]) for v in lista])
     banco.varios("UPDATE videos SET publicado=? WHERE id=?", [(v["publicado"], v["id"]) for v in lista if v.get("exato")])
-    banco.varios("INSERT OR IGNORE INTO leituras (video_id, quando, views) VALUES (?,?,?)",
-                 [(v["id"], agora[:13], v["views"]) for v in lista if v["views"] is not None])
+    # a curva guarda o que ficou no banco, não o que a página disse: assim ela também nunca desce
+    banco.varios("INSERT OR IGNORE INTO leituras (video_id, quando, views) "
+                 "SELECT id, ?, views FROM videos WHERE id=? AND views IS NOT NULL",
+                 [(agora[:13], v["id"]) for v in lista if v["views"] is not None])
 
 
 def _canal_basico(c: dict | None) -> None:
@@ -140,6 +147,12 @@ def vistos(videos: list, canal: dict | None = None) -> dict:
     lista = [x for x in (_limpar_video(v) for v in (videos or [])[:300] if isinstance(v, dict)) if x]
     _canal_basico(canal)
     _guardar(lista)
+    # a nota sai do que ficou no banco (a contagem exata da API), não do número arredondado que a página mostrou
+    medidos = {v["id"]: v for v in medir._videos_do_banco([v["id"] for v in lista])}
+    for v in lista:
+        guardado = medidos.get(v["id"])
+        if guardado and guardado["views"] is not None:
+            v["views"] = guardado["views"]
     ids = list(dict.fromkeys(v["canal_id"] for v in lista if v["canal_id"]))
     canais = {c["id"]: c for c in medir._canais_do_banco(ids)}
     estouraram = _outliers(lista, canais)
@@ -149,7 +162,6 @@ def vistos(videos: list, canal: dict | None = None) -> dict:
     ler = [i for i in ids if i not in canais or (canais[i]["base_longos"] is None and (canais[i]["medido"] or "") < corte)]
     # a reação sai das curtidas e dos comentários, que vêm da API e não da página: só tem para o que o Radar já mediu
     normais = normal_do_nicho()
-    medidos = {v["id"]: v for v in medir._videos_do_banco([v["id"] for v in lista])}
     def reacao_de(v):  # noqa: E306
         guardado, canal = medidos.get(v["id"]), canais.get(v["canal_id"])
         if not guardado or not canal:

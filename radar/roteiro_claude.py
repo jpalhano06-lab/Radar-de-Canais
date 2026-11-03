@@ -18,7 +18,7 @@ from datetime import datetime
 
 import httpx
 
-from . import banco
+from . import banco, claude_projetos
 from .config import DADOS, FABRICA as _FABRICA
 
 PASTA = DADOS / "roteiros"
@@ -52,6 +52,16 @@ def transcricao(video_id: str) -> tuple[str, str]:
     trechos = escolhida.fetch()
     texto = re.sub(r"\s+", " ", " ".join(s.text for s in trechos)).strip()
     return texto, escolhida.language_code
+
+
+def tem_legenda(video_id: str) -> bool:
+    """Se dá para ler a legenda desse vídeo. A Nova produção da extensão pergunta isso na confirmação, para a pessoa
+    saber antes de criar que o roteiro vai sair só do título (pedido do usuário em 2026-10-28)."""
+    from youtube_transcript_api import YouTubeTranscriptApi
+    try:
+        return bool(list(YouTubeTranscriptApi().list(video_id)))
+    except Exception:
+        return False
 
 
 def copiar_thumbnail(video_id: str, destino) -> bool:
@@ -89,12 +99,19 @@ def _claude(sistema: str, pedido: str, modelo: str = "") -> str:
         raise RuntimeError("O Claude Code não está instalado neste computador (comando claude).")
     VAZIA.mkdir(parents=True, exist_ok=True)
     ambiente = {k: v for k, v in os.environ.items() if k not in ("ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN")}
-    comando = [executavel, "-p", "--output-format", "json", "--system-prompt", sistema, "--tools", "",
+    # as instruções vão por arquivo, não na linha de comando: o Windows corta a linha em 32 mil letras e o agente
+    # JAN DE WOLF sozinho tem 33 mil (com os arquivos do projeto do claude.ai, passa de 100 mil)
+    arquivo = VAZIA / f"sistema-{uuid.uuid4().hex[:8]}.txt"
+    arquivo.write_text(sistema, encoding="utf-8")
+    comando = [executavel, "-p", "--output-format", "json", "--system-prompt-file", str(arquivo), "--tools", "",
                "--strict-mcp-config", "--no-session-persistence"]
     if modelo:
         comando += ["--model", modelo]
-    r = subprocess.run(comando, input=pedido, capture_output=True, text=True, encoding="utf-8", cwd=VAZIA,
-                       env=ambiente, timeout=900)
+    try:
+        r = subprocess.run(comando, input=pedido, capture_output=True, text=True, encoding="utf-8", cwd=VAZIA,
+                           env=ambiente, timeout=900)
+    finally:
+        arquivo.unlink(missing_ok=True)
     try:
         dados = json.loads(r.stdout)
     except ValueError:
@@ -128,29 +145,72 @@ def _limpar(texto: str) -> str:
     return re.sub(r"\n{3,}", "\n\n", texto).strip()
 
 
+_CODIGO_DA_LINGUA = {"português": "pt", "inglês": "en", "espanhol": "es"}
+
+
+def traduzir_titulo(titulo: str, lingua: str) -> str:
+    """O título na língua falada no vídeo (pedido do usuário em 2026-10-29: "o título lá pode ser em português, porém
+    sempre terá a tradução automática pra língua que vai ser falada"). Já na língua certa, nem chama o Claude.
+    Tradução que falha ou volta estranha (várias linhas, comprida demais) deixa o título como veio: o vídeo não para
+    por causa disso."""
+    from . import gosto
+    titulo = " ".join(str(titulo).split())
+    if not titulo or not lingua or gosto.lingua(titulo) == _CODIGO_DA_LINGUA.get(lingua.lower()):
+        return titulo
+    try:
+        traduzido = _claude("Você traduz títulos de vídeos do YouTube. Responda só com o título traduzido, numa linha, "
+                            "sem aspas e sem explicação. Mantenha o tom chamativo, números e nomes próprios. Se o título "
+                            "já estiver na língua pedida, devolva igual.",
+                            f"Língua: {lingua}\nTítulo: {titulo}", modelo="haiku")
+    except Exception:  # noqa: BLE001
+        return titulo
+    traduzido = traduzido.strip().strip("\"'“”«»").strip()
+    if not traduzido or "\n" in traduzido or len(traduzido) > max(150, len(titulo) * 3):
+        return titulo
+    return traduzido
+
+
 def gerar(usuario_id: int, titulo: str, link: str, minutos: int, lingua: str, projeto_id: int | None,
-          observacoes: str, perfil: str = "", canal: dict | None = None, aviso=lambda _t: None) -> dict:
+          observacoes: str, perfil: str = "", canal: dict | None = None, projeto_descricao_id: int | None = None,
+          aviso=lambda _t: None) -> dict:
     video_id = id_do_video(link)
     if link and not video_id:
         raise RuntimeError("Não reconheci o link do vídeo de referência.")
     pasta = PASTA / f"{datetime.now(banco.BRASILIA).strftime('%Y-%m-%d-%H%M')}-{_slug(titulo)}"
     pasta.mkdir(parents=True, exist_ok=True)
-    base, lingua_base, thumb = "", "", False
+    base, lingua_base, thumb, base_erro = "", "", False, ""
     if video_id:
         aviso("Lendo a transcrição do vídeo de referência…")
-        base, lingua_base = transcricao(video_id)
-        (pasta / "transcricao.txt").write_text(base, encoding="utf-8")
+        # sem legenda não derruba o pedido (pedido do usuário em 2026-10-28): o vídeo pode estar com as legendas
+        # desligadas pelo dono, e antes disso o pedido inteiro parava com erro. Agora o roteiro sai do título, das
+        # observações e do estilo do canal, e o motivo fica no roteiro.json para a Revisão poder dizer
+        try:
+            base, lingua_base = transcricao(video_id)
+            (pasta / "transcricao.txt").write_text(base, encoding="utf-8")
+        except Exception as erro:  # noqa: BLE001
+            base, lingua_base, base_erro = "", "", str(erro)
+            aviso("Esse vídeo não deu a legenda. Escrevendo o roteiro a partir do título…")
         aviso("Copiando a thumbnail…")
         thumb = copiar_thumbnail(video_id, pasta / "thumbnail.jpg")
+    original = titulo
+    if lingua:
+        aviso(f"Traduzindo o título para {lingua}…")
+        titulo = traduzir_titulo(titulo, lingua)
     projeto = banco.um("SELECT * FROM projetos_roteiro WHERE id=? AND usuario_id=?", projeto_id, usuario_id) if projeto_id else None
     # o ritmo real da voz, medido nos vídeos que a fábrica já entregou (tempo.py)
     from . import tempo
-    ritmo = tempo.ritmo(usuario_id, perfil, lingua)
+    ritmo = tempo.ritmo(usuario_id, perfil, lingua, minutos)
     # o ppm_alvo já desconta a mania do Claude de escrever mais do que se pede (tempo.py): é ele que dimensiona o
-    # pedido, para o vídeo cair dentro de 1 min 30 s do tempo escolhido
+    # primeiro rascunho, para ele já nascer perto do tempo. Quem garante a margem é a conferência depois de escrever
+    # (`_conferir_tamanho`), que mede o roteiro pronto no ritmo real da voz
     palavras = minutos * (ritmo.get("ppm_alvo") or ritmo["ppm"])
     sistema = INSTRUCOES + (f"\n\nInstruções do projeto \"{projeto['nome']}\" (estilo do canal, valem por cima das "
                             f"regras acima quando conflitarem):\n{projeto['instrucoes']}" if projeto and projeto["instrucoes"] else "")
+    # os arquivos anexados ao projeto do claude.ai (roteiros de exemplo do canal), como o projeto de lá usa
+    arquivos = claude_projetos.texto_dos_arquivos(projeto)
+    if arquivos:
+        sistema += ("\n\nArquivos do projeto (exemplos e referências do canal: siga o estilo, o ritmo e o formato "
+                    f"deles, sem copiar o assunto):\n\n{arquivos}")
     pedido = (f"Título do vídeo: {titulo}\nLíngua do roteiro: {lingua}\nTamanho: cerca de {palavras} palavras "
               f"({minutos} minutos narrados)\n")
     if observacoes:
@@ -158,34 +218,117 @@ def gerar(usuario_id: int, titulo: str, link: str, minutos: int, lingua: str, pr
     if base:
         # a transcrição muito longa é cortada: o começo e a estrutura importam mais
         pedido += f"\nTranscrição do vídeo de referência (língua: {lingua_base}):\n{base[:60000]}\n"
+    elif base_erro:
+        pedido += ("\nO vídeo de referência existe, mas não deu para ler a legenda dele: escreva a partir do título, "
+                   "das observações e do estilo do canal, sem nenhuma base de transcrição.\n")
     else:
         pedido += "\nSem vídeo de referência: escreva a partir do título.\n"
     aviso(f"O Claude está escrevendo (cerca de {palavras} palavras)…")
     inicio = time.time()
     roteiro = _limpar(_claude(sistema, pedido))
-    # roteiro longo (até 1 hora, uns 9 mil palavras): o Claude às vezes para antes do tamanho. Ele continua de onde
-    # parou, até 4 vezes, sem repetir o que já escreveu
-    # antes ele parava quando faltava menos de 15% (num vídeo de 15 min, 2 min a menos): agora o que sobra tem de
-    # caber na margem de 1 min 30 s do usuário, então a conta é em minutos de narração, não em porcentagem
-    falta_demais = max(200, (ritmo.get("ppm_alvo") or ritmo["ppm"]) * (tempo.MARGEM_MIN - 0.5))
-    for _ in range(4):
-        faltam = palavras - len(roteiro.split())
-        if faltam < falta_demais:
-            break
-        aviso(f"O Claude está continuando o roteiro ({len(roteiro.split())} de {palavras} palavras)…")
-        resto = _limpar(_claude(sistema, pedido + "\n\nVocê já escreveu este começo (NÃO repita nada dele):\n" + roteiro[-12000:]
-                                + f"\n\nContinue o roteiro exatamente de onde ele parou, com mais cerca de {faltam} palavras, "
-                                  "até o fechamento. Responda só com a continuação."))
-        if len(resto.split()) < 50:
-            break
-        roteiro = roteiro + "\n\n" + resto
+    roteiro, conferencia = _conferir_tamanho(roteiro, sistema, pedido, minutos, ritmo, aviso)
     (pasta / "roteiro.txt").write_text(roteiro, encoding="utf-8")
-    meta = {"titulo": titulo, "link": link, "video_id": video_id, "minutos": minutos, "lingua": lingua,
+    meta = {"titulo": titulo, "titulo_original": original, "link": link, "video_id": video_id, "minutos": minutos, "lingua": lingua,
             "projeto": projeto["nome"] if projeto else "", "palavras": len(roteiro.split()),
-            "palavras_base": len(base.split()), "thumbnail": thumb, "segundos": round(time.time() - inicio),
-            "criado": banco.agora(), "usuario_id": usuario_id, "ritmo": ritmo, "canal": canal or {}}
+            "palavras_base": len(base.split()), "base_erro": base_erro[:300], "thumbnail": thumb,
+            "segundos": round(time.time() - inicio), "criado": banco.agora(), "usuario_id": usuario_id, "ritmo": ritmo,
+            "conferencia": conferencia, "canal": canal or {}}
     (pasta / "roteiro.json").write_text(json.dumps(meta, ensure_ascii=False, indent=1), encoding="utf-8")
+    _escrever_descricao(usuario_id, pasta, projeto_descricao_id, aviso)
     return _publico(pasta)
+
+
+VOLTAS_TAMANHO = 6      # quantas vezes o Radar manda o Claude corrigir o tamanho antes de ficar com a melhor volta
+
+# o que o Radar pede ao Claude quando o roteiro conferido ficou curto ou comprido
+CONTINUAR = """
+
+Você já escreveu este começo (NÃO repita nada dele):
+{comeco}
+
+Continue o roteiro exatamente de onde ele parou, com mais cerca de {faltam} palavras, até o fechamento. Responda só
+com a continuação."""
+
+CONDENSAR = """Este é o roteiro de um vídeo de {minutos} minutos narrados, mas ele está com {atual} palavras e tem de
+ficar com cerca de {alvo}.
+
+{roteiro}
+
+Reescreva o roteiro INTEIRO com cerca de {alvo} palavras: corte o que se repete e condense as explicações longas,
+mantendo o gancho do começo, todos os assuntos na mesma ordem e o fechamento. Responda só com o roteiro."""
+
+
+def _conferir_tamanho(roteiro: str, sistema: str, pedido: str, minutos: int, ritmo: dict,
+                      aviso=lambda _t: None) -> tuple[str, dict]:
+    """Confere o roteiro escrito contra o tempo pedido e corrige até ele caber na margem de 1 minuto.
+
+    Pedido do usuário em 2026-11-01: "o radar tá entregando vídeos com a duração errada, tem que conferir e colocar
+    algo que sempre confira o resultado e regule pra acertar cada vez mais; o vídeo de 30 min saiu com 17, o máximo de
+    erro é 1 minuto". Antes o Radar só dimensionava o pedido ao Claude e mandava para a fábrica o que viesse:
+
+    - **Faltando.** O laço antigo desistia depois de 4 voltas e parava de vez quando uma continuação voltava com menos
+      de 50 palavras — um pedido de 30 min que parasse em 3.700 palavras saía como vídeo de 17 minutos, sem aviso.
+    - **Sobrando.** Nada cortava: 15 min pedidos saíram com 23,2, 22,8 e 21,7 minutos.
+    - **Sem conferência.** O número das palavras era uma aposta feita ANTES de escrever. Nenhuma conta olhava o
+      roteiro pronto. Nos 32 vídeos medidos, 19 ficaram fora de 1 minuto, com erro médio de 2,2 min.
+
+    Agora o tamanho é medido no ritmo real da voz (`tempo.conferir`) e corrigido volta a volta: falta, o Claude
+    continua de onde parou; sobra, o Claude condensa o roteiro inteiro. Uma volta que piora não entra — fica sempre a
+    melhor de todas, e o que aconteceu em cada uma vai para o `conferencia` do roteiro.json, para a tela de Revisão
+    mostrar e para `tempo.medicoes` comparar depois com o vídeo que a fábrica entregou."""
+    from . import tempo
+    ppm = ritmo.get("ppm") or PALAVRAS_POR_MINUTO
+    melhor = roteiro
+    conf = tempo.conferir(len(roteiro.split()), minutos, ppm)
+    voltas: list[dict] = []
+    sem_jeito = 0
+    if not minutos:
+        return melhor, {**conf, "voltas": voltas, "de": ritmo.get("de", "padrao")}
+    for _ in range(VOLTAS_TAMANHO):
+        if conf["dentro"]:
+            break
+        faltam, atual, alvo = conf["faltam"], conf["palavras"], conf["alvo_palavras"]
+        if faltam > 0:
+            aviso(f"Conferindo o tempo: o roteiro dá {conf['previsto_min']} min e você pediu {minutos}. "
+                  f"O Claude está continuando ({atual} de {alvo} palavras)…")
+            resto = _limpar(_claude(sistema, pedido + CONTINUAR.format(comeco=melhor[-12000:], faltam=faltam)))
+            tentativa = (melhor + "\n\n" + resto) if len(resto.split()) >= 30 else melhor
+        else:
+            aviso(f"Conferindo o tempo: o roteiro dá {conf['previsto_min']} min e você pediu {minutos}. "
+                  f"O Claude está condensando ({atual} para {alvo} palavras)…")
+            tentativa = _limpar(_claude(sistema, CONDENSAR.format(minutos=minutos, atual=atual, alvo=alvo,
+                                                                  roteiro=melhor)))
+        nova = tempo.conferir(len(tentativa.split()), minutos, ppm)
+        voltas.append({"palavras": nova["palavras"], "previsto_min": nova["previsto_min"],
+                       "erro_min": nova["erro_min"], "o_que": "continuar" if faltam > 0 else "condensar"})
+        if tentativa is melhor or abs(nova["erro_min"]) >= abs(conf["erro_min"]):
+            # a volta não melhorou. Uma volta fraca não desiste do roteiro (era o que fazia um pedido de 30 min sair
+            # com 17): o Radar tenta de novo uma vez. Duas seguidas sem melhorar, fica com a melhor que tem e para
+            # de gastar o limite da assinatura
+            sem_jeito += 1
+            if sem_jeito >= 2:
+                break
+            continue
+        sem_jeito = 0
+        melhor, conf = tentativa, nova
+    return melhor, {**conf, "voltas": voltas, "de": ritmo.get("de", "padrao")}
+
+
+def _escrever_descricao(usuario_id: int, pasta, projeto_descricao_id, aviso=lambda _t: None) -> None:
+    """A descrição do vídeo, escrita logo depois do roteiro (pedido do usuário em 2026-10-28: ela fica pronta
+    enquanto o vídeo está sendo feito, em vez de só existir no fim, quando a fábrica monta o publicacao.json).
+
+    Falhar aqui não derruba o roteiro: o roteiro é o que a pessoa pediu, e a descrição se refaz com um botão.
+    O que deu errado fica no roteiro.json, para a tela de Revisão poder dizer."""
+    from . import descricao as _descricao
+    aviso("Roteiro pronto. O Claude está escrevendo a descrição e as tags…")
+    meta = json.loads((pasta / "roteiro.json").read_text(encoding="utf-8"))
+    try:
+        _descricao.gerar(usuario_id, pasta, projeto_descricao_id)
+        meta["descricao_erro"] = ""
+    except Exception as erro:
+        meta["descricao_erro"] = str(erro)[:300]
+    (pasta / "roteiro.json").write_text(json.dumps(meta, ensure_ascii=False, indent=1), encoding="utf-8")
 
 
 def manual(usuario_id: int, titulo: str, texto: str, link: str = "", minutos: int = 0, lingua: str = "",
@@ -202,9 +345,16 @@ def manual(usuario_id: int, titulo: str, texto: str, link: str = "", minutos: in
     pasta.mkdir(parents=True, exist_ok=True)
     thumb = copiar_thumbnail(video_id, pasta / "thumbnail.jpg") if video_id else False
     (pasta / "roteiro.txt").write_text(texto, encoding="utf-8")
-    meta = {"titulo": titulo, "link": link, "video_id": video_id, "minutos": minutos, "lingua": lingua, "projeto": "",
+    original, titulo = titulo, traduzir_titulo(titulo, lingua)
+    # o roteiro colado é o texto da pessoa (o Radar não mexe nele), mas o tempo que ele vai dar é conferido do mesmo
+    # jeito, para a tela de Revisão poder dizer antes de mandar para a fábrica
+    from . import tempo
+    ritmo = tempo.ritmo(usuario_id, "", lingua, minutos)
+    conferencia = {**tempo.conferir(len(texto.split()), minutos, ritmo["ppm"]), "voltas": [], "de": ritmo["de"]}
+    meta = {"titulo": titulo, "titulo_original": original, "link": link, "video_id": video_id, "minutos": minutos, "lingua": lingua, "projeto": "",
             "palavras": len(texto.split()), "palavras_base": 0, "thumbnail": thumb, "segundos": 0, "manual": True,
-            "criado": banco.agora(), "usuario_id": usuario_id, "canal": canal or {}}
+            "criado": banco.agora(), "usuario_id": usuario_id, "ritmo": ritmo, "conferencia": conferencia,
+            "canal": canal or {}}
     (pasta / "roteiro.json").write_text(json.dumps(meta, ensure_ascii=False, indent=1), encoding="utf-8")
     return _publico(pasta)
 
@@ -230,23 +380,27 @@ def _nome_do_canal(meta: dict) -> str:
     return (meta.get("projeto") or "").title()
 
 
-def _publico(pasta) -> dict:
+def _publico(pasta, leve: bool = False) -> dict:
+    """O roteiro como a tela vê. Leve, sem o texto do roteiro e sem a descrição: o painel da direita só mostra a lista
+    (título, link, canal, capa) e é pedido a cada troca de tela — com os textos eram 1,3 MB e 1 s toda vez."""
     meta = json.loads((pasta / "roteiro.json").read_text(encoding="utf-8"))
     meta["canal_nome"] = _nome_do_canal(meta)
     arquivo = pasta / "roteiro.txt"
-    return meta | {"nome": pasta.name, "roteiro": arquivo.read_text(encoding="utf-8"), "arquivo": str(arquivo),
+    from . import descricao as _descricao
+    return meta | {"nome": pasta.name, "arquivo": str(arquivo),
+                   **({} if leve else {"roteiro": arquivo.read_text(encoding="utf-8"), "descricao": _descricao.ler(pasta)}),
                    "thumbnail_url": f"/api/roteiros/{pasta.name}/thumbnail.jpg" if (pasta / "thumbnail.jpg").exists() else "",
                    "comando": f'uv run fabrica novo {pasta.name} --roteiro "{arquivo}" --perfil perfis/documentario.yaml'}
 
 
-def lista(usuario_id: int) -> list[dict]:
+def lista(usuario_id: int, leve: bool = False) -> list[dict]:
     if not PASTA.exists():
         return []
     saida = []
     for meta in sorted(PASTA.glob("*/roteiro.json"), reverse=True)[:60]:
         try:
             if json.loads(meta.read_text(encoding="utf-8")).get("usuario_id") == usuario_id:
-                saida.append(_publico(meta.parent))
+                saida.append(_publico(meta.parent, leve))
         except (ValueError, OSError):
             continue
     return saida
@@ -350,9 +504,13 @@ def enviar(usuario_id: int, nome: str, perfil: str) -> dict:
     final, n = projeto, 2
     while (FABRICA / "projetos" / final).exists():
         final, n = f"{projeto}-{n}", n + 1
-    r = subprocess.run([shutil.which("uv"), "run", "fabrica", "novo", final, "--roteiro", str(pasta / "roteiro.txt"),
-                        "--perfil", f"perfis/{perfil}.yaml", "--sim"],
-                       cwd=FABRICA, capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=300)
+    # --no-sync: sem ele o uv reinstala a fábrica e tenta reescrever o Scripts/fabrica.exe, que o Windows trava
+    # enquanto a fábrica está ligada; e o VIRTUAL_ENV do Radar sai do ambiente para o uv não avisar que o ignora
+    ambiente = {k: v for k, v in os.environ.items() if k != "VIRTUAL_ENV"}
+    r = subprocess.run([shutil.which("uv"), "run", "--no-sync", "fabrica", "novo", final,
+                        "--roteiro", str(pasta / "roteiro.txt"), "--perfil", f"perfis/{perfil}.yaml", "--sim"],
+                       cwd=FABRICA, env=ambiente, capture_output=True, text=True, encoding="utf-8",
+                       errors="replace", timeout=300)
     destino = FABRICA / "projetos" / final
     if not (destino / "projeto.json").exists():
         raise RuntimeError("A fábrica não criou o projeto: " + (r.stderr or r.stdout or "")[-400:])
@@ -361,7 +519,12 @@ def enviar(usuario_id: int, nome: str, perfil: str) -> dict:
     (destino / "projeto.json").write_text(json.dumps(dados, ensure_ascii=False, indent=2), encoding="utf-8")
     if (pasta / "thumbnail.jpg").exists():
         shutil.copy2(pasta / "thumbnail.jpg", destino / "thumbnail_referencia.jpg")
-    meta["fabrica"] = {"projeto": final, "perfil": perfil, "enviado": banco.agora(), "palavras": len((pasta / "roteiro.txt").read_text(encoding="utf-8").split())}
+    # a descrição escrita junto com o roteiro vai junto: a extensão já acha este vídeo no Studio com o vídeo
+    # ainda sendo feito, em vez de esperar o publicacao.json da fábrica
+    from . import descricao as _descricao
+    levou = _descricao.levar(pasta, destino, meta["titulo"], perfil)
+    meta["fabrica"] = {"projeto": final, "perfil": perfil, "enviado": banco.agora(), "descricao": levou,
+                       "palavras": len((pasta / "roteiro.txt").read_text(encoding="utf-8").split())}
     (pasta / "roteiro.json").write_text(json.dumps(meta, ensure_ascii=False, indent=1), encoding="utf-8")
     estimativa = "\n".join(l for l in (r.stdout or "").splitlines() if "US$" in l or "min" in l)[-600:]
     return {"projeto": final, "pasta": str(destino), "estimativa": estimativa,

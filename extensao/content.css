@@ -647,12 +647,28 @@ html[dark] .radar-np select option { background: #1c1c1c; }
 .radar-np-chip.ligado { background: linear-gradient(180deg, #f2443c, #c61c1c); border-color: transparent; color: #fff; }
 .radar-np-agente { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 14px; border-radius: 12px;
   border: 1px solid rgba(128,128,128,.3); background: rgba(128,128,128,.07); }
-.radar-np-agente > div { display: grid; gap: 3px; } .radar-np-agente b { font-size: 15px; } .radar-np-agente small { font-size: 12px; opacity: .75; }
+.radar-np-agente.falta { border-color: rgba(229,57,53,.75); background: rgba(229,57,53,.08); }
+.radar-np-agente > div { display: grid; gap: 3px; min-width: 0; } .radar-np-agente b { font-size: 15px; } .radar-np-agente small { font-size: 12px; opacity: .75; }
 .radar-np-editar { border: 1px solid rgba(128,128,128,.5); background: none; color: inherit; padding: 8px 16px; border-radius: 999px; cursor: pointer; font: 700 13px Roboto, Arial, sans-serif; }
 .radar-np-revisar { display: flex; gap: 10px; align-items: flex-start; cursor: pointer; }
 .radar-np-revisar input { width: auto; margin-top: 3px; accent-color: #e53935; }
 .radar-np-revisar span { display: grid; gap: 2px; } .radar-np-revisar small { font-size: 12px; opacity: .7; }
 .radar-np-duas { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+/* 3 · Confirmar: a lista do que vai ser feito, antes de o Claude escrever */
+.radar-np-conf { display: grid; gap: 8px; }
+.radar-np-conf-item { display: flex; gap: 10px; align-items: flex-start; padding: 10px 12px; border-radius: 12px;
+  border: 1px solid rgba(128,128,128,.3); background: rgba(128,128,128,.07); }
+.radar-np-conf-item > div { display: grid; gap: 2px; min-width: 0; }
+.radar-np-conf-item b { font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: .03em; opacity: .6; }
+.radar-np-conf-item span { font-size: 14px; } .radar-np-conf-item small { font-size: 12px; opacity: .7; }
+.radar-np-conf-ic { flex: none; width: 22px; height: 22px; border-radius: 50%; display: grid; place-items: center;
+  font: 700 13px Roboto, Arial, sans-serif; color: #fff; background: #2e9e5b; }
+.radar-np-conf-item.falta { border-color: rgba(229,57,53,.75); background: rgba(229,57,53,.08); }
+.radar-np-conf-item.falta .radar-np-conf-ic { background: #e53935; }
+.radar-np-conf-item.falta span { color: #ff6b6b; font-weight: 700; }
+.radar-np-conf-item.aviso { border-color: rgba(240,170,40,.7); background: rgba(240,170,40,.1); }
+.radar-np-conf-item.aviso .radar-np-conf-ic { background: #e0a124; }
+
 .radar-np-previa { display: flex; gap: 12px; align-items: center; padding: 10px; border-radius: 12px; border: 1px dashed rgba(128,128,128,.4); }
 .radar-np-previa img { width: 96px; border-radius: 8px; } .radar-np-previa span { display: grid; gap: 3px; } .radar-np-previa small { font-size: 12px; opacity: .7; }
 .radar-np-rodape, .radar-np-acoes { display: flex; align-items: center; justify-content: flex-end; gap: 10px; }

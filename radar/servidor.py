@@ -19,7 +19,7 @@ from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 
-from . import alvos, banco, canal_painel, custos, diagnostico, estruturas, fabrica_api, fila, funcoes, garimpo, gosto, horarios, ia, integracoes, medir, mercado, meu_nicho, metricas, nichos, pagina, perfil, producao, publicar, radar_paises, roteiro_claude, studio, tempo, thumb, trabalho, treinamento, youtube
+from . import alvos, banco, canal_painel, chatgpt_conta, claude_projetos, custos, descricao, diagnostico, estruturas, fabrica_api, fila, funcoes, garimpo, gosto, horarios, ia, integracoes, medir, mercado, metricas, meu_nicho, nichos, pagina, perfil, producao, publicar, radar_paises, roteiro_claude, studio, tempo, thumb, trabalho, treinamento, trello, youtube
 from .config import DADOS, NOME, PLANOS, RAIZ, pode
 
 WEB = RAIZ / "radar" / "web"
@@ -1193,7 +1193,9 @@ def outliers(request: Request, u: dict = Depends(exigir("outliers"))):
         data = _data(q, nome)
         if data:
             onde.append(f"v.publicado {operador} ?"); args.append(data + sufixo)
-    base = (f"FROM outliers o JOIN videos v ON v.id=o.video_id JOIN canais c ON c.id=o.canal_id "
+    # CROSS JOIN no SQLite fixa a ordem: começa pelos outliers (39 mil) e busca cada vídeo pela chave. Com JOIN o
+    # planejador varria a tabela inteira de vídeos (558 mil) atrás dos que são outliers — 4x mais trabalho
+    base = (f"FROM outliers o CROSS JOIN videos v ON v.id=o.video_id JOIN canais c ON c.id=o.canal_id "
             f"WHERE c.no_radar=1 AND {' AND '.join(onde)}")
     pagina = int(_numero(q, "pagina") or 0)
     # o marcador da esteira vem junto com o vídeo: o cartão precisa saber se já está na fila ou já foi modelado
@@ -1838,7 +1840,9 @@ def producao_config(canal_id: str, u: dict = Depends(usuario)):
                   "rodape": producao.rodape_do_perfil(perfil),
                   "rodapes_padrao": {t: publicar.rodape_padrao(cfg.get("lingua") or "", t, cfg.get("canal") or "",
                                                                cfg.get("marcas") or "") for t in publicar.TIPOS},
-                  "tipos_de_modelo": publicar.TIPOS}
+                  "tipos_de_modelo": publicar.TIPOS,
+                  # quem gera as imagens de IA deste canal também mora no perfil da fábrica (imagens.provedor)
+                  "imagens": producao.imagens_do_perfil(perfil), "imagens_quem": producao.IMAGENS_QUEM}
 
 
 @app.post("/api/producao/{canal_id}")
@@ -1850,6 +1854,12 @@ async def producao_salvar(canal_id: str, request: Request, u: dict = Depends(usu
     if "rodape" in dados and cfg.get("perfil"):
         try:
             cfg["rodape"] = producao.salvar_rodape(cfg["perfil"], str(dados.get("rodape") or ""))
+        except ValueError as erro:
+            raise HTTPException(400, str(erro))
+    # quem gera as imagens de IA: também no perfil da fábrica, que é quem gera
+    if dados.get("imagens_quem") and cfg.get("perfil"):
+        try:
+            cfg["imagens"] = producao.salvar_imagens_quem(cfg["perfil"], str(dados["imagens_quem"]))
         except ValueError as erro:
             raise HTTPException(400, str(erro))
     return cfg
@@ -1934,10 +1944,12 @@ def _projeto_fabrica(nome: str):
 
 
 @app.get("/api/fabrica/vozes")
-def fabrica_vozes(lingua: str = "português", busca: str = "", genero: str = "", u: dict = Depends(usuario)):
-    """As vozes grátis da fábrica (VoiceStudio e voicebox), com a prévia, para escolher a voz do canal."""
+def fabrica_vozes(lingua: str = "português", busca: str = "", genero: str = "", pagina: int = 0, origem: str = "local",
+                  u: dict = Depends(usuario)):
+    """As vozes da fábrica, com a prévia, para escolher a voz do canal: as grátis (VoiceStudio e voicebox, origem
+    local) ou as da GenAI Pro (origem genaipro, paga na narração). As duas valem (pedido do usuário em 2026-11-03)."""
     try:
-        return fabrica_api.vozes(lingua, busca, genero)
+        return fabrica_api.vozes(lingua, busca, genero, max(0, min(pagina, 20)), origem)
     except fabrica_api.SemFabrica as erro:
         raise HTTPException(503, str(erro))
 
@@ -2132,7 +2144,11 @@ def fila_lista(u: dict = Depends(usuario)):
 
 @app.post("/api/fila")
 def fila_criar(corpo: dict, u: dict = Depends(dono_da_fabrica)):
-    return _na_fila(fila.criar, u["id"], corpo.get("pedido") or {}, bool(corpo.get("comecar")))
+    novo = _na_fila(fila.criar, u["id"], corpo.get("pedido") or {}, bool(corpo.get("comecar")))
+    # a ideia vai para a lista do canal no Trello (o Canal de teste não tem canal e fica de fora)
+    if novo["pedido"].get("canal_id"):
+        trello.do_pedido(producao.config(u["id"], novo["pedido"]["canal_id"]).get("canal", ""), novo["pedido"])
+    return novo
 
 
 @app.post("/api/fila/ajustes")
@@ -2147,6 +2163,21 @@ def fila_estimativa(canal: str = "", minutos: float = 0, u: dict = Depends(usuar
         return fila.estimativa(fila.entregues(), canal, minutos)
     except fabrica_api.SemFabrica:
         return {"usd": None, "base": None}
+
+
+@app.get("/api/fila/teste")
+def fila_teste(u: dict = Depends(usuario)):
+    """O Canal de teste da Nova produção (pedido do usuário em 2026-10-29): o primeiro vídeo de um canal novo, que não
+    é canal nenhum do Radar. O agente é o CANAL DE TESTE e a pessoa escolhe a língua; a voz vem de um perfil da
+    fábrica que fala essa língua."""
+    agente = banco.um("SELECT id FROM projetos_roteiro WHERE usuario_id=? AND UPPER(nome)='CANAL DE TESTE'", u["id"])
+    nomes = {c: l for l, c in fabrica_api.IDIOMA.items()}
+    linguas: dict[str, list] = {}
+    for p in producao.perfis():
+        if p.get("voz") and p.get("idioma_da_voz") in nomes:
+            linguas.setdefault(nomes[p["idioma_da_voz"]], []).append({"perfil": p["perfil"], "canal": p.get("canal", ""), "voz": p["voz"]})
+    return {"agente_id": agente["id"] if agente else None,
+            "linguas": [{"lingua": l, "perfis": linguas[l]} for l in sorted(linguas)]}
 
 
 @app.get("/api/fila/ajustes")
@@ -2354,6 +2385,59 @@ async def integracoes_estado(u: dict = Depends(_chaves_aqui)):
     return await run_in_threadpool(integracoes.estado)
 
 
+@app.get("/api/chatgpt/estado")
+async def chatgpt_estado(u: dict = Depends(usuario)):
+    """A assinatura do ChatGPT que gera as imagens: de quem é a conta, o plano e quanto já foi usado das janelas de
+    limite. Quem tem o login é a fábrica; o Radar só mostra."""
+    try:
+        return {"fabrica_ligada": True, **await run_in_threadpool(fabrica_api.chatgpt_estado)}
+    except fabrica_api.SemFabrica as erro:
+        return {"conectada": False, "fabrica_ligada": False, "motivo": str(erro)}
+
+
+@app.get("/api/integracoes/chatgpt/contas")
+async def chatgpt_contas(u: dict = Depends(_chaves_aqui)):
+    """A conta do ChatGPT ligada, as guardadas e como anda um login aberto (chatgpt_conta.py)."""
+    return chatgpt_conta.contas()
+
+
+@app.post("/api/integracoes/chatgpt/conectar")
+async def chatgpt_conectar(u: dict = Depends(_chaves_aqui)):
+    return _integracao(chatgpt_conta.comecar_login)
+
+
+@app.post("/api/integracoes/chatgpt/cancelar")
+async def chatgpt_cancelar(u: dict = Depends(_chaves_aqui)):
+    return chatgpt_conta.cancelar_login()
+
+
+@app.post("/api/integracoes/chatgpt/usar")
+async def chatgpt_usar(corpo: dict, u: dict = Depends(_chaves_aqui)):
+    return _integracao(chatgpt_conta.usar, str(corpo.get("email") or ""))
+
+
+@app.post("/api/integracoes/chatgpt/esquecer")
+async def chatgpt_esquecer(corpo: dict, u: dict = Depends(_chaves_aqui)):
+    return _integracao(chatgpt_conta.esquecer, str(corpo.get("email") or ""))
+
+
+@app.get("/api/integracoes/chatgpt/canais")
+async def chatgpt_canais(u: dict = Depends(_chaves_aqui)):
+    """Quem gera as imagens em cada canal da fábrica, para trocar pela conexão do ChatGPT direto em Integrações
+    (pedido do usuário em 2026-11-01). É o mesmo imagens.provedor da Configuração do canal."""
+    return await run_in_threadpool(producao.imagens_dos_perfis)
+
+
+@app.post("/api/integracoes/chatgpt/canais")
+async def chatgpt_canais_salvar(corpo: dict, u: dict = Depends(_chaves_aqui)):
+    """{"quem": "assinatura" | "api", "perfil": "canal-x"} troca um perfil; sem perfil, troca todos os canais."""
+    quem, perfil = str(corpo.get("quem") or ""), str(corpo.get("perfil") or "")
+    nomes = [perfil] if perfil else [p["perfil"] for p in producao.imagens_dos_perfis() if p["e_canal"]]
+    for nome in nomes:
+        await run_in_threadpool(_integracao, producao.salvar_imagens_quem, nome, quem)
+    return await run_in_threadpool(producao.imagens_dos_perfis)
+
+
 @app.post("/api/integracoes/{servico}/testar")
 async def integracoes_testar(servico: str, corpo: dict, u: dict = Depends(_chaves_aqui)):
     return await run_in_threadpool(_integracao, integracoes.testar, servico, int(corpo.get("indice") or 0))
@@ -2406,7 +2490,10 @@ async def roteiro_para_fabrica(nome: str, request: Request, u: dict = Depends(do
 
 @app.get("/api/titulo-do-video")
 def titulo_do_video(link: str, u: dict = Depends(usuario)):
-    """O título e a capa do vídeo de referência, para a pessoa ver o que colou (1 unidade de cota)."""
+    """O título, a capa e se o vídeo tem legenda, para a pessoa ver o que colou (1 unidade de cota).
+
+    A legenda entra aqui (pedido do usuário em 2026-10-28) para a confirmação da Nova produção poder dizer, ANTES de
+    criar, que esse vídeo não tem legenda e o roteiro vai sair só do título."""
     vid = roteiro_claude.id_do_video(link)
     if not vid:
         raise HTTPException(400, "Link de vídeo inválido.")
@@ -2414,7 +2501,8 @@ def titulo_do_video(link: str, u: dict = Depends(usuario)):
         v = youtube.videos([vid])
     if not v:
         raise HTTPException(404, "Vídeo não encontrado.")
-    return {"id": vid, "titulo": v[0]["titulo"], "views": v[0]["views"], "publicado": v[0]["publicado"]}
+    return {"id": vid, "titulo": v[0]["titulo"], "views": v[0]["views"], "publicado": v[0]["publicado"],
+            "legenda": roteiro_claude.tem_legenda(vid)}
 
 
 # ---------------------------------------------------------------- YouTube Studio
@@ -2484,6 +2572,7 @@ async def roteiro_comecar(request: Request, u: dict = Depends(usuario)):
     tid = roteiro_claude.comecar(u["id"], enviar_perfil=perfil, titulo=titulo, link=str(d.get("link", "")).strip(),
                                  minutos=max(1, min(60, int(d.get("minutos") or 8))), lingua=str(d.get("lingua") or "português"),
                                  projeto_id=int(d["projeto_id"]) if d.get("projeto_id") else None,
+                                 projeto_descricao_id=int(d["projeto_descricao_id"]) if d.get("projeto_descricao_id") else None,
                                  observacoes=str(d.get("observacoes", "")).strip()[:1000], perfil=str(d.get("perfil") or ""),
                                  canal=_canal_do_pedido(d))
     return {"tarefa": tid}
@@ -2509,9 +2598,9 @@ async def roteiro_manual(request: Request, u: dict = Depends(usuario)):
 
 
 @app.get("/api/roteiros/ritmo")
-def roteiro_ritmo(perfil: str = "", lingua: str = "", u: dict = Depends(usuario)):
+def roteiro_ritmo(perfil: str = "", lingua: str = "", minutos: float = 0, u: dict = Depends(usuario)):
     """Quantas palavras por minuto a voz fala de verdade, medido nos vídeos entregues (o ajuste do tempo)."""
-    return tempo.ritmo(u["id"], perfil, lingua)
+    return tempo.ritmo(u["id"], perfil, lingua, minutos)
 
 
 @app.get("/api/roteiros/tarefa/{tid}")
@@ -2529,8 +2618,8 @@ def roteiro_tarefas(u: dict = Depends(usuario)):
 
 
 @app.get("/api/roteiros")
-def roteiros(u: dict = Depends(usuario)):
-    return {"roteiros": roteiro_claude.lista(u["id"])}
+def roteiros(leve: int = 0, u: dict = Depends(usuario)):
+    return {"roteiros": roteiro_claude.lista(u["id"], leve=bool(leve))}
 
 
 @app.get("/api/roteiros/{nome}/thumbnail.jpg")
@@ -2541,9 +2630,49 @@ def roteiro_thumbnail(nome: str, baixar: int = 0, u: dict = Depends(usuario)):
     return FileResponse(arquivo, media_type="image/jpeg", filename=f"{nome}.jpg" if baixar else None)
 
 
+@app.post("/api/roteiros/{nome}/descricao")
+async def roteiro_descricao(nome: str, request: Request, u: dict = Depends(usuario)):
+    """A descrição do vídeo: refazer com o Claude ou guardar a correção da pessoa.
+
+    Ela já foi escrita junto com o roteiro; isto é para quando o Claude falhou, para trocar o agente de descrição
+    ou para a pessoa mexer no texto antes de mandar para a fábrica."""
+    d = await request.json()
+    pasta, _meta = roteiro_claude._do_usuario(u["id"], nome)
+    try:
+        if d.get("refazer"):
+            return {"descricao": descricao.gerar(u["id"], pasta,
+                                                 int(d["projeto_id"]) if d.get("projeto_id") else None)}
+        return {"descricao": descricao.salvar(pasta, str(d.get("sinopse") or ""),
+                                              d.get("tags") if isinstance(d.get("tags"), list) else None,
+                                              d.get("hashtags") if isinstance(d.get("hashtags"), list) else None)}
+    except RuntimeError as erro:
+        raise HTTPException(400, str(erro))
+
+
 @app.get("/api/projetos")
 def projetos(u: dict = Depends(usuario)):
-    return {"projetos": banco.todos("SELECT id, nome, instrucoes, ideal_para FROM projetos_roteiro WHERE usuario_id=? ORDER BY nome", u["id"])}
+    lista = banco.todos("""SELECT id, nome, instrucoes, ideal_para, tipo, claude_uuid, claude_nome, sincronizado, arquivos
+                           FROM projetos_roteiro WHERE usuario_id=? ORDER BY tipo, nome""", u["id"])
+    for p in lista:     # os arquivos do projeto do claude.ai são grandes: a tela só mostra quantos são
+        try:
+            p["arquivos"] = len(json.loads(p["arquivos"] or "[]"))
+        except ValueError:
+            p["arquivos"] = 0
+    return {"projetos": lista}
+
+
+@app.post("/api/ext/projetos-claude")
+async def ext_projetos_claude(request: Request, u: dict = Depends(exigir("extensao"))):
+    """Os projetos do claude.ai, lidos pela extensão no Chrome logado: cada um atualiza o agente ligado a ele."""
+    d = await request.json()
+    return claude_projetos.sincronizar(u["id"], d.get("projetos") or [], d.get("vistos"))
+
+
+@app.post("/api/ext/projetos-claude/excluidos")
+async def ext_projetos_claude_excluidos(request: Request, u: dict = Depends(exigir("extensao"))):
+    """Os projetos que a extensão abriu no claude.ai e deram 404: o agente ligado a cada um sai do Radar."""
+    d = await request.json()
+    return claude_projetos.excluidos_no_claude(u["id"], d.get("uuids") or [])
 
 
 @app.post("/api/projetos")
@@ -2556,16 +2685,21 @@ async def salvar_projeto(request: Request, u: dict = Depends(usuario)):
     instrucoes = str(d.get("instrucoes", "")).strip()[:100000]
     # "Ideal para…" aparece embaixo do estilo na Nova produção; sem o campo no pedido, fica o que já estava
     ideal = str(d["ideal_para"]).strip()[:300] if "ideal_para" in d else None
+    # "roteiro" escreve o roteiro; "descricao" escreve a sinopse, as tags e as hashtags junto com ele
+    tipo = str(d.get("tipo") or "roteiro")
+    if tipo not in ("roteiro", "descricao"):
+        raise HTTPException(400, "O agente é de roteiro ou de descrição.")
     if d.get("id"):
-        banco.executar("UPDATE projetos_roteiro SET nome=?, instrucoes=?, ideal_para=COALESCE(?, ideal_para) WHERE id=? AND usuario_id=?",
-                       nome, instrucoes, ideal, int(d["id"]), u["id"])
+        banco.executar("""UPDATE projetos_roteiro SET nome=?, instrucoes=?, ideal_para=COALESCE(?, ideal_para), tipo=?
+                           WHERE id=? AND usuario_id=?""", nome, instrucoes, ideal, tipo, int(d["id"]), u["id"])
         return {"id": int(d["id"])}
-    return {"id": banco.executar("INSERT INTO projetos_roteiro (usuario_id, nome, instrucoes, ideal_para, criado) VALUES (?,?,?,?,?)",
-                                 u["id"], nome, instrucoes, ideal or "", banco.agora())}
+    return {"id": banco.executar("""INSERT INTO projetos_roteiro (usuario_id, nome, instrucoes, ideal_para, tipo, criado)
+                                    VALUES (?,?,?,?,?,?)""", u["id"], nome, instrucoes, ideal or "", tipo, banco.agora())}
 
 
 @app.delete("/api/projetos/{pid}")
 def apagar_projeto(pid: int, u: dict = Depends(usuario)):
+    claude_projetos.apagado(u["id"], banco.um("SELECT claude_uuid FROM projetos_roteiro WHERE id=? AND usuario_id=?", pid, u["id"]))
     banco.executar("DELETE FROM projetos_roteiro WHERE id=? AND usuario_id=?", pid, u["id"])
     return {"ok": True}
 
@@ -2836,6 +2970,21 @@ def cota_gastar(u: dict = Depends(admin)):
     return {"ok": True}
 
 
+@app.post("/api/cota/garimpo")
+async def cota_garimpo(request: Request, u: dict = Depends(admin)):
+    """Os dois ajustes do garimpo automático: se pode gastar e quantos por cento da cota do dia ele pode usar."""
+    d = await request.json() if request.headers.get("content-length", "0") != "0" else {}
+    if "ligado" in d:
+        garimpo.definir_ligado(bool(d["ligado"]))
+    if d.get("percentual") is not None:
+        try:
+            garimpo.definir_percentual(d["percentual"])
+        except (TypeError, ValueError):
+            raise HTTPException(400, "A porcentagem tem de ser um número de 1 a 100.")
+    return {"ok": True, "ligado": garimpo.ligado(), "percentual": garimpo.percentual(),
+            "fatia": garimpo.fatia_do_dia()}
+
+
 @app.get("/api/admin/cota")
 def admin_cota(u: dict = Depends(admin)):
     return {"cota": youtube.cota_hoje(),
@@ -2865,17 +3014,18 @@ async def admin_garimpar(request: Request, u: dict = Depends(admin)):
 # ---------------------------------------------------------------- garimpo de todo dia
 
 def _relogio():
-    """Uma vez por hora confere se o último garimpo tem mais de 23 horas, e roda se tiver."""
+    """De dois em dois minutos pergunta ao garimpo se é hora, e roda se for. Quem decide é o `hora_de_garimpar`:
+    ele recomeça dez minutos depois do anterior enquanto a fatia do dia aguentar, então o Radar fica garimpando em
+    vez de esperar o dia seguinte (pedido do usuário em 2026-11-01). Conferir é barato: só lê o banco."""
     time.sleep(30)
     while True:
         try:
-            ultimo = banco.um("SELECT inicio FROM garimpos ORDER BY id DESC LIMIT 1")
-            if os.environ.get("RADAR_GARIMPO_AUTOMATICO", "1") == "1" and (
-                    not ultimo or metricas.dias_desde(ultimo["inicio"]) > 23 / 24):
+            ultimo = banco.um("SELECT inicio, estado FROM garimpos ORDER BY id DESC LIMIT 1")
+            if os.environ.get("RADAR_GARIMPO_AUTOMATICO", "1") == "1" and garimpo.hora_de_garimpar(ultimo):
                 garimpo.rodar()
         except Exception as erro:
             print("garimpo automático falhou:", erro)
-        time.sleep(3600)
+        time.sleep(120)
 
 
 def _acordado():

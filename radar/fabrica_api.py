@@ -20,9 +20,15 @@ _CUSTOS: dict[str, tuple[float, dict]] = {}       # nome -> (mtime do final.mp4,
 
 
 class SemFabrica(RuntimeError):
+    """Qualquer "não deu" da fábrica: ela desligada ou um erro dela sobre o que foi pedido."""
     def __init__(self, mensagem: str, status: int = 0):
         super().__init__(mensagem)
         self.status = status
+
+
+class FabricaDesligada(SemFabrica):
+    """Só a fábrica fora do ar (porta muda ou chave recusada): nada do pedido tem culpa. A fila da Nova produção
+    separa os dois (2026-10-30): um projeto que a fábrica não achou era erro de um pedido só e parava a fila toda."""
 
 
 def _pedir(metodo: str, caminho: str, corpo: dict | None = None, tempo: float = 20) -> dict:
@@ -30,9 +36,9 @@ def _pedir(metodo: str, caminho: str, corpo: dict | None = None, tempo: float = 
     try:
         r = httpx.request(metodo, URL + caminho, json=corpo, timeout=tempo, headers={"x-fabrica-token": token} if token else {})
     except httpx.HTTPError:
-        raise SemFabrica("O editor da fábrica não está ligado (porta 8080). Ligue a fábrica e tente de novo.")
+        raise FabricaDesligada("O editor da fábrica não está ligado (porta 8080). Ligue a fábrica e tente de novo.")
     if r.status_code == 401:
-        raise SemFabrica("A fábrica recusou a chave (FABRICA_TOKEN no .env da fábrica).")
+        raise FabricaDesligada("A fábrica recusou a chave (FABRICA_TOKEN no .env da fábrica).")
     if r.status_code >= 400:
         raise SemFabrica(r.json().get("detail", f"Erro {r.status_code} da fábrica.") if r.headers.get("content-type", "").startswith("application/json") else f"Erro {r.status_code} da fábrica.", r.status_code)
     return r.json()
@@ -163,7 +169,19 @@ def apagar(nome: str) -> dict:
 
 # ---------------------------------------------------------------- as vozes da fábrica, para a configuração do canal
 
-IDIOMA = {"português": "pt", "inglês": "en", "espanhol": "es"}
+# as 32 línguas que as vozes da GenAI Pro falam (os modelos Multilingual v2 e Turbo v2.5), com o código dela
+IDIOMA = {"português": "pt", "inglês": "en", "espanhol": "es", "francês": "fr", "alemão": "de", "italiano": "it",
+          "holandês": "nl", "polonês": "pl", "russo": "ru", "ucraniano": "uk", "turco": "tr", "árabe": "ar",
+          "hindi": "hi", "tâmil": "ta", "japonês": "ja", "chinês": "zh", "coreano": "ko", "indonésio": "id",
+          "malaio": "ms", "filipino": "fil", "vietnamita": "vi", "sueco": "sv", "dinamarquês": "da",
+          "norueguês": "no", "finlandês": "fi", "grego": "el", "tcheco": "cs", "eslovaco": "sk", "húngaro": "hu",
+          "romeno": "ro", "búlgaro": "bg", "croata": "hr"}
+
+
+def chatgpt_estado() -> dict:
+    """A conta ChatGPT logada no computador da fábrica, o plano e quanto já foi usado das janelas de limite. É a
+    fábrica quem gera as imagens, então é lá que o login mora (pedido do usuário em 2026-11-01)."""
+    return _pedir("GET", "/api/chatgpt/estado", tempo=30)
 
 
 MAXIMO_DE_VOZES = 80
@@ -178,7 +196,7 @@ def _ordem(v: dict, idioma: str) -> tuple:
     return (not nativa, v.get("tipo") != "gravada", combinacao, v.get("origem") != "voicebox")
 
 
-def vozes(lingua: str, busca: str = "", genero: str = "") -> dict:
+def _vozes_locais(lingua: str, busca: str = "", genero: str = "") -> dict:
     """As vozes grátis da fábrica (2026-10-28: as narrações pagas saíram): as do VoiceStudio e do voicebox, que a
     fábrica roda no próprio computador (GET /api/vozes/local), com a prévia em áudio. Não gasta nada."""
     from urllib.parse import quote, urlencode
@@ -209,9 +227,37 @@ def previa(voz: str, idioma: str) -> bytes:
     return r.content
 
 
+def _vozes_genaipro(lingua: str, busca: str = "", genero: str = "", pagina: int = 0) -> dict:
+    """A biblioteca de vozes da GenAI Pro pela fábrica, só as da língua, com a prévia em áudio. Não gasta crédito."""
+    from urllib.parse import urlencode
+    codigo = IDIOMA.get(lingua, lingua if lingua in IDIOMA.values() else "pt")
+    consulta = urlencode({"idioma": codigo, "busca": busca[:60], "genero": genero if genero in ("male", "female") else "",
+                          "pagina": pagina})
+    r = _pedir("GET", f"/api/vozes/genaipro?{consulta}", tempo=60)
+    # a fábrica antiga não filtra: a GenAI Pro completa a página com vozes de outras línguas
+    so_da_lingua = [{**v, "provedor": "genaipro"} for v in r.get("vozes", [])
+                    if not v.get("idioma") or v["idioma"] == codigo]
+    return {"vozes": so_da_lingua, "erro": r.get("erro", ""), "preco_por_mil": r.get("preco_por_mil"),
+            "tem_mais": bool(r.get("tem_mais"))}
+
+
+def vozes(lingua: str, busca: str = "", genero: str = "", pagina: int = 0, origem: str = "local") -> dict:
+    """As vozes que o canal pode escolher: as grátis da fábrica (origem local, todas de uma vez) ou as da GenAI Pro
+    (origem genaipro, em páginas). Pedido do usuário em 2026-11-03: as duas no Radar."""
+    if origem == "genaipro":
+        return _vozes_genaipro(lingua, busca, genero, pagina)
+    return _vozes_locais(lingua, busca, genero)
+
+
 def criar_canal(nome: str, voz: dict) -> str:
     """Cria (ou atualiza) o canal na fábrica com a voz escolhida (perfis/canal-NOME.yaml, herdando do documentário).
-    Devolve o nome do perfil, que o Radar guarda como a voz do canal."""
+    Devolve o nome do perfil, que o Radar guarda como a voz do canal. A voz da GenAI Pro vai marcada como escolhida
+    de propósito (paga_escolhida, na rota da fábrica): a fábrica não troca ela pela voz local."""
+    if voz.get("provedor") == "genaipro":
+        r = _pedir("POST", "/api/canais", {"nome": nome, "base": "documentario.yaml", "voz": {
+            "provedor": "genaipro", "voice_id": str(voz.get("voice_id", "")), "nome": str(voz.get("nome", ""))[:80],
+            "idioma": str(voz.get("idioma", ""))[:5]}})
+        return r["id"]
     dados = {"provedor": "local", "voz_local": str(voz.get("voice_id", "")).strip(),
              "nome": str(voz.get("nome", ""))[:80], "idioma": str(voz.get("idioma", ""))[:5]}
     try:

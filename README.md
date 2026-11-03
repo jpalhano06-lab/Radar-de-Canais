@@ -46,7 +46,10 @@ se o canal é sem rosto (até 3 capas pequenas por pedido: o Qwen do Groq aceita
 salvo procura os parecidos uma vez por semana e eles vão para os Achados de quem salvou.
 
 **Cota**: 10.000 unidades por dia por chave (volta às 5 h de Brasília). Busca custa 100, medir canal novo uns 3.
-O garimpo usa 60% do que sobrou (`RADAR_COTA_GARIMPO`). Primeiro teste (2026-10-13): 4 buscas, 522 unidades,
+O garimpo usa 60% do que sobrou (`RADAR_COTA_GARIMPO`). As buscas vêm primeiro; as perguntas ao Groq dos canais
+que ficaram sem nicho ou sem a resposta do rosto, por último (2026-10-31: o garimpo do dia 30 ficou 20 horas preso
+nelas, antes da primeira busca, porque 149 canais tinham capas que não existem mais e cada um esperava o limite do
+minuto do Groq; o medir de novo não pergunta mais ao Groq, e pedido recusado não é repetido nas outras chaves). Primeiro teste (2026-10-13): 4 buscas, 522 unidades,
 25 canais no Radar, 114 outliers. Uma chave rende uns 300 canais novos por dia; mais chaves (de outros projetos do
 Google Cloud) rendem mais.
 
@@ -166,7 +169,11 @@ e a verificação de integridade do navegador, como a do MCP: sem ela, o desafio
   127.0.0.1 não vale em localhost). O canal do Studio entra em "Meus canais" sozinho.
 - **Roteiro pelo Claude** (`roteiro_claude.py`, no perfil e em Ideias → Roteiro): título, tempo (3 a 30 min, 150
   palavras por minuto), língua, projeto e o link do vídeo de referência. A transcrição (`youtube-transcript-api`,
-  legenda manual primeiro, depois a automática, em qualquer língua) vai como base; a thumbnail (maxres, depois sd, hq)
+  legenda manual primeiro, depois a automática, em qualquer língua) vai como base. **Sem legenda não para o pedido**
+  (2026-10-28): vídeo com as legendas desligadas pelo dono (`TranscriptsDisabled`) derrubava a produção inteira em
+  "Parou com erro"; agora o roteiro sai do título, das observações e do estilo do canal, o motivo fica no
+  `roteiro.json` (`base_erro`). Nada muda no site: quem avisa, antes de criar, é a confirmação da extensão. A
+  thumbnail (maxres, depois sd, hq)
   é copiada para `dados/roteiros/NOME/thumbnail.jpg`, com "Baixar" e "Copiar imagem". Quem escreve é o
   `claude -p` deste computador, pela assinatura do claude.ai, numa pasta vazia, sem ferramentas e sem a
   ANTHROPIC_API_KEY no ambiente (com ela o Claude Code cobraria por uso). Roda em segundo plano (`/api/roteiros/tarefa`).
@@ -908,6 +915,19 @@ questionário de anunciantes, público e visibilidade, achando o vídeo **pelo n
   mesma janela em dois passos (as mesmas rotas: `/api/meus-canais`, `/api/projetos`, `/api/producao/{canal}`,
   `/api/roteiros/ritmo`, `/api/fila/estimativa`, `/api/titulo-do-video` e `POST /api/fila`). Num vídeo aberto, o link
   dele já vem como referência. No fim, "Ver no Acompanhar" abre o site.
+- **Agente obrigatório e a lista de confirmação, na extensão** (2026-10-28, pedido do usuário: "aqui você é obrigado
+  sempre a selecionar o agente que você quer… e a opção de criar sem a transcrição não tem que ser pedida, é
+  automático"). Na janela da extensão, e só nela:
+  - **O agente é escolha obrigatória**: a janela abre sem agente escolhido (antes já vinha com o do canal), o select
+    fica destacado em vermelho enquanto ninguém escolhe e o envio não passa sem ele. Embaixo, um botãozinho **"usar o
+    agente padrão de CANAL: NOME"** preenche com o do canal ("Padrão do Claude (sem agente)" quando o canal não tem).
+  - **3 · Confirmar**: um passo novo, a lista do que vai ser feito item por item — título, canal, agente, idioma e
+    tamanho, vídeo de referência, o que acontece depois de escrever e o custo. O que falta fica vermelho, o que é só
+    aviso fica amarelo. O botão do rodapé virou **"Revisar e criar →"** nos passos 1 e 2 e **"✓ Confirmar e criar"**
+    no 3: nenhum roteiro começa sem passar por essa lista.
+  - **Sem legenda não é pergunta**: `/api/titulo-do-video` passou a dizer se o vídeo tem legenda
+    (`roteiro_claude.tem_legenda`), e a lista avisa ali mesmo que o roteiro vai sair do título. Nada para por causa
+    disso e nada é perguntado.
 - **LIGAR-RADAR.bat abre o navegador só quando o Radar responde** (2026-10-19): depois que ele passou a fechar o Radar
   antigo, o navegador abria antes do servidor novo subir (uns 5 s) e mostrava "não é possível acessar este site",
   parecendo que o Radar não ligava. Agora uma espera escondida tenta o endereço a cada segundo (até 90 s) e abre o
@@ -1447,3 +1467,231 @@ navegador, com o banco real: travar mostrou 10 de 1.353 em "página 1 de 136", P
 arrastar encheram a pilha, a aba reabriu a busca e soltar voltou para os 24; as quatro formas desenharam e
 "Testando" abriu 72 vídeos de canais com menos de 30 dias de casa. Os quatro testes que já falhavam no
 `tests/app_js.test.mjs` antes desta leva (os do 503) continuam falhando — nada aqui mexeu nesse trecho.
+
+## A barra de carregamento da fábrica, na barra de tarefas do Windows (2026-10-25)
+
+Pedido do usuário: ver a produção andando sem abrir o Radar toda hora — do jeito que o Chrome faz quando está
+baixando um arquivo, com o ícone na barra de tarefas enchendo. **Nenhuma página de navegador consegue isso**:
+quem pinta a barra de tarefas é o Windows, pelo `ITaskbarList3`, e só para um programa com janela própria. (A
+primeira tentativa foi inventar contorno dentro do navegador — barra no canto do site, janela, aplicativo
+instalável. Tudo isso foi jogado fora: não era o que o usuário pediu.)
+
+Então é um programa: `radar/barra.py`, `python -m radar barra`, ou o **`BARRA-DA-FABRICA.bat`** na raiz, que o
+abre pelo `pythonw` (o Python sem a janela preta — só a janelinha aparece).
+
+- Uma janelinha de 260×96 com a **porcentagem em verde** e o título do vídeo embaixo. O ícone dela é o ponto
+  verde do Radar, desenhado em código — sem isso a barra de tarefas mostra a pena do tkinter, que não diz nada.
+- O título da janela vira `62% · Fábrica`, que é o que aparece ao passar o mouse no botão da barra de tarefas.
+- **Minimize e esqueça**: o botão continua lá e a barrinha continua enchendo.
+- De 10 em 10 segundos ele pergunta ao `/api/acompanhar`. Pedido vindo de `127.0.0.1` já entra como a
+  administração pelo acesso livre do Radar (`_usuario_livre`), então o programa **não precisa de login nem de
+  token** — e nada no servidor mudou por causa disto.
+- Vários vídeos ao mesmo tempo: a barra é uma só, então ela mostra a **média** — o quanto falta para a leva
+  inteira acabar — e a linha de baixo vira "3 vídeos · 88% · 54% · 12%". Quem quiser o de cada um abre o
+  Acompanhar.
+- Nada produzindo = sem barra nenhuma. Parado ou com erro = barra vermelha e "Parou: <título>". Radar
+  desligado = barra amarela e "O Radar está desligado".
+
+O `ITaskbarList3` não tem função solta: é um objeto COM, e as funções dele vêm numa tabela, por posição. O
+`BarraDaTarefa` chama na mão pelo `ctypes` — 3 é o `HrInit`, 9 o `SetProgressValue`, 10 o `SetProgressState` —,
+então **não entrou dependência nenhuma** no projeto. A janela que tem o botão na barra de tarefas não é a que o
+tkinter entrega no `winfo_id()`, e sim a mãe dela (`GetParent`); pintar a de dentro responde `S_OK` e não
+desenha nada.
+
+**Como o Windows 11 desenha isso** (e o que atrapalhou na hora de conferir): ele **não** enche o ícone de verde
+como o Windows 10 fazia. Ele pinta uma **linha fina embaixo do ícone**, do comprimento da porcentagem, na cor de
+destaque do sistema (azul, aqui) — e vermelha quando o estado é de erro. À primeira vista é igualzinho ao
+risquinho de "aplicativo aberto" que todo ícone tem, e foi por isso que a primeira conferida deu "não
+funcionou". O teste que resolveu foi pintar 100% em vermelho: a linha ficou vermelha e larga, sem dúvida
+nenhuma. Depois, 62% e 15% lado a lado mostraram o comprimento mudando com o número. Não dá para mudar nem a
+cor nem a grossura: isso é do Windows.
+
+Testado no computador do usuário, com o `ITaskbarList3` respondendo `S_OK` em todas as voltas: 62% desenhou a
+linha quase do tamanho do ícone, 15% virou um tracinho, 100% em vermelho ficou vermelho, e a janela mostrou
+"62%" com o título do vídeo e o ponto verde no lugar da pena. Com a fábrica vazia (o caso real na hora do
+teste), a barra some e a janela diz "Nada sendo produzido agora", que é o certo.
+
+## A descrição pronta antes do vídeo, e o agente que a escreve (2026-10-28)
+
+Pedido do usuário: *"quando gerar o roteiro no Claude quero que já gere uma descrição... vou criar um projeto que
+será para a criação de descrição; a descrição será criada enquanto o vídeo está sendo feito"*.
+
+**O que estava errado.** Quem escrevia a descrição era a fábrica, no `publicacao.json` de cada projeto — e esse
+arquivo só existe **depois** de narrar, gerar as imagens e montar o vídeo inteiro. Entre mandar o roteiro e o
+vídeo ficar pronto passam horas, e nesse meio-tempo a extensão no YouTube Studio não achava nem o projeto: ela
+procura pastas que já tenham `publicacao.json`. Quem chegava com o `.mp4` na mão via "não achei este vídeo na
+fábrica: título e descrição ficam com você".
+
+**O que mudou.** O Claude escreve a descrição **no mesmo minuto do roteiro** — ele acabou de ler o texto todo, que
+é a melhor fonte que existe para isso. O novo `radar/descricao.py` pede sinopse, tags e hashtags em JSON, limpa o
+que vem (tag repetida sai, tag grande demais sai, hashtag ganha o `#` que faltava) e guarda em `descricao.json`, ao
+lado do `roteiro.txt`. Falhar ali não derruba o roteiro: o erro fica no `roteiro.json` e a tela de Revisão oferece
+"Escrever de novo".
+
+**Agentes de descrição.** A tela de Agentes agora tem duas listas: *de roteiro* e *de descrição*. O agente de
+descrição é a mesma coisa que o de roteiro — as instruções de estilo que você cola de um projeto do claude.ai —,
+só que valem para a sinopse, as tags e as hashtags. Sem nenhum, valem as regras do Radar. Com um só, ele é usado
+sozinho; com vários, você escolhe na tela do Roteiro. No banco é a coluna `tipo` de `projetos_roteiro`
+(`roteiro` ou `descricao`), e os agentes que já existiam continuam todos de roteiro.
+
+**Como chega ao Studio.** Ao enviar o roteiro para a fábrica, o `descricao.json` vira `publicacao_radar.json`
+dentro da pasta do projeto, já com a descrição montada: a sinopse, o rodapé fixo do canal (do perfil da fábrica,
+como sempre) e as hashtags. A partir daí:
+
+- `publicar.py` acha o projeto por **esse** arquivo também, não só pelo `publicacao.json` — então a extensão
+  encontra o vídeo com ele ainda sendo feito.
+- No kit, o texto do Radar **ganha** do da fábrica (descrição, sinopse, tags e hashtags). Os capítulos, a legenda
+  e a duração continuam vindo da fábrica, que é quem os tem.
+- O kit passou a dizer de onde veio o texto (`origem`: `radar` ou `fabrica`), e a extensão diz isso no recado:
+  "A descrição, as tags e as hashtags vieram do Radar, escritas junto com o roteiro".
+
+**O que já era assim e continua.** Nos Detalhes, a extensão marca sozinha **"Não, não é conteúdo feito para
+crianças"** e **"Uso de IA: Sim"** (os vídeos da fábrica são feitos com IA), além de escrever título, descrição e
+tags. Isso não mudou — o que faltava era a descrição existir a tempo.
+
+## O título traduzido para a língua do vídeo, e o agente CANAL DE TESTE (2026-10-29)
+
+Pedido do usuário: "o título lá pode ser em português, porém sempre terá a tradução automática pra língua que vai
+ser falada".
+
+- **`roteiro_claude.traduzir_titulo`**: na Nova produção o título pode ser escrito em português. Quando o roteiro é
+  feito (pelo Claude ou colado), o título é traduzido para a língua do pedido, pelo `claude -p --model haiku` (a
+  assinatura, sem custo por uso). O Claude já escreve o roteiro para o título traduzido. No `roteiro.json` ficam
+  `titulo` (o traduzido, que vira o `titulo_entrega` da fábrica e o título da descrição) e `titulo_original`.
+- Título já na língua certa (português, inglês e espanhol, pelo `gosto.lingua`) nem chama o Claude. Tradução que
+  falha ou volta estranha (várias linhas, comprida demais) deixa o título como veio: o vídeo não para por isso.
+- Testado com o Claude de verdade: "Por que os gatos dormem 16 horas por dia?" virou "Why Do Cats Sleep 16 Hours a
+  Day?" e "Waarom slapen katten 16 uur per dag?". Testes em `tests/test_titulo_traduzido.py`.
+- **Agente CANAL DE TESTE** (id 8, criado direto no banco pela rota `POST /api/projetos`): o primeiro vídeo de um
+  canal novo, só para ver se o canal é confiável. De 2 a 3 minutos, na língua escolhida na Nova produção, com assunto
+  universal que dá para mostrar só com vídeo de banco grátis (Pexels/Pixabay), sem polêmica e sem dinheiro.
+
+## Extensão 0.31.0: o canal já traz o agente, e o 🧪 Canal de teste (2026-10-29)
+
+Pedido do usuário: "se eu já escolhi o canal João o Lobo, já tem que ir pro projeto; o único que terá que escolher
+é realmente o canal de teste, porque ele é genérico". Desfaz a escolha obrigatória do agente de 2026-10-28.
+
+- **Os canais sempre à vista no passo 1** da Nova produção da extensão, e escolher um canal já escolhe o agente dele
+  (o select continua lá para trocar). Saiu o botãozinho "usar o agente padrão de…" e o "(escolha obrigatória)".
+- **🧪 Canal de teste**: um chip a mais, para o primeiro vídeo de um canal novo. Vem com o agente CANAL DE TESTE e
+  3 minutos, e pede a **língua do vídeo**; a **voz** é um perfil da fábrica que fala essa
+  língua (o primeiro já vem escolhido). A língua usada fica lembrada.
+- **Sempre de 2 a 3 min** (0.31.1, pedido do usuário): na janela só existem os atalhos de 2 e 3 min, e a fila
+  (`fila.minutos_do`) prende o roteiro do Canal de teste entre 2 e 3 min, venha o tamanho que vier.
+- `GET /api/fila/teste`: o id do agente CANAL DE TESTE e as línguas que têm voz na fábrica, com os perfis de cada.
+- O pedido da fila aceita `perfil` (`fila.perfil_do`): o Canal de teste vai sem `canal_id`, e o perfil escolhido vale
+  para o ritmo do roteiro e para criar o projeto na fábrica.
+- Para usar: reinicie o Radar (LIGAR-RADAR.bat) e, em `chrome://extensions`, clique no ↻ do Radar de Canais e
+  recarregue a aba do YouTube.
+
+## Um erro da fábrica num pedido não para mais a fila (2026-10-30)
+
+A fila ficou parada: a fábrica da porta 8080 era a de outra pasta (`tiplabs\backend-editor`, ligada à mão), que só
+tinha projetos de teste antigos, e o `POST /api/projetos/NOME/retomar` do primeiro da fila voltava "Projeto não
+encontrado". O pedido voltava para a fila a cada 20 s e os de trás nem o roteiro começavam.
+
+- **`fabrica_api.FabricaDesligada`** (filha de `SemFabrica`): só a fábrica fora do ar — porta muda (`httpx.HTTPError`)
+  ou chave recusada (401). Qualquer outro erro dela segue como `SemFabrica`, que é erro sobre o que foi pedido. Quem
+  pega `SemFabrica` (o site, as Integrações, o painel do canal) continua pegando os dois.
+- **O vigia da fila** (`fila.passo`) só termina a volta na `FabricaDesligada`: aí o pedido espera, sem erro, e a fila
+  espera com ele. Um erro da fábrica sobre o projeto vira o erro daquele pedido ("Tentar de novo" reaproveita o
+  projeto, sem pagar outro) e a volta segue para os próximos, inclusive os roteiros, que nem dependem da fábrica.
+- Se a fábrica certa voltar e retomar o vídeo por fora, o pedido sai do erro sozinho (a regra 1b, de 2026-10-27).
+- **Qual fábrica está na porta 8080**: a de `RADAR_FABRICA` (`fabrica-videos`) é a que o Radar enche de projetos. O
+  `LIGAR-TIPLABS` de outra pasta rouba a porta e o Radar não acha nada; o vigia do `fabrica-videos` não religa, porque
+  a intrusa responde no `/api/saude`. Testes em `tests/test_fila.py`.
+
+## As imagens de IA pela assinatura do ChatGPT (2026-11-01)
+
+O Robô do Dotti passou a deixar a pessoa gerar as imagens pela assinatura do ChatGPT, em vez da chave de API. Agora
+o Radar e a fábrica fazem o mesmo. É o mesmo caminho que o roteiro já usava com o Claude (`claude -p` pela
+assinatura do claude.ai): quem entra aqui é o **Codex deste computador**, logado com `codex login` na conta ChatGPT.
+
+- **Quem gera é a fábrica**, então o login e a geração moram nela: `fabrica/chatgpt_assinatura.py` lê
+  `~/.codex/auth.json` (nunca a `OPENAI_API_KEY`, que cobraria por fora), renova o token sozinho e pede a imagem na
+  mesma porta que o Codex usa (`chatgpt.com/backend-api/codex/responses`, com a ferramenta `image_generation` e o
+  `gpt-image-2`). **Não é API pública**: a OpenAI pode mudá-la sem aviso, e por isso nada depende dela.
+- **O perfil do canal escolhe**: `imagens.provedor: assinatura` liga, e `imagens.provedor_reserva` (padrão
+  `openrouter`) guarda quem atende se o limite acabar **no meio de um vídeo** — as imagens que faltam saem pela
+  chave de API, o vídeo nunca para. Sem login nenhum, a reserva assume desde a primeira imagem, com aviso no log.
+- **No Radar**, na *Configuração do canal*, entrou **🖼 Quem gera as imagens de IA**: assinatura do ChatGPT ou chave
+  de API. A escolha é gravada direto no perfil da fábrica (como o rodapé), em um lugar só.
+- **Integrações › Conexões da conta** mostra o cartão do ChatGPT: a conta ligada, o plano e quanto já foi usado das
+  duas janelas que o ChatGPT conta (5 horas e semana). Elas vêm nos cabeçalhos de cada pedido e ficam em
+  `chatgpt_limites.json` na fábrica, para a tela não precisar gerar nada só para saber.
+- **Custo**: imagem pela assinatura entra nos Custos como **US$ 0,00** (`custos.preco_da_imagem`); o que gasta é o
+  limite da assinatura.
+- Rotas novas: `GET /api/chatgpt/estado` na fábrica e no Radar; a assinatura também aparece em
+  `GET /api/imagens/provedores` da fábrica. Testes em `tests/test_imagens_assinatura.py`.
+
+### Trocar a conta do ChatGPT e a escolha de cada canal em Integrações (2026-11-02)
+
+Pedido do usuário: "em Integrações tem que ter a opção de mudar o ChatGPT para a conexão" e "poder integrar outra
+conta de ChatGPT".
+
+- **Outra conta**: o Codex nem está instalado neste computador, então o Radar faz o mesmo login que o `codex login`
+  (`radar/chatgpt_conta.py`): **Conectar outra conta** abre `auth.openai.com` numa aba (PKCE, o client_id do Codex,
+  `prompt=login` para dar para escolher outra conta), a OpenAI volta para `http://localhost:1455/auth/callback` (a
+  porta é fixa porque é a que o Codex registrou) e o login novo vai para `~/.codex-fabrica/auth.json`, que a fábrica
+  lê a cada imagem. A conta de antes, com o limite usado dela, vai para `~/.codex-fabrica/contas-radar/` e volta com
+  **Usar esta**. Rotas `/api/integracoes/chatgpt/{contas,conectar,cancelar,usar,esquecer}`, só no computador da fábrica.
+- **Cada canal**: o cartão lista os perfis da fábrica com o seletor *Conexão do ChatGPT* / *Chave de API* (o mesmo
+  `imagens.provedor` da Configuração do canal) e os botões **Todos pela conexão** / **Todos pela chave de API**, que
+  só mexem nos perfis `canal-*`; os modelos (documentário, meditação…) ficam num "ver mais".
+- Testes em `tests/test_chatgpt_conta.py`, inclusive a volta da OpenAI de ponta a ponta com o código simulado.
+- **A pasta do login é só da fábrica** (`~/.codex-fabrica`, ou `FABRICA_CODEX_HOME`), mudança do mesmo dia: no
+  `~/.codex` ela dividia o login com o Robô do Dotti, que usa o Codex deste computador. Trocar a conta no Radar trocava
+  a do Dotti junto (de manhã ele pegou uma conta grátis, que não gera imagem), e os dois renovando o mesmo login
+  fizeram a OpenAI revogá-lo (`token_revoked`): o Dotti caiu na chave paga da OpenAI, sem crédito, e parou de fazer
+  vídeo. Agora cada um tem a sua conta: a da fábrica se liga em **Conectar outra conta**, a do Dotti com o
+  `codex login` dele. A fábrica (`fabrica/chatgpt_assinatura.py`) lê a mesma pasta; a versão do Codex continua vindo
+  do `~/.codex`.
+
+### O agente excluído no Claude sai do Radar (2026-11-02)
+
+A extensão agora manda também `vistos`, o uuid de todo projeto que achou no claude.ai (arquivados também). Os
+agentes ligados a um projeto que não está ali voltam em `faltando`, e a extensão abre cada um direto no claude.ai:
+só o que dá **404 em todas as organizações** vai para `POST /api/ext/projetos-claude/excluidos` e sai do Radar. Uma
+lista que veio pela metade não apaga nada, e a extensão antiga (sem `vistos`) também não.
+
+## O roteiro é conferido antes de sair, e a margem passa a ser de 1 minuto (2026-11-01)
+
+Pedido do usuário: "o Radar tá entregando vídeos com a duração errada, tem que conferir e colocar algo que sempre
+confira o resultado e regule pra acertar cada vez mais. O vídeo de 30 min saiu com 17, o máximo de erro é 1 minuto."
+
+Nos 32 vídeos medidos até aqui, **19 estavam fora de 1 minuto**, com erro médio de 2,2 min e o pior com 8,2
+(pediu 15, saiu 23,2). O ajuste de 2026-10-22 acertava quantas palavras *pedir*, mas essa era uma aposta feita
+**antes** de escrever: nenhuma conta olhava o roteiro pronto. Daí os dois lados do erro:
+
+- **Faltando.** O laço de continuação desistia depois de 4 voltas e parava de vez quando uma continuação voltava com
+  menos de 50 palavras. Um pedido de 30 min que parasse em 3.700 palavras saía como vídeo de 17 minutos, sem aviso.
+- **Sobrando.** Nada cortava. 15 min pedidos saíram com 23,2, 22,8 e 21,7 minutos.
+- **A reserva por língua cruzava vozes incompatíveis.** A mesma língua tem voz de 134 e voz de 215 palavras por
+  minuto: sem medida da voz nova, dimensionar 30 min pela voz lenta dá **17 minutos** de vídeo na voz rápida.
+- **Vídeo curto e vídeo longo entravam na mesma mediana.** Um de 3 min e um de 30 min da mesma voz não medem a mesma
+  coisa, e a mediana pulava de 120 para 182 palavras por minuto no mesmo canal.
+
+O que entrou:
+
+- **A margem é de 1 minuto** (`tempo.MARGEM_MIN`, era 1,5).
+- **`tempo.conferir()`**: a conta que diz quantos minutos **este** roteiro vai dar, no ritmo real da voz, quantas
+  palavras faltam ou sobram, e se cabe na margem.
+- **`roteiro_claude._conferir_tamanho()`**: a conferência roda **sempre**, logo depois de o Claude escrever e antes
+  de o roteiro poder ir para a fábrica. Falta, o Claude continua de onde parou; sobra, o Claude **condensa o roteiro
+  inteiro** (corta o que repete, mantém o gancho, os assuntos na ordem e o fechamento). Até 6 voltas. Uma volta que
+  piora não entra — fica sempre a melhor — e uma volta fraca não desiste mais do roteiro: ele tenta de novo.
+  O que aconteceu em cada volta fica em `conferencia` no `roteiro.json`.
+- **O erro da previsão é medido** (`medido.erro_previsao_min`): o tempo que a conferência previu contra o vídeo que a
+  fábrica entregou. É esse número que tem de ir a zero, porque o erro de tamanho do roteiro a conferência já corrige
+  antes de enviar. Ele aparece no acerto da voz como `erro_previsao_medio`.
+- **A base aprende por tamanho parecido** (`tempo._parecidos`) e **a língua só serve de reserva entre vozes que falam
+  parecido** (até 20% de diferença). Vozes que discordam mais do que isso não servem uma para a outra: fica o padrão,
+  e a tela diz que a voz ainda não tem medida.
+- **Na tela de Revisão**, embaixo do roteiro: "6.480 palavras · 30,0 min de narração (216 palavras por minuto)" e,
+  quando passa da margem, o aviso vermelho "⚠ Fora da margem de 1,0 min: você pediu 30 min e o roteiro dá 17,0 min
+  (-13,0 min). Acrescente umas 2.795 palavras." A conta atualiza enquanto você edita o texto. Antes essa linha usava
+  as 150 palavras por minuto fixas, e dizia "17 minutos" num roteiro que ia dar 30.
+- `tests/test_conferencia_tempo.py`: a conta da conferência, o roteiro curto continuado até caber, a continuação
+  fraca que não desiste, o roteiro comprido condensado, a volta que piora e não entra, o erro da previsão medido
+  contra o vídeo entregue, a voz lenta que não dimensiona a rápida e o vídeo curto que não puxa o longo.
+- O Radar precisa ser religado (LIGAR-RADAR.bat) para a conferência valer.

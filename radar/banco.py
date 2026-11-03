@@ -259,6 +259,12 @@ CREATE TABLE IF NOT EXISTS projetos_roteiro (
     instrucoes TEXT NOT NULL DEFAULT '',
     criado TEXT NOT NULL
 );
+-- os projetos do claude.ai cujo agente a pessoa apagou: a próxima leitura não cria o agente de novo
+CREATE TABLE IF NOT EXISTS claude_ignorados (
+    usuario_id INTEGER NOT NULL,
+    claude_uuid TEXT NOT NULL,
+    PRIMARY KEY (usuario_id, claude_uuid)
+);
 CREATE TABLE IF NOT EXISTS meus_canais (
     usuario_id INTEGER NOT NULL,
     canal_id TEXT NOT NULL,
@@ -344,8 +350,29 @@ COLUNAS_NOVAS = {
                  # nicho: o formulário do "Meu nicho" (tema, palavras das lacunas). Fora de `prefs` pelo mesmo motivo
                  "nicho": "TEXT NOT NULL DEFAULT '{}'"},
     "salvos": {"pasta": "TEXT NOT NULL DEFAULT ''"},          # a pasta em que a pessoa guardou aquele canal
-    "projetos_roteiro": {"ideal_para": "TEXT NOT NULL DEFAULT ''"},
+    # tipo: "roteiro" (o agente que escreve o roteiro) ou "descricao" (o que escreve a sinopse, as tags e as
+    # hashtags junto com ele). Os agentes que já existiam são todos de roteiro, por isso o padrão
+    # claude_*, arquivos e sincronizado: o projeto do claude.ai ligado ao agente (claude_projetos.py)
+    "projetos_roteiro": {"ideal_para": "TEXT NOT NULL DEFAULT ''", "tipo": "TEXT NOT NULL DEFAULT 'roteiro'",
+                         "claude_uuid": "TEXT NOT NULL DEFAULT ''", "claude_nome": "TEXT NOT NULL DEFAULT ''",
+                         "arquivos": "TEXT NOT NULL DEFAULT ''", "sincronizado": "TEXT NOT NULL DEFAULT ''"},
     "buscas_feitas": {"vezes": "INTEGER NOT NULL DEFAULT 0", "total": "INTEGER NOT NULL DEFAULT 0", "zeros": "INTEGER NOT NULL DEFAULT 0"},
+}
+
+
+# consertos que rodam uma vez só no banco que já existe (a chave fica em `ajustes`)
+CONSERTOS = {
+    # Até 2026-10-31 o que a extensão lia na página (o número arredondado da tela, "17 mil" para 17.512, e às vezes
+    # a linha errada) apagava a contagem exata da API: um vídeo de 8.232 views passou a valer 112. View não volta
+    # atrás, então cada vídeo volta para a maior leitura que já teve.
+    "views_nao_descem": "UPDATE videos SET views=(SELECT MAX(l.views) FROM leituras l WHERE l.video_id=videos.id) "
+                        "WHERE EXISTS (SELECT 1 FROM leituras l WHERE l.video_id=videos.id "
+                        "AND l.views > COALESCE(videos.views, -1))",
+    # e a curva do painel: as leituras que desceram eram o mesmo número errado da página. Fica a maior até ali.
+    "curva_nao_desce": "DELETE FROM leituras WHERE rowid IN (SELECT rowid FROM (SELECT rowid, views, "
+                       "MAX(views) OVER (PARTITION BY video_id ORDER BY quando "
+                       "ROWS BETWEEN UNBOUNDED PRECEDING AND 1 PRECEDING) maior FROM leituras) "
+                       "WHERE maior IS NOT NULL AND views < maior)",
 }
 
 
@@ -356,6 +383,12 @@ def _migrar(c: sqlite3.Connection) -> None:
             if nome not in existentes:
                 c.execute(f"ALTER TABLE {tabela} ADD COLUMN {nome} {tipo}")
     c.execute("CREATE INDEX IF NOT EXISTS canais_subnicho ON canais(subnicho)")
+    feitos = {l[0] for l in c.execute("SELECT chave FROM ajustes WHERE chave LIKE 'conserto:%'")}
+    for nome, sql in CONSERTOS.items():
+        if f"conserto:{nome}" not in feitos:
+            c.execute(sql)
+            c.execute("INSERT OR REPLACE INTO ajustes (chave, valor) VALUES (?,?)",
+                      (f"conserto:{nome}", datetime.now(timezone.utc).isoformat(timespec="seconds")))
     c.commit()
 
 
@@ -373,6 +406,10 @@ def _conexao() -> sqlite3.Connection:
     con = sqlite3.connect(ARQUIVO, timeout=30, check_same_thread=False)
     con.row_factory = sqlite3.Row
     con.execute("PRAGMA journal_mode=WAL")
+    # o banco passa de 300 MB e a conexão é uma só, atrás da _TRAVA: com o cache padrão (2 MB) a lista de vídeos relia
+    # o disco a cada visita e segurava todas as outras telas. 64 MB de cache e o arquivo mapeado na memória.
+    con.execute("PRAGMA cache_size=-65536")
+    con.execute("PRAGMA mmap_size=536870912")
     return con
 
 

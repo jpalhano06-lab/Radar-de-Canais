@@ -417,7 +417,7 @@ document.addEventListener("click", (e) => {
 function capaDoVideo(v) {
   return `<a class="capa" href="${linkVideo(esc(v.id))}" target="_blank" rel="noopener">
     <img loading="lazy" src="https://i.ytimg.com/vi/${esc(v.id)}/mqdefault.jpg" alt="">
-    ${v.nota != null ? `<span class="nota ${v.nota >= 5 ? "alta" : ""}" title="Fez ${nota(v.nota)} o normal do canal">${nota(v.nota)}</span>` : ""}
+    ${v.nota != null ? `<span class="nota ${v.nota >= 5 ? "alta" : ""}" title="Fez ${nota(v.nota)} o normal do canal">${nota(v.nota).replace(/x$/, "<small>×</small>")}</span>` : ""}
     ${v.duracao_s ? `<span class="dur">${duracao(v.duracao_s)}</span>` : ""}</a>`;
 }
 
@@ -752,12 +752,47 @@ async function mostrarVitrine() {
 
 // ---------------------------------------------------------------- Trabalho: a ideia, o roteiro pelo Claude e a fábrica
 
+// O agente ligado a um projeto do claude.ai (2026-10-29): a extensão lê o projeto e atualiza o agente sozinha
+const ligadoAoClaude = (p) => p.claude_uuid
+  ? `🔗 projeto <b>${esc(p.claude_nome)}</b> do claude.ai${p.arquivos ? ` · ${p.arquivos} ${p.arquivos === 1 ? "arquivo" : "arquivos"}` : ""} · atualizado ${new Date(p.sincronizado).toLocaleString("pt-BR")}`
+  : "";
+
+// O "Atualizar do claude.ai": a página pede à extensão (site.js), que lê os projetos no Chrome logado
+function sincronizarClaude() {
+  return new Promise((ok, falha) => {
+    if (!document.documentElement.dataset.radarExtensao) return falha(new Error("Instale a extensão do Radar neste Chrome."));
+    const ouvir = (e) => {
+      if (e.source !== window || !e.data || e.data.radar !== "claude-sincronizado") return;
+      window.removeEventListener("message", ouvir);
+      const r = e.data.resposta || {};
+      r.erro ? falha(new Error(r.erro)) : ok(r.dados);
+    };
+    window.addEventListener("message", ouvir);
+    window.postMessage({ radar: "sincronizar-claude" }, "*");
+  });
+}
+
+function resumoDaSincronizacao(d) {
+  const n = (d.atualizados || []).length + (d.criados || []).length;
+  return `${n} ${n === 1 ? "agente atualizado" : "agentes atualizados"} do claude.ai`
+    + ((d.criados || []).length ? ` · novos: ${d.criados.join(", ")}` : "");
+}
+
 function gerenciarProjetos(caixa, projetos, depois) {
-  caixa.innerHTML = `<div class="bloco" style="margin-top:6px"><h3>Agentes de roteiro</h3>
+  // dois tipos de agente (2026-10-28): o que escreve o roteiro e o que escreve a descrição junto com ele
+  const linha = (p) => `<div class="titulo-linha"><span class="t"><b>${esc(p.nome)}</b><small>${esc(p.instrucoes.slice(0, 120))}${p.instrucoes.length > 120 ? "…" : ""}</small></span>
+      <button class="botao sec editar-projeto" data-id="${p.id}">Editar</button><button class="botao sec apagar-projeto" data-id="${p.id}">×</button></div>`;
+  const deDescricao = projetos.filter((p) => p.tipo === "descricao");
+  caixa.innerHTML = `<div class="bloco" style="margin-top:6px"><h3>Agentes</h3>
     <p class="sub">Cada agente guarda o jeito de escrever de um canal (tom, público, como abrir e fechar). Cole aqui as instruções de um projeto do claude.ai: vão junto em todo roteiro feito com esse agente.</p>
-    ${projetos.map((p) => `<div class="titulo-linha"><span class="t"><b>${esc(p.nome)}</b><small>${esc(p.instrucoes.slice(0, 120))}${p.instrucoes.length > 120 ? "…" : ""}</small></span>
-      <button class="botao sec editar-projeto" data-id="${p.id}">Editar</button><button class="botao sec apagar-projeto" data-id="${p.id}">×</button></div>`).join("")}
+    <h4 class="rt-sub">De roteiro</h4>
+    ${projetos.filter((p) => (p.tipo || "roteiro") === "roteiro").map(linha).join("") || '<p class="sub">Nenhum ainda.</p>'}
+    <h4 class="rt-sub">De descrição</h4>
+    <p class="sub">Escrevem a sinopse, as tags e as hashtags no mesmo minuto do roteiro, enquanto o vídeo ainda está sendo feito. No YouTube Studio a extensão põe esse texto sozinha.</p>
+    ${deDescricao.map(linha).join("") || '<p class="sub">Nenhum ainda: sem um destes, valem as regras do Radar.</p>'}
     <input id="p-nome" placeholder="Nome do agente (ex.: canal de animais)"><input type="hidden" id="p-id">
+    <label class="campo"><span>O que este agente escreve</span><select id="p-tipo">
+      <option value="roteiro">O roteiro do vídeo</option><option value="descricao">A descrição, as tags e as hashtags</option></select></label>
     <input id="p-ideal" placeholder="Ideal para… (opcional: aparece embaixo do estilo na Nova produção)">
     <textarea id="p-instrucoes" rows="6" placeholder="Instruções: tom de voz, público, estrutura, o que evitar…"></textarea>
     <button class="botao" id="p-salvar" style="justify-self:start">Salvar agente</button></div>`;
@@ -765,16 +800,17 @@ function gerenciarProjetos(caixa, projetos, depois) {
     const p = projetos.find((x) => x.id === +b.dataset.id);
     caixa.querySelector("#p-id").value = p.id; caixa.querySelector("#p-nome").value = p.nome; caixa.querySelector("#p-instrucoes").value = p.instrucoes;
     caixa.querySelector("#p-ideal").value = p.ideal_para || "";
+    caixa.querySelector("#p-tipo").value = p.tipo || "roteiro";
   }));
   caixa.querySelectorAll(".apagar-projeto").forEach((b) => (b.onclick = async () => {
-    if (!confirm("Apagar este agente de roteiro?")) return;
+    if (!confirm("Apagar este agente?")) return;
     await api(`/api/projetos/${b.dataset.id}`, { method: "DELETE" }); depois();
   }));
   caixa.querySelector("#p-salvar").onclick = async () => {
     try {
       await api("/api/projetos", { method: "POST", body: { id: caixa.querySelector("#p-id").value || null,
         nome: caixa.querySelector("#p-nome").value, instrucoes: caixa.querySelector("#p-instrucoes").value,
-        ideal_para: caixa.querySelector("#p-ideal").value } });
+        tipo: caixa.querySelector("#p-tipo").value, ideal_para: caixa.querySelector("#p-ideal").value } });
       aviso("Agente salvo."); depois();
     } catch (e) { aviso(porque(e)); }
   };
@@ -795,9 +831,12 @@ async function trabalho() {
   if (/^[\w-]{11}$/.test(daExtensao.get("ref") || "")) { preset.link = linkVideo(daExtensao.get("ref")); preset.titulo = daExtensao.get("titulo") || ""; }
   const [{ projetos }, fab, { roteiros }, prod] = await Promise.all([api("/api/projetos"), api("/api/fabrica"), api("/api/roteiros"),
     api("/api/producoes").catch(() => null)]);
-  const agentes = projetos;
+  // dois tipos de agente: o que escreve o roteiro e o que escreve a descrição junto com ele (2026-10-28)
+  const agentes = projetos.filter((p) => (p.tipo || "roteiro") === "roteiro");
+  const agentesDesc = projetos.filter((p) => p.tipo === "descricao");
   const E = { passo: 0, link: preset.link || "", titulo: preset.titulo || "", ref: null, canal: CANAL_ATUAL || "", cfg: null,
-    agente: "", lingua: "português", minutos: 8, obs: "", r: null, perfil: "", quem: "", rascunho: "", ritmo: null, ppm: 150 };
+    agente: "", agenteDesc: agentesDesc.length === 1 ? String(agentesDesc[0].id) : "",
+    lingua: "português", minutos: 8, obs: "", r: null, perfil: "", quem: "", rascunho: "", ritmo: null, ppm: 150 };
   const perfilDireto = () => (fab.perfis.includes(E.perfil) ? E.perfil : fab.perfis.includes("documentario") ? "documentario" : fab.perfis[0] || "");
   // o canal vai junto no roteiro, para cada vídeo feito mostrar de qual canal é
   const canalDoVideo = () => ({ canal_id: E.canal, canal_titulo: ((MEUS || []).find((c) => c.id === E.canal) || {}).titulo || "" });
@@ -856,6 +895,7 @@ async function trabalho() {
         <dt>Título</dt><dd>${esc(E.titulo || "—")}</dd>
         <dt>Voz</dt><dd>${esc((E.cfg && E.cfg.voz) || "—")}</dd>
         <dt>Agente</dt><dd>${esc((agentes.find((a) => String(a.id) === E.agente) || {}).nome || "Agente padrão")}</dd>
+        <dt>Descrição</dt><dd>${esc((agentesDesc.find((a) => String(a.id) === E.agenteDesc) || {}).nome || "Regras do Radar")}</dd>
         <dt>Língua</dt><dd>${esc(E.lingua)}</dd>
         <dt>Tempo</dt><dd>${E.minutos} min</dd>
         <dt>Roteiro</dt><dd>${E.r ? `${E.r.roteiro.split(/\s+/).filter(Boolean).length} palavras` : "—"}</dd>
@@ -967,6 +1007,10 @@ async function trabalho() {
         <div class="ritmo-linha ${E.ritmo && E.ritmo.medidos ? "ajustado" : ""}">⏱ ${E.ritmo && E.ritmo.medidos
           ? `<span><b>Tempo ajustado:</b> esta voz fala <b>${E.ppm} palavras por minuto</b> (medido em ${E.ritmo.medidos} ${E.ritmo.medidos === 1 ? "vídeo entregue" : "vídeos entregues"}). Para ${E.minutos} min, o Claude mira <b>${alvo.toLocaleString("pt-BR")} palavras</b>${E.ritmo.ppm_alvo && E.ritmo.ppm_alvo !== E.ppm ? " (já descontando o quanto ele costuma escrever a mais)" : ""}.</span><button class="link-editar" id="rt-por-que">por quê?</button>`
           : `<span>Para ${E.minutos} min, o Claude mira ${alvo.toLocaleString("pt-BR")} palavras. Quando a fábrica entregar os vídeos desta voz, o Radar mede o tempo real e <b>ajusta sozinho</b>.</span>`}</div>${placar}
+        <div class="ritmo-linha">📝 <span>Junto com o roteiro, o Claude escreve a <b>descrição, as tags e as hashtags</b> deste vídeo${
+          agentesDesc.length ? "" : " pelas regras do Radar (crie um agente de descrição para dar o estilo do canal)"}. Ficam prontas agora, enquanto o vídeo ainda está sendo feito.</span>${
+          agentesDesc.length ? `<select id="rt-agente-desc" class="rt-agente-desc"><option value="">Regras do Radar</option>${
+            agentesDesc.map((a) => `<option value="${a.id}" ${String(a.id) === E.agenteDesc ? "selected" : ""}>${esc(a.nome)}</option>`).join("")}</select>` : ""}</div>
         <h3 class="rt-sub">Quando o roteiro ficar pronto…</h3>
         <div class="modo-op">
           <button class="modo ${modo === "revisar" ? "marcado" : ""}" data-modo="revisar"><span class="ic">👀</span><b>Quero revisar antes</b><small>Você lê, corrige e só depois manda para a fábrica.</small></button>
@@ -977,6 +1021,8 @@ async function trabalho() {
         <button class="botao vermelho grande" id="rt-escrever" style="justify-self:start">✍️ Escrever o roteiro com o Claude</button>
         <div id="rt-escrevendo"></div>`;
       ligarQuem();
+      const escolhaDesc = $("rt-agente-desc");
+      if (escolhaDesc) escolhaDesc.onchange = () => { E.agenteDesc = escolhaDesc.value; lado(); };
       const porQue = $("rt-por-que");
       if (porQue) porQue.onclick = () => explicarAjusteTempo(E.ritmo, E.minutos);
       $("rt-corpo").querySelectorAll(".modo:not([disabled])").forEach((b) => (b.onclick = () => {
@@ -991,7 +1037,8 @@ async function trabalho() {
         try {
           const direto = modo === "direto";
           const { tarefa } = await api("/api/roteiros", { method: "POST", body: { titulo: E.titulo, link: E.link, minutos: E.minutos, lingua: E.lingua,
-            projeto_id: E.agente, observacoes: E.obs, enviar_direto: direto, perfil: perfilDireto(), ...canalDoVideo() } });
+            projeto_id: E.agente, projeto_descricao_id: E.agenteDesc, observacoes: E.obs, enviar_direto: direto,
+            perfil: perfilDireto(), ...canalDoVideo() } });
           vigiarRoteiro(tarefa, E.titulo);
           $("rt-corpo").querySelectorAll(".modo, [data-quem]").forEach((x) => (x.disabled = true));
           for (;;) {
@@ -1009,16 +1056,18 @@ async function trabalho() {
       };
       return () => "Escreva o roteiro primeiro.";
     },
-    // 4. revisão e envio para a fábrica
+    // 4. revisão e envio para a fábrica (com a descrição que o Claude escreveu junto com o roteiro)
     () => {
-      $("rt-corpo").innerHTML = `<h2>Confira e envie</h2>
+      $("rt-corpo").innerHTML = `<h2>Confira e envie</h2>${blocoDescricao()}
         ${fab.conectada ? `<p class="sub">Cria o projeto na fábrica com este roteiro, este título e a voz do canal. <b>Não gasta nada</b>: produzir pede a sua confirmação.</p>
           <label class="campo"><span>Voz (perfil da fábrica)</span><select id="rt-perfil">${fab.perfis.map((p) => `<option ${p === (E.perfil || "documentario") ? "selected" : ""}>${esc(p)}</option>`).join("")}</select></label>
           <button class="botao vermelho grande" id="rt-enviar" style="justify-self:start">🏭 Enviar para a fábrica</button><div id="rt-enviado"></div>`
           : '<p class="sub">A fábrica não está nesta pasta: o Radar precisa estar dentro da pasta da fábrica para enviar.</p>'}`;
+      ligarDescricao();
       const enviar = $("rt-enviar");
       if (enviar) enviar.onclick = () => carregando(enviar, "Criando o projeto na fábrica…", async () => {
         await salvar();
+        await salvarDescricao();
         mostrarEnviado(await api(`/api/roteiros/${encodeURIComponent(E.r.nome)}/fabrica`, { method: "POST", body: { perfil: $("rt-perfil").value } }));
       });
       return () => "";
@@ -1034,6 +1083,55 @@ async function trabalho() {
       if (await produzirNaFabrica(f.projeto, E.titulo)) location.hash = "#/acompanhar";
     });
   };
+  // ---------------------------------------------------------------- a descrição, escrita junto com o roteiro
+  // Pedido do usuário em 2026-10-28. Ela já vem pronta desta tela: aqui é só para ler, corrigir e, se o Claude
+  // tiver falhado ou o estilo não agradar, refazer. Vai para a fábrica junto com o roteiro e é ela que a extensão
+  // põe no campo do Studio — antes de o vídeo ficar pronto.
+  const blocoDescricao = () => {
+    const d = (E.r && E.r.descricao) || {};
+    const erro = E.r && E.r.descricao_erro;
+    const escolha = agentesDesc.length
+      ? `<select id="rt-desc-agente"><option value="">Regras do Radar</option>${agentesDesc.map((a) => `<option value="${a.id}" ${String(a.id) === E.agenteDesc ? "selected" : ""}>${esc(a.nome)}</option>`).join("")}</select>`
+      : "";
+    if (!d.sinopse) {
+      return `<div class="bloco rt-descricao"><h3>📝 Descrição do vídeo</h3>
+        <p class="sub">${erro ? `O Claude não conseguiu escrever: ${esc(erro)}` : "Este roteiro ainda não tem descrição."} Dá para escrever agora — ela vai junto para a fábrica e aparece sozinha no YouTube Studio.</p>
+        <div class="linha">${escolha}<button class="botao sec" id="rt-desc-refazer">Escrever a descrição</button></div></div>`;
+    }
+    return `<div class="bloco rt-descricao"><h3>📝 Descrição do vídeo</h3>
+      <p class="sub">Escrita pelo Claude${d.projeto ? ` com o agente <b>${esc(d.projeto)}</b>` : " pelas regras do Radar"}, a partir do roteiro. Vai junto para a fábrica: no Studio, a extensão põe este texto, estas tags e estas hashtags sozinha.</p>
+      <label class="campo"><span>Sinopse (abre a descrição; o rodapé fixo do canal entra depois dela)</span>
+        <textarea id="rt-desc-sinopse" rows="4">${esc(d.sinopse)}</textarea></label>
+      <label class="campo"><span>Tags (separadas por vírgula)</span><textarea id="rt-desc-tags" rows="2">${esc((d.tags || []).join(", "))}</textarea></label>
+      <label class="campo"><span>Hashtags</span><input id="rt-desc-hashtags" value="${esc((d.hashtags || []).join(" "))}"></label>
+      <div class="linha">${escolha}<button class="botao sec" id="rt-desc-refazer">Escrever de novo</button>
+        <button class="botao sec" id="rt-desc-salvar">Salvar a descrição</button></div></div>`;
+  };
+  const descricaoDaTela = () => ({
+    sinopse: ($("rt-desc-sinopse") || {}).value || "",
+    tags: (($("rt-desc-tags") || {}).value || "").split(",").map((t) => t.trim()).filter(Boolean),
+    hashtags: (($("rt-desc-hashtags") || {}).value || "").split(/\s+/).filter(Boolean),
+  });
+  const salvarDescricao = async () => {
+    if (!E.r || !$("rt-desc-sinopse")) return;
+    E.r.descricao = (await api(`/api/roteiros/${encodeURIComponent(E.r.nome)}/descricao`, { method: "POST", body: descricaoDaTela() })).descricao;
+  };
+  const ligarDescricao = () => {
+    const agente = $("rt-desc-agente");
+    if (agente) agente.onchange = () => { E.agenteDesc = agente.value; lado(); };
+    const refazer = $("rt-desc-refazer");
+    if (refazer) refazer.onclick = (e) => carregando(e.currentTarget, "O Claude está escrevendo a descrição…", async () => {
+      E.r.descricao = (await api(`/api/roteiros/${encodeURIComponent(E.r.nome)}/descricao`,
+        { method: "POST", body: { refazer: true, projeto_id: E.agenteDesc } })).descricao;
+      E.r.descricao_erro = "";
+      ir(E.passo);
+    });
+    const guardar = $("rt-desc-salvar");
+    if (guardar) guardar.onclick = (e) => carregando(e.currentTarget, "Salvando…", async () => {
+      await salvarDescricao(); aviso("Descrição salva.");
+    });
+  };
+
   const salvar = () => E.r && api(`/api/roteiros/${encodeURIComponent(E.r.nome)}/texto`, { method: "POST", body: { roteiro: E.r.roteiro, titulo: E.titulo } });
   let validar = () => "";
   const ir = (i) => {
@@ -1063,8 +1161,26 @@ async function trabalho() {
   ir(0);
 }
 
+// A conferência do tempo (pedido do usuário em 2026-11-01: "tem que conferir e colocar algo que sempre confira o
+// resultado"). O ritmo é o da voz, medido nos vídeos entregues — não as 150 palavras por minuto da conta padrão, que
+// mostravam "17 minutos de narração" num roteiro que ia dar 30.
+function conferenciaRoteiro(r, palavras) {
+  const c = r.conferencia || {}, ppm = c.ppm || (r.ritmo || {}).ppm || 150;
+  const previsto = palavras / ppm, pedido = +r.minutos || 0, margem = c.margem || 1;
+  const min = (x) => x.toFixed(1).replace(".", ",");
+  const conta = `${palavras.toLocaleString("pt-BR")} palavras · ${min(previsto)} min de narração (${ppm} palavras por minuto)`;
+  if (!pedido) return { conta, classe: "", recado: "" };
+  const erro = previsto - pedido, dentro = Math.abs(erro) <= margem;
+  return { conta, classe: dentro ? "dentro" : "fora",
+    recado: dentro ? `✓ Dentro da margem: você pediu ${pedido} min e o roteiro dá ${min(previsto)} min.`
+      : `⚠ Fora da margem de ${min(margem)} min: você pediu ${pedido} min e o roteiro dá ${min(previsto)} min `
+        + `(${erro > 0 ? "+" : ""}${min(erro)} min). ${erro > 0 ? "Corte" : "Acrescente"} umas `
+        + `${Math.abs(Math.round(erro * ppm)).toLocaleString("pt-BR")} palavras.` };
+}
+
 function editorRoteiro(caixa, r, fab) {
-  const minutos = (texto) => Math.max(1, Math.round(texto.split(/\s+/).filter(Boolean).length / 150));
+  const conf = (texto) => conferenciaRoteiro(r, texto.split(/\s+/).filter(Boolean).length);
+  const inicial = conf(r.roteiro);
   caixa.innerHTML = `
     <div class="passo"><h2><span class="n">2</span>O roteiro</h2>
       <input id="e-titulo" value="${esc(r.titulo)}" title="Título que vai para a fábrica">
@@ -1072,8 +1188,9 @@ function editorRoteiro(caixa, r, fab) {
         <div style="display:grid;gap:8px;flex:none"><span class="sub">Thumbnail do vídeo de referência</span>
         <a class="botao sec" href="${esc(r.thumbnail_url)}?baixar=1">Baixar thumbnail</a><button class="botao sec" id="e-copiar-thumb">Copiar imagem</button></div></div>` : ""}
       <textarea class="roteiro" id="e-texto">${esc(r.roteiro)}</textarea>
-      <div class="linha"><span class="sub" id="e-conta">${r.roteiro.split(/\s+/).filter(Boolean).length} palavras · uns ${minutos(r.roteiro)} minutos de narração</span>
+      <div class="linha"><span class="sub" id="e-conta">${inicial.conta}</span>
         <button class="botao sec" id="e-copiar">Copiar o roteiro</button><button class="botao sec" id="e-salvar">Salvar alterações</button></div>
+      <p class="conferencia ${inicial.classe}" id="e-conferencia">${inicial.recado}</p>
     </div>
     <div class="passo"><h2><span class="n">3</span>Enviar para a fábrica</h2>
       ${fab.conectada ? `<p class="sub" style="margin:0">Cria o projeto na fábrica com este roteiro e este título. <b>Não gasta nada</b>: narrar e gerar as imagens continuam pedindo a sua confirmação lá.</p>
@@ -1083,7 +1200,12 @@ function editorRoteiro(caixa, r, fab) {
         : '<p class="sub">A fábrica não está nesta pasta: o Radar precisa estar dentro da pasta da fábrica para enviar.</p>'}
     </div>`;
   const $ = (id) => document.getElementById(id);
-  $("e-texto").oninput = () => { const t = $("e-texto").value; $("e-conta").textContent = `${t.split(/\s+/).filter(Boolean).length} palavras · uns ${minutos(t)} minutos de narração`; };
+  $("e-texto").oninput = () => {
+    const c = conf($("e-texto").value);
+    $("e-conta").textContent = c.conta;
+    $("e-conferencia").textContent = c.recado;
+    $("e-conferencia").className = `conferencia ${c.classe}`;
+  };
   $("e-copiar").onclick = (e) => { navigator.clipboard.writeText($("e-texto").value); e.target.textContent = "Copiado ✓"; };
   const salvar = () => api(`/api/roteiros/${encodeURIComponent(r.nome)}/texto`, { method: "POST", body: { roteiro: $("e-texto").value, titulo: $("e-titulo").value } });
   $("e-salvar").onclick = (e) => carregando(e.currentTarget, "Salvando…", async () => { await salvar(); aviso("Roteiro salvo."); });
@@ -1145,12 +1267,17 @@ async function aplicarProducao(canalId, caixa, campos) {
 }
 
 const bandeiraImg = (c) => `<img src="https://flagcdn.com/w40/${c}.png" alt="" style="width:28px;height:20px;object-fit:cover;border-radius:3px">`;
+// as línguas além das três de sempre que as vozes da GenAI Pro falam (o fabrica_api.IDIOMA tem os códigos)
+const OUTRAS_LINGUAS_GENAIPRO = ["francês", "alemão", "italiano", "holandês", "polonês", "russo", "ucraniano", "turco",
+  "árabe", "hindi", "tâmil", "japonês", "chinês", "coreano", "indonésio", "malaio", "filipino", "vietnamita", "sueco",
+  "dinamarquês", "norueguês", "finlandês", "grego", "tcheco", "eslovaco", "húngaro", "romeno", "búlgaro", "croata"];
 // a produção do canal: na primeira vez, uma pergunta por vez (língua, voz, agente de roteiro, tempo); depois, uma
 // linha simples com o "editar". Pedidos do usuário em 2026-10-15: "uma pergunta por vez, só na primeira vez"; "maior";
 // "conectar a fábrica para já aparecer as vozes e dar para testar antes de escolher"; "adicionar o agente na terceira
 // pergunta, além do tempo dos vídeos".
 async function formProducao(caixa, canalId, depois = () => {}, perguntarDeNovo = false) {
-  let [p, { projetos }] = await Promise.all([api(`/api/producao/${encodeURIComponent(canalId)}`), api("/api/projetos")]);
+  let [p, { projetos: todos }] = await Promise.all([api(`/api/producao/${encodeURIComponent(canalId)}`), api("/api/projetos")]);
+  let projetos = todos.filter((x) => (x.tipo || "roteiro") === "roteiro");
   const escolha = { lingua: p.lingua, perfil: p.perfil, projeto_roteiro_id: String(p.projeto_roteiro_id || ""), minutos: String(p.minutos || 8) };
   let tocando = null, botaoTocando = null;
   const parar = () => { if (tocando) { tocando.pause(); tocando = null; } if (botaoTocando) { botaoTocando.textContent = "▶"; botaoTocando = null; } };
@@ -1172,38 +1299,58 @@ async function formProducao(caixa, canalId, depois = () => {}, perguntarDeNovo =
     // 1. a língua
     () => {
       caixa.innerHTML = moldura(0, `<h3>Em que língua são os vídeos deste canal?</h3>` + cartoes([
-        ["português", bandeiraImg("br"), "Português"], ["inglês", bandeiraImg("us"), "Inglês"], ["espanhol", bandeiraImg("es"), "Espanhol"]], "lingua"));
+        ["português", bandeiraImg("br"), "Português"], ["inglês", bandeiraImg("us"), "Inglês"], ["espanhol", bandeiraImg("es"), "Espanhol"]], "lingua")
+        + `<label class="linha">Outra língua das vozes da GenAI Pro: <select id="pg-outra"><option value="">Escolher…</option>
+          ${OUTRAS_LINGUAS_GENAIPRO.map((l) => `<option ${l === escolha.lingua ? "selected" : ""}>${esc(l)}</option>`).join("")}</select></label>`);
       opcoes(null, "lingua", () => perguntas[1]());
+      caixa.querySelector("#pg-outra").onchange = (e) => { if (e.target.value) { escolha.lingua = e.target.value; perguntas[1](); } };
     },
     // 2. a voz, da biblioteca da fábrica, com a prévia
     async (busca = "", genero = "") => {
       caixa.innerHTML = moldura(1, `<h3>Qual voz narra os vídeos?</h3>
-        <p class="sub">As vozes grátis da fábrica (VoiceStudio e voicebox), as que falam ${esc(escolha.lingua)} de nascença primeiro. Aperte ▶ para ouvir antes de escolher; a primeira prévia liga o motor de voz e pode levar até 2 minutos.${p.voz ? ` Voz de agora: <b>${esc(p.voz)}</b>.` : ""}</p>
+        <div class="linha voz-origem">${[["local", "Grátis da fábrica"], ["genaipro", "GenAI Pro (paga)"]].map(([o, nome]) => `<button class="botao ${(escolha.origem || "local") === o ? "" : "sec"}" data-origem="${o}">${nome}</button>`).join("")}</div>
+        <p class="sub">${(escolha.origem || "local") === "genaipro"
+          ? `As vozes da GenAI Pro que falam ${esc(escolha.lingua)}. A narração gasta créditos da GenAI Pro (precisa da assinatura ativa no computador da fábrica). Aperte ▶ para ouvir antes de escolher.`
+          : `As vozes grátis da fábrica (VoiceStudio e voicebox), as que falam ${esc(escolha.lingua)} de nascença primeiro. Aperte ▶ para ouvir antes de escolher; a primeira prévia liga o motor de voz e pode levar até 2 minutos.`}${p.voz ? ` Voz de agora: <b>${esc(p.voz)}</b>.` : ""}</p>
         <div class="linha voz-filtros"><input id="vz-busca" placeholder="Procurar voz (ex.: Lucas, kokoro, low pitch, british)" value="${esc(busca)}">
           <select id="vz-genero"><option value="">Homem e mulher</option><option value="male" ${genero === "male" ? "selected" : ""}>Homem</option><option value="female" ${genero === "female" ? "selected" : ""}>Mulher</option></select>
           <button class="botao sec" id="vz-procurar">Procurar</button>${p.voz ? '<button class="botao sec" id="vz-manter">Manter a voz de agora</button>' : ""}</div>
         <div class="vozes-lista" id="vz-lista"><div class="vazio">Buscando as vozes na fábrica…</div></div>
         <small class="sub" id="vz-total"></small>`);
       ligarVoltar(1);
+      caixa.querySelectorAll("[data-origem]").forEach((b) => (b.onclick = () => { parar(); escolha.origem = b.dataset.origem; perguntas[1](); }));
       const procurar = () => perguntas[1](caixa.querySelector("#vz-busca").value.trim(), caixa.querySelector("#vz-genero").value);
       caixa.querySelector("#vz-procurar").onclick = procurar;
       caixa.querySelector("#vz-busca").onkeydown = (e) => { if (e.key === "Enter") procurar(); };
       const manter = caixa.querySelector("#vz-manter");
       if (manter) manter.onclick = () => { parar(); perguntas[2](); };
-      let r;
-      try { r = await api("/api/fabrica/vozes?" + consulta({ lingua: escolha.lingua, busca, genero })); }
-      catch (e) { caixa.querySelector("#vz-lista").innerHTML = `<div class="vazio">${esc(e.message)}</div>`; return; }
+      // a fábrica manda umas 60 vozes por vez, só da língua do canal; "Mais vozes" pede a página seguinte
+      const vozes = [];
+      let pagina = 0, r;
+      const carregar = async () => {
+        try { r = await api("/api/fabrica/vozes?" + consulta({ lingua: escolha.lingua, busca, genero, pagina, origem: escolha.origem || "local" })); }
+        catch (e) { caixa.querySelector("#vz-lista").innerHTML = `<div class="vazio">${esc(e.message)}</div>`; return; }
+        const conhecidas = new Set(vozes.map((v) => v.voice_id));
+        vozes.push(...(r.vozes || []).filter((v) => !conhecidas.has(v.voice_id)));
+        desenhar();
+      };
+      const desenhar = () => {
       const lista = caixa.querySelector("#vz-lista");
       if (!lista) return;
+      const rolagem = lista.scrollTop;
       const total = caixa.querySelector("#vz-total");
-      if (total && r.total > r.vozes.length) total.textContent = `Mostrando ${r.vozes.length} de ${r.total} vozes. Procure por nome, motor (kokoro, qwen, omnivoice) ou jeito da voz para ver as outras.`;
-      lista.innerHTML = r.erro ? `<div class="vazio">${esc(r.erro)}</div>` : r.vozes.map((v, k) => `<div class="voz-cartao">
+      if (total) total.textContent = r.total > vozes.length ? `Mostrando ${vozes.length} de ${r.total} vozes. Procure por nome, motor (kokoro, qwen, omnivoice) ou jeito da voz para ver as outras.` : "";
+      lista.innerHTML = r.erro && !vozes.length ? `<div class="vazio">${esc(r.erro)}</div>` : (vozes.map((v, k) => `<div class="voz-cartao">
           <button class="voz-ouvir" data-k="${k}" title="Ouvir">▶</button>
           <div class="voz-info"><b>${esc(v.nome)}</b><small>${esc([v.genero, v.idade, v.sotaque].filter(Boolean).join(" · "))}</small>
             <p>${esc((v.descricao || "").slice(0, 140))}${(v.descricao || "").length > 140 ? "…" : ""}</p></div>
-          <button class="botao" data-escolher="${k}">Escolher</button></div>`).join("") || '<div class="vazio">Nenhuma voz achada. Tente outra busca.</div>';
+          <button class="botao" data-escolher="${k}">Escolher</button></div>`).join("") || '<div class="vazio">Nenhuma voz achada. Tente outra busca.</div>')
+        + (r.tem_mais ? `<button class="botao sec" id="vz-mais">Mais vozes (${vozes.length} até agora)</button>` : "");
+      lista.scrollTop = rolagem;
+      const mais = lista.querySelector("#vz-mais");
+      if (mais) mais.onclick = () => carregando(mais, "Buscando mais vozes…", async () => { pagina += 1; await carregar(); });
       lista.querySelectorAll(".voz-ouvir").forEach((b) => (b.onclick = () => {
-        const v = r.vozes[+b.dataset.k];
+        const v = vozes[+b.dataset.k];
         const mesmo = botaoTocando === b; parar();
         if (mesmo || !v.previa) return;
         // a fábrica gera a prévia na hora (a primeira liga o motor de voz): "…" até começar a tocar
@@ -1215,25 +1362,37 @@ async function formProducao(caixa, canalId, depois = () => {}, perguntarDeNovo =
       }));
       lista.querySelectorAll("[data-escolher]").forEach((b) => (b.onclick = () => carregando(b, "Criando o canal na fábrica…", async () => {
         parar();
-        const v = r.vozes[+b.dataset.escolher];
-        const novo = await api(`/api/producao/${encodeURIComponent(canalId)}/voz`, { method: "POST", body: { voice_id: v.voice_id, nome: v.nome, idioma: v.idioma } });
+        const v = vozes[+b.dataset.escolher];
+        const novo = await api(`/api/producao/${encodeURIComponent(canalId)}/voz`, { method: "POST", body: { voice_id: v.voice_id, nome: v.nome, idioma: v.idioma, provedor: v.provedor || escolha.origem || "local" } });
         p = { ...p, ...novo }; escolha.perfil = novo.perfil;
         aviso(`Voz ${v.nome} guardada no canal (na fábrica: ${novo.perfil}).`);
         perguntas[2]();
       })));
+      };
+      await carregar();
     },
     // 3. o agente de roteiro, com a opção de criar um novo ali mesmo
     () => {
       caixa.innerHTML = moldura(2, `<h3>Qual agente de roteiro escreve para este canal?</h3>
         <p class="sub">O agente guarda o jeito de escrever: tom, público, como abrir e fechar.</p>` + cartoes([
-          ["", "✍️", "Agente padrão", "o Claude no jeito padrão"], ...projetos.map((x) => [String(x.id), "✍️", x.nome, x.instrucoes.slice(0, 80)]),
+          ["", "✍️", "Agente padrão", "o Claude no jeito padrão"], ...projetos.map((x) => [String(x.id), x.claude_uuid ? "🔗" : "✍️", x.nome,
+            x.claude_uuid ? `projeto ${x.claude_nome} do claude.ai${x.arquivos ? ` · ${x.arquivos} arquivos` : ""}` : x.instrucoes.slice(0, 80)]),
         ], "projeto_roteiro_id") + `
-        <button class="opcao opcao-nova" id="ag-novo"><span class="ic">＋</span><b>Criar um agente novo</b><small>cole as instruções de um projeto do claude.ai</small></button>
+        <p class="sub">🔗 Os seus projetos do claude.ai viram agentes sozinhos: a extensão lê as instruções e os arquivos de cada um e atualiza o agente quando você muda lá (ao abrir o Chrome, a cada meia hora e ao abrir o claude.ai).</p>
+        <button class="opcao opcao-nova" id="ag-sincronizar"><span class="ic">🔗</span><b>Atualizar do claude.ai agora</b><small>lê os seus projetos de novo</small></button>
+        <button class="opcao opcao-nova" id="ag-novo"><span class="ic">＋</span><b>Criar um agente novo</b><small>sem projeto no claude.ai: cole as instruções aqui</small></button>
         <div class="agente-novo" id="ag-form" hidden><input id="ag-nome" placeholder="Nome do agente (ex.: canal de animais em inglês)">
           <textarea id="ag-instr" rows="7" placeholder="Instruções: tom de voz, público, estrutura, como abrir e fechar, o que evitar…"></textarea>
           <button class="botao" id="ag-salvar">Salvar o agente e usar neste canal</button></div>`);
       ligarVoltar(2);
       opcoes(null, "projeto_roteiro_id", () => perguntas[3]());
+      caixa.querySelector("#ag-sincronizar").onclick = (e) => carregando(e.currentTarget, "Lendo o claude.ai…", async () => {
+        try {
+          const d = await sincronizarClaude();
+          projetos = (await api("/api/projetos")).projetos.filter((x) => (x.tipo || "roteiro") === "roteiro");
+          aviso(resumoDaSincronizacao(d)); perguntas[2]();
+        } catch (erro) { aviso(porque(erro)); }
+      });
       caixa.querySelector("#ag-novo").onclick = () => { caixa.querySelector("#ag-form").hidden = false; caixa.querySelector("#ag-nome").focus(); };
       caixa.querySelector("#ag-salvar").onclick = (e) => carregando(e.currentTarget, "Salvando…", async () => {
         const { id } = await api("/api/projetos", { method: "POST", body: { nome: caixa.querySelector("#ag-nome").value, instrucoes: caixa.querySelector("#ag-instr").value } });
@@ -1262,7 +1421,8 @@ async function formProducao(caixa, canalId, depois = () => {}, perguntarDeNovo =
       <p class="sub">O agente guarda o jeito de escrever do canal: tom, público, como abrir e fechar, o que evitar. Vale para os próximos roteiros${a.id ? " de todos os canais que usam este agente" : ""}.</p>
       <label class="campo"><span>Nome</span><input id="ag-nome" value="${esc(a.nome)}" placeholder="Ex.: canal de animais em português"></label>
       <label class="campo"><span>Ideal para (opcional)</span><input id="ag-ideal" value="${esc(a.ideal_para || "")}" placeholder="Ex.: modelar um vídeo que foi muito bem num canal de outro país"></label>
-      <label class="campo"><span>Instruções</span><textarea id="ag-instr" rows="12" placeholder="Cole aqui as instruções (de um projeto do claude.ai, por exemplo)">${esc(a.instrucoes)}</textarea></label>
+      ${a.claude_uuid ? `<p class="sub">${ligadoAoClaude(a)}. As instruções e os arquivos vêm de lá: para mudar, mude o projeto no claude.ai.</p>` : ""}
+      <label class="campo"><span>Instruções</span><textarea id="ag-instr" rows="12" ${a.claude_uuid ? "readonly" : ""} placeholder="Cole aqui as instruções (de um projeto do claude.ai, por exemplo)">${esc(a.instrucoes)}</textarea></label>
       <div class="linha"><button class="botao" id="ag-salvar">Salvar o agente</button><button class="botao sec" id="ag-cancelar">Cancelar</button></div></div>`;
     caixa.querySelector("#ag-cancelar").onclick = () => resumo();
     caixa.querySelector("#ag-salvar").onclick = (e) => carregando(e.currentTarget, "Salvando…", async () => {
@@ -1284,12 +1444,62 @@ async function formProducao(caixa, canalId, depois = () => {}, perguntarDeNovo =
         <div><span class="ic">🎙</span><small>Voz</small><b>${esc(p.voz || p.perfil || "sem voz")}</b></div>
         <div><span class="ic">✍️</span><small>Agente de roteiro</small><b>${esc(agenteDe(p.projeto_roteiro_id))}</b>
           <button class="link-editar" id="pc-editar-agente" style="margin:4px 0 0">${p.projeto_roteiro_id ? "editar o agente" : "criar um agente"}</button></div>
-        <div><span class="ic">⏱</span><small>Tempo dos vídeos</small><b>${esc(p.minutos)} minutos</b></div></div></div>`;
+        <div><span class="ic">⏱</span><small>Tempo dos vídeos</small><b>${esc(p.minutos)} minutos</b></div>
+        <div><span class="ic">🖼</span><small>Quem gera as imagens de IA</small>
+          <select id="pc-imagens" class="pc-imagens">${Object.entries(p.imagens_quem || { api: "Chave de API" })
+            .map(([v, nome]) => `<option value="${esc(v)}" ${((p.imagens || {}).quem || "api") === v ? "selected" : ""}>${esc(nome)}</option>`).join("")}</select>
+          <small id="pc-imagens-sub" class="pc-imagens-sub">${esc(textoDaAssinatura(p))}</small></div></div></div>`;
     caixa.querySelector("#pc-editar").onclick = () => perguntas[0]();
     caixa.querySelector("#pc-editar-agente").onclick = () => editarAgente();
+    const quem = caixa.querySelector("#pc-imagens");
+    quem.onchange = async () => {
+      const antes = (p.imagens || {}).quem || "api";
+      try {
+        const novo = await api(`/api/producao/${encodeURIComponent(canalId)}`, { method: "POST", body: { ...p, imagens_quem: quem.value } });
+        p.imagens = novo.imagens;
+        aviso(quem.value === "assinatura"
+          ? "As imagens deste canal passam a sair pela assinatura do ChatGPT. Não gasta crédito: gasta o limite dela."
+          : "As imagens deste canal voltam a sair pela chave de API da fábrica.");
+        resumo();
+      } catch (e) { aviso(porque(e)); quem.value = antes; }
+    };
+    // a conta ligada e quanto já foi usado chegam depois, sem segurar a tela
+    if (((p.imagens || {}).quem || "api") === "assinatura") {
+      assinaturaDoChatGPT().then((a) => {
+        const alvo = caixa.querySelector("#pc-imagens-sub");
+        if (alvo) alvo.textContent = textoDaAssinatura(p, a);
+      });
+    }
   };
   p.salvo && !perguntarDeNovo ? resumo() : perguntas[0]();
   return p;
+}
+
+// A assinatura do ChatGPT que gera as imagens de IA (2026-11-01, no formato do Robô do Dotti): quem tem o login é a
+// fábrica (`codex login` no computador dela), o Radar só mostra de quem é a conta e quanto já foi usado do limite.
+let _assinatura = null;
+async function assinaturaDoChatGPT(recarregar = false) {
+  if (!_assinatura || recarregar) _assinatura = api("/api/chatgpt/estado").catch((e) => ({ conectada: false, motivo: e.message }));
+  return _assinatura;
+}
+
+function usoDaJanela(a, chave) {
+  const j = ((a || {}).janelas || {})[chave];
+  return j && typeof j.usado_pct === "number" ? `${j.usado_pct}% usado` : "—";
+}
+
+function textoDaAssinatura(p, a) {
+  if (((p.imagens || {}).quem || "api") !== "assinatura")
+    return "A fábrica gera pela chave de API de sempre (OpenRouter, Google ou Kie), e cada imagem custa. "
+      + "Pela assinatura do ChatGPT não custa nada por imagem: gasta o limite dela.";
+  const reserva = (p.imagens || {}).reserva || "openrouter";
+  if (!a) return "Pela conta ChatGPT ligada à fábrica. Não custa por imagem: gasta o limite dela.";
+  if (!a.conectada)
+    return a.fabrica_ligada === false
+      ? "A fábrica está desligada, então não dá para conferir a conta do ChatGPT agora."
+      : `Sem login do ChatGPT na fábrica: conecte uma conta em Integrações. Até lá as imagens saem pelo ${reserva}.`;
+  return `${a.email || "conta ligada"} · ${a.plano || "ChatGPT"}. Janela de 5 horas: ${usoDaJanela(a, "janela")} · `
+    + `Semana: ${usoDaJanela(a, "semana")}. Se o limite acabar no meio de um vídeo, as imagens que faltam saem pelo ${reserva}.`;
 }
 
 // O ChatGPT e o Gemini não deixam ser abertos dentro de outro site (bloqueiam o iframe). A lateral é uma janela do
@@ -1513,23 +1723,9 @@ async function painelCanal(caixa, canalId) {
 // deste vídeo (pedido do usuário em 2026-10-22: "mais padronizado, só mudando para o tema do vídeo, sem spoilers")
 async function modeloDaDescricao(caixa, canalId) {
   const p = await api(`/api/producao/${encodeURIComponent(canalId)}`);
-  const telas = p.telas_finais || { melhor: "Vídeo (melhor para o espectador) + inscrever-se" };
   const tipos = p.tipos_de_modelo || { geral: "Geral" };
   const padroes = p.rodapes_padrao || {};
-  caixa.innerHTML = `<h3>📤 Publicação</h3>
-    <p class="sub">Esta tela <b>não publica nada</b>. Ela guarda as escolhas que você faria à mão em todo vídeo deste
-      canal, e a extensão do Radar repete sozinha na tela de enviar vídeo do YouTube Studio: liga a monetização e
-      espalha os anúncios, escolhe a tela final, marca o uso de IA e preenche título, descrição e tags do vídeo que
-      a fábrica entregou. <b>Quem aperta Publicar continua sendo você</b> — a extensão para antes disso.</p>
-    <div class="linha">
-      <label class="campo"><span>Anúncio no meio do vídeo, a cada</span>
-        <div class="par"><input id="pb-anuncio" type="number" min="1" max="60" value="${+p.anuncio_cada || 1}"> <span>minutos</span></div></label>
-      <label class="campo"><span>Tela final</span><select id="pb-tela">${Object.entries(telas).map(([v, nome]) =>
-        `<option value="${esc(v)}" ${(p.tela_final || "melhor") === v ? "selected" : ""}>${esc(nome)}</option>`).join("")}</select></label>
-    </div>
-    <p class="sub">O uso de IA vai marcado como <b>Sim</b> em todo vídeo: os da fábrica são feitos com IA.</p>
-
-    <h3>🧾 Rodapé da descrição</h3>
+  caixa.innerHTML = `<h3>🧾 Rodapé da descrição</h3>
     <p class="sub">A apresentação do canal e o aviso legal, iguais em todo vídeo. <b>Quem escreve a descrição é a
       fábrica</b>: ela põe o resumo do vídeo, os capítulos e, no fim, este texto. Então o vídeo já sai do projeto
       com a descrição pronta — a extensão só cola. A lista de onde vêm as imagens <b>não entra mais na descrição</b>
@@ -1552,9 +1748,7 @@ async function modeloDaDescricao(caixa, canalId) {
   caixa.querySelector("#md-salvar").onclick = (e) => carregando(e.currentTarget, "Salvando…", async () => {
     await api(`/api/producao/${encodeURIComponent(canalId)}`, { method: "POST",
       body: { ...p, marcas: caixa.querySelector("#md-marcas").value.trim(),
-        modelo_tipo: caixa.querySelector("#md-tipo").value, rodape: caixa.querySelector("#md-texto").value,
-        anuncio_cada: +caixa.querySelector("#pb-anuncio").value || 1,
-        tela_final: caixa.querySelector("#pb-tela").value } });
+        modelo_tipo: caixa.querySelector("#md-tipo").value, rodape: caixa.querySelector("#md-texto").value } });
     aviso("Salvo no perfil da fábrica. Os próximos vídeos deste canal já saem com este rodapé.");
   });
 }
@@ -1600,7 +1794,7 @@ function explicarAjusteTempo(ritmo, minutos) {
       <p>${n(ex.palavras)} palavras viraram ${min(ex.entregue_min)} minutos: esta voz fala <b>${ex.ppm} palavras por minuto</b>, e não as ${ritmo.padrao} da conta padrão.</p></div>` : ""}
     <div class="mt-conta"><div><small>Antes</small><b>${n(antes)}</b><span>palavras para ${minutos} min</span></div><div class="seta">→</div>
       <div class="agora"><small>Agora</small><b>${n(agora)}</b><span>palavras para ${minutos} min</span></div></div>
-    ${(ritmo.ultimos || []).length ? `<div class="mt-lista"><small>O que deu em cada vídeo (a margem é ${String((ritmo.acerto || {}).margem || 1.5).replace(".", ",")} min)</small>
+    ${(ritmo.ultimos || []).length ? `<div class="mt-lista"><small>O que deu em cada vídeo (a margem é ${String((ritmo.acerto || {}).margem || 1).replace(".", ",")} min)</small>
       ${ritmo.ultimos.map((u) => `<div class="mt-linha ${u.dentro ? "dentro" : "fora"}"><span>${esc(u.titulo)}</span>
         <b>${u.pedido_min} → ${min(u.entregue_min)} min</b><i>${u.erro_min > 0 ? "+" : ""}${min(u.erro_min)}</i></div>`).join("")}</div>` : ""}
     <p class="sub">Vale a mediana dos últimos ${ritmo.medidos === 1 ? "vídeo" : `${ritmo.medidos} vídeos`} ${ritmo.de === "lingua" ? "nesta língua" : "desta voz"}, e o número vai se acertando a cada vídeo entregue. Você não precisa fazer nada.</p>
@@ -1940,10 +2134,10 @@ async function resultados() {
       <div class="res-direita"><div class="res-custo">${CUSTOS_VISTOS[p.nome] ? CUSTOS_VISTOS[p.nome].html : '<span class="sub">calculando…</span>'}</div>
         <div class="video-acoes"><button class="botao sec" data-assistir="${esc(p.nome)}">▶ Assistir</button><button class="botao sec" data-pasta="${esc(p.nome)}">📁 Pasta</button></div></div>
     </article>`;
-  const grupos = (filtro ? [filtro] : nomes).map((n) => [n, lista.filter((p) => p.canal === n)])
-    .filter(([n, vs]) => vs.length || filtro);
+  // "Todos" é uma lista só, os mais recentes primeiro: em blocos por canal, o primeiro canal enchia a tela inteira
+  // e parecia que só ele tinha vídeos (pedido do usuário em 2026-11-03)
+  const grupos = filtro ? [[filtro, lista]] : lista.length ? [["", lista]] : [];
   caixa.innerHTML = grupos.map(([canal, vs]) => `<section class="res-grupo" data-canal-alvo="${esc(canal)}">
-      ${filtro ? "" : `<h2>${esc(canal)} <small>${vs.length} ${vs.length === 1 ? "vídeo" : "vídeos"} · <span class="res-tot"></span></small></h2>`}
       <div class="res-linhas">${vs.map(linha).join("") || '<div class="res-vazio">Nenhum vídeo neste canal. Arraste um vídeo para a aba dele.</div>'}</div></section>`).join("")
     || '<div class="vazio">Nenhum vídeo pronto ainda.</div>';
 
@@ -1993,10 +2187,6 @@ async function resultados() {
       <div class="kpi"><span>Publicados</span><b>${lista.filter((p) => p.publicado).length}</b></div>
       <div class="kpi"><span>Gasto total</span><b>${dolar(total)}</b></div>
       <div class="kpi"><span>Custo por minuto</span><b>${dolar(minutos ? total / minutos : 0)}</b></div>`;
-    grupos.forEach(([canal, vs]) => {
-      const el = caixa.querySelector(`[data-canal-alvo="${CSS.escape(canal)}"] .res-tot`);
-      if (el) el.textContent = `${dolar(vs.reduce((s, p) => s + ((CUSTOS_VISTOS[p.nome] || {}).total || 0), 0))} gastos`;
-    });
   };
   resumo();
   for (const p of lista) {
@@ -2650,12 +2840,112 @@ async function integracoes(dados) {
     conta = !y.configurado ? "Login do Google não configurado" : y.conectados.length
       ? `${y.conectados.length === 1 ? "1 canal conectado" : `${y.conectados.length} canais conectados`} ao YouTube Studio` : "Nenhum canal conectado";
   } catch { conta = "—"; }
+  // a assinatura do ChatGPT é uma conta, não uma chave: ela gera as imagens de IA sem custo por imagem, gastando o
+  // limite dela. Quem guarda o login é a fábrica (`codex login` no computador dela)
+  const a = await assinaturaDoChatGPT(true);
+  const barra = (chave, nome) => {
+    const j = ((a.janelas || {})[chave]) || {};
+    const pct = typeof j.usado_pct === "number" ? j.usado_pct : null;
+    const volta = j.volta_em ? ` · volta a 0% ${new Date(j.volta_em * 1000).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}` : "";
+    return `<div class="gpt-janela"><span>${esc(nome)}</span><b>${pct === null ? "—" : `${pct}% usado`}</b>
+      <div class="gpt-barra"><i style="width:${Math.max(0, Math.min(100, pct || 0))}%"></i></div>
+      <small>${pct === null ? "Ainda sem imagem gerada por aqui: o limite aparece depois do primeiro vídeo." : esc(volta.replace(" · ", ""))}</small></div>`;
+  };
+  // a troca de cada canal entre a conexão e a chave de API, aqui mesmo (a mesma da Configuração do canal)
+  const canaisGpt = d.fabrica_ligada ? await api("/api/integracoes/chatgpt/canais").catch(() => []) : [];
+  const soCanais = canaisGpt.filter((c) => c.e_canal), modelos = canaisGpt.filter((c) => !c.e_canal);
+  const nPelaConexao = soCanais.filter((c) => c.quem === "assinatura").length;
+  const linhaGpt = (c) => `<label class="gpt-canal"><span title="${esc(c.perfil)}">${esc(c.canal)}</span>
+      <select class="gpt-quem" data-perfil="${esc(c.perfil)}">
+        <option value="assinatura" ${c.quem === "assinatura" ? "selected" : ""}>Conexão do ChatGPT</option>
+        <option value="api" ${c.quem === "api" ? "selected" : ""}>Chave de API</option></select></label>`;
+  const trocaGpt = !canaisGpt.length ? "" : `<div class="gpt-troca">
+      <div class="gpt-troca-cab"><b>Quem gera as imagens de IA</b>
+        <small>${nPelaConexao} de ${soCanais.length} ${soCanais.length === 1 ? "canal" : "canais"} pela conexão</small>
+        ${soCanais.length ? bt("sec gpt-todos", "Todos pela conexão", 'data-quem="assinatura"') + bt("contorno gpt-todos", "Todos pela chave de API", 'data-quem="api"') : ""}</div>
+      <div class="gpt-canais">${soCanais.map(linhaGpt).join("")}</div>
+      ${modelos.length ? `<details class="ig-limite"><summary>Modelos da fábrica (${modelos.length})</summary>
+        <div class="gpt-canais">${modelos.map(linhaGpt).join("")}</div></details>` : ""}
+    </div>`;
+  // trocar de conta: o Radar abre o login da OpenAI e a conta de antes fica guardada para voltar (chatgpt_conta.py)
+  const contasGpt = await api("/api/integracoes/chatgpt/contas").catch(() => ({ guardadas: [], login: {} }));
+  const loginGpt = contasGpt.login || {};
+  const contaGpt = `<div class="gpt-contas">
+      ${loginGpt.estado === "aguardando"
+        ? `<span class="gpt-aguardando">Esperando você entrar na conta na aba da OpenAI…</span>
+           <a class="botao sec" href="${esc(loginGpt.url || "#")}" target="_blank" rel="noopener">Abrir o login de novo</a>${bt("contorno gpt-cancelar", "Cancelar")}`
+        : bt("sec gpt-conectar", a.conectada ? "Conectar outra conta" : "Conectar uma conta do ChatGPT")}
+      ${loginGpt.estado === "erro" ? `<span class="ig-st erro">${esc(loginGpt.erro || "O login não terminou.")}</span>` : ""}
+      ${(contasGpt.guardadas || []).map((g) => `<span class="gpt-guardada"><span>${esc(g.email)}</span>
+          ${bt("sec gpt-usar", "Usar esta", `data-email="${esc(g.email)}"`)}${bt("contorno gpt-esquecer", "Esquecer", `data-email="${esc(g.email)}"`)}</span>`).join("")}
+    </div>`;
+  const cartaoGpt = `<div class="bloco ig-conta gpt-conta">
+      <div class="gpt-cab"><b>ChatGPT (assinatura)</b>
+        <span class="ig-st ${a.conectada ? "ok" : "erro"}">${a.conectada ? "✓ conectada" : "não conectada"}</span></div>
+      ${contaGpt}
+      ${a.conectada
+        ? `<span>${esc(a.email || "conta ligada")} · ${esc(a.plano || "ChatGPT")}</span>
+           <p class="sub">Escolha abaixo quais canais geram as imagens por esta conexão e quais pela chave de API.
+             Pela conexão <b>nenhuma imagem é cobrada</b>: gasta o limite dela.
+             Se o limite acabar no meio de um vídeo, as imagens que faltam saem pela chave de API da fábrica.</p>
+           <div class="gpt-janelas">${barra("janela", "Janela de 5 horas")}${barra("semana", "Semana")}</div>`
+        : `<span>${esc(a.fabrica_ligada === false ? "A fábrica está desligada: ligue a fábrica para ver a conta."
+                     : a.motivo || "Sem login do ChatGPT no computador da fábrica.")}</span>
+           <p class="sub">Para ligar, clique em <b>Conectar uma conta do ChatGPT</b> e entre com a conta da assinatura.
+             Enquanto isso as imagens de IA saem pela chave de API.</p>`}
+      ${trocaGpt}
+    </div>`;
   tela.innerHTML = titulo("Integrações", "Saldos e chaves dos serviços que o Radar e a fábrica usam.") +
     (d.fabrica_ligada ? "" : '<div class="chamada aviso">A fábrica está desligada: as chaves dela ficam só para ver.</div>') +
     (d.aviso ? `<div class="chamada aviso">${esc(d.aviso)}</div>` : "") +
     `<h2 class="ig-h2">Saldos</h2><div class="ig-saldos">${saldos}</div>
      <h2 class="ig-h2">Chaves de API</h2><div class="ig-grade">${cartoes}</div>
-     <h2 class="ig-h2">Contas</h2><div class="bloco ig-conta"><b>Google / YouTube Studio</b><span>${conta}</span><a href="#/canais">Abrir Canais</a></div>`;
+     <h2 class="ig-h2">Conexões da conta</h2><p class="sub">Autorizações separadas das chaves de API.</p>
+     <div class="ig-contas">${cartaoGpt}
+       <div class="bloco ig-conta"><b>Google / YouTube Studio</b><span>${conta}</span><a href="#/canais">Abrir Canais</a></div></div>`;
+
+  const trocarGpt = async (corpo) => {
+    await api("/api/integracoes/chatgpt/canais", { method: "POST", body: corpo });
+    aviso(corpo.quem === "assinatura"
+      ? "As imagens passam a sair pela conexão do ChatGPT. Não gasta crédito: gasta o limite dela."
+      : "As imagens voltam a sair pela chave de API da fábrica.");
+    integracoes(d);
+  };
+  tela.querySelectorAll(".gpt-quem").forEach((s) => (s.onchange = () =>
+    trocarGpt({ quem: s.value, perfil: s.dataset.perfil }).catch((e) => { aviso(porque(e)); integracoes(d); })));
+  tela.querySelectorAll(".gpt-todos").forEach((b) => (b.onclick = () => carregando(b, "Trocando…", () =>
+    trocarGpt({ quem: b.dataset.quem }))));
+  // o login da OpenAI abre numa aba nova; esta tela confere a cada 2 s até a conta chegar
+  const esperarLogin = () => {
+    const vez = setInterval(async () => {
+      if (!tela.querySelector(".gpt-contas")) return clearInterval(vez);   // saiu da tela
+      const c = await api("/api/integracoes/chatgpt/contas").catch(() => null);
+      if (!c || c.login.estado === "aguardando") return;
+      clearInterval(vez);
+      if (c.login.estado === "pronto") aviso(`A conta ${c.login.email} passa a gerar as imagens da fábrica.`);
+      integracoes(d);
+    }, 2000);
+  };
+  if (loginGpt.estado === "aguardando") esperarLogin();
+  tela.querySelector(".gpt-conectar")?.addEventListener("click", (e) => carregando(e.currentTarget, "Abrindo…", async () => {
+    const aba = window.open("about:blank", "_blank");   // aberta já no clique, senão o navegador bloqueia
+    try {
+      const { url } = await api("/api/integracoes/chatgpt/conectar", { method: "POST", body: {} });
+      if (aba) aba.location = url; else window.open(url, "_blank");
+    } catch (erro) { aba?.close(); throw erro; }
+    integracoes(d);
+  }));
+  tela.querySelector(".gpt-cancelar")?.addEventListener("click", () =>
+    api("/api/integracoes/chatgpt/cancelar", { method: "POST", body: {} }).then(() => integracoes(d)));
+  tela.querySelectorAll(".gpt-usar").forEach((b) => (b.onclick = () => carregando(b, "Trocando…", async () => {
+    await api("/api/integracoes/chatgpt/usar", { method: "POST", body: { email: b.dataset.email } });
+    aviso(`A conta ${b.dataset.email} passa a gerar as imagens da fábrica.`);
+    integracoes(d);
+  })));
+  tela.querySelectorAll(".gpt-esquecer").forEach((b) => (b.onclick = () => carregando(b, "Esquecendo…", async () => {
+    await api("/api/integracoes/chatgpt/esquecer", { method: "POST", body: { email: b.dataset.email } });
+    integracoes(d);
+  })));
 
   const cartao = (el) => el.closest(".ig-cartao");
   const indice = (el) => Number(el.closest(".ig-chave")?.dataset.i ?? -1);
@@ -2768,7 +3058,8 @@ const ATALHOS_MIN = [8, 10, 12, 15, 20, 25, 30];
 async function novaProducao(preset = {}) {
   if (document.getElementById("nova-producao")) return;
   if (!EU?.admin) { aviso("Só a administração cria produções."); return; }
-  const [canais, { projetos: agentes }] = await Promise.all([meusCanais(), api("/api/projetos")]);
+  const [canais, { projetos: todosAgentes }] = await Promise.all([meusCanais(), api("/api/projetos")]);
+  const agentes = todosAgentes.filter((a) => (a.tipo || "roteiro") === "roteiro");
   const lembrado = canais.some((c) => c.id === guardado("np-canal", "")) ? guardado("np-canal", "") : "";
   const N = { passo: 1, titulo: preset.titulo || "", link: preset.link || "", canal: preset.canal || CANAL_ATUAL || lembrado || (canais.length === 1 ? canais[0].id : ""), cfg: null, agente: "",
     lingua: "português", ppm: 150, caracteres: 0, modo: "claude", roteiro: "", nicho: "", obs: "", revisar: false, ref: null, custo: null };
@@ -2777,7 +3068,7 @@ async function novaProducao(preset = {}) {
   const palavras = () => Math.round(N.caracteres / CARACTERES_POR_PALAVRA);
   const nomeCanal = () => (canais.find((c) => c.id === N.canal) || {}).titulo || "";
   const sigla = (t) => t.split(/\s+/).filter(Boolean).slice(0, 2).map((p) => p[0]).join("").toUpperCase();
-  const LINGUAS = ["português", "inglês", "espanhol", "francês", "alemão", "italiano"];
+  const LINGUAS = ["português", "inglês", "espanhol", ...OUTRAS_LINGUAS_GENAIPRO];
 
   document.body.insertAdjacentHTML("beforeend", `<div class="modal-fundo" id="nova-producao"><div class="np" role="dialog" aria-label="Nova produção">
     <header class="np-cab"><h2>Nova produção</h2><button class="np-fechar" title="Fechar (Esc)">×</button></header>
@@ -3005,7 +3296,8 @@ async function painel(abrir) {
   if (abrir !== undefined) { caixa.hidden = !abrir; guardar("painel-aberto", abrir); abas.classList.toggle("com-painel", !!abrir); }
   // o painel abre nos vídeos mandados fazer: o link da referência e a thumbnail para copiar (pedido do usuário em
   // 2026-10-18); as ideias salvas ficam na segunda aba
-  const [d, { roteiros }, { tarefas }] = await Promise.all([api("/api/ideias-salvas"), api("/api/roteiros").catch(() => ({ roteiros: [] })),
+  // a lista leve, sem o texto de cada roteiro: o painel é pedido a cada troca de tela e só mostra título, link e capa
+  const [d, { roteiros }, { tarefas }] = await Promise.all([api("/api/ideias-salvas"), api("/api/roteiros?leve=1").catch(() => ({ roteiros: [] })),
     api("/api/roteiros/tarefas").catch(() => ({ tarefas: [] }))]);
   const escrevendo = tarefas.filter((t) => t.estado === "rodando");
   // a aba na borda direita fica sempre à mão, em qualquer página, para abrir e fechar o painel (pedido do usuário em
@@ -3312,8 +3604,8 @@ function idadeEmPalavras(de, ate) {
 
 // Quatro jeitos de olhar a mesma faixa. Pedido do usuário em 2026-10-25: a curva da vida tinha um desenho só, o
 // de barras, e ele quis escolher. Os quatro saem dos MESMOS números do /api/nichos/vida — nenhum recalcula nada,
-// só mostra de outro jeito. E clicar numa etapa, em qualquer uma das formas, abre os VÍDEOS dela aqui embaixo
-// (antes o clique trocava de tela e levava para a lista de canais; isso virou um botão dentro do bloco).
+// só mostra de outro jeito. E clicar numa etapa, em qualquer uma das formas, abre os CANAIS dela aqui embaixo
+// (em 2026-11-02 deixou de abrir vídeos: a tela é Canais; a lista inteira da etapa é um botão dentro do bloco).
 const FORMAS_VIDA = [["barras", "Barras", "a altura de cada etapa diz quantos canais"],
   ["faixa", "Faixa inteira", "uma régua só: cada etapa com a sua fatia do nicho"],
   ["funil", "Funil", "uma linha por etapa, do começo da vida ao fim"],
@@ -3351,7 +3643,7 @@ function desenhoVida(d, forma, escolhida) {
         <td class="n" style="color:var(--verde)">${e.crescendo || "—"}</td>
         <td class="n">${e.views_mes ? num(e.views_mes) : "—"}</td>
         <td><span class="vida-selo" style="color:${cor(e)};border-color:${cor(e)}">${esc(e.veredito_nome)}</span></td>
-        <td><button class="botao sec" data-etapa="${esc(e.chave)}">ver os vídeos</button></td></tr>`).join("")}</tbody></table>`;
+        <td><button class="botao sec" data-etapa="${esc(e.chave)}">ver os canais</button></td></tr>`).join("")}</tbody></table>`;
   }
   return `<div class="vida">${d.etapas.map((e) => `<button class="vida-et${marcada(e)}" data-etapa="${esc(e.chave)}">
     <span class="vida-barra"><i style="height:${altura(e.canais, topo)}%;background:${cor(e)}"></i></span>
@@ -3362,25 +3654,28 @@ function desenhoVida(d, forma, escolhida) {
     <small class="vida-o-que">${esc(e.o_que)}</small></button>`).join("")}</div>`;
 }
 
-// os vídeos dos canais de uma etapa: a mesma lista da tela Vídeos, recortada pela idade de QUEM POSTA
-async function videosDaEtapa(caixa, f, e, abrirCanais, aoFechar) {
+// os canais de uma etapa: a mesma lista da tela Canais, recortada pela idade de QUEM POSTA. Pedido do usuário
+// em 2026-11-02: aqui é a tela Canais, então o clique numa etapa mostra canais, nunca vídeos (vídeo é da tela Vídeos).
+const POR_ETAPA = 12;
+async function canaisDaEtapa(caixa, f, e, abrirCanais, aoFechar) {
   if (!e) { caixa.innerHTML = ""; return; }
-  caixa.innerHTML = `<div class="vazio">Procurando os vídeos de ${esc(e.nome)}…</div>`;
+  caixa.innerHTML = `<div class="vazio">Procurando os canais de ${esc(e.nome)}…</div>`;
+  const rosto = PREFS && PREFS.sem_rosto ? "sem" : "";
   let d;
   try {
-    d = await api("/api/videos?" + consulta({ etapa: e.chave, nicho: f.nicho, nota_min: 5, tipo: "longo",
-      lingua: "ptenes", ordem: "nota", por: 12, pagina: 0 }));
+    d = await api("/api/radar?" + consulta({ ...paraApi({ ...f, etapa: e.chave, rosto }), pagina: 0, por: POR_ETAPA }));
   } catch (err) { caixa.innerHTML = `<div class="vazio">${esc(porque(err))}</div>`; return; }
   caixa.innerHTML = `<div class="vida-cab vida-videos-cab">
-      <h3>O que estourou nos canais em ${esc(e.nome)}${f.nicho ? ` · ${esc(f.nicho)}` : ""}</h3>
-      <p class="sub">Vídeos que fizeram 5x o normal do próprio canal, em canais que estão postando há
-        ${esc(idadeEmPalavras(e.de, e.ate))}.${d.total ? ` São ${num(d.total)}; aqui estão os ${Math.min(12, d.total)} de maior nota.` : ""}</p>
-      <div class="vida-videos-acoes"><button class="botao sec" id="vida-canais">Ver os canais desta etapa</button>
+      <h3>Os canais em ${esc(e.nome)}${f.nicho ? ` · ${esc(f.nicho)}` : ""}</h3>
+      <p class="sub">Canais que estão postando há ${esc(idadeEmPalavras(e.de, e.ate))}.${d.total
+        ? ` São ${num(d.total)}; aqui estão os ${Math.min(POR_ETAPA, d.total)} primeiros.` : ""}</p>
+      <div class="vida-videos-acoes">${d.total > POR_ETAPA ? `<button class="botao sec" id="vida-canais">Ver todos os ${num(d.total)} na lista</button>` : ""}
         <button class="botao sec" id="vida-fechar">Fechar</button></div></div>
-    <div class="grade-videos grandes">${d.videos.map((v) => cartaoVideoGrande(v)).join("")
-      || '<div class="vazio" style="grid-column:1/-1">Nenhum vídeo desta etapa ainda. O Radar só mostra o que já mediu: garimpe mais canais, ou escolha outra etapa.</div>'}</div>`;
-  ligarRoteiro(caixa);
-  caixa.querySelector("#vida-canais").onclick = () => abrirCanais(e.chave);
+    <div class="lista-canais">${d.canais.map((c) => cartaoCanal(c)).join("")
+      || '<div class="vazio">Nenhum canal nesta etapa ainda. O Radar só mostra o que já mediu: garimpe mais canais, ou escolha outra etapa.</div>'}</div>`;
+  ligarCartoes(caixa);
+  const todos = caixa.querySelector("#vida-canais");
+  if (todos) todos.onclick = () => abrirCanais(e.chave);
   caixa.querySelector("#vida-fechar").onclick = () => { caixa.innerHTML = ""; aoFechar(); };
 }
 
@@ -3397,7 +3692,7 @@ async function visaoVida(caixa, f, abrirCanais, acompanhar) {
         com dono. A média do mês é das views dos vídeos que cada canal publicou nos últimos 30 dias.</p></div>
     <div class="modos modos-forma" id="formas-vida"></div>
     <div id="vida-desenho"></div>
-    <p class="sub">${num(d.canais)} canais nesta conta${d.sem_data ? ` · ${d.sem_data} ficaram de fora (o Radar ainda não sabe quando eles começaram)` : ""}. Clique numa etapa para ver os vídeos dela aqui embaixo.</p>
+    <p class="sub">${num(d.canais)} canais nesta conta${d.sem_data ? ` · ${d.sem_data} ficaram de fora (o Radar ainda não sabe quando eles começaram)` : ""}. Clique numa etapa para ver os canais dela aqui embaixo.</p>
     <div id="vida-videos"></div>`;
   const videos = caixa.querySelector("#vida-videos");
   const pintar = () => {
@@ -3409,14 +3704,14 @@ async function visaoVida(caixa, f, abrirCanais, acompanhar) {
     }));
     caixa.querySelectorAll("[data-etapa]").forEach((b) => (b.onclick = () => {
       f.vida_etapa = b.dataset.etapa; acompanhar(); pintar();
-      videosDaEtapa(videos, f, d.etapas.find((e) => e.chave === f.vida_etapa), abrirCanais,
+      canaisDaEtapa(videos, f, d.etapas.find((e) => e.chave === f.vida_etapa), abrirCanais,
         () => { f.vida_etapa = ""; acompanhar(); pintar(); });
       videos.scrollIntoView({ behavior: "smooth", block: "start" });
     }));
   };
   pintar();
   if (f.vida_etapa) {
-    videosDaEtapa(videos, f, d.etapas.find((e) => e.chave === f.vida_etapa), abrirCanais,
+    canaisDaEtapa(videos, f, d.etapas.find((e) => e.chave === f.vida_etapa), abrirCanais,
       () => { f.vida_etapa = ""; acompanhar(); pintar(); });
   }
 }
@@ -4281,17 +4576,43 @@ async function quadroCota() {
   const botao = !EU.admin ? "" : c.garimpando
     ? `<button class="botao" disabled>Garimpando…${c.orcamento ? ` ${num(c.gasto)} de ${num(c.orcamento)}` : ""}</button>`
     : `<button class="botao" id="gastar-tudo" ${c.livre < 110 ? "disabled" : ""} data-dica="Usa toda a cota do YouTube que sobrou hoje para achar canais novos e vídeos que estouraram. Bom de apertar antes de desligar o PC: a cota volta às 5 h e o que não for usado se perde.">⚡ Gastar tudo agora</button>`;
-  // o garimpo automático roda 23 h depois do último, se o Radar estiver ligado
-  const proximo = c.ultimo_garimpo ? new Date(Date.parse(c.ultimo_garimpo) + 23 * 36e5) : null;
-  const quando = !proximo || proximo < new Date() ? "na próxima hora"
-    : (proximo.toDateString() === new Date().toDateString() ? "hoje" : "amanhã") + ` às ${proximo.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}`;
+  // o garimpo fica rodando enquanto a fatia do dia aguentar: recomeça 10 min depois do anterior
+  const fatia = c.fatia || { teto: 0, gasto: 0, resta: 0 };
+  const quando = !c.garimpo_ligado ? "desligado"
+    : c.garimpando ? "rodando agora"
+    : fatia.resta < 110 ? "a parte de hoje acabou"
+    : "daqui a alguns minutos";
+  // os dois ajustes só aparecem para o admin, que é quem pode mexer na cota
+  const ajuste = !EU.admin ? "" : `<div class="garimpo-ajuste">
+    <label class="liga" data-dica="Desligado, o Radar para de garimpar sozinho e não gasta mais nada da cota. O botão Gastar tudo agora continua funcionando.">
+      <input type="checkbox" id="garimpo-ligado" ${c.garimpo_ligado ? "checked" : ""}> Pode gastar</label>
+    <label class="pct" data-dica="Quanto da cota do dia inteiro o garimpo pode usar. O resto fica para a extensão e para as buscas que você faz nas telas.">
+      Até <input type="number" id="garimpo-pct" min="1" max="100" step="5" value="${c.garimpo_percentual}">% do dia</label>
+    <span class="sub">${num(fatia.gasto)} de ${num(fatia.teto)} usados${fatia.resta < 110 && c.garimpo_ligado ? " — acabou por hoje" : ""}</span>
+  </div>`;
   caixa.innerHTML = `<div class="quadro-cota"><b>Créditos do YouTube</b>
     <div class="barra-cota"><i style="width:${pct}%"></i></div>
     <span class="sub"><b>${num(c.livre)}</b> livres de ${num(c.total)}</span>
-    <span class="sub auto-garimpo" data-dica="Todo dia, sozinho, o Radar procura canais novos e mede de novo os seus com 60% da cota livre. Só roda com o Radar ligado: com o PC desligado ele não roda e não recupera o dia. O próximo é 23 h depois do último. A cota volta às 5 h e o que sobrar se perde; por isso o Gastar tudo antes de desligar.">🕑 Garimpo automático: ${c.garimpando ? "rodando agora" : quando} <u>?</u></span>${botao}</div>`;
+    <span class="sub auto-garimpo" data-dica="O Radar fica procurando canais novos e medindo de novo os seus, recomeçando alguns minutos depois de cada rodada, até gastar a parte da cota que você deixou para ele. Só roda com o Radar ligado: com o PC desligado ele para. A cota volta às 5 h e o que sobrar se perde; por isso o Gastar tudo antes de desligar.">🕑 Garimpo automático: ${quando} <u>?</u></span>${ajuste}${botao}</div>`;
   const b = document.getElementById("gastar-tudo");
   if (b) b.onclick = () => janelaGastar(c);
+  const liga = document.getElementById("garimpo-ligado");
+  if (liga) liga.onchange = () => mudarGarimpo({ ligado: liga.checked });
+  const campo = document.getElementById("garimpo-pct");
+  // onchange (não oninput): só grava quando a pessoa termina de digitar ou sai do campo
+  if (campo) campo.onchange = () => mudarGarimpo({ percentual: Number(campo.value) });
   relogioCota = setTimeout(quadroCota, c.garimpando ? 5000 : 60000);
+}
+
+async function mudarGarimpo(mudanca) {
+  clearTimeout(relogioCota);            // o relógio não pode redesenhar o quadro por cima da resposta
+  try {
+    const r = await api("/api/cota/garimpo", { method: "POST", body: mudanca });
+    aviso(r.ligado ? `Garimpo ligado, com até ${r.percentual}% da cota do dia.` : "Garimpo automático desligado.");
+  } catch {
+    aviso("Não deu para mudar o garimpo agora.");
+  }
+  quadroCota();
 }
 
 // a janela no meio da tela para ter certeza antes de gastar a cota
@@ -4383,10 +4704,40 @@ try {
   }
 } catch {}
 
+// a letra que fica legível em cima de uma cor: preto ou branco, pelo contraste da WCAG. O acento é escolhido
+// pelo usuário, então não dá para fixar #fff no CSS — no marrom padrão o branco dá 3,5:1 e no laranja 2,1:1.
+function luminanciaRelativa(cor) {
+  const t = String(cor).trim().replace(/^#/, "");
+  const h = t.length === 3 ? t.replace(/./g, (c) => c + c) : t;
+  if (!/^[0-9a-f]{6}$/i.test(h)) return null;
+  const n = parseInt(h, 16);
+  const canal = (c) => { c /= 255; return c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4); };
+  return 0.2126 * canal(n >> 16 & 255) + 0.7152 * canal(n >> 8 & 255) + 0.0722 * canal(n & 255);
+}
+
+function contraste(a, b) {
+  const la = luminanciaRelativa(a), lb = luminanciaRelativa(b);
+  if (la === null || lb === null) return 0;
+  return (Math.max(la, lb) + 0.05) / (Math.min(la, lb) + 0.05);
+}
+
+// o preto quente combina melhor com o marrom e o laranja, mas só serve se passar dos 4,5:1. Fora disso cai no
+// branco ou no preto puro — um dos dois sempre passa, porque no pior acento possível o melhor dos dois dá 4,58:1.
+const LETRA_ESCURA = "#16120c";
+function letraLegivelSobre(cor) {
+  if (luminanciaRelativa(cor) === null) return "#fff";
+  const branco = contraste(cor, "#ffffff"), quente = contraste(cor, LETRA_ESCURA), preto = contraste(cor, "#000000");
+  if (branco >= quente && branco >= 4.5) return "#fff";
+  if (quente >= 4.5) return LETRA_ESCURA;
+  return preto >= branco ? "#000" : "#fff";
+}
+
 function aplicarCores() {
   const raiz = document.documentElement;
-  raiz.style.setProperty("--acento", guardado("cor", IDENTIDADE.cor));
-  raiz.style.setProperty("--acento2", guardado("cor", IDENTIDADE.cor));   // sem cor secundária: a mesma cor em tudo
+  const cor = guardado("cor", IDENTIDADE.cor);
+  raiz.style.setProperty("--acento", cor);
+  raiz.style.setProperty("--acento2", cor);   // sem cor secundária: a mesma cor em tudo
+  raiz.style.setProperty("--sobre-acento", letraLegivelSobre(cor));
   raiz.dataset.tema = guardado("tema", IDENTIDADE.tema);
 }
 

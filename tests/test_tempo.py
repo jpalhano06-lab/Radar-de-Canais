@@ -44,7 +44,7 @@ def test_mede_do_disco_somando_a_abertura_mesmo_com_a_fabrica_desligada(monkeypa
     assert (m["entregue_min"], m["erro_min"], m["dentro"]) == (16.0, 1.0, True)
 
 
-def test_erro_acima_de_um_minuto_e_meio_conta_como_fora(monkeypatch, tmp_path):
+def test_erro_acima_da_margem_conta_como_fora(monkeypatch, tmp_path):
     roteiros, fabrica = _mundo(monkeypatch, tmp_path)
     _roteiro(roteiros, "2026-10-20-a", minutos=15, palavras=3800, ppm_usado=200, projeto="p1")
     _projeto(fabrica, "p1", 1140.0)                 # 19 min: 4 a mais do que os 15 pedidos

@@ -28,6 +28,8 @@ def main():
     g.add_argument("--unidades", type=int, help="teto de cota do YouTube para este garimpo")
     c = sub.add_parser("canal", help="mede um canal e mostra os números")
     c.add_argument("ref")
+    b = sub.add_parser("barra", help="a barra de carregamento da fábrica na barra de tarefas do Windows")
+    b.add_argument("--porta", type=int, help="a porta do Radar (o padrão é a de sempre)")
     sub.add_parser("cota", help="quanto da cota do YouTube já foi usado hoje")
     sub.add_parser("mcp", help="o Radar dentro do Claude e do ChatGPT (MCP, por stdio)")
     a = p.parse_args()
@@ -53,6 +55,9 @@ def main():
         if dados:
             dados["videos"] = dados["videos"][:10]
         print(json.dumps(dados, ensure_ascii=False, indent=1))
+    elif a.comando == "barra":
+        from . import barra
+        barra.rodar(a.porta)
     elif a.comando == "cota":
         from . import youtube
         print(json.dumps(youtube.cota_hoje()))

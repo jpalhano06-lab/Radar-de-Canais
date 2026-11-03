@@ -1,7 +1,9 @@
 """Mede vídeos e canais pela API e guarda no banco, para a extensão e o garimpo não pagarem a mesma leitura duas vezes.
 
 Vídeo vale por 1 hora, canal por 24 horas."""
+import contextvars
 import json
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta, timezone
 
 from . import banco, metricas, youtube
@@ -10,6 +12,10 @@ NOTA_OUTLIER = 3.0   # a mesma do garimpo: 3 vezes o normal do canal
 
 VIDEO_VALE = timedelta(hours=1)
 CANAL_VALE = timedelta(hours=24)
+# Medir um canal são dois pedidos ao YouTube, um atrás do outro (a lista de envios e os 50 vídeos). Medindo um canal
+# de cada vez, os 40 candidatos a parecido levavam 80 esperas de rede em fila — meio minuto olhando para "Procurando
+# canais parecidos…". Agora vários canais esperam a rede ao mesmo tempo. A cota não muda: são os mesmos pedidos.
+CANAIS_AO_MESMO_TEMPO = 8
 
 
 def _velho(medido: str, prazo: timedelta) -> bool:
@@ -32,6 +38,29 @@ def _guardar_videos(lista: list[dict]) -> None:
                  [(v["id"], hora, v["views"]) for v in lista if v["views"] is not None])
 
 
+def _ler_videos_dos_canais(canais: list[dict]) -> list[tuple[dict, list[str], list[dict]]]:
+    """Os vídeos de cada canal, pedidos ao YouTube em paralelo. Devolve (canal, ids dos envios, vídeos).
+
+    O motivo da cota é uma variável de contexto, e thread nova não herda a do servidor: cada uma roda dentro de uma
+    cópia do contexto de quem pediu, senão todo o gasto do garimpo apareceria como "Outros"."""
+    def ler(canal: dict) -> tuple[dict, list[str], list[dict]]:
+        ids_videos = youtube.envios(canal["id"], 50)
+        return canal, ids_videos, (youtube.videos(ids_videos) if ids_videos else [])
+
+    if len(canais) <= 1:
+        return [ler(c) for c in canais]
+    contexto = contextvars.copy_context()
+    with ThreadPoolExecutor(max_workers=min(CANAIS_AO_MESMO_TEMPO, len(canais))) as equipe:
+        return list(equipe.map(lambda c: _no_contexto(contexto, ler, c), canais))
+
+
+def _no_contexto(contexto: contextvars.Context, funcao, *args):
+    """Roda a função dentro da thread com as variáveis de contexto que quem pediu tinha (o motivo da cota)."""
+    for variavel, valor in contexto.items():
+        variavel.set(valor)
+    return funcao(*args)
+
+
 @youtube.por("medir")
 def medir_canais(ids: list[str], forcar: bool = False, origem: str = "") -> dict[str, dict]:
     """Lê os canais que estão velhos no banco e devolve todos os pedidos."""
@@ -39,9 +68,7 @@ def medir_canais(ids: list[str], forcar: bool = False, origem: str = "") -> dict
     guardados = {c["id"]: c for c in _canais_do_banco(ids)}
     faltam = [i for i in ids if forcar or i not in guardados or _velho(guardados[i]["medido"], CANAL_VALE)]
     if faltam:
-        for canal in youtube.canais(faltam):
-            ids_videos = youtube.envios(canal["id"], 50)
-            lista = youtube.videos(ids_videos) if ids_videos else []
+        for canal, ids_videos, lista in _ler_videos_dos_canais(youtube.canais(faltam)):
             _guardar_videos(lista)
             b = metricas.base(lista)
             datas = sorted(v["publicado"] for v in lista if v["publicado"])

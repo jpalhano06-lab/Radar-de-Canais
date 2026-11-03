@@ -151,6 +151,27 @@ def test_erro_e_tentar_de_novo(db):
     assert fila.item(1, a["id"])["estado"] == "produzindo"
 
 
+def test_retomado_na_fabrica_volta_a_produzindo(db):
+    """12-animais (2026-10-27): a fábrica parou sem crédito, foi retomada por fora do Radar e o pedido seguia em erro."""
+    a = fila.criar(1, {"titulo": "T", "roteiro_manual": "x"}, True)
+    fab = Fabrica()
+    _volta(fab)
+    fila.mudar(a["id"], "erro", erro="OpenRouter: acabou o crédito.")
+    _volta(fab)                                         # a fábrica já está rodando de novo
+    atual = fila.item(1, a["id"])
+    assert (atual["estado"], atual["erro"]) == ("produzindo", "")
+
+
+def test_erro_sem_projeto_ou_parado_na_fabrica_fica_em_erro(db):
+    a = fila.criar(1, {"titulo": "T", "roteiro_manual": "x"}, True)
+    fab = Fabrica()
+    _volta(fab)
+    fila.mudar(a["id"], "erro", erro="parou")
+    fab.a.clear()
+    _volta(fab)
+    assert fila.item(1, a["id"])["estado"] == "erro"
+
+
 def test_reparar_depois_de_reiniciar(db):
     a = fila.criar(1, {"titulo": "T", "caracteres": 5000}, True)
     fila.mudar(a["id"], "enviando")
@@ -248,3 +269,82 @@ def test_no_maximo_duas_escritas_ao_mesmo_tempo(db):
             break
         threading.Event().wait(0.02)
     assert estados.count("escrevendo") == fila.ESCRITAS_AO_MESMO_TEMPO == 2
+
+
+def test_canal_de_teste_leva_o_perfil_da_lingua_escolhida(db):
+    """O Canal de teste (2026-10-29) não é canal do Radar: o pedido vai sem canal, com o agente CANAL DE TESTE, a
+    língua escolhida e o perfil da fábrica que fala essa língua, que vale para o roteiro e para a fábrica."""
+    enviados = []
+
+    class R(Roteirista):
+        def enviar(self, usuario_id, nome, perfil):
+            enviados.append(perfil)
+            return super().enviar(usuario_id, nome, perfil)
+    rot = R()
+    fila.criar(1, {"titulo": "Por que o mar é salgado?", "caracteres": 2650, "agente_id": "8", "lingua": "holandês",
+                   "perfil": "canal-jan-de-wolf", "canal_id": ""}, True)
+    fila.passo(fabrica=Fabrica(), roteirista=rot, em_thread=False, config_canal=lambda uid, cid: pytest.fail("sem canal"),
+               ritmo=lambda uid, perfil, lingua: {"ppm": 150})
+    assert rot.pedidos[0]["perfil"] == "canal-jan-de-wolf" and rot.pedidos[0]["projeto_id"] == 8
+    assert rot.pedidos[0]["lingua"] == "holandês" and rot.pedidos[0]["minutos"] == 3
+    assert enviados == ["canal-jan-de-wolf"]
+
+
+def test_a_rota_do_canal_de_teste(db, monkeypatch):
+    from fastapi.testclient import TestClient
+    from radar import producao, servidor
+    banco.executar("INSERT INTO projetos_roteiro (usuario_id, nome, instrucoes, criado) VALUES (1, 'CANAL DE TESTE', 'x', '')")
+    monkeypatch.setattr(producao, "perfis", lambda: [
+        {"perfil": "canal-jan-de-wolf", "canal": "Jan de WOLF", "voz": "Ido", "idioma_da_voz": "nl"},
+        {"perfil": "canal-joao-o-lobo", "canal": "João o Lobo", "voz": "Davi", "idioma_da_voz": "pt"},
+        {"perfil": "documentario", "canal": "Documentário", "voz": "", "idioma_da_voz": ""}])
+    servidor.app.dependency_overrides[servidor.usuario] = lambda: {"id": 1}
+    try:
+        r = TestClient(servidor.app).get("/api/fila/teste").json()
+    finally:
+        servidor.app.dependency_overrides.clear()
+    assert r["agente_id"] == 1
+    assert [l["lingua"] for l in r["linguas"]] == ["holandês", "português"]     # sem voz, o perfil não entra
+    assert r["linguas"][0]["perfis"][0]["perfil"] == "canal-jan-de-wolf"
+
+
+def test_canal_de_teste_sempre_de_2_a_3_minutos():
+    teste = {"perfil": "canal-jan-de-wolf", "canal_id": ""}
+    assert fila.minutos_do(teste | {"caracteres": fila.caracteres_de(15, 150)}, 150) == 3
+    assert fila.minutos_do(teste | {"caracteres": fila.caracteres_de(1, 150)}, 150) == 2
+    assert fila.minutos_do({"canal_id": "UC1", "caracteres": fila.caracteres_de(15, 150)}, 150) == 15
+
+
+# ---- a fábrica ligada na pasta errada (2026-10-30)
+
+class FabricaRecusa(Fabrica):
+    """Aceita o envio, mas a produção dá o erro dado (de um projeto só, ou de todos)."""
+    def __init__(self, erro, so=None):
+        super().__init__()
+        self.erro, self.so = erro, so
+
+    def produzir(self, nome, confirmar):
+        if self.so in (None, nome):
+            raise self.erro
+        super().produzir(nome, confirmar)
+
+
+def test_erro_da_fabrica_num_pedido_nao_trava_a_fila(db):
+    """A fábrica estava ligada na pasta errada e não achava o projeto do primeiro da fila: o pedido ficava voltando
+    para a fila a cada 20 s e os de trás nem o roteiro começavam. Agora só ele para, em erro."""
+    a = fila.criar(1, {"titulo": "A", "roteiro_manual": "x"}, True)
+    b = fila.criar(1, {"titulo": "B", "roteiro_manual": "x"}, True)
+    _volta(FabricaRecusa(fila.fabrica_api.SemFabrica("Projeto 'p-m-A' não encontrado."), so="p-m-A"))
+    primeiro, segundo = fila.item(1, a["id"]), fila.item(1, b["id"])
+    assert (primeiro["estado"], primeiro["erro"]) == ("erro", "Projeto 'p-m-A' não encontrado.")
+    assert segundo["estado"] == "produzindo"
+
+
+def test_fabrica_que_cai_no_envio_nao_vira_erro(db):
+    """Desligada de verdade (porta muda ou chave recusada): o pedido espera na fila, sem erro."""
+    a = fila.criar(1, {"titulo": "A", "roteiro_manual": "x"}, True)
+    b = fila.criar(1, {"titulo": "B", "roteiro_manual": "x"}, True)
+    _volta(FabricaRecusa(fila.fabrica_api.FabricaDesligada("desligada")))
+    for pedido in (a, b):
+        atual = fila.item(1, pedido["id"])
+        assert (atual["estado"], atual["erro"]) == ("na_fila", "")

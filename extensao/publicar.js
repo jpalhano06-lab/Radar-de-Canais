@@ -202,9 +202,12 @@
     else faltou.push("uso de IA");
 
     estado.trabalhando = "";
+    // de onde veio o texto: a descrição do Radar (escrita junto com o roteiro, antes de o vídeo ficar pronto)
+    // ganha da da fábrica, e é a única que existe enquanto o vídeo ainda está sendo feito
     const daDescricao = !k ? ` Não achei este vídeo na fábrica${estado.arquivo ? ` (${estado.arquivo})` : ""}: título e descrição ficam com você.`
-      : k.modelo === "padrao" ? " A descrição está no modelo padrão do Radar: para mudar, escreva o modelo deste canal no Radar."
-        : k.modelo ? "" : " A descrição veio da fábrica: para padronizar, escreva o modelo do canal no Radar.";
+      : k.origem === "radar" ? " A descrição, as tags e as hashtags vieram do Radar, escritas junto com o roteiro."
+        : k.modelo === "padrao" ? " A descrição está no modelo padrão do Radar: para mudar, escreva o modelo deste canal no Radar."
+          : k.modelo ? "" : " A descrição veio da fábrica: para padronizar, escreva o modelo do canal no Radar.";
     // a lista do que o painel marcou e do que ficou para a pessoa: ela confere a tela batendo o olho, sem ler frase
     const lista = [...feitos.map((t) => `✓ ${t}`), ...faltou.map((t) => `✗ ${t}`)].join(" · ");
     recado(`${lista || "nada a preencher"}${faltou.length ? " — o que está com ✗ fica com você." : ""}${daDescricao}`, !k);

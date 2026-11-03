@@ -1,13 +1,17 @@
 """O garimpo: procura canais novos que estão indo bem, mede, separa por nicho e marca os sem rosto.
 
-Roda uma vez por dia sozinho (servidor) ou com `python -m radar garimpar`. Gasta só a parte da cota de hoje que
-config.COTA_DO_GARIMPO deixa, e para quando ela acaba: o resto fica para a extensão."""
+Fica rodando sozinho (servidor), de PAUSA_MINUTOS em PAUSA_MINUTOS, ou roda uma vez com `python -m radar garimpar`.
+Gasta só a fatia da cota de hoje que o ajuste `garimpo_percentual` deixa, e para quando ela acaba: o resto fica para
+a extensão. O ajuste `garimpo_ligado` desliga o automático sem desligar o botão "Gastar tudo agora"."""
 import json
+import re
 import threading
+import time
+from collections import Counter
 from datetime import datetime, timedelta, timezone
 
 from . import banco, estruturas, gosto, ia, medir, mercado, metricas, risco, youtube
-from .config import COTA_DO_GARIMPO, DADOS
+from .config import COTA_DO_GARIMPO, DADOS, MODELO_TEXTO, MODELO_VISAO
 
 # termos de partida por nicho. Um arquivo dados/termos.json ({"Nicho": ["termo", ...]}) soma ou troca estes.
 # Os nichos e as buscas do garimpo (refeito em 2026-10-14, pedido do usuário: "buscas melhores e mais alinhadas, para
@@ -132,7 +136,25 @@ def _proximos_termos() -> list[tuple[str, str]]:
             for _ in range(vezes):
                 if fila:
                     ordem.append(fila.pop(0))
-    return ordem
+    if not ordem:
+        # a bolsa secou: os 474 termos estão todos na espera dos REBUSCAR_DIAS, e aí o garimpo fazia 0 busca e
+        # deixava as 17 mil unidades do dia paradas (2026-11-01). Volta nos que não são lixo, do mais antigo
+        # para o mais novo, em vez de não procurar nada.
+        velhos = []
+        for nicho, ts in nichos:
+            if mercado.irrelevante(nicho):
+                continue
+            for t in ts:
+                b = feitos.get(t)
+                if b and (b.get("zeros") or 0) >= LIXO_DEPOIS and b["quando"] >= limite_lixo:
+                    continue
+                if nicho != "Procurados" and gosto.lingua(t) in ("pt", "es"):
+                    continue
+                velhos.append(((b or {}).get("quando") or "", nicho, t))
+        ordem = [(nicho, t) for _, nicho, t in sorted(velhos)]
+    # o mesmo termo em dois nichos não gasta duas buscas de 100 unidades
+    vistos = set()
+    return [(nicho, t) for nicho, t in ordem if not (t in vistos or vistos.add(t))]
 
 
 def _avaliar(ids: list[str], log, contagem: dict, rapido: bool = False) -> list[str]:
@@ -175,7 +197,7 @@ def _completar(c: dict, rapido: bool = False) -> None:
     videos = banco.todos("SELECT id, titulo, views, duracao_s, publicado FROM videos WHERE canal_id=? "
                          "ORDER BY views DESC LIMIT 15", c["id"])
     dados = {"id": c["id"], "no_radar": 1}
-    if not rapido and (not c["nicho"] or not c.get("subnicho")):
+    if not rapido and (not c["nicho"] or not c.get("subnicho")) and not ia.esgotado(MODELO_TEXTO):
         existentes = [l["subnicho"] for l in banco.todos(
             "SELECT subnicho, COUNT(*) AS n FROM canais WHERE no_radar=1 AND subnicho<>'' AND id<>? "
             "GROUP BY subnicho ORDER BY n DESC LIMIT 80", c["id"])]
@@ -184,8 +206,8 @@ def _completar(c: dict, rapido: bool = False) -> None:
             dados["nicho"] = nicho
         if subnicho:
             dados["subnicho"] = subnicho
-    if not rapido and c["sem_rosto"] is None:
-        resposta = ia.sem_rosto([f"https://i.ytimg.com/vi/{v['id']}/default.jpg" for v in videos[:3]])
+    if not rapido and c["sem_rosto"] is None and not ia.esgotado(MODELO_VISAO):
+        resposta = ia.sem_rosto([f"https://i.ytimg.com/vi/{v['id']}/default.jpg" for v in videos])
         if resposta is not None:
             dados["sem_rosto"] = int(resposta)
     nicho_final, sub_final = dados.get("nicho") or c["nicho"], dados.get("subnicho") or c.get("subnicho")
@@ -207,19 +229,52 @@ def _completar(c: dict, rapido: bool = False) -> None:
     return dados["no_radar"] == 1
 
 
+# o cadeado dos pendentes é separado do cadeado do garimpo: desde 2026-11-01 esta fase roda fora dele
+_PENDENTES = threading.Lock()
+
+
+def _sem_groq_hoje() -> bool:
+    """O Groq já gastou a cota de tokens do dia nos dois modelos: insistir é só dormir (e ela volta em horas)."""
+    return ia.esgotado(MODELO_VISAO) and ia.esgotado(MODELO_TEXTO)
+
+
 @youtube.por("garimpo")
-def completar_pendentes(log=print, quantos: int = 80) -> int:
-    """Canais do Radar sem nicho ou sem a resposta do rosto (o Groq estava fora, por exemplo). Não gasta cota."""
-    pendentes = banco.todos("SELECT * FROM canais WHERE no_radar=1 AND (sem_rosto IS NULL OR nicho='' OR subnicho='') "
-                            "LIMIT ?", quantos)
-    for c in pendentes:
-        _completar(c)
-    if pendentes:
-        log(f"{len(pendentes)} canais do Radar completados (nicho e rosto)")
-    return len(pendentes)
+def completar_pendentes(log=print, quantos: int = 80, minutos: float | None = None) -> int:
+    """Canais do Radar sem nicho ou sem a resposta do rosto (o Groq estava fora, por exemplo). Não gasta cota.
+
+    minutos: para depois desse tempo (o Groq de imagem aguenta uma pergunta por minuto). Os pendentes vêm sorteados,
+    para um canal que nunca tem resposta não ocupar a vez dos outros todo dia."""
+    if not _PENDENTES.acquire(blocking=False):
+        return 0            # já tem uma rodada de pendentes em pé: duas só brigariam pelas mesmas chaves
+    try:
+        if _sem_groq_hoje():
+            log("O Groq gastou a cota de tokens do dia: os pendentes ficam para quando ela voltar.")
+            return 0
+        pendentes = banco.todos("SELECT * FROM canais WHERE no_radar=1 AND (sem_rosto IS NULL OR nicho='' OR "
+                                "subnicho='') ORDER BY RANDOM() LIMIT ?", quantos)
+        ate = time.monotonic() + minutos * 60 if minutos else None
+        feitos = 0
+        for c in pendentes:
+            if ate and time.monotonic() > ate:
+                break
+            # o canal só ocupa a vez se o modelo que falta nele ainda tem cota de tokens hoje
+            falta_visao = c["sem_rosto"] is None and not ia.esgotado(MODELO_VISAO)
+            falta_texto = (not c["nicho"] or not c["subnicho"]) and not ia.esgotado(MODELO_TEXTO)
+            if not (falta_visao or falta_texto):
+                continue
+            _completar(c)
+            feitos += 1
+        if feitos:
+            log(f"{feitos} canais do Radar completados (nicho e rosto)")
+        elif pendentes:
+            log("Os pendentes ficam para quando a cota de tokens do dia do Groq voltar.")
+        return feitos
+    finally:
+        _PENDENTES.release()
 
 
-REMEDIR_HORAS = 20         # canal do Radar ou salvo é medido de novo uma vez por dia
+MINUTOS_PENDENTES = 45     # o tempo que o fim do garimpo dá ao Groq para os canais sem nicho ou sem o rosto
+REMEDIR_HORAS = 20        # canal do Radar ou salvo é medido de novo uma vez por dia
 FRACAO_REMEDIR = 0.35      # até 35% da cota do garimpo vai para medir de novo (em alta, novidades)
 
 
@@ -242,7 +297,7 @@ def remedir(log, orcamento: int) -> int:
         lote = ids[i:i + 20]
         for c in medir.medir_canais(lote, forcar=True).values():
             if c["no_radar"]:
-                _completar(c)
+                _completar(c, rapido=True)     # o Groq fica com o completar_pendentes, no fim do garimpo
         feitos += len(lote)
     if feitos:
         log(f"{feitos} canais medidos de novo (em alta e novidades)")
@@ -277,6 +332,67 @@ def aprender_termos(log, nichos_por_vez: int = 5) -> int:
     return novos
 
 
+# ---------------------------------------------------------------- os ajustes do garimpo (2026-11-01)
+# Antes o garimpo rodava uma vez por dia e a fatia da cota era a RADAR_COTA_GARIMPO do .env, que só mudava mexendo
+# no arquivo e religando. Pedido do usuário: "coloque uma opção de pode gastar e a opção de quantos por cento", e
+# "o radar tem que ficar garimpando". Agora as duas moram na tabela `ajustes` (o mesmo jeito do fila_limite) e
+# valem na hora, e o garimpo recomeça sozinho enquanto a fatia do dia não acabar.
+
+PERCENTUAL_PADRAO = max(1, min(100, int(round(COTA_DO_GARIMPO * 100))))
+PAUSA_MINUTOS = 10         # descanso entre um garimpo e o próximo, para não emendar um no outro sem respirar
+UMA_BUSCA = 110            # custo de uma busca mais a medida do que ela traz: abaixo disso não vale recomeçar
+
+
+def ligado() -> bool:
+    """Se o garimpo automático pode gastar cota. Desligado, só o botão 'Gastar tudo agora' roda."""
+    linha = banco.um("SELECT valor FROM ajustes WHERE chave='garimpo_ligado'")
+    return linha["valor"] == "1" if linha else True
+
+
+def definir_ligado(v: bool) -> bool:
+    banco.executar("INSERT OR REPLACE INTO ajustes (chave, valor) VALUES ('garimpo_ligado', ?)", "1" if v else "0")
+    return bool(v)
+
+
+def percentual() -> int:
+    """Quanto da cota do dia o garimpo pode gastar, de 1 a 100. O resto fica para a extensão e para as telas."""
+    linha = banco.um("SELECT valor FROM ajustes WHERE chave='garimpo_percentual'")
+    try:
+        return max(1, min(100, int(linha["valor"]))) if linha else PERCENTUAL_PADRAO
+    except (TypeError, ValueError):
+        return PERCENTUAL_PADRAO
+
+
+def definir_percentual(n: int) -> int:
+    n = max(1, min(100, int(n)))
+    banco.executar("INSERT OR REPLACE INTO ajustes (chave, valor) VALUES ('garimpo_percentual', ?)", str(n))
+    return n
+
+
+def fatia_do_dia() -> dict:
+    """A fatia da cota de hoje que é do garimpo, quanto ele já gastou e quanto ainda pode gastar.
+
+    A conta é sobre o total do dia, não sobre o que está livre agora: assim a porcentagem é mesmo um teto diário e
+    sobra cota para a extensão, em vez de o garimpo ir comendo uma fatia do que resta a cada rodada até não sobrar
+    nada. O gasto sai do `cota_motivo`, onde o @youtube.por("garimpo") já carimba tudo que o garimpo pede."""
+    cota = youtube.cota_hoje()
+    teto = int(cota["total"] * percentual() / 100)
+    gasto = next((m["unidades"] for m in youtube.gasto_por_motivo() if m["motivo"] == "garimpo"), 0)
+    return {"teto": teto, "gasto": gasto, "resta": max(0, min(teto - gasto, cota["livre"]))}
+
+
+def hora_de_garimpar(ultimo: dict | None) -> bool:
+    """O garimpo fica rodando enquanto a fatia do dia aguentar: recomeça PAUSA_MINUTOS depois do anterior e só para
+    quando o que resta da fatia não paga nem uma busca (ou quando a pessoa desliga o 'pode gastar')."""
+    if _RODANDO.locked() or not ligado():
+        return False
+    if fatia_do_dia()["resta"] < UMA_BUSCA:
+        return False
+    if not ultimo:
+        return True
+    return metricas.dias_desde(ultimo["inicio"]) > PAUSA_MINUTOS / 1440
+
+
 @youtube.por("garimpo")
 def rodar(log=print, unidades: int | None = None) -> dict:
     if not _RODANDO.acquire(blocking=False):
@@ -291,11 +407,10 @@ def rodar(log=print, unidades: int | None = None) -> dict:
 
     contagem = {"novos": 0, "buscas": 0}
     inicio = youtube.cota_hoje()["usado"]
-    orcamento = unidades if unidades is not None else int(youtube.cota_hoje()["livre"] * COTA_DO_GARIMPO)
+    orcamento = unidades if unidades is not None else fatia_do_dia()["resta"]
     estado = "pronto"
     try:
         anotar(f"Garimpo começou com {orcamento} unidades de cota.")
-        completar_pendentes(anotar)
         remedir(anotar, int(orcamento * FRACAO_REMEDIR))
         depois = (datetime.now(timezone.utc) - timedelta(days=DIAS_DO_VIDEO)).strftime("%Y-%m-%dT%H:%M:%SZ")
         for n, (nicho, termo) in enumerate(_proximos_termos()):
@@ -304,11 +419,18 @@ def rodar(log=print, unidades: int | None = None) -> dict:
                 break
             # em inglês, nos países de língua inglesa (os EUA em duas de cada três buscas): o CPM é maior lá
             busca = termo if gosto.lingua(termo) not in ("pt", "es") else (ia.traduzir_titulo(termo, ["en"]).get("en") or termo)
-            achados = youtube.buscar(busca, publicado_depois=depois, duracao="medium" if n % 2 else "long",
-                                     regiao=mercado.regiao(n), idioma=LINGUA)
-            contagem["buscas"] += 1
-            ids = list(dict.fromkeys(a["canal_id"] for a in achados))
-            entraram = _avaliar(ids, anotar, contagem)
+            try:
+                achados = youtube.buscar(busca, publicado_depois=depois, duracao="medium" if n % 2 else "long",
+                                         regiao=mercado.regiao(n), idioma=LINGUA)
+                contagem["buscas"] += 1
+                ids = list(dict.fromkeys(a["canal_id"] for a in achados))
+                # rapido: o nicho e o rosto dos que entraram ficam para o completar_pendentes, no fim
+                entraram = _avaliar(ids, anotar, contagem, rapido=True)
+            except youtube.SemCota:
+                raise
+            except Exception as erro:   # um termo ruim não para o garimpo
+                anotar(f"[{nicho}] \"{termo}\" falhou: {erro}")
+                continue
             # quanto cada termo rende, para o próximo garimpo gastar nos que trazem canal e largar o lixo
             antes = banco.um("SELECT vezes, total, zeros FROM buscas_feitas WHERE termo=?", termo) or {}
             banco.executar("INSERT OR REPLACE INTO buscas_feitas (termo, nicho, quando, canais, vezes, total, zeros) "
@@ -335,6 +457,13 @@ def rodar(log=print, unidades: int | None = None) -> dict:
         banco.executar("UPDATE garimpos SET fim=?, unidades=?, buscas=?, canais_novos=?, estado=? WHERE id=?",
                        banco.agora(), gasto, contagem["buscas"], contagem["novos"], estado, gid)
         _RODANDO.release()
+    # fora do cadeado e por último: o Groq espera o limite do minuto, e a cota já foi gasta nas buscas (2026-10-30, o
+    # garimpo ficou 20 horas preso aqui antes da primeira busca). Não gasta cota, então roda mesmo sem cota. Deixar
+    # isto dentro do cadeado atrasava a busca do garimpo seguinte em até MINUTOS_PENDENTES (2026-11-01).
+    try:
+        completar_pendentes(anotar, minutos=MINUTOS_PENDENTES)
+    except Exception as erro:
+        anotar(f"Erro ao completar os pendentes: {erro}")
     anotar(f"Fim: {contagem['buscas']} buscas, {contagem['novos']} canais novos, {gasto} unidades.")
     return {"ok": True, "id": gid, **contagem, "unidades": gasto}
 
@@ -373,9 +502,11 @@ def gastar_tudo(log=print) -> None:
 
 def estado_gasto() -> dict:
     cota = youtube.cota_hoje()
-    rodando = GASTANDO["rodando"] or _RODANDO.locked()
+    rodando = GASTANDO["rodando"] or _RODANDO.locked() or _PENDENTES.locked()
     ultimo = banco.um("SELECT inicio FROM garimpos ORDER BY id DESC LIMIT 1")
     return {**cota, "garimpando": rodando, "ultimo_garimpo": ultimo["inicio"] if ultimo else "",
+            # os dois ajustes e a fatia do dia, para o quadro dos créditos mostrar e deixar mudar
+            "garimpo_ligado": ligado(), "garimpo_percentual": percentual(), "fatia": fatia_do_dia(),
             # em que a cota de hoje foi gasta, para a tela não só dizer quanto sobrou mas onde foi
             "motivos": [{**m, "rotulo": youtube.MOTIVOS.get(m["motivo"], m["motivo"])}
                         for m in youtube.gasto_por_motivo()],
@@ -385,29 +516,110 @@ def estado_gasto() -> dict:
 
 # ---------------------------------------------------------------- canais parecidos
 
-def _busca_do_canal(canal_id: str) -> list[str]:
-    """Os títulos dos vídeos que mais renderam: são a melhor busca para achar quem faz o mesmo."""
+# Os parecidos de antes (chave "parecidos:") eram de qualquer assunto: no Canada Insight (marcas de supermercado), 20
+# dos 24 eram audiolivro, cabelo crespo, academia e novela chinesa. A busca era o título inteiro dos 2 vídeos mais
+# vistos (os dois traduzidos para o português) e bastava aparecer uma vez. A chave nova descarta essas listas.
+CHAVE_PARECIDOS = "parecidos2:"
+BUSCAS_PARECIDOS = 4          # 100 unidades cada
+CANDIDATOS_MEDIDOS = 40       # medir custa umas 3 unidades por canal
+MINIMO_PARECENCA = 0.2        # parte dos títulos do candidato que falam do assunto do canal (0 a 1)
+_LINGUAS_DA_BUSCA = ("pt", "es", "en")
+
+
+def _titulos_longos(canal_id: str, quantos: int) -> list[str]:
     return [v["titulo"] for v in banco.todos(
-        "SELECT titulo FROM videos WHERE canal_id=? AND duracao_s>180 ORDER BY views DESC LIMIT 2", canal_id)]
+        "SELECT titulo FROM videos WHERE canal_id=? AND duracao_s>180 ORDER BY views DESC LIMIT ?", canal_id, quantos)]
+
+
+def _assunto_do_canal(canal_id: str) -> set[str]:
+    """As palavras que o canal repete nos títulos (em 2 ou mais vídeos, sem número solto): o assunto dele."""
+    contagem = Counter()
+    for titulo in _titulos_longos(canal_id, 40):
+        contagem.update(p for p in gosto.chaves(titulo) if not p.isdigit())
+    return {p for p, n in contagem.items() if n >= 2}
+
+
+def _palavras_da_busca(titulo: str, assunto: set[str]) -> str:
+    """O título virado busca: só as palavras do assunto, na ordem e com os acentos dele, até 6 (o título inteiro, com
+    número e parêntese, trazia qualquer coisa)."""
+    palavras, vistas = [], set()
+    for p in re.findall(r"[^\W\d_]+", titulo):
+        chave = gosto._simples(p)
+        if chave in assunto and chave not in vistas:
+            palavras.append(p)
+            vistas.add(chave)
+    return " ".join(palavras[:6])
+
+
+def _busca_do_canal(canal_id: str, assunto: set[str]) -> list[tuple[str, str]]:
+    """(busca, língua) dos vídeos que mais renderam, sem repetir o mesmo assunto e no máximo 2 por língua."""
+    buscas, por_lingua = [], Counter()
+    for titulo in _titulos_longos(canal_id, 15):
+        busca = _palavras_da_busca(titulo, assunto)
+        chaves = gosto.chaves(busca)
+        if len(chaves) < 2:
+            continue
+        lingua = gosto.lingua(titulo)
+        lingua = lingua if lingua in _LINGUAS_DA_BUSCA else ""
+        if por_lingua[lingua] >= 2:
+            continue
+        if any(len(chaves & gosto.chaves(b)) / len(chaves) >= .6 for b, _ in buscas):
+            continue
+        buscas.append((busca, lingua))
+        por_lingua[lingua] += 1
+        if len(buscas) >= BUSCAS_PARECIDOS:
+            break
+    return buscas
+
+
+def parecenca_do_canal(canal_id: str, assunto: set[str]) -> float:
+    """Parte dos vídeos longos do canal (do banco) cujo título tem 2 ou mais palavras do assunto: 0 a 1."""
+    titulos = _titulos_longos(canal_id, 30)
+    if not titulos or not assunto:
+        return 0.0
+    return sum(1 for t in titulos if len(gosto.chaves(t) & assunto) >= 2) / len(titulos)
+
+
+# A página do canal pede os parecidos por três caminhos ao mesmo tempo (Canais Parecidos, Vídeos do Nicho e a nota
+# do nicho). Sem isto, os três procuravam e mediam os mesmos 40 canais de uma vez: três vezes a espera e três vezes
+# a cota. Com a trava, o primeiro procura e os outros dois esperam e aproveitam o que ele guardou.
+_TRAVAS_PARECIDOS: dict[str, threading.Lock] = {}
+_TRAVA_DAS_TRAVAS = threading.Lock()
+
+
+def _trava_dos_parecidos(canal_id: str) -> threading.Lock:
+    with _TRAVA_DAS_TRAVAS:
+        return _TRAVAS_PARECIDOS.setdefault(canal_id, threading.Lock())
 
 
 @youtube.por("garimpo")
 def parecidos(canal_id: str, guardar_no_radar: bool = True) -> list[dict]:
-    """Canais que fazem o mesmo tipo de vídeo, do mais parecido para o menos (100 a 200 unidades, guardado 7 dias)."""
-    cache = banco.um("SELECT dados, criado FROM traducoes WHERE chave=?", f"parecidos:{canal_id}")
+    """Canais que fazem o mesmo tipo de vídeo, do mais parecido para o menos (até 400 unidades da busca e a medida dos
+    candidatos, guardado 7 dias). Só fica quem fala do mesmo assunto nos próprios títulos."""
+    with _trava_dos_parecidos(canal_id):
+        return _parecidos(canal_id)
+
+
+def _parecidos(canal_id: str) -> list[dict]:
+    cache = banco.um("SELECT dados, criado FROM traducoes WHERE chave=?", f"{CHAVE_PARECIDOS}{canal_id}")
     semana = (datetime.now(timezone.utc) - timedelta(days=7)).isoformat()
     if cache and cache["criado"] >= semana:
         ids = json.loads(cache["dados"])
     else:
         medir.medir_canais([canal_id])
-        vistos = {}
-        for titulo in _busca_do_canal(canal_id):
-            for posicao, a in enumerate(youtube.buscar(titulo, ordem="relevance")):
+        assunto = _assunto_do_canal(canal_id)
+        vistos = Counter()
+        for busca, lingua in _busca_do_canal(canal_id, assunto):
+            for posicao, a in enumerate(youtube.buscar(busca, ordem="relevance", idioma=lingua)):
                 if a["canal_id"] != canal_id:
-                    vistos[a["canal_id"]] = vistos.get(a["canal_id"], 0) + (50 - posicao)
-        ids = [c for c, _ in sorted(vistos.items(), key=lambda x: -x[1])][:25]
+                    vistos[a["canal_id"]] += 50 - posicao
+        candidatos = [c for c, _ in vistos.most_common(CANDIDATOS_MEDIDOS)]
+        medir.medir_canais(candidatos)
+        nota = {c: parecenca_do_canal(c, assunto) for c in candidatos}
+        ids = sorted((c for c in candidatos if nota[c] >= MINIMO_PARECENCA),
+                     key=lambda c: (-round(nota[c], 1), -vistos[c]))[:25]
         banco.executar("INSERT OR REPLACE INTO traducoes (chave, dados, criado) VALUES (?,?,?)",
-                       f"parecidos:{canal_id}", json.dumps(ids), banco.agora())
+                       f"{CHAVE_PARECIDOS}{canal_id}", json.dumps(ids), banco.agora())
     canais = medir.medir_canais(ids)
     saida = []
     for cid in ids:
@@ -418,7 +630,7 @@ def parecidos(canal_id: str, guardar_no_radar: bool = True) -> list[dict]:
 
 def _parecidos_guardados(canal_id: str) -> bool:
     """A lista de parecidos deste canal já foi procurada nos últimos 7 dias (ler de novo não gasta cota)."""
-    cache = banco.um("SELECT criado FROM traducoes WHERE chave=?", f"parecidos:{canal_id}")
+    cache = banco.um("SELECT criado FROM traducoes WHERE chave=?", f"{CHAVE_PARECIDOS}{canal_id}")
     return bool(cache and cache["criado"] >= (datetime.now(timezone.utc) - timedelta(days=7)).isoformat())
 
 

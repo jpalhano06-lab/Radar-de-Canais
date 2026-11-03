@@ -8,13 +8,17 @@
   const texto = (t) => !t ? "" : typeof t === "string" ? t : t.content || t.simpleText || (t.runs || []).map((r) => r.text).join("");
 
   // "1,2 mi de visualizações", "12 mil", "1.234.567 views", "1.2M views", "12K", "1,5 M de vistas", "3 mil mi"
+  // e por extenso, como vem no accessibilityLabel: "1,2 milhão", "3 milhões", "1 bilhão", "1.2 million", "12 thousand",
+  // "1,2 millones", "3 mil millones", "310 тыс.", "1,2 млн" (sem isso "1,2 milhão" virava 12 views)
+  const MULTIPLOS = [[/^(mil\s+mi|mil\s+m\b|bi\b|bilh|billion|bill[oó]n|b\b|mrd|млрд)/, 1e9],
+    [/^(mi\b|milh|million|mill[oó]n|m\b|mln|млн)/, 1e6], [/^(mil\b|thousand|k\b|тыс)/, 1e3]];
   function numero(t) {
     t = texto(t).toLowerCase().replace(/ /g, " ");
     if (!t || /nenhuma|no views|sin vistas|nenhum inscrito/.test(t)) return t ? 0 : null;
-    const m = t.match(/(\d[\d.,\s]*)\s*(mil mi|mil m|mi\b|mil\b|bi\b|k\b|m\b|b\b|mln|mrd)?/);
+    const m = t.match(/(\d[\d.,\s]*)\s*(\S*(?:\s+\S+)?)/);
     if (!m) return null;
-    const cru = m[1].trim(), sufixo = (m[2] || "").trim();
-    const mult = { "mil mi": 1e9, "mil m": 1e9, bi: 1e9, b: 1e9, mrd: 1e9, mi: 1e6, m: 1e6, mln: 1e6, mil: 1e3, k: 1e3 }[sufixo] || 1;
+    const cru = m[1].trim(), resto = m[2] || "";
+    const mult = (MULTIPLOS.find(([rx]) => rx.test(resto)) || [0, 1])[1];
     let n;
     if (mult > 1) n = parseFloat(cru.replace(/\s/g, "").replace(/\.(?=\d{3}\b)/g, "").replace(",", "."));
     else n = parseInt(cru.replace(/[.,\s]/g, ""), 10);
