@@ -140,3 +140,40 @@ def test_cota_do_dia_do_groq_nao_vira_espera_de_15_segundos(monkeypatch):
     assert dormiu == []                      # a cota do dia não se espera: a chave sai da roda
     assert ia.esgotado("visao") is True      # e aí nem vale perguntar até ela voltar
     assert ia.esgotado("texto") is False     # o limite é por modelo
+
+
+def _rodar_uma_busca(monkeypatch, termo="credit card", achados=()):
+    monkeypatch.setattr(youtube, "cota_hoje", lambda: {"usado": 0, "livre": 10000, "total": 10000, "chaves": 1})
+    monkeypatch.setattr(garimpo, "completar_pendentes", lambda *a, **k: None)
+    monkeypatch.setattr(garimpo, "remedir", lambda *a, **k: 0)
+    monkeypatch.setattr(garimpo, "_proximos_termos", lambda: [("Finanças", termo)])
+    monkeypatch.setattr(youtube, "buscar", lambda *a, **k: list(achados))
+    monkeypatch.setattr(garimpo, "achar_parecidos_dos_salvos", lambda *a, **k: None)
+    monkeypatch.setattr(garimpo, "aprender_termos", lambda *a, **k: 0)
+    garimpo.rodar(print)
+    return banco.um("SELECT * FROM buscas_feitas WHERE termo=?", termo)
+
+
+def test_repetir_a_busca_cedo_nao_vira_lixo(db, monkeypatch):
+    """Caso real (2026-11-03): com a bolsa seca o garimpo repetia o termo 10 min depois, o YouTube dava os mesmos
+    canais (já no Radar), saía '0 entraram' e na segunda vez o termo virava lixo por 30 dias: os 406 termos bons
+    ficaram de lado e o garimpo passou o dia com 0 buscas e 62 mil unidades paradas."""
+    banco.executar("INSERT INTO buscas_feitas (termo, nicho, quando, canais, vezes, total, zeros) VALUES (?,?,?,?,?,?,?)",
+                   "credit card", "Finanças", banco.agora(), 5, 1, 5, 1)
+    b = _rodar_uma_busca(monkeypatch)
+    assert b["vezes"] == 2 and b["zeros"] == 1
+
+
+def test_zero_depois_da_espera_conta_como_lixo(db, monkeypatch):
+    banco.executar("INSERT INTO buscas_feitas (termo, nicho, quando, canais, vezes, total, zeros) VALUES (?,?,?,?,?,?,?)",
+                   "credit card", "Finanças", "2026-01-01T00:00:00+00:00", 0, 1, 0, 1)
+    assert _rodar_uma_busca(monkeypatch)["zeros"] == 2
+
+
+def test_bolsa_seca_nao_repete_termo_de_horas_atras(db, monkeypatch):
+    monkeypatch.setattr(garimpo, "termos", lambda: {"Finanças": ["credit card", "stock market"]})
+    banco.executar("INSERT INTO buscas_feitas (termo, nicho, quando, canais, vezes, total, zeros) VALUES (?,?,?,?,?,?,?)",
+                   "credit card", "Finanças", banco.agora(), 1, 1, 1, 0)
+    banco.executar("INSERT INTO buscas_feitas (termo, nicho, quando, canais, vezes, total, zeros) VALUES (?,?,?,?,?,?,?)",
+                   "stock market", "Finanças", (garimpo.datetime.now(garimpo.timezone.utc) - garimpo.timedelta(days=1)).isoformat(), 1, 1, 1, 0)
+    assert garimpo._proximos_termos() == [("Finanças", "stock market")]

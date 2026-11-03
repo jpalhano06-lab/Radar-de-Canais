@@ -75,6 +75,7 @@ LIXO_DIAS = 30
 
 DIAS_DO_VIDEO = 30         # a busca olha vídeos publicados no último mês
 REBUSCAR_DIAS = 3          # o mesmo termo só é buscado de novo depois de 3 dias
+REPETIR_HORAS = 12         # com a bolsa seca, o termo volta depois de 12 h (10 min depois o YouTube dá os mesmos canais)
 CANAL_ATE_MESES = 18       # canal novo: começou a postar há até 18 meses
 MINIMO_POR_VIDEO = 10_000  # views por vídeo (mediana dos longos) para entrar no Radar
 NOTA_OUTLIER = 3.0         # vídeo com 3 vezes o normal entra no banco (a tela de Outliers mostra 5x ou mais por padrão)
@@ -149,6 +150,8 @@ def _proximos_termos() -> list[tuple[str, str]]:
                 if b and (b.get("zeros") or 0) >= LIXO_DEPOIS and b["quando"] >= limite_lixo:
                     continue
                 if nicho != "Procurados" and gosto.lingua(t) in ("pt", "es"):
+                    continue
+                if b and b["quando"] >= (agora - timedelta(hours=REPETIR_HORAS)).isoformat():
                     continue
                 velhos.append(((b or {}).get("quando") or "", nicho, t))
         ordem = [(nicho, t) for _, nicho, t in sorted(velhos)]
@@ -432,11 +435,15 @@ def rodar(log=print, unidades: int | None = None) -> dict:
                 anotar(f"[{nicho}] \"{termo}\" falhou: {erro}")
                 continue
             # quanto cada termo rende, para o próximo garimpo gastar nos que trazem canal e largar o lixo
-            antes = banco.um("SELECT vezes, total, zeros FROM buscas_feitas WHERE termo=?", termo) or {}
+            antes = banco.um("SELECT quando, vezes, total, zeros FROM buscas_feitas WHERE termo=?", termo) or {}
+            # 0 numa busca repetida antes dos REBUSCAR_DIAS não diz que o termo é lixo: os canais são os mesmos da
+            # outra vez, já no Radar (2026-11-03: assim os 406 termos viraram lixo e o garimpo parou de buscar)
+            cedo = (antes.get("quando") or "") >= (datetime.now(timezone.utc) - timedelta(days=REBUSCAR_DIAS)).isoformat()
+            zeros = 0 if entraram else (antes.get("zeros") or 0) + (0 if cedo else 1)
             banco.executar("INSERT OR REPLACE INTO buscas_feitas (termo, nicho, quando, canais, vezes, total, zeros) "
                            "VALUES (?,?,?,?,?,?,?)", termo, nicho, banco.agora(), len(entraram),
                            (antes.get("vezes") or 0) + 1, (antes.get("total") or 0) + len(entraram),
-                           0 if entraram else (antes.get("zeros") or 0) + 1)
+                           zeros)
             # "Procurados" é a lista das procuras da pessoa, não um nicho: o nicho desses fica com o Groq
             for cid in entraram if nicho != "Procurados" else []:
                 banco.executar("UPDATE canais SET nicho=COALESCE(NULLIF(nicho,''), ?) WHERE id=?", nicho, cid)
