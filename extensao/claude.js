@@ -123,11 +123,17 @@
         "Abrir o ChatGPT ao lado"));
   }
 
+  function opcoesDoAgente(sel) {
+    sel.replaceChildren(h("option", { value: "" }, "Sem agente"),
+      ...agentes.map((a) => h("option", { value: String(a.id) }, a.nome)));
+    sel.value = agente;
+  }
+
   function barraDoAgente() {
     const sel = h("select", { class: "radar-claude-agente", title: "O agente que o Claude usa para responder",
-      onchange: (e) => { agente = e.target.value; chrome.storage.local.set({ [GUARDA_AGENTE]: agente }); } },
-      h("option", { value: "" }, "Sem agente"),
-      ...agentes.map((a) => h("option", { value: String(a.id), selected: String(a.id) === agente ? "" : null }, a.nome)));
+      onchange: (e) => { agente = e.target.value; chrome.storage.local.set({ [GUARDA_AGENTE]: agente }); },
+      onfocus: carregarAgentes });
+    opcoesDoAgente(sel);
     return h("div", { class: "radar-claude-barra" }, sel,
       h("button", { class: "radar-claude-abrir pequeno", title: "Abre o claude.ai de verdade, com os seus projetos",
         onclick: () => abrirAoLado("https://claude.ai/new", contextoDaPagina()) }, "claude.ai ↗"));
@@ -161,16 +167,26 @@
     chrome.storage.local.get([GUARDA, GUARDA_AGENTE]).then((g) => {
       conversa = g[GUARDA] || [];
       agente = g[GUARDA_AGENTE] || "";
+      opcoesDoAgente(painel.querySelector(".radar-claude-agente"));
       desenharMensagens();
       carregarAgentes();
     });
   }
 
+  // a lista é buscada de novo sempre que o painel abre, a aba volta a ficar à vista ou a caixa ganha o foco
+  // (pedido do usuário em 2026-10-29: agente criado ou apagado no Radar aparece sem precisar dar F5 no YouTube)
   async function carregarAgentes() {
+    if (!painel) return;
     const r = await api("/api/projetos");
     if (r.erro || !r.dados) return;
-    agentes = (r.dados.projetos || []).map((p) => ({ id: p.id, nome: p.nome }));
-    painel.querySelector(".radar-claude-barra").replaceWith(barraDoAgente());
+    const novos = (r.dados.projetos || []).map((p) => ({ id: String(p.id), nome: p.nome }));
+    if (JSON.stringify(novos) === JSON.stringify(agentes)) return;
+    agentes = novos;
+    if (agente && !agentes.some((a) => a.id === agente)) {   // o agente escolhido foi apagado
+      agente = "";
+      chrome.storage.local.set({ [GUARDA_AGENTE]: agente });
+    }
+    opcoesDoAgente(painel.querySelector(".radar-claude-agente"));
   }
 
   // ------------------------------------------------------------ a abinha na beirada
@@ -186,8 +202,12 @@
     painel.classList.toggle("aberto", aberto);
     document.documentElement.classList.toggle("radar-claude-ligado", aberto);
     if (abinha) abinha.classList.toggle("escondida", aberto);
-    if (aberto) setTimeout(() => painel.querySelector("textarea").focus(), 50);
+    if (aberto) { setTimeout(() => painel.querySelector("textarea").focus(), 50); carregarAgentes(); }
   }
+
+  document.addEventListener("visibilitychange", () => {
+    if (!document.hidden && painel?.classList.contains("aberto")) carregarAgentes();
+  });
 
   // O primeiro clique direito abre o menu normal; o segundo, logo em seguida, fecha esse menu e abre o painel.
   window.addEventListener("contextmenu", (e) => {
