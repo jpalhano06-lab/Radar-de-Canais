@@ -2028,7 +2028,7 @@ h2, h3 { letter-spacing: -.01em; }
 /* algarismos de largura fixa só nos números: no texto corrido o "tnum" alargava também a vírgula e os dois-pontos */
 .numeros b, .cota-livre b, .canal-cab .posicao { font-family: var(--mostrador); font-weight: 700; letter-spacing: .01em;
   font-variant-numeric: tabular-nums; }
-.tabela td, .capa .nota, .video .meta { font-variant-numeric: tabular-nums; }
+.capa .nota { font-variant-numeric: tabular-nums; }
 .numeros b { font-size: 17px; } .numeros .media b { font-size: 19px; color: var(--acento); }
 .cota-livre b { font-size: 32px; }
 
@@ -2057,3 +2057,32 @@ input, select, textarea, .selects select, .selects .limpar { border-radius: 8px;
 .ajuda { background: none; border: 0 !important; padding: 2px 0; color: var(--fraco); max-width: 88ch; }
 .ajuda b { color: var(--texto); }
 .ajuda .i { width: 18px; height: 18px; font-size: 11px; }
+
+/* fase 2: a nota vira o mostrador da capa. É o número que o Radar existe para medir, então é a única coisa grande
+   e chamativa: embaixo à esquerda, na letra condensada, com o "×" menor. O verde continua sendo o "estourou" */
+.capa .nota { top: auto; bottom: 8px; left: 8px; font-family: var(--mostrador); font-weight: 800; font-size: 21px; line-height: 1;
+  letter-spacing: .01em; padding: 4px 7px 3px; border-radius: 4px; background: rgba(20,17,14,.8); color: #f3ece0; }
+.capa .nota small { font-size: .6em; font-weight: 700; margin-left: 1px; }
+.capa .nota.alta { background: var(--verde); }
+.video.yt .capa .nota { font-size: 34px; bottom: 10px; left: 10px; padding: 5px 9px 3px; }
+.capas .capa .nota { font-size: 18px; }
+
+/* fase 2: os canais em linhas separadas por um fio, sem uma caixa em volta de cada um */
+.lista-canais { gap: 0; }
+.lista-canais .canal:not(#_) { background: none; border: 0 !important; border-bottom: 1px solid var(--linha) !important;
+  border-radius: 0; box-shadow: none; padding: 22px 0; }
+.lista-canais .canal:not(#_):first-child { border-top: 1px solid var(--linha) !important; }
+.lista-canais .canal-nome a { font-size: 18px; }
+
+/* os botões pequenos embaixo de cada vídeo (Salvar ideia, Trabalho) tinham o mesmo defeito do "Abrir canal": a letra
+   escura da regra sobre o acento em cima de um fundo vazio. Continuam pequenos (pedido de 2026-10-15), mas pintados */
+.video-acoes .botao:not(#_):not(:hover) { background: var(--painel2) !important; color: var(--texto) !important; }
+.video-acoes .botao:not(#_):hover { color: var(--sobre-acento) !important; }
+/* sem a caixa, o 5º vídeo sozinho numa segunda fileira ficava solto: a grade preenche a largura que houver */
+.lista-canais .capas { grid-template-columns: repeat(auto-fill, minmax(min(100%, 170px), 1fr)); }
+@media (max-width: 860px) { .lista-canais .capas { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+/* no celular o nome e os números ficavam numa coluna estreita ao lado dos botões: os botões descem para uma linha só deles */
+@media (max-width: 860px) {
+  .lista-canais .canal-info { flex: 1 1 calc(100% - 70px); }
+  .lista-canais .canal-acoes { flex: 1 1 100%; }
+}

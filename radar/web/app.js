@@ -414,7 +414,7 @@ document.addEventListener("click", (e) => {
 function capaDoVideo(v) {
   return `<a class="capa" href="${linkVideo(esc(v.id))}" target="_blank" rel="noopener">
     <img loading="lazy" src="https://i.ytimg.com/vi/${esc(v.id)}/mqdefault.jpg" alt="">
-    ${v.nota != null ? `<span class="nota ${v.nota >= 5 ? "alta" : ""}" title="Fez ${nota(v.nota)} o normal do canal">${nota(v.nota)}</span>` : ""}
+    ${v.nota != null ? `<span class="nota ${v.nota >= 5 ? "alta" : ""}" title="Fez ${nota(v.nota)} o normal do canal">${nota(v.nota).replace(/x$/, "<small>×</small>")}</span>` : ""}
     ${v.duracao_s ? `<span class="dur">${duracao(v.duracao_s)}</span>` : ""}</a>`;
 }
 
