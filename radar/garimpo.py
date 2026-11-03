@@ -11,7 +11,7 @@ from collections import Counter
 from datetime import datetime, timedelta, timezone
 
 from . import banco, gosto, ia, medir, mercado, metricas, risco, youtube
-from .config import COTA_DO_GARIMPO, DADOS
+from .config import COTA_DO_GARIMPO, DADOS, MODELO_TEXTO, MODELO_VISAO
 
 # termos de partida por nicho. Um arquivo dados/termos.json ({"Nicho": ["termo", ...]}) soma ou troca estes.
 # Os nichos e as buscas do garimpo (refeito em 2026-10-14, pedido do usuário: "buscas melhores e mais alinhadas, para
@@ -136,7 +136,25 @@ def _proximos_termos() -> list[tuple[str, str]]:
             for _ in range(vezes):
                 if fila:
                     ordem.append(fila.pop(0))
-    return ordem
+    if not ordem:
+        # a bolsa secou: os 474 termos estão todos na espera dos REBUSCAR_DIAS, e aí o garimpo fazia 0 busca e
+        # deixava as 17 mil unidades do dia paradas (2026-11-01). Volta nos que não são lixo, do mais antigo
+        # para o mais novo, em vez de não procurar nada.
+        velhos = []
+        for nicho, ts in nichos:
+            if mercado.irrelevante(nicho):
+                continue
+            for t in ts:
+                b = feitos.get(t)
+                if b and (b.get("zeros") or 0) >= LIXO_DEPOIS and b["quando"] >= limite_lixo:
+                    continue
+                if nicho != "Procurados" and gosto.lingua(t) in ("pt", "es"):
+                    continue
+                velhos.append(((b or {}).get("quando") or "", nicho, t))
+        ordem = [(nicho, t) for _, nicho, t in sorted(velhos)]
+    # o mesmo termo em dois nichos não gasta duas buscas de 100 unidades
+    vistos = set()
+    return [(nicho, t) for nicho, t in ordem if not (t in vistos or vistos.add(t))]
 
 
 def _avaliar(ids: list[str], log, contagem: dict, rapido: bool = False) -> list[str]:
@@ -179,7 +197,7 @@ def _completar(c: dict, rapido: bool = False) -> None:
     videos = banco.todos("SELECT id, titulo, views, duracao_s, publicado FROM videos WHERE canal_id=? "
                          "ORDER BY views DESC LIMIT 15", c["id"])
     dados = {"id": c["id"], "no_radar": 1}
-    if not rapido and (not c["nicho"] or not c.get("subnicho")):
+    if not rapido and (not c["nicho"] or not c.get("subnicho")) and not ia.esgotado(MODELO_TEXTO):
         existentes = [l["subnicho"] for l in banco.todos(
             "SELECT subnicho, COUNT(*) AS n FROM canais WHERE no_radar=1 AND subnicho<>'' AND id<>? "
             "GROUP BY subnicho ORDER BY n DESC LIMIT 80", c["id"])]
@@ -188,7 +206,7 @@ def _completar(c: dict, rapido: bool = False) -> None:
             dados["nicho"] = nicho
         if subnicho:
             dados["subnicho"] = subnicho
-    if not rapido and c["sem_rosto"] is None:
+    if not rapido and c["sem_rosto"] is None and not ia.esgotado(MODELO_VISAO):
         resposta = ia.sem_rosto([f"https://i.ytimg.com/vi/{v['id']}/default.jpg" for v in videos])
         if resposta is not None:
             dados["sem_rosto"] = int(resposta)
@@ -211,24 +229,48 @@ def _completar(c: dict, rapido: bool = False) -> None:
     return dados["no_radar"] == 1
 
 
+# o cadeado dos pendentes é separado do cadeado do garimpo: desde 2026-11-01 esta fase roda fora dele
+_PENDENTES = threading.Lock()
+
+
+def _sem_groq_hoje() -> bool:
+    """O Groq já gastou a cota de tokens do dia nos dois modelos: insistir é só dormir (e ela volta em horas)."""
+    return ia.esgotado(MODELO_VISAO) and ia.esgotado(MODELO_TEXTO)
+
+
 @youtube.por("garimpo")
 def completar_pendentes(log=print, quantos: int = 80, minutos: float | None = None) -> int:
     """Canais do Radar sem nicho ou sem a resposta do rosto (o Groq estava fora, por exemplo). Não gasta cota.
 
     minutos: para depois desse tempo (o Groq de imagem aguenta uma pergunta por minuto). Os pendentes vêm sorteados,
     para um canal que nunca tem resposta não ocupar a vez dos outros todo dia."""
-    pendentes = banco.todos("SELECT * FROM canais WHERE no_radar=1 AND (sem_rosto IS NULL OR nicho='' OR subnicho='') "
-                            "ORDER BY RANDOM() LIMIT ?", quantos)
-    ate = time.monotonic() + minutos * 60 if minutos else None
-    feitos = 0
-    for c in pendentes:
-        if ate and time.monotonic() > ate:
-            break
-        _completar(c)
-        feitos += 1
-    if feitos:
-        log(f"{feitos} canais do Radar completados (nicho e rosto)")
-    return feitos
+    if not _PENDENTES.acquire(blocking=False):
+        return 0            # já tem uma rodada de pendentes em pé: duas só brigariam pelas mesmas chaves
+    try:
+        if _sem_groq_hoje():
+            log("O Groq gastou a cota de tokens do dia: os pendentes ficam para quando ela voltar.")
+            return 0
+        pendentes = banco.todos("SELECT * FROM canais WHERE no_radar=1 AND (sem_rosto IS NULL OR nicho='' OR "
+                                "subnicho='') ORDER BY RANDOM() LIMIT ?", quantos)
+        ate = time.monotonic() + minutos * 60 if minutos else None
+        feitos = 0
+        for c in pendentes:
+            if ate and time.monotonic() > ate:
+                break
+            # o canal só ocupa a vez se o modelo que falta nele ainda tem cota de tokens hoje
+            falta_visao = c["sem_rosto"] is None and not ia.esgotado(MODELO_VISAO)
+            falta_texto = (not c["nicho"] or not c["subnicho"]) and not ia.esgotado(MODELO_TEXTO)
+            if not (falta_visao or falta_texto):
+                continue
+            _completar(c)
+            feitos += 1
+        if feitos:
+            log(f"{feitos} canais do Radar completados (nicho e rosto)")
+        elif pendentes:
+            log("Os pendentes ficam para quando a cota de tokens do dia do Groq voltar.")
+        return feitos
+    finally:
+        _PENDENTES.release()
 
 
 MINUTOS_PENDENTES = 45     # o tempo que o fim do garimpo dá ao Groq para os canais sem nicho ou sem o rosto
@@ -406,17 +448,18 @@ def rodar(log=print, unidades: int | None = None) -> dict:
     except Exception as erro:  # o garimpo nunca derruba o servidor
         estado = "erro"
         anotar(f"Erro: {erro}")
-    try:
-        # por último e com prazo: o Groq espera o limite do minuto, e a cota já foi gasta nas buscas (2026-10-30, o
-        # garimpo ficou 20 horas preso aqui antes da primeira busca). Não gasta cota, então roda mesmo sem cota.
-        completar_pendentes(anotar, minutos=MINUTOS_PENDENTES)
-    except Exception as erro:
-        anotar(f"Erro ao completar os pendentes: {erro}")
     finally:
         gasto = youtube.cota_hoje()["usado"] - inicio
         banco.executar("UPDATE garimpos SET fim=?, unidades=?, buscas=?, canais_novos=?, estado=? WHERE id=?",
                        banco.agora(), gasto, contagem["buscas"], contagem["novos"], estado, gid)
         _RODANDO.release()
+    # fora do cadeado e por último: o Groq espera o limite do minuto, e a cota já foi gasta nas buscas (2026-10-30, o
+    # garimpo ficou 20 horas preso aqui antes da primeira busca). Não gasta cota, então roda mesmo sem cota. Deixar
+    # isto dentro do cadeado atrasava a busca do garimpo seguinte em até MINUTOS_PENDENTES (2026-11-01).
+    try:
+        completar_pendentes(anotar, minutos=MINUTOS_PENDENTES)
+    except Exception as erro:
+        anotar(f"Erro ao completar os pendentes: {erro}")
     anotar(f"Fim: {contagem['buscas']} buscas, {contagem['novos']} canais novos, {gasto} unidades.")
     return {"ok": True, "id": gid, **contagem, "unidades": gasto}
 
@@ -455,7 +498,7 @@ def gastar_tudo(log=print) -> None:
 
 def estado_gasto() -> dict:
     cota = youtube.cota_hoje()
-    rodando = GASTANDO["rodando"] or _RODANDO.locked()
+    rodando = GASTANDO["rodando"] or _RODANDO.locked() or _PENDENTES.locked()
     ultimo = banco.um("SELECT inicio FROM garimpos ORDER BY id DESC LIMIT 1")
     return {**cota, "garimpando": rodando, "ultimo_garimpo": ultimo["inicio"] if ultimo else "",
             # os dois ajustes e a fatia do dia, para o quadro dos créditos mostrar e deixar mudar

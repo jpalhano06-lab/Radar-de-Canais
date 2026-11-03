@@ -16,6 +16,39 @@ _CLIENTE = httpx.Client(timeout=httpx.Timeout(60, connect=10))
 _RODA = None
 _TRAVA = threading.Lock()
 _RECUSADAS = set()   # chaves que o Groq disse serem inválidas
+# (modelo, chave) -> o time.monotonic() em que a cota de tokens do dia volta. O limite do Groq de tokens por dia é por
+# organização e por modelo e só volta em horas: esperar nele é esperar à toa (2026-11-01, o fim do garimpo gastava os
+# 45 minutos inteiros dormindo 15 segundos por vez contra uma cota que só voltava no dia seguinte).
+_ESGOTADAS: dict[tuple[str, str], float] = {}
+
+
+def _espera_pedida(texto: str, cabecalhos=None) -> float | None:
+    """Quantos segundos o Groq pede para esperar: o cabeçalho retry-after ou o "try again in 31m41.6s" da mensagem.
+
+    A conta antiga procurava só um número seguido de "s" e não enxergava as horas nem os minutos: 31m41s virava 15
+    segundos, e o garimpo dormia de 15 em 15 segundos contra uma cota que só voltava horas depois."""
+    if cabecalhos is not None:
+        try:
+            return float(cabecalhos["retry-after"])
+        except (KeyError, TypeError, ValueError):
+            pass
+    m = re.search(r"try again in (?:(\d+)h)?(?:(\d+)m)?([\d.]+)s", texto)
+    if not m:
+        return None
+    horas, minutos, segundos = m.groups()
+    return int(horas or 0) * 3600 + int(minutos or 0) * 60 + float(segundos)
+
+
+def esgotado(modelo: str) -> bool:
+    """True quando toda chave já estourou a cota de tokens do dia desse modelo: nem vale perguntar."""
+    chaves = [c for c in chaves_groq() if c not in _RECUSADAS]
+    if not chaves:
+        return True
+    if not _ESGOTADAS:
+        return False        # nenhuma chave estourou nada: nem olha o relógio
+    agora = time.monotonic()
+    return all(_ESGOTADAS.get((modelo, c), 0) > agora for c in chaves)
+
 
 LINGUAS = {
     "en": "inglês", "es": "espanhol", "pt": "português", "fr": "francês", "de": "alemão",
@@ -31,18 +64,20 @@ NICHOS = [
 ]
 
 
-def _chave() -> str | None:
+def _chave(modelo: str = "") -> str | None:
     global _RODA
     chaves = chaves_groq()
     if not chaves:
         return None
+    agora = time.monotonic()
     with _TRAVA:
         if _RODA is None:
             _RODA = itertools.cycle(chaves)
         for _ in range(len(chaves)):
             chave = next(_RODA)
-            if chave not in _RECUSADAS:
-                return chave
+            if chave in _RECUSADAS or _ESGOTADAS.get((modelo, chave), 0) > agora:
+                continue
+            return chave
     return None
 
 
@@ -50,8 +85,10 @@ def _perguntar(modelo: str, sistema: str, conteudo, tentativas: int = 4, esperar
                saida: int = 600, temperatura: float = 0.2) -> dict | None:
     """esperar: quantos segundos, no total, vale esperar quando todas as chaves batem no limite do minuto (o garimpo
     roda sozinho e pode esperar; a extensão, não)."""
-    for _ in range(tentativas):
-        chave = _chave()
+    restantes = tentativas
+    while restantes > 0:
+        restantes -= 1
+        chave = _chave(modelo)
         if not chave:
             return None
         corpo = {"model": modelo, "temperature": temperatura, "max_completion_tokens": saida,
@@ -75,13 +112,18 @@ def _perguntar(modelo: str, sistema: str, conteudo, tentativas: int = 4, esperar
             continue
         if r.status_code == 400:
             return None     # pedido recusado (capa que não existe mais): é o mesmo em toda chave
-        if r.status_code == 429 and esperar > 0:
-            # o Groq diz em quantos segundos o minuto da chave volta
-            m = re.search(r"try again in ([\d.]+)s", r.text)
-            pausa = min(esperar, float(m.group(1)) + 1 if m else 15)
-            esperar -= pausa
-            time.sleep(pausa)
-        # 429 e 5xx: a próxima chave da roda
+        if r.status_code == 429:
+            espera = _espera_pedida(r.text, r.headers)
+            # cota de tokens do dia, ou uma pausa mais longa do que vale esperar: a chave sai da roda até voltar
+            if "per day" in r.text or (espera or 0) > esperar:
+                _ESGOTADAS[(modelo, chave)] = time.monotonic() + (espera or 3600)
+                restantes += 1      # a chave saiu da roda sem responder: não gasta tentativa
+                continue
+            if esperar > 0:     # o limite do minuto: vale esperar o que o Groq pediu
+                pausa = min(esperar, (espera or 15) + 1)
+                esperar -= pausa
+                time.sleep(pausa)
+        # 5xx: a próxima chave da roda
     return None
 
 
