@@ -785,7 +785,7 @@
     : p.forca === "medio" ? ["medio", "Já fizeram"] : ["forte", "Já fizeram e foi bem"];
   const ANDANDO = ["traduzindo", "procurando", "julgando"];
 
-  const FANTASMA = { id: null, titulo: "", fase: "", paises: [], feitos: new Set(), lista: null, erro: "", vez: 0, ouvintes: new Set() };
+  const FANTASMA = { id: null, titulo: "", lugar: "", fase: "", paises: [], feitos: new Set(), lista: null, erro: "", vez: 0, ouvintes: new Set() };
   function avisarFantasma() {
     FANTASMA.ouvintes.forEach((f) => f());
     const F = FANTASMA, livres = F.lista ? F.lista.filter((p) => !p.feito).length : 0;
@@ -796,7 +796,7 @@
     });
   }
   function zerarFantasma(id, titulo) {
-    Object.assign(FANTASMA, { id, titulo, fase: "", paises: [], feitos: new Set(), lista: null, erro: "", vez: FANTASMA.vez + 1 });
+    Object.assign(FANTASMA, { id, titulo, lugar: "", fase: "", paises: [], feitos: new Set(), lista: null, erro: "", vez: FANTASMA.vez + 1 });
     avisarFantasma();
   }
 
@@ -805,15 +805,19 @@
     if (origem && F.paises.length) voarFantasmas(origem, F.paises);   // a busca já tem os países: voam já
     if (!F.id || !F.titulo || ANDANDO.includes(F.fase) || F.fase === "pronto") return;
     const vez = ++F.vez, vale = () => F.vez === vez;   // trocou de vídeo no meio: para
-    Object.assign(F, { fase: "traduzindo", paises: [], feitos: new Set(), lista: null, erro: "" }); avisarFantasma();
+    Object.assign(F, { fase: "traduzindo", lugar: "", paises: [], feitos: new Set(), lista: null, erro: "" }); avisarFantasma();
     const prep = await api("/api/ext/radar/preparar", "POST", { titulo: F.titulo });
     if (!vale()) return;
     if (prep.erro) { Object.assign(F, { fase: "erro", erro: prep.erro }); return avisarFantasma(); }
-    Object.assign(F, { fase: "procurando", paises: prep.dados.paises }); avisarFantasma();
+    Object.assign(F, { fase: "procurando", paises: prep.dados.paises, lugar: prep.dados.lugar || "" }); avisarFantasma();
     if (origem && origem.isConnected) voarFantasmas(origem, F.paises);
     const resultados = {};
+    // cada país: a busca exata e, se o título fala de um lugar, a versão local (o lugar trocado pelo país)
+    const buscar = async (chave, busca, p) => {
+      try { resultados[chave] = await buscarNoYoutube(busca, p.codigo, p.lingua); } catch { resultados[chave] = []; }
+    };
     await Promise.all(F.paises.map(async (p, i) => {
-      try { resultados[p.codigo] = await buscarNoYoutube(p.busca, p.codigo, p.lingua); } catch { resultados[p.codigo] = []; }
+      await Promise.all([buscar(p.codigo, p.busca, p), p.regional ? buscar(`${p.codigo}:regional`, p.regional.busca, p) : null]);
       if (vale()) { F.feitos.add(i); avisarFantasma(); }
     }));
     if (!vale()) return;
@@ -838,13 +842,25 @@
       h("div", { class: "radar-cena" }, h("span", { class: "radar-cena-brilho" }), anel, h("span", { class: "radar-cena-fantasma" }, icone("fantasma"))),
       h("div", { class: "radar-cena-conta" }, conta, legenda), aviso, comecar, grade,
       verNoPainel ? botao("radar-ver-painel", "olho", "Ver os vídeos de cada língua", verNoPainel) : null, detalhes);
-    let chips = [], montada = null, ligada = false;
-    const mostrar = (p) => detalhes.replaceChildren(
-      h("div", { class: "radar-sub" }, `${nomeLingua(p)} (${p.pais}): ${SITUACAO(p)[1]}. Procurei “${p.busca}”.`),
-      ...p.parecidos.map((x) => h("a", { class: "radar-item", href: `https://www.youtube.com/watch?v=${x.id}` },
-        h("img", { src: `https://i.ytimg.com/vi/${x.id}/default.jpg`, alt: "", style: "width:56px;height:32px;border-radius:5px" }),
-        h("span", {}, h("b", {}, x.titulo), h("small", {}, `${x.canal} · ${num(x.views)} views${x.publicado ? " · " + x.publicado : ""}`)))),
-      h("a", { class: "radar-item", href: p.link, target: "_blank", rel: "noopener" }, h("small", {}, "Ver a busca no YouTube →")));
+    let chips = [], montada = null, resumida = null, ligada = false;
+    const videoAchado = (x) => h("a", { class: "radar-item", href: `https://www.youtube.com/watch?v=${x.id}` },
+      h("img", { src: `https://i.ytimg.com/vi/${x.id}/default.jpg`, alt: "", style: "width:56px;height:32px;border-radius:5px" }),
+      h("span", {}, h("b", {}, x.titulo), h("small", {}, `${x.canal} · ${num(x.views)} views${x.publicado ? " · " + x.publicado : ""}`)));
+    const umaBusca = (p, b, local) => [
+      h("div", { class: "radar-sub" }, `${local ? "Versão local" : nomeLingua(p)} (${p.pais}): ${SITUACAO(b)[1]}. Procurei “${b.busca}”.`),
+      ...b.parecidos.map(videoAchado),
+      h("a", { class: "radar-item", href: b.link, target: "_blank", rel: "noopener" }, h("small", {}, "Ver a busca no YouTube →"))];
+    const mostrar = (p) => {
+      const todos = h("button", { class: "radar-ver-painel", type: "button" }, "← Todos os países");
+      todos.onclick = () => detalhes.replaceChildren(...resumo(FANTASMA.lista));
+      detalhes.replaceChildren(todos, ...umaBusca(p, p), ...(p.regional ? umaBusca(p, p.regional, true) : []));
+    };
+    // pronto: cada país mostra logo o vídeo que foi julgado igual (o de mais views), sem precisar clicar
+    const linhaAchado = (p, b, local) => h("div", { class: `radar-achado ${SITUACAO(b)[0]}` },
+      h("div", { class: "radar-achado-cab" }, local ? h("em", {}, "local") : bandeira(p.codigo),
+        h("b", {}, local ? `“${b.traduzido}”` : nomeLingua(p)), h("small", {}, SITUACAO(b)[1])),
+      b.parecidos[0] ? videoAchado(b.parecidos[0]) : null);
+    const resumo = (lista) => lista.flatMap((p) => [linhaAchado(p, p), p.regional ? linhaAchado(p, p.regional, true) : null]);
     function atualizar() {
       if (dono.isConnected) ligada = true;
       else if (ligada) return FANTASMA.ouvintes.delete(atualizar);
@@ -863,7 +879,12 @@
       if (F.fase === "pronto") {
         const livres = F.lista.filter((p) => !p.feito);
         conta.textContent = livres.length; legenda.textContent = `${livres.length === 1 ? "livre" : "livres"} de ${F.lista.length} línguas`;
-        aviso.textContent = livres.length ? "Livre em " + livres.map(nomeLingua).join(", ").replace(/, ([^,]*)$/, " e $1") : "Já fizeram em todas as línguas procuradas.";
+        const e = (xs) => xs.join(", ").replace(/, ([^,]*)$/, " e $1");
+        const locais = F.lista.filter((p) => p.regional), locaisLivres = locais.filter((p) => !p.regional.feito);
+        aviso.textContent = (livres.length ? "Livre em " + e(livres.map(nomeLingua)) + "." : "Já fizeram em todas as línguas procuradas.")
+          + (locais.length ? ` Versão local (trocando ${F.lugar || "o lugar"} pelo país): ${locaisLivres.length
+            ? "livre em " + e(locaisLivres.map((p) => p.pais)) : "já fizeram em todos"}.` : "");
+        if (resumida !== F.lista) { resumida = F.lista; detalhes.replaceChildren(...resumo(F.lista)); }
         F.lista.forEach((p) => {
           const c = chips[F.paises.findIndex((x) => x.codigo === p.codigo)];
           if (!c) return;

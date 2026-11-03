@@ -250,3 +250,26 @@ def traduzir_exato(titulo: str, linguas: list[str]) -> dict[str, str]:
     if not resposta:
         return {}
     return {c: str(resposta[c]).strip()[:150] for c in linguas if isinstance(resposta.get(c), str) and resposta[c].strip()}
+
+
+def regionalizar(titulo: str, alvos: dict[str, tuple[str, str]]) -> dict | None:
+    """A versão local do título em cada país (pedido do usuário em 2026-11-03: "mercados do Canadá e dos EUA são
+    diferentes", "invenções do Japão e invenções da China"). `alvos` = {código: (país, língua)}. Devolve {"lugar":
+    "Canadá", "titulos": {código: título}}, com lugar "" quando o título não fala de lugar nenhum; None = o Groq falhou."""
+    pedido = {c: {"pais": p, "lingua": LINGUAS.get(l, l)} for c, (p, l) in alvos.items()}
+    resposta = _perguntar(
+        MODELO_TEXTO,
+        "O título de um vídeo do YouTube fala de um lugar específico (país, cidade, região ou povo/nacionalidade)? "
+        "Se fala, reescreva o título para cada país pedido, na língua pedida, trocando esse lugar pelo país pedido e "
+        "mantendo todo o resto fiel ao original (as mesmas palavras e a mesma ordem, sem números). Exemplo: "
+        "\"Supermercados do Canadá que faliram\" para Estados Unidos em inglês vira \"Supermarkets in the USA that went "
+        "bankrupt\"; \"Invenções japonesas que mudaram o mundo\" para Brasil em português vira \"Invenções brasileiras "
+        "que mudaram o mundo\". Não inclua o país que já é o lugar do título (o Japão, nesse exemplo). Se o título não fala de lugar nenhum, devolva lugar vazio e nenhum título. "
+        "Responda só JSON: {\"lugar\": \"o lugar do título ou vazio\", \"titulos\": {\"codigo\": \"título\"}}.",
+        f"Título: {titulo}\nPaíses: {json.dumps(pedido, ensure_ascii=False)}", esperar=30, saida=1200)
+    if not isinstance(resposta, dict):
+        return None
+    lugar = str(resposta.get("lugar") or "").strip()[:60]
+    titulos = resposta.get("titulos") if lugar and isinstance(resposta.get("titulos"), dict) else {}
+    return {"lugar": lugar, "titulos": {c: str(t).strip()[:150] for c, t in titulos.items()
+                                        if c in alvos and isinstance(t, str) and t.strip()}}

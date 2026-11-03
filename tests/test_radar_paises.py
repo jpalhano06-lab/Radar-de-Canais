@@ -61,3 +61,43 @@ def test_video_coreano_nao_conta_para_o_japao():
 
 def test_holanda_japao_e_coreia_no_metodo_fantasma():
     assert {("NL", "nl"), ("JP", "ja"), ("KR", "ko")} <= set(r.PADRAO)
+
+
+def _sem_banco(monkeypatch, regional):
+    guardado = {}
+    monkeypatch.setattr(r.banco, "um", lambda sql, chave: {"dados": guardado[chave]} if chave in guardado else None)
+    monkeypatch.setattr(r.banco, "executar", lambda sql, chave, dados, criado: guardado.__setitem__(chave, dados))
+    monkeypatch.setattr(r.ia, "traduzir_exato", lambda titulo, linguas: {"en": "Canadian supermarkets that went bankrupt"})
+    pedidos = []
+    monkeypatch.setattr(r.ia, "regionalizar", lambda titulo, alvos: pedidos.append(titulo) or regional)
+    return pedidos
+
+
+def test_versao_local_troca_o_lugar_pelo_pais(monkeypatch):
+    # mercados do Canadá e dos EUA são ideias diferentes: nos EUA também procura "supermarkets in the USA"
+    pedidos = _sem_banco(monkeypatch, {"lugar": "Canadá", "titulos": {
+        "US": "Supermarkets in the USA that went bankrupt", "BR": "Supermercados do Brasil que faliram"}})
+    prep = r.preparar("10 supermercados do Canadá que faliram")
+    paises = {p["codigo"]: p for p in prep["paises"]}
+    assert prep["lugar"] == "Canadá" and paises["US"]["regional"]["busca"] == "Supermarkets USA went bankrupt"
+    assert paises["BR"]["regional"]["traduzido"] == "Supermercados do Brasil que faliram"
+    assert paises["FR"]["regional"] is None
+    r.preparar("10 supermercados do Canadá que faliram")
+    assert len(pedidos) == 1        # guardada: não pergunta de novo
+
+
+def test_titulo_sem_lugar_nao_tem_versao_local(monkeypatch):
+    _sem_banco(monkeypatch, {"lugar": "", "titulos": {}})
+    assert all(p["regional"] is None for p in r.preparar("Animais que parecem de outro mundo")["paises"])
+
+
+def test_placar_da_versao_local_fica_a_parte():
+    preparo = {"titulo": "Supermercados do Canadá que faliram", "paises": [
+        {"codigo": "US", "pais": "Estados Unidos", "lingua": "en", "traduzido": "Canadian supermarkets that went bankrupt",
+         "busca": "Canadian supermarkets went bankrupt",
+         "regional": {"traduzido": "Supermarkets in the USA that went bankrupt", "busca": "Supermarkets USA went bankrupt"}}]}
+    achado = {"id": "x1", "titulo": "Supermarkets in the USA That Went Bankrupt", "canal": "C", "views": "250,000 views"}
+    j = r.julgar(preparo, {"US": [], "US:regional": [achado]})
+    us = j["paises"][0]
+    assert not us["feito"] and us["regional"]["feito"] and us["regional"]["parecidos"][0]["id"] == "x1"
+    assert us["regional"]["forca"] == "forte" and j["livres"] == 1 and j["livres_regional"] == 0

@@ -264,12 +264,33 @@ def preparar(titulo: str) -> dict:
     if novas:
         banco.executar("INSERT OR REPLACE INTO traducoes (chave, dados, criado) VALUES (?,?,?)",
                        chave, json.dumps(traducoes, ensure_ascii=False), banco.agora())
+    regional = _regional(titulo)
     paises = []
     for codigo, lingua in PADRAO:
         traduzido = sem_numeros(traducoes.get(lingua) or titulo) if lingua != lingua_titulo else ideia
-        paises.append({"codigo": codigo, "pais": PAISES[codigo][0], "lingua": lingua, "traduzido": traduzido,
-                       "busca": palavras_da_busca(traduzido)})
-    return {"titulo": titulo, "ideia": ideia, "paises": paises}
+        pais = {"codigo": codigo, "pais": PAISES[codigo][0], "lingua": lingua, "traduzido": traduzido,
+                "busca": palavras_da_busca(traduzido), "regional": None}
+        local = sem_numeros(regional["titulos"].get(codigo, ""))
+        # no país do próprio título ("invenções do Japão" no Japão) a versão local é a mesma busca: não repete
+        if local and palavras_da_busca(local).lower() != pais["busca"].lower():
+            pais["regional"] = {"traduzido": local, "busca": palavras_da_busca(local)}
+        paises.append(pais)
+    return {"titulo": titulo, "ideia": ideia, "lugar": regional["lugar"], "paises": paises}
+
+
+def _regional(titulo: str) -> dict:
+    """A versão local do título em cada país, guardada: "Supermercados do Canadá que faliram" nos EUA vira
+    "Supermarkets in the USA that went bankrupt". Título que não fala de lugar fica sem (lugar vazio)."""
+    chave = f"regional-radar:{titulo}"
+    cache = banco.um("SELECT dados FROM traducoes WHERE chave=?", chave)
+    if cache:
+        return json.loads(cache["dados"])
+    r = ia.regionalizar(titulo, {c: (PAISES[c][0], l) for c, l in PADRAO})
+    if r is None:                     # o Groq falhou: fica só a busca exata, e tenta de novo da próxima vez
+        return {"lugar": "", "titulos": {}}
+    banco.executar("INSERT OR REPLACE INTO traducoes (chave, dados, criado) VALUES (?,?,?)",
+                   chave, json.dumps(r, ensure_ascii=False), banco.agora())
+    return r
 
 
 def _views(texto) -> int | None:
@@ -280,27 +301,39 @@ def _views(texto) -> int | None:
     return int(digitos) if digitos else None
 
 
+def _placar(traduzido: str, lingua: str, busca: str, achados: list, titulo: str, video_id: str) -> dict:
+    """Os vídeos achados numa busca viram o placar dela: já fizeram (forte, médio, fraco) ou ninguém fez."""
+    alvo = palavras(traduzido)
+    parecidos, quase = [], 0
+    for a in (achados or [])[:60]:
+        t = str(a.get("titulo", ""))
+        if not t or a.get("id") == video_id or not na_lingua(t, lingua):
+            continue
+        nota = mesma_ideia(t, alvo, numeros(titulo))
+        if nota >= PARECIDO:
+            parecidos.append({"id": str(a.get("id", "")), "titulo": t, "canal": str(a.get("canal", "")),
+                              "views": _views(a.get("views")), "publicado": str(a.get("publicado", "")),
+                              "parecenca": round(nota, 2)})
+        elif nota >= QUASE:
+            quase += 1
+    parecidos.sort(key=lambda v: -(v["views"] or 0))
+    return {"busca": busca, "traduzido": traduzido, "feito": bool(parecidos), "parecidos": parecidos[:4], "quase": quase,
+            "forca": forca(parecidos[0]["views"]) if parecidos else "",
+            "link": f"https://www.youtube.com/results?search_query={busca.replace(' ', '+')}"}
+
+
 def julgar(preparo: dict, resultados: dict, video_id: str = "") -> dict:
-    """Os vídeos que a extensão achou em cada país viram o placar: já fizeram (forte, médio, fraco) ou ninguém fez."""
+    """Os vídeos que a extensão achou em cada país viram o placar. A versão local (lugar trocado pelo país) chega em
+    "<código>:regional" e ganha o placar dela, à parte: "livre" continua contando só a busca exata."""
     titulo = str(preparo.get("titulo", ""))
     saida = []
     for x in preparo.get("paises", []):
-        alvo = palavras(str(x.get("traduzido", "")))
-        parecidos, quase = [], 0
-        for a in (resultados.get(x["codigo"]) or [])[:60]:
-            t = str(a.get("titulo", ""))
-            if not t or a.get("id") == video_id or not na_lingua(t, x["lingua"]):
-                continue
-            nota = mesma_ideia(t, alvo, numeros(titulo))
-            if nota >= PARECIDO:
-                parecidos.append({"id": str(a.get("id", "")), "titulo": t, "canal": str(a.get("canal", "")),
-                                  "views": _views(a.get("views")), "publicado": str(a.get("publicado", "")),
-                                  "parecenca": round(nota, 2)})
-            elif nota >= QUASE:
-                quase += 1
-        parecidos.sort(key=lambda v: -(v["views"] or 0))
-        saida.append({"codigo": x["codigo"], "pais": x["pais"], "lingua": x["lingua"], "busca": x["busca"],
-                      "feito": bool(parecidos), "parecidos": parecidos[:4], "quase": quase,
-                      "forca": forca(parecidos[0]["views"]) if parecidos else "",
-                      "link": f"https://www.youtube.com/results?search_query={x['busca'].replace(' ', '+')}"})
-    return {"ideia": preparo.get("ideia", ""), "paises": saida, "livres": sum(1 for r in saida if not r["feito"])}
+        pais = {"codigo": x["codigo"], "pais": x["pais"], "lingua": x["lingua"]}
+        pais |= _placar(str(x.get("traduzido", "")), x["lingua"], x["busca"], resultados.get(x["codigo"]), titulo, video_id)
+        r = x.get("regional")
+        pais["regional"] = _placar(str(r.get("traduzido", "")), x["lingua"], str(r.get("busca", "")),
+                                   resultados.get(f"{x['codigo']}:regional"), titulo, video_id) if r else None
+        saida.append(pais)
+    return {"ideia": preparo.get("ideia", ""), "lugar": preparo.get("lugar", ""), "paises": saida,
+            "livres": sum(1 for r in saida if not r["feito"]),
+            "livres_regional": sum(1 for r in saida if r["regional"] and not r["regional"]["feito"])}

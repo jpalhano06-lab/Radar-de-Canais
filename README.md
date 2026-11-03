@@ -368,6 +368,13 @@ código para quando for vender ou dividir com os sócios.
   (`radar_paises.preparar`, Groq, guardado) e a extensão abre a busca do YouTube de cada país
   (`/results?search_query=...&gl=BR&hl=pt`), lendo o `<script id="yt-initial-data">` da página. O servidor julga os
   resultados com as mesmas regras (`radar_paises.julgar`). Não gasta cota e funciona com a cota do dia acabada.
+- **Versão local** (2026-11-03): se o título fala de um lugar ("Supermercados do Canadá que faliram", "Invenções
+  japonesas..."), o Groq também reescreve o título trocando o lugar por cada país (`ia.regionalizar`, guardado em
+  `regional-radar:`), e a extensão faz uma segunda busca por país ("Supermarkets in the USA that went bankrupt"), que
+  chega em `<código>:regional` e ganha placar próprio no `julgar`. O país que já é o lugar do título fica sem. O
+  "livre" continua contando só a busca exata; o aviso diz à parte onde a versão local está livre.
+- Quando a busca termina, cada país já mostra o vídeo que foi julgado igual (o de mais views), sem precisar clicar;
+  clicar no país mostra todos os achados das duas buscas.
 - Saíram do site: o botão 📡 dos vídeos, a aba Radar de países do canal e a etiqueta "radar" dos canais.
   O código antigo (`conferir`, `/api/radar-paises/*`) ficou, sem botão.
 
