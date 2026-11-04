@@ -145,28 +145,67 @@ def _limpar(texto: str) -> str:
     return re.sub(r"\n{3,}", "\n\n", texto).strip()
 
 
-_CODIGO_DA_LINGUA = {"português": "pt", "inglês": "en", "espanhol": "es"}
+# o alfabeto de cada língua que não escreve em latim: é por ele que o Radar confere se o título voltou MESMO na
+# língua pedida (2026-11-03: o título japonês do vídeo de referência voltava traduzido para o português, porque
+# "Língua: japonês" dava para o modelo entender "a língua do título é japonês")
+_ALFABETOS = {
+    "ja": ((0x3040, 0x30FF), (0x4E00, 0x9FFF)), "zh": ((0x4E00, 0x9FFF),),
+    "ko": ((0x1100, 0x11FF), (0x3130, 0x318F), (0xAC00, 0xD7AF)),
+    "ru": ((0x0400, 0x04FF),), "uk": ((0x0400, 0x04FF),), "bg": ((0x0400, 0x04FF),),
+    "ar": ((0x0600, 0x06FF),), "hi": ((0x0900, 0x097F),), "ta": ((0x0B80, 0x0BFF),), "el": ((0x0370, 0x03FF),),
+}
+
+
+def codigo_da_lingua(lingua: str) -> str:
+    """"japonês" -> "ja". "" quando o nome não é de nenhuma das línguas das vozes da fábrica."""
+    from .fabrica_api import IDIOMA
+    lingua = (lingua or "").strip().lower()
+    return IDIOMA.get(lingua, lingua if lingua in IDIOMA.values() else "")
+
+
+def _na_lingua(titulo: str, codigo: str) -> bool | None:
+    """O título está escrito nesta língua? None quando não dá para saber (duas línguas do mesmo alfabeto latino)."""
+    faixas = _ALFABETOS.get(codigo)
+    if faixas:
+        return sum(1 for c in titulo if any(a <= ord(c) <= b for a, b in faixas)) >= 2
+    if codigo in ("pt", "en", "es"):
+        from . import gosto
+        vista = gosto.lingua(titulo)
+        return None if vista in ("?", "outras") else vista == codigo
+    # língua de alfabeto latino sem lista de palavras (holandês, polonês...): pelo menos não voltou em outro alfabeto
+    if any(ord(c) > 0x024F for c in titulo if c.isalpha()):
+        return False
+    return None
+
+
+_SISTEMA_TITULO = (
+    "Você escreve o título de um vídeo do YouTube na língua de destino que o pedido indica. O título que chega pode "
+    "estar em QUALQUER língua: isso não importa, e a língua dele nunca é a língua de destino da resposta. Responda só "
+    "com o título escrito na língua de destino, no alfabeto dela (nada de transliterar para o nosso alfabeto), numa "
+    "linha, sem aspas e sem explicação. Mantenha o tom chamativo, os números e os nomes próprios. Se o título já "
+    "estiver escrito na língua de destino, devolva-o igual.")
 
 
 def traduzir_titulo(titulo: str, lingua: str) -> str:
     """O título na língua falada no vídeo (pedido do usuário em 2026-10-29: "o título lá pode ser em português, porém
     sempre terá a tradução automática pra língua que vai ser falada"). Já na língua certa, nem chama o Claude.
-    Tradução que falha ou volta estranha (várias linhas, comprida demais) deixa o título como veio: o vídeo não para
-    por causa disso."""
-    from . import gosto
+    Tradução que falha, volta estranha (várias linhas, comprida demais) ou volta em OUTRA língua deixa o título como
+    veio: o vídeo não para por causa disso."""
     titulo = " ".join(str(titulo).split())
-    if not titulo or not lingua or gosto.lingua(titulo) == _CODIGO_DA_LINGUA.get(lingua.lower()):
+    codigo = codigo_da_lingua(lingua)
+    if not titulo or not lingua or (codigo and _na_lingua(titulo, codigo) is True):
         return titulo
+    alvo = f"{lingua} ({codigo})" if codigo else lingua
     try:
-        traduzido = _claude("Você traduz títulos de vídeos do YouTube. Responda só com o título traduzido, numa linha, "
-                            "sem aspas e sem explicação. Mantenha o tom chamativo, números e nomes próprios. Se o título "
-                            "já estiver na língua pedida, devolva igual.",
-                            f"Língua: {lingua}\nTítulo: {titulo}", modelo="haiku")
+        traduzido = _claude(_SISTEMA_TITULO, f"Língua de destino (escreva o título NESTA língua): {alvo}\n\n"
+                                             f"Título que chegou (não é a língua de destino): {titulo}", modelo="haiku")
     except Exception:  # noqa: BLE001
         return titulo
     traduzido = traduzido.strip().strip("\"'“”«»").strip()
     if not traduzido or "\n" in traduzido or len(traduzido) > max(150, len(titulo) * 3):
         return titulo
+    if codigo and _na_lingua(traduzido, codigo) is False:
+        return titulo                 # voltou em outra língua: melhor o original do que o título errado
     return traduzido
 
 
