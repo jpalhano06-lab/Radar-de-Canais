@@ -2105,7 +2105,7 @@ def fila_roteiro(fid: int, u: dict = Depends(usuario)):
     except RuntimeError as erro:
         raise HTTPException(404, str(erro))
     texto = (pasta / "roteiro.txt").read_text(encoding="utf-8")
-    return {"nome": item["roteiro"], "titulo": meta.get("titulo", ""), "roteiro": texto, "palavras": len(texto.split())}
+    return {"nome": item["roteiro"], "titulo": meta.get("titulo", ""), "roteiro": texto, "palavras": roteiro_claude.contar_palavras(texto)}
 
 
 @app.post("/api/fila/{fid}/comecar")
@@ -2764,7 +2764,7 @@ async def pauta(request: Request, u: dict = Depends(exigir("outliers"))):
                                                      "subnicho": subnicho, "minutos": minutos, "criado": banco.agora()},
                                                     ensure_ascii=False), encoding="utf-8")
     return {"titulo": feito["titulo"], "roteiro": feito["roteiro"], "arquivo": str(arquivo),
-            "palavras": len(feito["roteiro"].split()), "comando": _comando(nome, arquivo)}
+            "palavras": roteiro_claude.contar_palavras(feito["roteiro"]), "comando": _comando(nome, arquivo)}
 
 
 def _comando(nome: str, arquivo) -> str:
@@ -2783,7 +2783,7 @@ def pautas(u: dict = Depends(exigir("outliers"))):
         if txt.exists():
             roteiro = txt.read_text(encoding="utf-8")
             saida.append(d | {"nome": meta.stem, "arquivo": str(txt), "roteiro": roteiro,
-                              "palavras": len(roteiro.split()), "comando": _comando(meta.stem, txt)})
+                              "palavras": roteiro_claude.contar_palavras(roteiro), "comando": _comando(meta.stem, txt)})
     return {"pautas": saida}
 
 

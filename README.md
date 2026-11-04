@@ -1708,3 +1708,8 @@ O que entrou:
   fraca que não desiste, o roteiro comprido condensado, a volta que piora e não entra, o erro da previsão medido
   contra o vídeo entregue, a voz lenta que não dimensiona a rápida e o vídeo curto que não puxa o longo.
 - O Radar precisa ser religado (LIGAR-RADAR.bat) para a conferência valer.
+- **Japonês e chinês (2026-11-04).** Eles não separam palavras com espaço, e o Radar contava por espaço: a limpeza
+  apagava todo parágrafo japonês como se fosse título, e 4.500 letras pareciam 30 palavras. Agora
+  `roteiro_claude.contar_palavras()` conta duas letras como uma palavra (300 letras por minuto, a conta do agente do
+  canal), o pedido ao Claude fala em caracteres nessas línguas, e vídeo narrado no alfabeto errado não entra na
+  medida do ritmo da voz. Testes em `tests/test_roteiro_japones.py`.
