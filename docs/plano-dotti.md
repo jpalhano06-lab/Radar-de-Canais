@@ -15,13 +15,13 @@ Quem retoma: leia este arquivo inteiro, siga a primeira linha em aberto, atualiz
   nossos projetos (sons, transições, `lugares_nomes.json`), e não reuse cookies nem credenciais de lá.
 - Nunca pare a fábrica com produção em andamento. Antes de parar: `criacao.json` em `processando`, gravação recente em
   `projetos\*`, `ffmpeg` rodando e `producoes_fila` em `produzindo`. Olhar só o `ffmpeg` não basta.
-- Nunca rode `LIGAR-TIPLABS` (ele faz `git pull` e `stash`, e a fábrica tem dezenas de arquivos modificados). Para
+- Nunca rode `LIGAR-TIPLABS` (ele faz `git pull` e `stash`, e a `main` da fábrica segue divergida do GitHub). Para
   religar a fábrica: `uv run fabrica servidor --porta 8080 --frontend C:\Users\Palhano\Documents\tiplabs\front-editor`,
   escondida, com saída em `fabrica.log` e `fabrica.log.erros`.
 - O Radar que roda é o checkout principal: mudança só vale depois de religar. Ele também só se religa sem produção
   entrando pela fila.
-- Sem `git push`. Na fábrica, sem commit: os arquivos já têm mudanças de outro trabalho misturadas. No Radar, commit
-  local em `main` por item pronto, com testes passando.
+- Sem `git push`. Commit local em `main` por item pronto, com testes passando, nos dois repositórios. O remoto da
+  fábrica é público: antes de commitar, confira que nenhum segredo entrou.
 - Nada que saia da máquina em nome do usuário: sem publicar vídeo, sem mandar mensagem, sem compra, sem criar conta,
   sem digitar senha. Sem apagar projeto, vídeo ou dado do usuário.
 - Relate o que foi medido e o que não foi. "Os testes passam" não prova o fluxo: rode o caminho de verdade.
@@ -84,3 +84,13 @@ ficado para trás. Pronto agora, cada um com prova:
 Fora, de propósito: as 164 peças de motion, a comunidade do site (escritório virtual, fórum, ranking), 69labs (narração paga
 foi cancelada em 2026-10-28) e o núcleo `.pyd`, que não abre por strings.
 
+## Commit da fábrica (2026-11-05)
+
+A pedido do usuário ("Commitar tudo"), `d654f1f` guardou a fábrica inteira na `main` local, sem push, com o que já estava
+modificado: 107 arquivos, 749 testes passando. A `main` fica 4 à frente e 9 atrás do `origin/main`, e a árvore está limpa.
+
+Ficaram fora, no `.gitignore`: `.env.antes` e `.env.vazio-antes-da-copia` (têm o `FABRICA_TOKEN`), `palhano/*/dados/`, as
+cópias `.antes`, `tiplabs-log.txt` e `api.diff`. Os 5 `git stash` antigos (17 a 30/10) não entraram.
+
+Antes do commit, `test_final_de_antes_nao_conta` falhou 4 vezes em 45. O robô comparava a data do `final.mp4` com
+`time.time()`, e no Windows o arquivo sai carimbado um instante antes. Agora compara a data do arquivo com ela mesma.
