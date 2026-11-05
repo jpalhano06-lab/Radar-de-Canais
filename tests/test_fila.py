@@ -416,3 +416,13 @@ def test_footage_real_fora_da_lista_e_recusado(db):
     fila.criar(1, {"titulo": "ok", "caracteres": 2000, "footage_real": 25}, False)
     with pytest.raises(ValueError, match="footage"):
         fila.criar(1, {"titulo": "x", "caracteres": 2000, "footage_real": 90}, False)
+
+
+def test_tema_chega_ao_envio_para_a_fabrica(db):
+    assert _enviados_com_footage({"tema": "dossie", "footage_real": 15}) == [{"footage_real": 15, "tema": "dossie"}]
+
+
+def test_tema_que_nao_existe_e_recusado(db):
+    fila.criar(1, {"titulo": "ok", "caracteres": 2000, "tema": "cinema"}, False)
+    with pytest.raises(ValueError, match="tema"):
+        fila.criar(1, {"titulo": "x", "caracteres": 2000, "tema": "inventado"}, False)

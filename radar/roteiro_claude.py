@@ -673,7 +673,7 @@ def titulo_de_entrega(meta: dict) -> str:
     return junto if len(junto) <= LIMITE_DO_NOME else junto[:LIMITE_DO_NOME - 1].rstrip() + ")"
 
 
-def enviar(usuario_id: int, nome: str, perfil: str, footage_real: int = 0) -> dict:
+def enviar(usuario_id: int, nome: str, perfil: str, footage_real: int = 0, tema: str = "") -> dict:
     """Cria o projeto na fábrica com o roteiro e o título (`fabrica novo`, grátis: narrar e gerar imagens continuam
     pedindo confirmação lá). O título vai em titulo_entrega (o traduzido com o original entre parênteses), que a
     fábrica usa no nome do vídeo entregue."""
@@ -706,6 +706,8 @@ def enviar(usuario_id: int, nome: str, perfil: str, footage_real: int = 0) -> di
         alvo = footage_real / 100
         dados["config_override"] = {**(dados.get("config_override") or {}),
                                     "garimpo": {"ligado": True, "alvo": alvo, "teto": round(alvo + 0.05, 2)}}
+    if tema:
+        dados["config_override"] = {**(dados.get("config_override") or {}), "animacoes": {"estilo": {"tema": tema}}}
     (destino / "projeto.json").write_text(json.dumps(dados, ensure_ascii=False, indent=2), encoding="utf-8")
     if (pasta / "thumbnail.jpg").exists():
         shutil.copy2(pasta / "thumbnail.jpg", destino / "thumbnail_referencia.jpg")

@@ -3018,6 +3018,9 @@ async function custos() {
 const CARACTERES_POR_PALAVRA = 5.9;
 const ATALHOS_MIN = [8, 10, 12, 15, 20, 25, 30];
 
+const TEMAS_ANIMACAO = [["", "Padrão do canal"], ["noticiario", "Noticiário"], ["dossie", "Dossiê"], ["cinema", "Cinema"],
+  ["jornal", "Jornal"], ["caderno", "Caderno"], ["planilha", "Planilha"], ["hacker", "Hacker"], ["terror", "Terror"]];
+
 async function novaProducao(preset = {}) {
   if (document.getElementById("nova-producao")) return;
   if (!EU?.admin) { aviso("Só a administração cria produções."); return; }
@@ -3026,7 +3029,7 @@ async function novaProducao(preset = {}) {
   const lembrado = canais.some((c) => c.id === guardado("np-canal", "")) ? guardado("np-canal", "") : "";
   const N = { passo: 1, titulo: preset.titulo || "", link: preset.link || "", canal: preset.canal || CANAL_ATUAL || lembrado || (canais.length === 1 ? canais[0].id : ""), cfg: null, agente: "",
     lingua: "português", ppm: 150, caracteres: 0, modo: "claude", roteiro: "", nicho: "", obs: "", revisar: false, ref: null, custo: null,
-    footage: Number(guardado("np-footage", "0")) || 0 };
+    footage: Number(guardado("np-footage", "0")) || 0, tema: guardado("np-tema", "") };
   N.caracteres = Math.round(12 * N.ppm * CARACTERES_POR_PALAVRA / 10) * 10;
   const minutos = () => N.caracteres / CARACTERES_POR_PALAVRA / N.ppm;
   const palavras = () => Math.round(N.caracteres / CARACTERES_POR_PALAVRA);
@@ -3062,6 +3065,7 @@ async function novaProducao(preset = {}) {
         <dt>Tamanho</dt><dd>${N.modo === "manual" ? `${(N.roteiro.split(/\s+/).filter(Boolean).length).toLocaleString("pt-BR")} palavras` : `≈ ${Math.round(minutos())} min · ~${palavras().toLocaleString("pt-BR")} palavras`}</dd>
         <dt>Revisão</dt><dd>${N.revisar ? "Para para eu revisar" : "Segue direto"}</dd>
         <dt>Footage real</dt><dd>${N.footage ? `${N.footage}% das cenas` : "Não usar"}</dd>
+        <dt>Animações</dt><dd>${esc(TEMAS_ANIMACAO.find(([v]) => v === N.tema)?.[1] || "Padrão do canal")}</dd>
         <dt>Custo</dt><dd>${N.custo?.usd != null ? `≈ US$ ${N.custo.usd.toFixed(2).replace(".", ",")}${N.custo.base === "geral" ? " (média geral)" : ""}` : "—"}</dd></dl>`;
   };
   const atualizarCusto = async () => {
@@ -3090,7 +3094,9 @@ async function novaProducao(preset = {}) {
       <select id="np-footage">${[[0, "Não usar"], [15, "15% das cenas"], [25, "25% das cenas"], [40, "40% das cenas"]].map(([v, r]) => `<option value="${v}" ${v === N.footage ? "selected" : ""}>${r}</option>`).join("")}</select>
       ${N.footage ? '<small class="np-dica alerta">Trecho de terceiro pode render reivindicação de direitos no YouTube.</small>' : ""}</label>`;
     const revisarSo = `<label class="np-revisar"><input type="checkbox" id="np-revisar" ${N.revisar ? "checked" : ""}><span><b>Parar para eu revisar o roteiro</b><small>O Claude escreve e espera você aprovar no Acompanhar antes de ir para a fábrica.</small></span></label>`;
-    const revisarHtml = footageHtml + revisarSo;
+    const temaHtml = `<label class="campo"><span>Tema das animações</span>
+      <select id="np-tema">${TEMAS_ANIMACAO.map(([v, r]) => `<option value="${v}" ${v === N.tema ? "selected" : ""}>${r}</option>`).join("")}</select></label>`;
+    const revisarHtml = footageHtml + temaHtml + revisarSo;
     const passos = `<div class="np-passos"><span class="${N.passo === 1 ? "ativo" : ""}">1 · O vídeo</span><span class="${N.passo === 2 ? "ativo" : ""}">2 · Editar o roteiro</span></div>`;
     if (N.passo === 1) {
       campos.innerHTML = `${passos}
@@ -3156,6 +3162,7 @@ async function novaProducao(preset = {}) {
     $n("np-obs")?.addEventListener("input", (e) => { N.obs = e.target.value; });
     $n("np-revisar").onchange = (e) => { N.revisar = e.target.checked; desenharPrevia(); };
     $n("np-footage").onchange = (e) => { N.footage = Number(e.target.value) || 0; guardar("np-footage", String(N.footage)); desenhar(); desenharPrevia(); };
+    $n("np-tema").onchange = (e) => { N.tema = e.target.value; guardar("np-tema", N.tema); desenharPrevia(); };
   }
 
   const enviar = (botao, comecar) => carregando(botao, comecar ? "Criando…" : "Salvando…", async () => {
@@ -3164,7 +3171,7 @@ async function novaProducao(preset = {}) {
     if (!N.titulo.trim()) { erro.textContent = "Escreva o título do vídeo."; return; }
     if (!N.canal) { erro.textContent = "Escolha o canal."; N.passo = 2; desenhar(); return; }
     const pedido = { titulo: N.titulo, link: N.link, canal_id: N.canal, agente_id: N.agente, lingua: N.lingua, revisar: N.revisar,
-      ...(N.footage ? { footage_real: N.footage } : {}),
+      ...(N.footage ? { footage_real: N.footage } : {}), ...(N.tema ? { tema: N.tema } : {}),
       ...(N.modo === "manual" ? { roteiro_manual: N.roteiro } : { caracteres: N.caracteres, nicho: N.nicho, observacao: N.obs }) };
     try {
       await api("/api/fila", { method: "POST", body: { pedido, comecar } });

@@ -35,17 +35,17 @@ Estado: `[ ]` aberto, `[~]` em andamento, `[x]` pronto e testado, `[-]` já exis
 - [x] 1. Garimpo no YouTube: busca, trecho, cota, veto, quadro real julgado, crop. Medido: 1 aceito (81), 3 reprovados (3, 50, 27). Sem vídeo inteiro ainda
 - [x] 2. Pool de contas: rotação, castigo, cópia dos cookies, `garimpo:` no perfil, aviso de conta única. Sem teste com conta real
 - [ ] 3. Robô em outras máquinas: fila, vigia e retomada locais já existem. Falta só despachar para outra máquina
-- [ ] 4. Repartir núcleos entre produções: cada render usa metade dos núcleos, sem saber dos outros
-- [~] 5. Escada de codificadores (`fabrica/render.py`). No ar. O perfil quality deixou a montagem 70% mais lenta; medindo speed contra CPU
+- [x] 4. Repartir núcleos entre produções (`_parte_da_maquina`). Sem medida com dois renders juntos
+- [x] 5. Escada de codificadores. AMF só se pedir: na montagem real perdeu da CPU (41 s contra 34 s, 3 de 3)
 - [-] 6. Retomada por fase: `retomar_criacoes_interrompidas`, rota `/retomar`, `mcp_servidor.retomar_producoes`
 - [-] 7. Custo: `custos_reais.resumo` dá total, por minuto e por cena; `radar/custos.py` dá a página por provedor
-- [ ] 8. Imagem por assinatura: limite e queda para a chave já existem. Conferir quantas ao mesmo tempo
+- [-] 8. Imagem por assinatura: limite, queda para a chave e 16 ao mesmo tempo (`imagens.processos`). Sem navegador, a RAM não limita
 - [-] 9. Roteiro e miniatura: `radar/fila.py` escreve pelo Claude, `publicacao.py` faz as thumbs, `radar/trello.py` o cartão
 - [x] 10. Volume -14 LUFS (`fabrica/render.py`). Medido no vídeo 17: -14,3 LUFS, pico -2,3 dBFS
-- [ ] 11. Estilos: temos 19 modelos, mas `ESTILOS_LIVRE` só tem colagem e editorial; o robô tem 13 estilos
-- [ ] 12. Espinha: `item_citado` e `bloco.ancora` já existem. Falta descartar trecho cujo título é de outro item
+- [~] 11. Estilos: 8 temas em `animacoes.TEMAS`, com escolha na Nova produção. Falta ver um tema claro renderizado
+- [x] 12. Espinha: `item_citado` e `bloco.ancora` já existiam; trecho com título de outro item sai antes de baixar
 - [ ] 13. Acabamento: capítulos, CREDITS e entrega por atalho já existem. Falta faxina de disco e Drive
-- [~] 14. Garimpo pela tela do Radar: campo Footage real na Nova produção; falta religar o Radar e provar no navegador
+- [x] 14. Garimpo pela tela do Radar: campo Footage real na Nova produção, provado no navegador até o Buscador
 
 Fábrica religada em 2026-11-05 01:43 (PID 10688, `fabrica.log`). O render do vídeo 17 terminou bem, então a falha de
 `Render (total)` não voltou; a causa não foi confirmada (o mais provável é `Faltam imagens`, `render.py:152`).
@@ -55,3 +55,6 @@ Fábrica religada em 2026-11-05 01:43 (PID 10688, `fabrica.log`). O render do v�
 
 - 2026-11-05: a tarefa agendada de retomada foi bloqueada pelo modo automático e não existe. Não contornar: retomar
   depende de alguém abrir a sessão.
+- 2026-11-05: duas quedas do Windows (Kernel-Power 41) às 20:41 e 23:24. A das 23:24 zerou `custos_reais.json` do vídeo
+  17, e 203 cenas geraram imagem 574 vezes. `registrar` agora não estoura e `gravar_atomico` faz fsync.
+
