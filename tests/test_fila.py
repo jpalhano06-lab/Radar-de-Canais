@@ -13,6 +13,7 @@ from radar import banco, fila  # noqa: E402
 def db(tmp_path, monkeypatch):
     monkeypatch.setattr(banco, "ARQUIVO", tmp_path / "t.db")
     monkeypatch.setattr(banco, "_CON", None)
+    fila._PARADOS.clear()                     # a conta de voltas paradas do vigia não passa de um teste para o outro
     yield
     banco._CON.close()
     banco._CON = None
@@ -53,13 +54,16 @@ def test_outro_usuario_nao_mexe(db):
 
 class Fabrica:
     """A fábrica de mentira: andamento (rodando), prontos e o que mandaram produzir."""
-    def __init__(self, andamento=(), prontos=(), desligada=False):
+    def __init__(self, andamento=(), prontos=(), desligada=False, parados=()):
         self.a, self.p, self.desligada, self.produzidos = list(andamento), list(prontos), desligada, []
+        self.parados = list(parados)          # projetos que a fábrica mostra parados (não rodando, sem erro)
 
     def producoes(self):
         if self.desligada:
             raise fila.fabrica_api.SemFabrica("desligada")
-        return {"andamento": [{"nome": n, "rodando": True} for n in self.a], "prontos": [{"nome": n} for n in self.p]}
+        return {"andamento": [{"nome": n, "rodando": n not in self.parados,
+                               "status": "parado" if n in self.parados else "processando"} for n in self.a],
+                "prontos": [{"nome": n} for n in self.p]}
 
     def produzir(self, nome, confirmar):
         assert confirmar is True
@@ -170,6 +174,38 @@ def test_erro_sem_projeto_ou_parado_na_fabrica_fica_em_erro(db):
     fab.a.clear()
     _volta(fab)
     assert fila.item(1, a["id"])["estado"] == "erro"
+
+
+def test_fabrica_morta_no_meio_vira_erro_e_libera_a_vaga(db):
+    """João o Lobo (2026-11-04): a fábrica foi morta no meio e religou sem o andamento (ele mora na memória dela).
+    O projeto voltou parado, sem erro, e o pedido ficava "produzindo" para sempre, segurando uma vaga."""
+    fila.definir_limite(1)
+    a = fila.criar(1, {"titulo": "T", "roteiro_manual": "x"}, True)
+    fab = Fabrica()
+    _volta(fab)
+    assert fila.item(1, a["id"])["estado"] == "produzindo"
+    fab.parados.append("p-m-T")                         # a fábrica religou: o projeto está lá, parado
+    _volta(fab)
+    assert fila.item(1, a["id"])["estado"] == "produzindo", "uma volta parada só não é erro"
+    b = fila.criar(1, {"titulo": "U", "roteiro_manual": "x"}, True)
+    _volta(fab)
+    atual = fila.item(1, a["id"])
+    assert atual["estado"] == "erro" and "parou no meio" in atual["erro"]
+    assert fila.item(1, b["id"])["estado"] == "produzindo", "a vaga do pedido morto foi liberada"
+
+
+def test_parada_de_um_instante_nao_vira_erro(db):
+    """O instante entre o "produzir" e a fábrica começar de verdade não pode virar erro."""
+    a = fila.criar(1, {"titulo": "T", "roteiro_manual": "x"}, True)
+    fab = Fabrica()
+    _volta(fab)
+    fab.parados.append("p-m-T")
+    _volta(fab)
+    fab.parados.clear()                                 # a fábrica começou
+    _volta(fab)
+    fab.parados.append("p-m-T")                         # e parou nesta volta: a conta recomeçou do zero
+    _volta(fab)
+    assert fila.item(1, a["id"])["estado"] == "produzindo"
 
 
 def test_reparar_depois_de_reiniciar(db):

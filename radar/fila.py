@@ -130,6 +130,8 @@ def definir_limite(n: int) -> int:
 # ---------------------------------------------------------------- o vigia: puxa a fila para a fábrica
 
 _TRAVA = threading.Lock()
+VOLTAS_PARADO = 2                 # voltas seguidas com o projeto parado na fábrica antes do pedido virar erro
+_PARADOS: dict[int, int] = {}     # id do pedido -> essas voltas, só na memória do vigia
 
 
 def reparar() -> None:
@@ -212,7 +214,7 @@ def passo(fabrica=None, roteirista=None, em_thread: bool = True, config_canal=No
             return []
         prontos = {p["nome"] for p in prod["prontos"]}
         andamento = {p["nome"]: p for p in prod["andamento"]}
-        # 1. o que estava produzindo: ficou pronto, deu erro ou sumiu da fábrica
+        # 1. o que estava produzindo: ficou pronto, deu erro, parou no meio ou sumiu da fábrica
         for linha in banco.todos("SELECT * FROM producoes_fila WHERE estado='produzindo'"):
             p = andamento.get(linha["projeto"])
             if linha["projeto"] in prontos:
@@ -221,8 +223,21 @@ def passo(fabrica=None, roteirista=None, em_thread: bool = True, config_canal=No
                 mudou = mudar(linha["id"], "erro", de=("produzindo",), erro="O vídeo sumiu da fábrica.")
             elif p.get("status") == "erro":
                 mudou = mudar(linha["id"], "erro", de=("produzindo",), erro=(p.get("mensagem") or "A fábrica parou com erro.")[:500])
+            elif not p.get("rodando") and p.get("status") == "parado":
+                # a fábrica morta no meio religa sem o andamento (ele mora na memória dela): o projeto volta parado,
+                # sem erro nenhum, e o pedido ficava "produzindo" para sempre, segurando uma vaga (o vídeo do João o
+                # Lobo, 2026-11-04). Vira erro só depois de VOLTAS_PARADO voltas paradas, para não confundir com o
+                # instante entre o "produzir" e a fábrica começar de verdade.
+                _PARADOS[linha["id"]] = _PARADOS.get(linha["id"], 0) + 1
+                if _PARADOS[linha["id"]] < VOLTAS_PARADO:
+                    continue
+                mudou = mudar(linha["id"], "erro", de=("produzindo",), passo="",
+                              erro="A fábrica parou no meio deste vídeo (ela foi desligada ou caiu). "
+                                   "O \"Tentar de novo\" retoma de onde ela parou.")
             else:
+                _PARADOS.pop(linha["id"], None)
                 continue
+            _PARADOS.pop(linha["id"], None)
             if mudou:
                 mudaram.append(linha["id"])
         # 1b. o que parou com erro e foi retomado na fábrica por fora do Radar volta a produzindo (12-animais, 2026-10-27:
