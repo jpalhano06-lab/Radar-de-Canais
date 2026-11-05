@@ -778,3 +778,20 @@ html[dark] .radar-np select option { background: #1c1c1c; }
 .radar-ia-campo small { display: block; color: var(--yt-spec-text-secondary, #606060); }
 .radar-ia-titulos { margin: 0; padding-left: 20px; font-size: 13px; }
 .radar-sem-ia-video .radar-aba[data-aba="ia"], .radar-sem-molde .radar-ia-molde, .radar-sem-capas-parecidas .radar-ia-capas { display: none !important; }
+
+/* Método Fantasma do canal e o que o público pede */
+.radar-fc-marcas { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px; }
+.radar-fc-linhas { display: grid; gap: 10px; }
+.radar-fc-linha { display: grid; grid-template-columns: 96px 1fr; gap: 10px; align-items: start; }
+.radar-fc-linha img { width: 96px; border-radius: 6px; }
+.radar-fc-linha a { color: inherit; text-decoration: none; }
+.radar-fc-linha small { display: block; opacity: .7; }
+.radar-fc-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+.radar-fc-chip { display: inline-flex; align-items: center; gap: 4px; padding: 2px 8px; border-radius: 999px; font-size: 12px; background: rgba(127,127,127,.18); }
+.radar-fc-chip.livre { background: #12b76a; color: #fff !important; }
+.radar-fc-chip.fraco { background: #f5b301; color: #1a1a1a !important; }
+.radar-pedidos { display: grid; gap: 10px; }
+.radar-pedido { padding: 10px 12px; border-radius: 10px; background: rgba(127,127,127,.1); }
+.radar-pedido p { margin: 0 0 4px; }
+.radar-pedido small { opacity: .75; }
+.radar-pedido a { color: inherit; }

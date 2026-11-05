@@ -1534,6 +1534,83 @@
     setTimeout(() => URL.revokeObjectURL(link.href), 5000);
   }
 
+  // Método Fantasma do canal: a mesma busca do vídeo, um vídeo de cada vez, só nas línguas marcadas. Cada busca abre
+  // duas páginas do YouTube por língua, então são 10 vídeos por vez e um botão para parar.
+  const LINGUAS_DO_CANAL = ["en", "pt", "es", "fr", "de", "it", "pl", "tr", "nl", "ja", "ko"];
+  let fantasmaCanalVez = 0;
+  async function fantasmaDoCanal(c, secao) {
+    const vez = ++fantasmaCanalVez, vale = () => vez === fantasmaCanalVez && secao.isConnected && !secao.hidden;
+    secao.replaceChildren(h("div", { class: "radar-fraco" }, "Lendo os vídeos mais vistos do canal…"));
+    const r = await api(`/api/ext/mais-vistos/${c.id}`);
+    if (r.erro) return secao.replaceChildren(h("div", { class: "radar-erro" }, erroDoRadar(r)));
+    const videos = r.dados.videos, marcadas = new Set(["en", "es", "pt"]), livres = [];
+    if (!videos.length) return secao.replaceChildren(h("div", { class: "radar-fraco" }, "O Radar ainda não tem os vídeos deste canal."));
+    let feitos = 0, modo = "raiz", andando = false;
+    const linhas = h("div", { class: "radar-fc-linhas" }), conta = h("small", { class: "radar-fraco" });
+    const chips = LINGUAS_DO_CANAL.map((l) => h("button", { class: `radar-tag-chip${marcadas.has(l) ? " ligada" : ""}`, onclick: (e) => {
+      marcadas.has(l) ? marcadas.delete(l) : marcadas.add(l);
+      e.currentTarget.classList.toggle("ligada", marcadas.has(l));
+    } }, NOME_LINGUA[l]));
+    const seletor = h("select", { class: "radar-lingua-legenda", title: "Como levar o título para as outras línguas", onchange: (e) => { modo = e.target.value; } },
+      MODOS.filter(([m]) => m !== "premium").map(([m, nome]) => h("option", { value: m }, nome)));
+    const copiar = botao("radar-botao", "titulo", "Copiar títulos livres", (e) => {
+      navigator.clipboard.writeText(livres.join("\n"));
+      e.currentTarget.lastChild.textContent = `${livres.length} copiados ✓`;
+    });
+    const andar = botao("radar-botao radar-botao-sombra", "fantasma", "Procurar os próximos 10", async (e) => {
+      if (andando) { andando = false; return; }
+      if (!marcadas.size) return mostrarErro(e.currentTarget, "Marque pelo menos uma língua.");
+      const rotulo = andar.lastChild, parte = videos.slice(feitos, feitos + 10);
+      andando = true; rotulo.textContent = "Parar";
+      for (const v of parte) {
+        if (!andando || !vale()) break;
+        const linha = h("div", { class: "radar-fc-linha" }, h("img", { src: `https://i.ytimg.com/vi/${v.id}/default.jpg`, alt: "" }),
+          h("div", {}, h("a", { href: `https://www.youtube.com/watch?v=${v.id}` }, v.titulo), h("small", {}, `${num(v.views)} views`),
+            h("div", { class: "radar-fc-chips" }, h("span", { class: "radar-fraco" }, "Procurando…"))));
+        linhas.append(linha);
+        const achado = await fantasmaDeUmVideo(v, c.id, modo, marcadas);
+        feitos++;
+        const onde = linha.querySelector(".radar-fc-chips");
+        if (achado.erro) { onde.replaceChildren(h("span", { class: "radar-erro" }, achado.erro)); continue; }
+        onde.replaceChildren(...achado.paises.map((p) => {
+          const [cor, frase] = SITUACAO(p);
+          if (!p.feito) livres.push(p.traduzido);
+          return h("a", { class: `radar-fc-chip ${cor}`, href: p.link, target: "_blank", title: `${frase}: ${p.traduzido}` }, bandeira(p.codigo), NOME_LINGUA[p.lingua] || p.lingua);
+        }));
+        conta.textContent = `${feitos} de ${videos.length} vídeos · ${livres.length} títulos livres`;
+      }
+      andando = false;
+      rotulo.textContent = "Procurar os próximos 10";
+      andar.hidden = feitos >= videos.length;
+    });
+    secao.replaceChildren(h("div", { class: "radar-parecidos-topo" }, h("b", {}, "Em que língua ninguém fez estes vídeos ainda"), seletor, andar, copiar, conta),
+      h("div", { class: "radar-fc-marcas" }, chips), linhas);
+  }
+
+  async function fantasmaDeUmVideo(v, canalId, modo, linguas) {
+    const prep = await api("/api/ext/radar/preparar", "POST", { titulo: v.titulo, modo });
+    if (prep.erro) return { erro: prep.erro };
+    const preparo = { ...prep.dados, paises: prep.dados.paises.filter((p) => linguas.has(p.lingua)) }, resultados = {};
+    await Promise.all(preparo.paises.map(async (p) => {
+      const listas = await Promise.all([false, true].map((porViews) => buscarNoYoutube(p.busca, p.codigo, p.lingua, porViews).catch(() => [])));
+      resultados[p.codigo] = listas.flat();
+    }));
+    const r = await api("/api/ext/radar/julgar", "POST", { preparo, resultados, video_id: v.id, canal_id: canalId, views: v.views });
+    return r.erro ? { erro: r.erro } : { paises: r.dados.paises };
+  }
+
+  async function pedidosDoPublico(c, secao) {
+    secao.replaceChildren(h("div", { class: "radar-fraco" }, "Lendo os comentários dos 10 vídeos mais vistos…"));
+    const r = await api(`/api/ext/pedidos/${c.id}`);
+    if (r.erro) return secao.replaceChildren(h("div", { class: "radar-erro" }, erroDoRadar(r)));
+    const { pedidos: lista, videos } = r.dados;
+    secao.replaceChildren(h("div", { class: "radar-parecidos-topo" }, h("b", {}, "O que o público pede"),
+      h("small", { class: "radar-fraco" }, `dos comentários de ${videos} ${videos === 1 ? "vídeo" : "vídeos"}, dos mais curtidos para os menos`)),
+      lista.length ? h("div", { class: "radar-pedidos" }, lista.map((p) => h("div", { class: "radar-pedido" }, h("p", {}, p.texto),
+        h("small", {}, `♥ ${num(p.curtidas)} · `, h("a", { href: `https://www.youtube.com/watch?v=${p.video_id}` }, p.video_titulo)))))
+        : h("div", { class: "radar-fraco" }, "Nenhum pedido nos comentários destes vídeos."));
+  }
+
   function abasDoCanal(c, cab) {
     const lista = document.querySelector("ytd-tabbed-page-header [role=tablist], ytd-browse[page-subtype='channels'] [role=tablist], #tabsContent");
     if (!lista) return;
@@ -1552,7 +1629,11 @@
     };
     const parecidosAba = h("button", { class: "radar-do-canal radar-aba-yt", type: "button" }, icone("parecidos"), "Canais Parecidos");
     const nichoAba = h("button", { class: "radar-do-canal radar-aba-yt", type: "button" }, icone("fantasma"), "Vídeos do Nicho");
-    const abas = [parecidosAba, nichoAba];
+    const fantasmaAba = h("button", { class: "radar-do-canal radar-aba-yt", type: "button" }, icone("fantasma"), "Método Fantasma");
+    const pedidosAba = h("button", { class: "radar-do-canal radar-aba-yt", type: "button" }, icone("titulo"), "O que pedem");
+    const abas = [parecidosAba, nichoAba, ...(ligada("fantasma-canal") ? [fantasmaAba] : []), ...(ligada("pedidos") ? [pedidosAba] : [])];
+    fantasmaAba.onclick = (e) => { e.stopPropagation(); abrir(fantasmaAba, () => fantasmaDoCanal(c, secao)); };
+    pedidosAba.onclick = (e) => { e.stopPropagation(); abrir(pedidosAba, () => pedidosDoPublico(c, secao)); };
     // descer pelos parecidos: cada parecido abre os parecidos dele, e o Voltar refaz o caminho
     const caminho = [];
     const topoDosParecidos = (alvo) => {

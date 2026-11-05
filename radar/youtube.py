@@ -241,6 +241,26 @@ def primeiro_envio(canal_id: str, max_paginas: int = 40) -> str:
     return ""   # mais vídeos que o limite: o primeiro não foi visto
 
 
+@por("pedidos do público")
+def comentarios(video_id: str, quantos: int = 100) -> list[dict] | None:
+    """Os comentários mais relevantes do vídeo, ou None se estiverem desligados."""
+    try:
+        r = _pedir("commentThreads", {"part": "snippet", "videoId": video_id, "order": "relevance", "maxResults": quantos,
+                                      "textFormat": "plainText"}, 1)
+    except SemCota:
+        raise
+    except RuntimeError as erro:
+        if "commentsDisabled" in str(erro) or " 404" in str(erro):
+            return None
+        raise
+    saida = []
+    for item in r.get("items", []):
+        c = item["snippet"]["topLevelComment"]["snippet"]
+        saida.append({"texto": c.get("textDisplay", ""), "curtidas": _int(c.get("likeCount")),
+                      "autor": (c.get("authorChannelId") or {}).get("value", "")})
+    return saida
+
+
 def buscar(termo: str, publicado_depois: str = "", duracao: str = "any", idioma: str = "",
            ordem: str = "viewCount", quantos: int = 50, regiao: str = "") -> list[dict]:
     """search.list de vídeos (100 unidades). Devolve id do vídeo, id do canal e título."""

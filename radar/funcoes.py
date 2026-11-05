@@ -108,6 +108,10 @@ FUNCOES: list[dict] = [
      "desc": "Os vídeos dos canais parecidos com este, do que mais estourou para o menos."},
     {"chave": "linguas", "nome": "Método Fantasma", "onde": "painel", "recurso": "linguas",
      "desc": "Em que língua ninguém fez este vídeo ainda: a busca pronta em 9 línguas, sem gastar cota."},
+    {"chave": "fantasma-canal", "nome": "Método Fantasma do canal", "onde": "canal", "recurso": "linguas",
+     "desc": "Os vídeos mais vistos do canal, um por um: em que língua ninguém fez, com os títulos livres para copiar."},
+    {"chave": "pedidos", "nome": "O que o público pede", "onde": "canal", "recurso": "extensao",
+     "desc": "Os pedidos e as perguntas dos comentários dos 10 vídeos mais vistos, dos mais curtidos para os menos."},
     {"chave": "alta", "nome": "Canais novos em alta", "onde": "video", "recurso": "radar",
      "desc": "Uma faixa no topo da página inicial do YouTube com os canais novos que o garimpo achou crescendo."},
 ]

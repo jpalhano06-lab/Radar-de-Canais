@@ -22,7 +22,7 @@ from fastapi.staticfiles import StaticFiles
 from starlette.background import BackgroundTask
 
 from . import maquinas
-from . import alvos, banco, canal_painel, capas, lente_ia, molde, chatgpt_conta, claude_projetos, custos, descricao, diagnostico, fabrica_api, fila, funcoes, garimpo, gosto, horarios, ia, integracoes, medir, mercado, metricas, nichos, pagina, perfil, producao, publicar, radar_paises, roteiro_claude, studio, tempo, thumb, trabalho, treinamento, trello, youtube
+from . import alvos, banco, canal_painel, capas, lente_ia, molde, pedidos, chatgpt_conta, claude_projetos, custos, descricao, diagnostico, fabrica_api, fila, funcoes, garimpo, gosto, horarios, ia, integracoes, medir, mercado, metricas, nichos, pagina, perfil, producao, publicar, radar_paises, roteiro_claude, studio, tempo, thumb, trabalho, treinamento, trello, youtube
 from .config import DADOS, NOME, PLANOS, RAIZ, pode
 
 WEB = RAIZ / "radar" / "web"
@@ -628,6 +628,21 @@ def ext_estilo(canal_id: str, lingua: str = "en", u: dict = Depends(exigir("pare
     if not achado:
         raise HTTPException(404, "Ainda não sei o assunto deste canal.")
     return achado
+
+
+@app.get("/api/ext/pedidos/{canal_id}")
+def ext_pedidos(canal_id: str, u: dict = Depends(exigir("extensao"))):
+    """O que o público pede nos comentários dos vídeos mais vistos do canal."""
+    try:
+        return pedidos.do_canal(canal_id)
+    except youtube.SemCota as erro:
+        raise HTTPException(429, str(erro))
+
+
+@app.get("/api/ext/mais-vistos/{canal_id}")
+def ext_mais_vistos(canal_id: str, u: dict = Depends(exigir("linguas"))):
+    """Os 20 vídeos mais vistos do canal: o Método Fantasma do canal procura cada um nas línguas escolhidas."""
+    return {"videos": pedidos.mais_vistos(canal_id)}
 
 
 @app.get("/api/ext/nicho-videos/{canal_id}")

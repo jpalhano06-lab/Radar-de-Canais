@@ -9,7 +9,7 @@ from PIL import Image, ImageDraw
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from radar import banco, capas, cracha, garimpo, lente_ia, medir, molde, pagina  # noqa: E402
+from radar import banco, capas, cracha, garimpo, lente_ia, medir, molde, pagina, pedidos  # noqa: E402
 
 
 @pytest.fixture
@@ -253,3 +253,40 @@ def test_receita_da_capa_sem_resposta_da_visao_e_erro(base, monkeypatch):
     monkeypatch.setattr(lente_ia.ia, "_perguntar", lambda *a, **k: None)
     with pytest.raises(RuntimeError):
         lente_ia.receita_da_capa("abcdefghijk")
+
+
+def _canal_com_videos():
+    banco.executar("INSERT INTO canais (id, titulo) VALUES ('UC1', 'Canal')")
+    for i, (views, dur) in enumerate([(9000, 40), (500, 600), (800, 600)]):
+        banco.executar("INSERT INTO videos (id, canal_id, titulo, views, duracao_s) VALUES (?,?,?,?,?)", f"v{i}", "UC1", f"Vídeo {i}", views, dur)
+
+
+def test_mais_vistos_poe_os_longos_antes_dos_shorts(base):
+    _canal_com_videos()
+    assert [v["id"] for v in pedidos.mais_vistos("UC1")] == ["v2", "v1", "v0"]
+
+
+def test_pedido_e_quem_pede_ou_pergunta_de_verdade():
+    assert pedidos.e_pedido("Faz um vídeo sobre tubarões")
+    assert pedidos.e_pedido("Please do a video on sharks")
+    assert pedidos.e_pedido("Qual foi a fonte desse dado?")
+    assert not pedidos.e_pedido("né?")
+    assert not pedidos.e_pedido("Melhor canal do YouTube")
+
+
+def test_pedidos_vem_pelas_curtidas_sem_repetir_e_ficam_guardados(base):
+    _canal_com_videos()
+    chamadas = []
+
+    def ler(video_id):
+        chamadas.append(video_id)
+        if video_id == "v1":
+            return None     # comentários desligados
+        return [{"texto": "Faz parte 2", "curtidas": 3}, {"texto": "faz  parte 2", "curtidas": 1},
+                {"texto": "Please make a video on bears", "curtidas": 50}, {"texto": "Top demais", "curtidas": 900},
+                {"texto": "Please buy my merch", "curtidas": 999, "autor": "UC1"}]
+
+    d = pedidos.do_canal("UC1", ler, lambda achados: achados)
+    assert d["videos"] == 2
+    assert [p["texto"] for p in d["pedidos"]] == ["Please make a video on bears", "Faz parte 2"]
+    assert pedidos.do_canal("UC1", ler, lambda achados: []) == d and len(chamadas) == 3
