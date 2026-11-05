@@ -658,9 +658,25 @@ def conferir_roteiro(texto: str, meta: dict) -> str:
     return ""
 
 
+LIMITE_DO_NOME = 150    # o nome da entrega entra em caminho de arquivo do Windows: os dois títulos juntos cabem nisso
+
+
+def titulo_de_entrega(meta: dict) -> str:
+    """O nome com que o vídeo é entregue. Pedido do usuário em 2026-11-04: nos canais em outro alfabeto (japonês,
+    coreano) a pasta entregue só tinha o título traduzido, e na lista de Downloads não dava para saber qual vídeo
+    era qual. Agora o título traduzido vem com o título original entre parênteses, quando os dois são diferentes."""
+    titulo = str(meta.get("titulo") or "").strip()
+    original = str(meta.get("titulo_original") or "").strip()
+    if not original or original == titulo:
+        return titulo
+    junto = f"{titulo} ({original})"
+    return junto if len(junto) <= LIMITE_DO_NOME else junto[:LIMITE_DO_NOME - 1].rstrip() + ")"
+
+
 def enviar(usuario_id: int, nome: str, perfil: str) -> dict:
     """Cria o projeto na fábrica com o roteiro e o título (`fabrica novo`, grátis: narrar e gerar imagens continuam
-    pedindo confirmação lá). O título vai em titulo_entrega, que a fábrica usa no nome do vídeo entregue."""
+    pedindo confirmação lá). O título vai em titulo_entrega (o traduzido com o original entre parênteses), que a
+    fábrica usa no nome do vídeo entregue."""
     if not fabrica_conectada():
         raise RuntimeError("A fábrica não está nesta pasta. O Radar precisa estar dentro da pasta da fábrica.")
     if perfil not in perfis_da_fabrica():
@@ -684,7 +700,7 @@ def enviar(usuario_id: int, nome: str, perfil: str) -> dict:
     if not (destino / "projeto.json").exists():
         raise RuntimeError("A fábrica não criou o projeto: " + (r.stderr or r.stdout or "")[-400:])
     dados = json.loads((destino / "projeto.json").read_text(encoding="utf-8"))
-    dados["titulo_entrega"] = meta["titulo"]
+    dados["titulo_entrega"] = titulo_de_entrega(meta)
     (destino / "projeto.json").write_text(json.dumps(dados, ensure_ascii=False, indent=2), encoding="utf-8")
     if (pasta / "thumbnail.jpg").exists():
         shutil.copy2(pasta / "thumbnail.jpg", destino / "thumbnail_referencia.jpg")
