@@ -83,6 +83,23 @@ async function carregarHoje(servidor, token) {
     const h = await r.json();
     if (h.videos) $("hoje").textContent = `${h.videos.toLocaleString("pt-BR")} vídeos lidos · ${h.estouraram} estouraram · ${h.canais} canais novos no Radar`;
   } catch { /* fica o texto de sempre */ }
+  try {
+    const r = await fetch(servidor + "/api/ext/patente", { headers: token ? { Authorization: `Bearer ${token}` } : {} });
+    if (r.ok) {
+      const p = await r.json();
+      $("patente-nome").textContent = `${p.patente} · ${p.salvos} canais salvos`;
+      $("patente-falta").textContent = p.proxima ? `Faltam ${p.faltam} para ${p.proxima}` : "O último degrau.";
+      $("patente").hidden = false;
+    }
+  } catch { /* a patente é só um enfeite: sem ela, a janelinha segue */ }
+  try {
+    const [aba] = await chrome.tabs.query({ active: true, currentWindow: true });
+    const c = aba && /youtube\.com/.test(aba.url || "") ? await chrome.tabs.sendMessage(aba.id, { tipo: "contadores" }) : null;
+    if (c) {
+      $("aba-numeros").textContent = `${c.videos} vídeos · ${c.estouraram} acima de 5x · ${c.canais} canais`;
+      $("aba").hidden = false;
+    }
+  } catch { /* aba sem a extensão */ }
   const { semShorts } = await chrome.storage.local.get("semShorts");
   $("sem-shorts").checked = !!semShorts;
   $("sem-shorts").onchange = () => chrome.storage.local.set({ semShorts: $("sem-shorts").checked });

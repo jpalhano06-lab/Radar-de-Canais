@@ -104,3 +104,37 @@ def iniciar() -> None:
             except Exception:
                 time.sleep(60)
     threading.Thread(target=rodar, daemon=True, name="moldes").start()
+
+
+TITULO_CABE = 60      # acima disso o título corta na busca e na página inicial
+
+
+def nota(titulo: str) -> dict:
+    """De 0 a 100, pelo que o Radar mede: quanto este molde passou do normal, o tamanho e se o título traz um número.
+
+    A nota parte de 50. É um guia para comparar títulos entre si, não uma previsão de views.
+    """
+    titulo = " ".join(str(titulo or "").split())
+    achado = parecidos(titulo, quantos=1)
+    pontos, motivos = 50, []
+    if achado["molde"] and achado["lift"]:
+        pontos += max(-20, min(30, round((achado["lift"] - 1) * 15)))
+        motivos.append(f"molde usado {achado['total']} vezes, {str(achado['lift']).replace('.', ',')}x o normal")
+    elif achado["molde"]:
+        motivos.append("molde com poucos vídeos para medir")
+    else:
+        pontos -= 5
+        motivos.append("sem molde conhecido")
+    if len(titulo) > TITULO_CABE:
+        pontos -= 15
+        motivos.append(f"{len(titulo)} caracteres: corta depois de {TITULO_CABE}")
+    elif len(titulo) >= 30:
+        pontos += 10
+        motivos.append("tamanho bom")
+    else:
+        pontos -= 5
+        motivos.append("curto")
+    if any(c.isdigit() for c in titulo):
+        pontos += 5
+        motivos.append("tem número")
+    return {"nota": max(0, min(100, pontos)), "motivos": motivos, "molde": achado["molde"]}

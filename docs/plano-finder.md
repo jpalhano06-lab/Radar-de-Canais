@@ -7,7 +7,7 @@ Quem retoma: leia este arquivo inteiro, siga a primeira linha em aberto e atuali
 ## De onde vem a lista
 
 Dotti Finder 3.2.37, em `AppData\Local\DottiStudio\producoes\perfil_youtube\Default\Extensions\lpnjnahgabpibeaeocmflhdfhocpdkmi\3.2.37_0`:
-79 arquivos, 60 deles de JS legível, sem comentários. A extensão do Radar é `extensao/`, 0.31.1.
+79 arquivos, 60 deles de JS legível, sem comentários. A extensão do Radar é `extensao/`, 0.35.0 depois deste plano.
 
 O catálogo oficial deles é o `funcoes.js` (34 funções). Li o manifesto, o catálogo, as rotas do servidor e as frases de
 interface dos 60 arquivos de JS. Isso não é leitura linha a linha. Do que roda no servidor deles (a base de canais, o
@@ -55,8 +55,8 @@ Estado: `[ ]` aberto, `[~]` em andamento, `[x]` pronto, `[-]` fora.
 ### Canal
 
 - [x] 15. Crachá do canal (`radar/cracha.py`): juízes com peso e motivo, ritmo, projeção e queda. Cortes nossos, não medidos contra resultado. Conferido em 400 canais reais.
-- [ ] 16. Método Fantasma do canal: os 10 vídeos mais vistos e os 10 seguintes, por língua, com títulos para copiar.
-- [ ] 17. O que o público pede: pedidos e perguntas dos comentários dos 10 vídeos mais vistos.
+- [x] 16. Método Fantasma do canal: aba no canal, 10 vídeos por vez, línguas marcadas, títulos livres para copiar. Sem prova no YouTube real.
+- [x] 17. O que o público pede (`radar/pedidos.py`): comentários pela API, filtro por palavras e por IA, sem o dono do canal. Provado com canal real: 9 pedidos de 10 vídeos.
 - [x] 18. Salvar em pastas pela extensão: a caixa aparece depois de salvar.
 - [x] 19. Aviso diário dos salvos que passaram de 5 vezes o normal.
 - [x] 20. Medir o canal aberto pelo feed público: formato conferido no XML real.
@@ -68,26 +68,26 @@ Estado: `[ ]` aberto, `[~]` em andamento, `[x]` pronto, `[-]` fora.
 
 ### Studio
 
-- [ ] 23. Anúncios pela onda do som: pausas, distância mínima, tirar os marcados de vermelho, tirar todos.
-- [ ] 24. Visualizações engajadas: coluna no Conteúdo e linha nos cartões do Painel.
-- [ ] 25. Foto do cartão com um clique, para colar com Ctrl+V.
-- [ ] 26. Onde o vídeo perde gente: as 3 maiores quedas da retenção e o que era falado.
-- [ ] 27. Nota do título e títulos no molde, embaixo do campo Título.
-- [ ] 28. Capítulos da fala: lê a legenda e separa as partes do vídeo.
-- [ ] 29. Hora por país do público, lembrada por canal, e as horas com mais views.
+- [x] 23. Anúncios pela onda do som: pausas, distância mínima, tirar vermelhos e todos. Contas testadas; a onda de verdade do editor nunca foi lida. Precisa do zoom afastado.
+- [x] 24. Visualizações engajadas: coluna no Conteúdo e linha no cartão do último vídeo. A coluna só foi vista em tela simulada, e a linha não foi vista.
+- [x] 25. Foto do cartão com um clique, para colar com Ctrl+V. Botão visto em tela simulada; a cópia da imagem não foi provada.
+- [x] 26. Onde o vídeo perde gente: as 3 maiores quedas e o que era falado. Só vista em tela simulada.
+- [x] 27. Nota do título (`molde.nota`) e títulos no molde. A nota só mede o molde depois de religar o Radar. Os pesos são nossos.
+- [x] 28. Capítulos da fala: Claude real numa legenda real. O botão só foi visto em tela simulada.
+- [x] 29. Hora por país, lembrada por canal, e as horas com mais views. Só vista em tela simulada.
 - [-] 30. Comprimir a capa para ficar abaixo de 2 MB: já existe em `publicar.js`.
 
 ### Claude e ChatGPT
 
-- [ ] 31. Botão com perguntas prontas dentro do Claude e do ChatGPT, e ajuda para conectar o MCP do Radar.
-- [ ] 32. A extensão lê o YouTube para o Claude e o ChatGPT: canal, vídeos, busca, transcrição e comentários.
+- [x] 31. Botão no Claude e no ChatGPT (`chat-radar.js`): perguntas prontas e o comando do MCP. Nunca aberto nos sites de verdade.
+- [x] 32. Ponte (`radar/ponte.py`): canal e busca pela aba aberta, transcrição e comentários pelo servidor, 4 ferramentas no MCP. Fila testada; sem prova com o Claude de verdade. Aba escondida responde devagar.
 
 ### Geral
 
 - [x] 33. Personalizar no ícone da extensão: liga e desliga na hora.
-- [ ] 34. Patente e degraus por canais salvos.
-- [ ] 35. Números do seu canal fora do Studio.
-- [ ] 36. Popup: contadores da aba e atalhos.
+- [x] 34. Patente por canais salvos, na janelinha. Nomes e degraus nossos.
+- [x] 35. Números do seu canal fora do Studio: pedido de `leitor.js`, só as 48 horas. Sem prova com a conta real.
+- [x] 36. Popup: contadores da aba, patente e atalhos.
 
 ## Fora, de propósito
 

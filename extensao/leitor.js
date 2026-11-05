@@ -38,6 +38,46 @@
     return resposta;
   };
 
+  // ------------------------------------------------------------ os números do seu canal, sem o Studio aberto
+  // Os mesmos pedidos que o studio.js faz, daqui do youtube.com e com o mesmo login. Só para quando o Studio está fechado:
+  // o content.js manda o pedido quando os números guardados passaram de 15 minutos.
+  const cfg = (k) => window.ytcfg && window.ytcfg.get ? window.ytcfg.get(k) : null;
+  async function cabecalhoDoLogin() {
+    const c = (document.cookie.match(/(?:^|; )(?:__Secure-3PAPISID|SAPISID)=([^;]+)/) || [])[1];
+    if (!c) return null;
+    const ts = Math.floor(Date.now() / 1000);
+    const buf = await crypto.subtle.digest("SHA-1", new TextEncoder().encode(`${ts} ${c} ${location.origin}`));
+    const cab = { "content-type": "application/json", "x-origin": location.origin, "x-goog-authuser": String(cfg("SESSION_INDEX") || 0),
+      authorization: `SAPISIDHASH ${ts}_${[...new Uint8Array(buf)].map((b) => b.toString(16).padStart(2, "0")).join("")}` };
+    if (cfg("DELEGATED_SESSION_ID")) cab["x-goog-pageid"] = cfg("DELEGATED_SESSION_ID");
+    return cab;
+  }
+  async function pedirAoYoutube(caminho, corpo) {
+    const headers = await cabecalhoDoLogin();
+    if (!headers) return null;
+    const r = await fetchOriginal.call(window, `/youtubei/v1/${caminho}?alt=json&key=${cfg("INNERTUBE_API_KEY")}`,
+      { method: "POST", credentials: "include", headers, body: JSON.stringify({ context: cfg("INNERTUBE_CONTEXT"), ...corpo }) });
+    return r.ok ? r.json() : null;
+  }
+  async function numerosSemStudio() {
+    const menu = await pedirAoYoutube("account/account_menu", {});
+    const canal = (JSON.stringify(menu || {}).match(/"browseId":"(UC[\w-]{22})"/) || [])[1];
+    if (!canal) return null;
+    const j = await pedirAoYoutube("yta_web/get_cards", { cardConfigs: [{ latestActivityCardConfig: { tableLimit: 3, includeSubsData: true }, failureMode: "ANALYTICS_CARD_FAILURE_MODE_HIDE" }],
+      screenConfig: { entity: { channelId: canal }, timePeriod: { timePeriodType: "ANALYTICS_TIME_PERIOD_TYPE_FOUR_WEEKS" }, currency: "USD", timeZoneOffsetSecs: -new Date().getTimezoneOffset() * 60 } });
+    const cartao = ((j && j.cards) || []).find((c) => !c.isFailed);
+    const d = cartao && cartao.latestActivityCardData && cartao.latestActivityCardData.datas && cartao.latestActivityCardData.datas[0];
+    if (!d) return null;
+    const views = d.mainChartData.metricColumns[0].counts.values.map(Number);
+    return { canal, quando: Date.now(), horas: d.mainChartData.dimensionColumns[0].timestamps.values.map((t, i) => [Number(t), views[i] || 0]) };
+  }
+  window.addEventListener("message", async (e) => {
+    if (e.source !== window || !e.data || e.data.radarNumerosPedido !== 1) return;
+    let numeros = null;
+    try { numeros = await numerosSemStudio(); } catch { /* sem canal nesta conta, ou o YouTube mudou */ }
+    if (numeros) window.postMessage({ radarNumerosResposta: 1, numeros }, location.origin);
+  });
+
   // ------------------------------------------------------------ pedidos do content.js (o vídeo aberto e a transcrição)
   // O content.js não enxerga o player nem a configuração do YouTube; pede aqui por postMessage e recebe a resposta.
 

@@ -2004,6 +2004,45 @@
   let numerosCanal = null;
   chrome.storage.local.get("numerosCanal").then(({ numerosCanal: n }) => { numerosCanal = n || null; numerosTopo(); });
 
+  // os números sem o Studio aberto: junta com os dados do ano que o Studio guardou por último
+  window.addEventListener("message", (e) => {
+    if (e.source !== window || !e.data || e.data.radarNumerosResposta !== 1) return;
+    numerosCanal = { ...(numerosCanal || {}), ...e.data.numeros };
+    chrome.storage.local.set({ numerosCanal });
+    numerosTopo();
+  });
+  function pedirNumeros() {
+    if (ligada("numeros-fora") && (!numerosCanal || Date.now() - numerosCanal.quando > 15 * 60 * 1000)) window.postMessage({ radarNumerosPedido: 1 }, location.origin);
+  }
+  setTimeout(pedirNumeros, 4000);
+  setInterval(pedirNumeros, 5 * 60 * 1000);
+
+  // a ponte: o Claude pede pelo MCP, esta aba lê e devolve. Sem nada pedido, é só uma pergunta curta ao Radar
+  async function atenderPonte() {
+    if (!ligada("ponte") || semConta || document.visibilityState === "prerender") return;
+    const r = await api("/api/ext/ponte");
+    const p = !r.erro && r.dados.pedido;
+    if (!p) return;
+    let dados = { erro: "Não consegui ler." };
+    try {
+      if (p.tipo === "busca") dados = { videos: await buscarNoYoutube(p.alvo, "US", "en", false) };
+      else {
+        const caminho = p.alvo.startsWith("UC") ? `channel/${p.alvo}` : p.alvo.replace(/^.*youtube\.com\//, "");
+        const json = RadarLer.jsonDoHtml(await (await fetch(`https://www.youtube.com/${caminho}/videos`)).text());
+        dados = { canal: json && RadarLer.canal(json), videos: json ? RadarLer.videos(json) : [] };
+      }
+    } catch { /* volta o erro acima */ }
+    api(`/api/ext/ponte/${p.id}`, "POST", dados);
+  }
+  setInterval(atenderPonte, 4000);
+
+  // a janelinha do ícone pergunta o que esta aba leu
+  chrome.runtime.onMessage.addListener((msg, _de, responder) => {
+    if (!msg || msg.tipo !== "contadores") return;
+    const lista = [...PAGINA.values()];
+    responder({ videos: lista.length, estouraram: lista.filter((v) => (v.nota || 0) >= 5).length, canais: new Set(lista.map((v) => v.canal_id).filter(Boolean)).size });
+  });
+
   function numerosTopo() {
     const lugar = document.querySelector("ytd-masthead #end");
     if (!lugar) return;

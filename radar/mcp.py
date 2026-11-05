@@ -141,6 +141,38 @@ FERRAMENTAS: list[dict] = [
         "caminho": lambda a: ("/api/titulos", a),
         "enxugar": _videos,
     },
+    {
+        "nome": "radar_ler_canal_youtube",
+        "desc": "Lê um canal do YouTube pela aba aberta da pessoa, sem gastar cota: o canal e os vídeos da página dele.",
+        "entrada": {"canal_id": {"type": "string", "description": "O id do canal (UC...) ou o @ dele"}},
+        "exige": ["canal_id"],
+        "caminho": lambda a: ("/api/ponte/canal", {"alvo": a.get("canal_id", "")}),
+        "enxugar": lambda d: d,
+    },
+    {
+        "nome": "radar_buscar_no_youtube",
+        "desc": "Faz uma busca no YouTube pela aba aberta da pessoa, sem gastar cota.",
+        "entrada": {"busca": {"type": "string"}},
+        "exige": ["busca"],
+        "caminho": lambda a: ("/api/ponte/busca", {"alvo": a.get("busca", "")}),
+        "enxugar": lambda d: d,
+    },
+    {
+        "nome": "radar_transcricao_do_video",
+        "desc": "A fala de um vídeo do YouTube com o segundo de cada trecho.",
+        "entrada": {"video_id": {"type": "string"}},
+        "exige": ["video_id"],
+        "caminho": lambda a: ("/api/ponte-fala", a),
+        "enxugar": lambda d: d,
+    },
+    {
+        "nome": "radar_comentarios_do_video",
+        "desc": "Os comentários mais relevantes de um vídeo do YouTube, com as curtidas.",
+        "entrada": {"video_id": {"type": "string"}},
+        "exige": ["video_id"],
+        "caminho": lambda a: ("/api/ponte-comentarios", a),
+        "enxugar": lambda d: d,
+    },
 ]
 
 POR_NOME = {f["nome"]: f for f in FERRAMENTAS}

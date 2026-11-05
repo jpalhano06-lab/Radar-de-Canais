@@ -22,7 +22,7 @@ from fastapi.staticfiles import StaticFiles
 from starlette.background import BackgroundTask
 
 from . import maquinas
-from . import alvos, banco, canal_painel, capas, lente_ia, molde, pedidos, chatgpt_conta, claude_projetos, custos, descricao, diagnostico, fabrica_api, fila, funcoes, garimpo, gosto, horarios, ia, integracoes, medir, mercado, metricas, nichos, pagina, perfil, producao, publicar, radar_paises, roteiro_claude, studio, tempo, thumb, trabalho, treinamento, trello, youtube
+from . import alvos, banco, canal_painel, capas, lente_ia, molde, pedidos, ponte, chatgpt_conta, claude_projetos, custos, descricao, diagnostico, fabrica_api, fila, funcoes, garimpo, gosto, horarios, ia, integracoes, medir, mercado, metricas, nichos, pagina, perfil, producao, publicar, radar_paises, roteiro_claude, studio, tempo, thumb, trabalho, treinamento, trello, youtube
 from .config import DADOS, NOME, PLANOS, RAIZ, pode
 
 WEB = RAIZ / "radar" / "web"
@@ -604,6 +604,7 @@ async def ext_ia(acao: str, request: Request, u: dict = Depends(exigir("extensao
         "titulos": lambda: lente_ia.titulos(titulo, str(d.get("assunto") or "").strip()[:200]),
         "adaptar": lambda: lente_ia.adaptar(video, titulo, str(d.get("lingua") or "").strip()[:40]),
         "capa": lambda: lente_ia.receita_da_capa(video, titulo),
+        "capitulos": lambda: lente_ia.capitulos(video, titulo),
     }
     if acao not in tarefas:
         raise HTTPException(404, "Essa leitura não existe.")
@@ -628,6 +629,67 @@ def ext_estilo(canal_id: str, lingua: str = "en", u: dict = Depends(exigir("pare
     if not achado:
         raise HTTPException(404, "Ainda não sei o assunto deste canal.")
     return achado
+
+
+@app.get("/api/ext/nota-titulo")
+def ext_nota_titulo(titulo: str = "", u: dict = Depends(exigir("extensao"))):
+    """A nota do título que está sendo escrito no Studio."""
+    return molde.nota(titulo[:300])
+
+
+@app.get("/api/ext/fala/{video_id}")
+def ext_fala(video_id: str, u: dict = Depends(exigir("extensao"))):
+    """A fala do vídeo com os tempos, para dizer o que era falado onde o vídeo perde gente."""
+    try:
+        return {"trechos": roteiro_claude.fala_com_tempos(video_id)}
+    except RuntimeError as erro:
+        raise HTTPException(404, str(erro))
+
+
+@app.get("/api/ext/patente")
+def ext_patente(u: dict = Depends(exigir("extensao"))):
+    return pagina.patente(u["id"])
+
+
+@app.get("/api/ext/ponte")
+def ext_ponte(u: dict = Depends(exigir("extensao"))):
+    """A extensão pergunta se o Claude pediu alguma leitura do YouTube."""
+    return {"pedido": ponte.proximo()}
+
+
+@app.post("/api/ext/ponte/{pedido_id}")
+async def ext_ponte_resposta(pedido_id: int, request: Request, u: dict = Depends(exigir("extensao"))):
+    ponte.responder(pedido_id, await request.json())
+    return {"ok": True}
+
+
+@app.get("/api/ponte/{tipo}")
+def api_ponte(tipo: str, alvo: str = "", u: dict = Depends(usuario)):
+    """O MCP do Radar lendo o YouTube pela aba aberta da pessoa, sem gastar a cota."""
+    if not alvo.strip():
+        raise HTTPException(400, "Falta dizer o que ler.")
+    try:
+        return ponte.pedir(tipo, alvo.strip())
+    except ponte.SemAba as erro:
+        raise HTTPException(409, str(erro))
+    except ValueError as erro:
+        raise HTTPException(404, str(erro))
+
+
+@app.get("/api/ponte-fala")
+def api_ponte_fala(video_id: str = "", u: dict = Depends(usuario)):
+    """A fala do vídeo com os tempos, para o MCP."""
+    try:
+        return {"trechos": roteiro_claude.fala_com_tempos(video_id)}
+    except RuntimeError as erro:
+        raise HTTPException(404, str(erro))
+
+
+@app.get("/api/ponte-comentarios")
+def api_ponte_comentarios(video_id: str = "", u: dict = Depends(usuario)):
+    """Os comentários do vídeo, para o MCP. Gasta 1 unidade de cota."""
+    comentarios = youtube.comentarios(video_id)
+    return {"comentarios": [{"texto": c["texto"], "curtidas": c["curtidas"]} for c in comentarios or []], "desligados": comentarios is None}
 
 
 @app.get("/api/ext/pedidos/{canal_id}")

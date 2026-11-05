@@ -49,6 +49,18 @@ def normal_do_nicho() -> dict[str, float]:
     return _NORMAL_NICHO
 
 
+PATENTES = [(0, "Olheiro"), (5, "Batedor"), (20, "Caçador"), (50, "Rastreador"), (100, "Estrategista"), (250, "Mestre do Nicho")]
+
+
+def patente(usuario_id: int) -> dict:
+    """O degrau da pessoa pelos canais salvos, e quantos faltam para o próximo."""
+    salvos = banco.um("SELECT COUNT(*) AS n FROM salvos WHERE usuario_id=?", usuario_id)["n"]
+    atual = [nome for minimo, nome in PATENTES if salvos >= minimo][-1]
+    proximos = [(minimo, nome) for minimo, nome in PATENTES if salvos < minimo]
+    return {"patente": atual, "salvos": salvos, "proxima": proximos[0][1] if proximos else "",
+            "faltam": proximos[0][0] - salvos if proximos else 0}
+
+
 def _contar(campo: str, n: int = 1) -> None:
     dia = banco.agora()[:10]
     if HOJE["dia"] != dia:

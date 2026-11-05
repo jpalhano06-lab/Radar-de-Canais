@@ -31,6 +31,12 @@ Responda só JSON, os campos em português, e a instrução em inglês:
 "instrucao": "instrução pronta em inglês para gerar uma capa nesse estilo, com [SUBJECT] e [TEXT] no lugar do assunto e do texto"}"""
 
 
+SISTEMA_CAPITULOS = """Você separa a fala de um vídeo do YouTube em capítulos. Cada linha da fala começa com o segundo em que ela é dita.
+Faça de 4 a 12 capítulos, onde o assunto muda de verdade. O primeiro começa no segundo 0. Títulos curtos, na língua da fala.
+Responda só JSON: {"capitulos": [{"seg": 0, "titulo": "..."}]}"""
+DISTANCIA_DOS_CAPITULOS = 10     # o YouTube recusa capítulo com menos de 10 s
+
+
 def _guardado(chave: str) -> dict | None:
     linha = banco.um("SELECT dados FROM traducoes WHERE chave=?", chave)
     return json.loads(linha["dados"]) if linha else None
@@ -86,3 +92,36 @@ def receita_da_capa(video_id: str, titulo: str = "") -> dict:
     if not dados or not dados.get("instrucao"):
         raise RuntimeError("A visão não respondeu agora. Tente de novo em instantes.")
     return _guardar(chave, dados)
+
+
+def _tempo(segundos: int) -> str:
+    h, resto = divmod(int(segundos), 3600)
+    m, s = divmod(resto, 60)
+    return f"{h}:{m:02d}:{s:02d}" if h else f"{m}:{s:02d}"
+
+
+def _limpar_capitulos(lista) -> list[dict]:
+    """Começa em 0:00, em ordem e com pelo menos 10 s entre um e outro: a regra do YouTube para mostrar os capítulos."""
+    fica = []
+    for c in sorted((c for c in lista if isinstance(c, dict) and str(c.get("titulo") or "").strip()), key=lambda c: float(c.get("seg") or 0)):
+        seg = int(float(c.get("seg") or 0))
+        if not fica:
+            seg = 0
+        elif seg - fica[-1]["seg"] < DISTANCIA_DOS_CAPITULOS:
+            continue
+        fica.append({"seg": seg, "tempo": _tempo(seg), "titulo": str(c["titulo"]).strip()[:80]})
+    return fica
+
+
+def capitulos(video_id: str, titulo: str) -> dict:
+    """Os capítulos do vídeo, tirados da legenda dele."""
+    chave = f"ia:capitulos:{video_id}"
+    guardado = _guardado(chave)
+    if guardado:
+        return guardado
+    trechos = roteiro_claude.fala_com_tempos(video_id)
+    linhas = chr(10).join(f"{int(t['seg'])} {t['texto']}" for t in trechos)
+    lista = _limpar_capitulos(_do_claude(SISTEMA_CAPITULOS, f"Título: {titulo}{chr(10)}Fala:{chr(10)}{linhas[:60000]}").get("capitulos") or [])
+    if len(lista) < 3:
+        raise RuntimeError("A fala não deu pelo menos 3 capítulos. O YouTube só mostra capítulos a partir de 3.")
+    return _guardar(chave, {"capitulos": lista})

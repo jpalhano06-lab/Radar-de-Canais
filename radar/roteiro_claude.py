@@ -57,6 +57,19 @@ def transcricao(video_id: str) -> tuple[str, str]:
     return texto, escolhida.language_code
 
 
+def fala_com_tempos(video_id: str) -> list[dict]:
+    """A fala do vídeo em trechos com o segundo em que cada um começa."""
+    from youtube_transcript_api import YouTubeTranscriptApi
+    try:
+        disponiveis = list(YouTubeTranscriptApi().list(video_id))
+    except Exception as erro:
+        raise RuntimeError(f"Não consegui ler a legenda desse vídeo. Detalhe: {str(erro)[:120]}")
+    if not disponiveis:
+        raise RuntimeError("Esse vídeo não tem legenda, nem automática.")
+    escolhida = sorted(disponiveis, key=lambda t: t.is_generated)[0]
+    return [{"seg": round(s.start, 1), "texto": s.text} for s in escolhida.fetch()]
+
+
 def tem_legenda(video_id: str) -> bool:
     """Se dá para ler a legenda desse vídeo. A Nova produção da extensão pergunta isso na confirmação, para a pessoa
     saber antes de criar que o roteiro vai sair só do título (pedido do usuário em 2026-10-28)."""

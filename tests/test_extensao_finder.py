@@ -1,6 +1,8 @@
 """O que veio do Dotti Finder para a extensão: o que o servidor entrega para cada função nova."""
 import io
 import sys
+import threading
+import time
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -9,7 +11,7 @@ from PIL import Image, ImageDraw
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from radar import banco, capas, cracha, garimpo, lente_ia, medir, molde, pagina, pedidos  # noqa: E402
+from radar import banco, capas, cracha, garimpo, lente_ia, medir, molde, pagina, pedidos, ponte  # noqa: E402
 
 
 @pytest.fixture
@@ -290,3 +292,39 @@ def test_pedidos_vem_pelas_curtidas_sem_repetir_e_ficam_guardados(base):
     assert d["videos"] == 2
     assert [p["texto"] for p in d["pedidos"]] == ["Please make a video on bears", "Faz parte 2"]
     assert pedidos.do_canal("UC1", ler, lambda achados: []) == d and len(chamadas) == 3
+
+
+def test_capitulos_comecam_em_zero_e_respeitam_os_10_segundos():
+    c = lente_ia._limpar_capitulos([{"seg": 95, "titulo": "Fim"}, {"seg": 3, "titulo": "Começo"}, {"seg": 40, "titulo": "Meio"}, {"seg": 44, "titulo": "Colado"}, {"seg": 50}])
+    assert [(x["tempo"], x["titulo"]) for x in c] == [("0:00", "Começo"), ("0:40", "Meio"), ("1:35", "Fim")]
+
+
+def test_nota_do_titulo_cai_com_titulo_que_corta(base):
+    curto, longo = molde.nota("Os 10 leões mais raros do mundo inteiro"), molde.nota("Os 10 leões mais raros do mundo inteiro " + "e muito mais " * 6)
+    assert longo["nota"] < curto["nota"] and any("corta" in m for m in longo["motivos"])
+
+
+def test_patente_sobe_com_os_canais_salvos(base):
+    assert pagina.patente(1) == {"patente": "Olheiro", "salvos": 0, "proxima": "Batedor", "faltam": 5}
+    for i in range(6):
+        banco.executar("INSERT INTO salvos (usuario_id, canal_id, criado) VALUES (1,?,'x')", f"c{i}")
+    assert pagina.patente(1)["patente"] == "Batedor"
+
+
+def test_ponte_sem_aba_diz_para_abrir_e_com_aba_devolve_a_resposta(monkeypatch):
+    monkeypatch.setattr(ponte, "_ultima_olhada", -1000.0)
+    with pytest.raises(ponte.SemAba):
+        ponte.pedir("canal", "UC1")
+    ponte.proximo()
+    respondeu = {}
+
+    def aba():
+        while not (p := ponte.proximo()):
+            time.sleep(.01)
+        ponte.responder(p["id"], {"videos": [p["alvo"]]})
+
+    linha = threading.Thread(target=aba)
+    linha.start()
+    respondeu = ponte.pedir("busca", "tubarão", prazo=3)
+    linha.join()
+    assert respondeu == {"videos": ["tubarão"]}

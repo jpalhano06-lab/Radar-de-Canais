@@ -103,6 +103,36 @@
     caixa.append(marca, numero, legenda);
   }
 
+  // ------------------------------------------------------------ visualizações engajadas de uma lista de vídeos
+  const dois = (n) => String(n).padStart(2, "0");
+  const diaId = (d) => Number(`${d.getFullYear()}${dois(d.getMonth() + 1)}${dois(d.getDate())}`);
+  async function engajadas(ids) {
+    const auth = await autorizacao();
+    if (!auth || !ids.length) return null;
+    const cabecalho = { "content-type": "application/json", authorization: auth, "x-origin": location.origin, "x-goog-authuser": String(cfg("SESSION_INDEX") || 0) };
+    if (cfg("DELEGATED_SESSION_ID")) cabecalho["x-goog-pageid"] = cfg("DELEGATED_SESSION_ID");
+    const consulta = { orders: [], returnDataInNewFormat: true, limitedToBatchedData: false, dimensions: [{ type: "VIDEO" }], limit: { pageSize: ids.length, pageOffset: 0 },
+      metrics: [{ type: "ENGAGED_VIEWS", includeTotal: true }, { type: "EXTERNAL_VIEWS", includeTotal: true }], restricts: [{ dimension: { type: "VIDEO" }, inValues: ids }],
+      timeRange: { dateIdRange: { inclusiveStart: 20050101, exclusiveEnd: diaId(new Date(Date.now() + 864e5)) } } };
+    const r = await fetch(`/youtubei/v1/yta_web/join?alt=json&key=${cfg("INNERTUBE_API_KEY")}`, { method: "POST", credentials: "include", headers: cabecalho,
+      body: JSON.stringify({ nodes: [{ key: "1__TOP_ENTITIES_TABLE_QUERY_KEY", value: { query: consulta } }], connectors: [], allowFailureResultNodes: true,
+        context: cfg("INNERTUBE_CONTEXT"), trackingLabel: "web_explore_latest_activity" }) });
+    if (!r.ok) return null;
+    const tabela = ((((await r.json()).results || [])[0] || {}).value || {}).resultTable;
+    if (!tabela) return null;
+    const coluna = (tipo) => (((tabela.metricColumns || []).find((c) => c.metric && c.metric.type === tipo) || {}).counts || {}).values || [];
+    const lista = (((tabela.dimensionColumns || []).find((c) => c.dimension && c.dimension.type === "VIDEO") || {}).strings || {}).values || [];
+    const eng = coluna("ENGAGED_VIEWS"), vis = coluna("EXTERNAL_VIEWS"), saida = {};
+    lista.forEach((id, i) => { saida[id] = { engajadas: Number(eng[i]) || 0, views: Number(vis[i]) || 0 }; });
+    return saida;
+  }
+  window.addEventListener("message", async (e) => {
+    if (e.source !== window || !e.data || e.data.radarEngajadas !== 1) return;
+    let dados = null;
+    try { dados = await engajadas(e.data.ids || []); } catch { /* o Studio mudou: a coluna fica com o traço */ }
+    window.postMessage({ radarEngajadasResposta: 1, pedido: e.data.pedido, dados }, location.origin);
+  });
+
   // o painel e as estatísticas trocam de tela sem recarregar: pede de novo a cada minuto e quando a tela muda
   setTimeout(coletar, 2500);
   setInterval(coletar, 60 * 1000);
