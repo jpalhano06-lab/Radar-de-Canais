@@ -65,3 +65,22 @@ Fábrica religada em 2026-11-05 01:43 (PID 10688, `fabrica.log`). O render do v�
   `INSTALAR-ROBO.ps1`, nunca executado), robô em outro computador de verdade, dois renders juntos sem medida, produção
   inteira com garimpo pela escolha do modelo. Nada da fábrica foi commitado: rodar LIGAR-TIPLABS pode mandar para o stash.
 
+## Segunda rodada (2026-11-05, tarde)
+
+A primeira rodada foi dada como pronta e não estava: a tela do pedido, transições, som, contas e parte do garimpo tinham
+ficado para trás. Pronto agora, cada um com prova:
+
+- [x] Opções por vídeo na Nova produção: ritmo, edição, transição, partículas, IA, vídeo de IA, acervo, avatar, música, som.
+- [x] Transições e partículas (`render.TRANSICOES`, `fabrica/camadas.py`): render de verdade, quadros olhados.
+- [x] Som nas animações (`animacoes.sons_na_linha`): sintetizado, sem arquivo da Dotti.
+- [x] Garimpo: tier pelo título, vídeo em pé, próxima tentativa, `garimpo_provas/`, IP quente.
+- [x] Contas do YouTube pela tela. Sem teste com conta real.
+- [x] 12 temas com desenho próprio (`animacoes.DESENHOS`), vistos em folha. Não são as 164 peças do robô.
+- [x] Concorrência de imagem aprendida (`imagens.concorrencia`), só para baixo do teto.
+- [~] Drive (`fabrica/drive.py`): falta a pessoa ativar a Drive API e conectar. Sem envio real.
+- [~] Vídeo de IA (`fabrica/video_ia.py`, Kie): upload e pedido reais, recusados por falta de crédito (0,6). Sem clipe real.
+- [x] Instalador `dist/RoboDaFabrica-Instalar.exe` (192 KB) e `/api/robo/pacote`: instalação real em pasta descartável.
+
+Fora, de propósito: as 164 peças de motion, a comunidade do site (escritório virtual, fórum, ranking), 69labs (narração paga
+foi cancelada em 2026-10-28) e o núcleo `.pyd`, que não abre por strings.
+

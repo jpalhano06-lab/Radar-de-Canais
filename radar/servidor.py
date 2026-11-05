@@ -19,6 +19,8 @@ from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 
+from starlette.background import BackgroundTask
+
 from . import maquinas
 from . import alvos, banco, canal_painel, chatgpt_conta, claude_projetos, custos, descricao, diagnostico, fabrica_api, fila, funcoes, garimpo, gosto, horarios, ia, integracoes, medir, mercado, metricas, nichos, pagina, perfil, producao, publicar, radar_paises, roteiro_claude, studio, tempo, thumb, trabalho, treinamento, trello, youtube
 from .config import DADOS, NOME, PLANOS, RAIZ, pode
@@ -2064,6 +2066,14 @@ def _do_lease(funcao, *args):
         raise HTTPException(400, str(erro))
 
 
+@app.get("/api/robo/pacote")
+def robo_pacote(m: dict = Depends(maquina_da_chave)):
+    """A fábrica para o instalador de outra máquina. Só com a chave de uma máquina cadastrada."""
+    arquivo = maquinas.pacote(roteiro_claude.FABRICA)
+    return FileResponse(arquivo, media_type="application/zip", filename="fabrica-robo.zip",
+                        background=BackgroundTask(arquivo.unlink, missing_ok=True))
+
+
 @app.post("/api/robo/reivindicar")
 def robo_reivindicar(corpo: dict, m: dict = Depends(maquina_da_chave)):
     return {"trabalho": maquinas.reivindicar(m, corpo.get("capacidades") or {})}
@@ -2083,6 +2093,48 @@ def robo_concluir(corpo: dict, m: dict = Depends(maquina_da_chave)):
 @app.post("/api/robo/falhar")
 def robo_falhar(corpo: dict, m: dict = Depends(maquina_da_chave)):
     return {"ok": _do_lease(maquinas.falhar, m, int(corpo.get("id") or 0), corpo.get("lease") or "", corpo.get("erro") or "")}
+
+
+def _da_fabrica(funcao, *args):
+    try:
+        return funcao(*args)
+    except fabrica_api.SemFabrica as erro:
+        raise HTTPException(400, str(erro))
+
+
+@app.get("/api/drive")
+def drive_estado(u: dict = Depends(dono_da_fabrica)):
+    return _da_fabrica(fabrica_api.drive_status)
+
+
+@app.post("/api/drive/conectar")
+def drive_conectar(u: dict = Depends(dono_da_fabrica)):
+    return _da_fabrica(fabrica_api.drive_conectar)
+
+
+@app.post("/api/drive/desconectar")
+def drive_desconectar(u: dict = Depends(dono_da_fabrica)):
+    return _da_fabrica(fabrica_api.drive_desconectar)
+
+
+@app.get("/api/contas-youtube")
+def contas_youtube_lista(u: dict = Depends(dono_da_fabrica)):
+    return _da_fabrica(fabrica_api.contas_youtube)
+
+
+@app.post("/api/contas-youtube")
+def contas_youtube_nova(corpo: dict, u: dict = Depends(dono_da_fabrica)):
+    return _da_fabrica(fabrica_api.conta_youtube_nova, corpo.get("nome") or "", corpo.get("cookies") or "")
+
+
+@app.post("/api/contas-youtube/{nome}/testar")
+def contas_youtube_testar(nome: str, u: dict = Depends(dono_da_fabrica)):
+    return _da_fabrica(fabrica_api.conta_youtube_testar, nome)
+
+
+@app.delete("/api/contas-youtube/{nome}")
+def contas_youtube_apagar(nome: str, u: dict = Depends(dono_da_fabrica)):
+    return _da_fabrica(fabrica_api.conta_youtube_apagar, nome)
 
 
 @app.get("/api/maquinas")

@@ -17,9 +17,24 @@ MIN_CARACTERES, MAX_CARACTERES = 1000, 80000
 LIMITES = (1, 2, 3, 4, 6, 8)
 ESCRITAS_AO_MESMO_TEMPO = 2       # roteiros pelo Claude ao mesmo tempo (20 pedidos de uma vez eram 20 chamadas juntas)
 CAMPOS = ("titulo", "link", "canal_id", "agente_id", "lingua", "caracteres", "roteiro_manual", "nicho", "observacao",
-          "revisar", "perfil", "footage_real", "tema", "destino")
+          "revisar", "perfil", "footage_real", "tema", "destino", "ritmo", "edicao", "transicao", "camada", "ia", "acervo",
+          "avatar", "musica", "som_textos", "video_ia")
 FOOTAGE_REAL = (0, 15, 25, 40)    # % das cenas com trecho de vídeo real do YouTube (o garimpo da fábrica)
-TEMAS = ("noticiario", "dossie", "cinema", "jornal", "caderno", "planilha", "hacker", "terror")  # animacoes.TEMAS
+# o que a Nova produção deixa escolher por vídeo. Vazio é o padrão do canal, e aí nada é gravado no projeto
+ESCOLHAS = {
+    "tema": ("noticiario", "dossie", "cinema", "jornal", "caderno", "planilha", "hacker", "terror", "colagem", "cinetico",
+             "arquivo", "reaberto"),  # animacoes.TEMAS
+    "ritmo": ("4-6", "5-8"),
+    "edicao": ("documentario", "investigacao", "noticiario", "energia", "cinema"),  # render.VISUAIS
+    "transicao": ("preto", "branco", "brasa", "flash"),  # render.TRANSICOES
+    "camada": ("brasas", "poeira"),  # render.CAMADAS
+    "ia": ("sem",),
+    "acervo": ("sem", "sempre"),
+    "avatar": ("sem",),
+    "musica": ("sem",),
+    "som_textos": ("sim",),
+    "video_ia": ("10", "25"),  # % das cenas de imagem de IA que ganham movimento; cada clipe é pago à parte
+}
 
 
 def minutos_de(caracteres: int, ppm: int) -> float:
@@ -46,8 +61,9 @@ def criar(usuario_id: int, pedido: dict, comecar: bool) -> dict:
         raise ValueError("A parte de footage real vai de 0 a 40%.")
     if limpo.get("destino") not in (None, "robo"):
         raise ValueError("Esse destino não existe.")
-    if limpo.get("tema") and limpo["tema"] not in TEMAS:
-        raise ValueError("Esse tema de animação não existe.")
+    for campo, validos in ESCOLHAS.items():
+        if limpo.get(campo) and limpo[campo] not in validos:
+            raise ValueError(f"A escolha de {campo} ({limpo[campo]}) não existe.")
     if not str(limpo.get("roteiro_manual") or "").strip():
         limpo.pop("roteiro_manual", None)
         caracteres = int(pedido.get("caracteres") or 0)
@@ -293,9 +309,9 @@ def passo(fabrica=None, roteirista=None, em_thread: bool = True, config_canal=No
             try:
                 if not projeto:
                     # o projeto fica guardado assim que existe: "Tentar de novo" e um reinício reaproveitam, sem pagar outro
-                    extras = {"footage_real": int(pedido.get("footage_real") or 0), "tema": pedido.get("tema") or ""}
+                    opcoes = {k: pedido[k] for k in ("footage_real", *ESCOLHAS) if pedido.get(k)}
                     projeto = roteirista.enviar(linha["usuario_id"], linha["roteiro"], perfil_do(pedido, cfg),
-                                                **{k: v for k, v in extras.items() if v})["projeto"]
+                                                **({"opcoes": opcoes} if opcoes else {}))["projeto"]
                     banco.executar("UPDATE producoes_fila SET projeto=? WHERE id=?", projeto, linha["id"])
                 if not mudar(linha["id"], "enviando", de=("enviando",)):
                     continue

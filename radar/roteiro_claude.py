@@ -676,23 +676,48 @@ def titulo_de_entrega(meta: dict) -> str:
 # o tema da Nova produção vale para os textos na tela (animacoes.TEMAS) e para as cenas animadas (animation_ai.TEMAS),
 # que têm os nomes deles
 TEMA_DAS_CENAS_ANIMADAS = {"noticiario": "editorial", "dossie": "misterio", "cinema": "cinema", "jornal": "editorial",
-                           "caderno": "apple", "planilha": "blueprint", "hacker": "neon", "terror": "noite"}
+                           "caderno": "apple", "planilha": "blueprint", "hacker": "neon", "terror": "noite", "colagem": "riso",
+                           "cinetico": "impacto", "arquivo": "misterio", "reaberto": "noite"}
+RITMOS = {"4-6": (4.0, 6.0), "5-8": (5.0, 8.0)}
 
 
-def config_override(footage_real: int = 0, tema: str = "") -> dict:
-    """O que o pedido muda só neste vídeo, sem tocar no perfil do canal. A folga de 5 pontos é o teto da cota da fábrica."""
-    extras = {}
-    if footage_real:
-        alvo = footage_real / 100
-        extras["garimpo"] = {"ligado": True, "alvo": alvo, "teto": round(alvo + 0.05, 2)}
-    if tema:
-        extras["animacoes"] = {"estilo": {"tema": tema}}
-        if tema in TEMA_DAS_CENAS_ANIMADAS:
-            extras["animation_ai"] = {"tema": TEMA_DAS_CENAS_ANIMADAS[tema]}
-    return extras
+def ajustes_do_video(opcoes: dict | None) -> tuple[dict, dict]:
+    """(config_override, perfil_override) do pedido: o que muda só neste vídeo, sem tocar no perfil do canal.
+    A folga de 5 pontos é o teto da cota da fábrica."""
+    o = opcoes or {}
+    config, perfil = {}, {}
+    if o.get("footage_real"):
+        alvo = int(o["footage_real"]) / 100
+        config["garimpo"] = {"ligado": True, "alvo": alvo, "teto": round(alvo + 0.05, 2)}
+    animacoes = {}
+    if o.get("tema"):
+        animacoes["estilo"] = {"tema": o["tema"]}
+        config["animation_ai"] = {"tema": TEMA_DAS_CENAS_ANIMADAS[o["tema"]]}
+    if o.get("som_textos"):
+        animacoes["som"] = True
+    if animacoes:
+        config["animacoes"] = animacoes
+    if o.get("ritmo") in RITMOS:
+        minimo, maximo = RITMOS[o["ritmo"]]
+        config["cenas"] = {"segundos_minimo": minimo, "segundos_maximo": maximo}
+    if o.get("ia") == "sem":
+        config["ia"] = {"ativa": False}
+    if o.get("video_ia"):
+        config["video_ia"] = {"fracao": int(o["video_ia"]) / 100}
+    if o.get("acervo"):
+        config["midia"] = {"acervo": o["acervo"]}
+    if o.get("musica") == "sem":
+        config["trilha"] = {"ativo": False}
+        perfil["musica"] = None
+    if o.get("avatar") == "sem":
+        perfil["avatar"] = {"ativo": False}
+    for campo, chave in (("edicao", "visual"), ("transicao", "transicao"), ("camada", "camada")):
+        if o.get(campo):
+            perfil[chave] = o[campo]
+    return config, perfil
 
 
-def enviar(usuario_id: int, nome: str, perfil: str, footage_real: int = 0, tema: str = "") -> dict:
+def enviar(usuario_id: int, nome: str, perfil: str, opcoes: dict | None = None) -> dict:
     """Cria o projeto na fábrica com o roteiro e o título (`fabrica novo`, grátis: narrar e gerar imagens continuam
     pedindo confirmação lá). O título vai em titulo_entrega (o traduzido com o original entre parênteses), que a
     fábrica usa no nome do vídeo entregue."""
@@ -720,9 +745,11 @@ def enviar(usuario_id: int, nome: str, perfil: str, footage_real: int = 0, tema:
         raise RuntimeError("A fábrica não criou o projeto: " + (r.stderr or r.stdout or "")[-400:])
     dados = json.loads((destino / "projeto.json").read_text(encoding="utf-8"))
     dados["titulo_entrega"] = titulo_de_entrega(meta)
-    extras = config_override(footage_real, tema)
-    if extras:
-        dados["config_override"] = {**(dados.get("config_override") or {}), **extras}
+    config, do_perfil = ajustes_do_video(opcoes)
+    if config:
+        dados["config_override"] = {**(dados.get("config_override") or {}), **config}
+    if do_perfil:
+        dados["perfil_override"] = {**(dados.get("perfil_override") or {}), **do_perfil}
     (destino / "projeto.json").write_text(json.dumps(dados, ensure_ascii=False, indent=2), encoding="utf-8")
     if (pasta / "thumbnail.jpg").exists():
         shutil.copy2(pasta / "thumbnail.jpg", destino / "thumbnail_referencia.jpg")

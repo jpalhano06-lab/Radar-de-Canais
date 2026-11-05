@@ -391,8 +391,8 @@ def _enviados_com_footage(pedido):
     enviados = []
 
     class R(Roteirista):
-        def enviar(self, usuario_id, nome, perfil, **extras):
-            enviados.append(extras)
+        def enviar(self, usuario_id, nome, perfil, opcoes=None):
+            enviados.append(opcoes)
             return super().enviar(usuario_id, nome, perfil)
 
     rot = R()
@@ -408,8 +408,32 @@ def test_footage_real_chega_ao_envio_para_a_fabrica(db):
     assert _enviados_com_footage({"footage_real": 25}) == [{"footage_real": 25}]
 
 
+def test_opcoes_do_video_viram_ajustes_do_projeto():
+    from radar import roteiro_claude
+
+    config, perfil = roteiro_claude.ajustes_do_video(
+        {"footage_real": 15, "tema": "hacker", "ritmo": "5-8", "ia": "sem", "acervo": "sempre", "musica": "sem", "avatar": "sem",
+         "edicao": "cinema", "transicao": "preto", "camada": "poeira", "som_textos": "sim"})
+    assert config["garimpo"]["alvo"] == 0.15 and config["cenas"] == {"segundos_minimo": 5.0, "segundos_maximo": 8.0}
+    assert config["ia"] == {"ativa": False} and config["midia"] == {"acervo": "sempre"} and config["trilha"] == {"ativo": False}
+    assert config["animacoes"] == {"estilo": {"tema": "hacker"}, "som": True} and config["animation_ai"] == {"tema": "neon"}
+    assert perfil == {"musica": None, "avatar": {"ativo": False}, "visual": "cinema", "transicao": "preto", "camada": "poeira"}
+
+
+def test_sem_opcao_nada_e_gravado_no_projeto():
+    from radar import roteiro_claude
+
+    assert roteiro_claude.ajustes_do_video({}) == ({}, {}) and roteiro_claude.ajustes_do_video(None) == ({}, {})
+
+
+def test_todo_tema_tem_tema_de_cena_animada():
+    from radar import roteiro_claude
+
+    assert set(fila.ESCOLHAS["tema"]) == set(roteiro_claude.TEMA_DAS_CENAS_ANIMADAS)
+
+
 def test_sem_footage_real_o_envio_fica_como_sempre_foi(db):
-    assert _enviados_com_footage({}) == [{}]
+    assert _enviados_com_footage({}) == [None]
 
 
 def test_footage_real_fora_da_lista_e_recusado(db):
@@ -420,6 +444,12 @@ def test_footage_real_fora_da_lista_e_recusado(db):
 
 def test_tema_chega_ao_envio_para_a_fabrica(db):
     assert _enviados_com_footage({"tema": "dossie", "footage_real": 15}) == [{"footage_real": 15, "tema": "dossie"}]
+
+
+def test_escolha_que_nao_existe_e_recusada(db):
+    fila.criar(1, {"titulo": "ok", "caracteres": 2000, "edicao": "cinema"}, False)
+    with pytest.raises(ValueError, match="transicao"):
+        fila.criar(1, {"titulo": "x", "caracteres": 2000, "transicao": "inventada"}, False)
 
 
 def test_tema_que_nao_existe_e_recusado(db):

@@ -61,7 +61,7 @@ def test_reivindicar_entrega_tudo_para_produzir(db):
     assert t["id"] == fid and t["roteiro"] == "Texto do roteiro." and t["perfil"] == "canal-x"
     assert t["config_override"]["garimpo"]["alvo"] == 0.25
     assert t["config_override"]["animacoes"]["estilo"]["tema"] == "dossie"
-    assert t["config_override"]["animation_ai"]["tema"] == "misterio"
+    assert t["config_override"]["animation_ai"]["tema"] == "misterio" and t["perfil_override"] == {}
     assert _estado(fid)["estado"] == "produzindo"
 
 
@@ -240,3 +240,35 @@ def test_rotas_da_maquina(db, monkeypatch):
     assert cliente.post("/api/robo/concluir", json={"id": fid, "lease": t["lease"], "prova": PROVA}, headers=chave).status_code == 200
     assert _estado(fid)["estado"] == "entregue"
     assert cliente.post("/api/robo/reivindicar", json={}, headers=chave).json()["trabalho"] is None
+
+
+def _fabrica_de_mentira(raiz):
+    for arquivo in ("fabrica/api.py", "fabrica/__pycache__/api.pyc", "fabrica/api.py.antes-token", "perfis/canal.yaml",
+                    "perfis/canal.yaml.antes", "pyproject.toml", ".env", ".env.antes", ".env.exemplo", "config.yaml",
+                    "palhano/painel/dados/segredo.key", "projetos/video/final.mp4", "contas_youtube/a.txt", "drive_conta.json",
+                    "youtube_conta.json"):
+        caminho = raiz / arquivo
+        caminho.parent.mkdir(parents=True, exist_ok=True)
+        caminho.write_text("x", encoding="utf-8")
+
+
+def test_pacote_leva_so_o_que_esta_na_lista(tmp_path):
+    import zipfile
+
+    _fabrica_de_mentira(tmp_path)
+    arquivo = maquinas.pacote(tmp_path, tmp_path / "p.zip")
+    assert sorted(zipfile.ZipFile(arquivo).namelist()) == [".env.exemplo", "config.yaml", "fabrica/api.py", "perfis/canal.yaml",
+                                                           "pyproject.toml"]
+
+
+def test_pacote_exige_a_chave_da_maquina(db, tmp_path, monkeypatch):
+    from fastapi.testclient import TestClient
+
+    from radar import servidor
+
+    _fabrica_de_mentira(tmp_path)
+    monkeypatch.setattr(roteiro_claude, "FABRICA", tmp_path)
+    cliente = TestClient(servidor.app)
+    assert cliente.get("/api/robo/pacote").status_code == 401
+    r = cliente.get("/api/robo/pacote", headers={"x-robo-chave": maquinas.criar("PC")["chave"]})
+    assert r.status_code == 200 and r.content[:2] == b"PK"

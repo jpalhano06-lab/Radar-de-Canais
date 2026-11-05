@@ -1887,13 +1887,14 @@ async function acompanhar() {
         <span class="acn-num"><b>${d.numeros.produzindo}</b> produzindo</span><span class="acn-num"><b>${d.numeros.na_fila}</b> na fila</span>
         <span class="acn-num ${d.numeros.precisa_voce ? "alerta" : ""}"><b>${d.numeros.precisa_voce}</b> precisa${d.numeros.precisa_voce === 1 ? "" : "m"} de você</span>
         <span class="acn-num"><b>${d.prontos_hoje}</b> pronto${d.prontos_hoje === 1 ? "" : "s"} hoje · <a href="#/resultados">Resultados</a></span>
-        ${EU.admin ? '<button class="botao contorno" id="acn-maquinas">Máquinas</button><button class="botao" id="acn-nova-topo">+ Nova produção</button>' : ""}</div>
+        ${EU.admin ? '<button class="botao contorno" id="acn-contas-yt">Contas do YouTube</button><button class="botao contorno" id="acn-maquinas">Máquinas</button><button class="botao" id="acn-nova-topo">+ Nova produção</button>' : ""}</div>
       <div class="acn-corpo"><div class="acn-lista"></div><div class="acn-video"></div></div>`;
     raiz.querySelector("#acn-limite")?.addEventListener("change", async (e) => {
       try { await api("/api/fila/ajustes", { method: "POST", body: { limite: Number(e.target.value) } }); aviso(`A fábrica faz até ${e.target.value} ao mesmo tempo.`); } catch (er) { aviso(er.message); }
     });
     raiz.querySelector("#acn-nova-topo")?.addEventListener("click", () => novaProducao());
     raiz.querySelector("#acn-maquinas")?.addEventListener("click", () => telaDeMaquinas());
+    raiz.querySelector("#acn-contas-yt")?.addEventListener("click", () => telaDeContasYoutube());
     desenharLista(); desenharVideo();
   };
 
@@ -3019,6 +3020,47 @@ async function custos() {
 const CARACTERES_POR_PALAVRA = 5.9;
 const ATALHOS_MIN = [8, 10, 12, 15, 20, 25, 30];
 
+async function telaDeContasYoutube() {
+  if (document.getElementById("contas-yt-fundo")) return;
+  document.body.insertAdjacentHTML("beforeend", `<div class="modal-fundo" id="contas-yt-fundo"><div class="np" role="dialog" aria-label="Contas do YouTube">
+    <header class="np-cab"><h2>Contas do YouTube</h2><button class="np-fechar" title="Fechar (Esc)">×</button></header>
+    <div class="np-corpo"><div class="np-campos" id="contas-yt-corpo"></div></div></div></div>`);
+  const fundo = document.getElementById("contas-yt-fundo"), corpo = fundo.querySelector("#contas-yt-corpo");
+  fundo.querySelector(".np-fechar").onclick = () => fundo.remove();
+  fundo.onclick = (e) => { if (e.target === fundo) fundo.remove(); };
+  const desenhar = async (avisos = {}) => {
+    let d;
+    try { d = await api("/api/contas-youtube"); d.drive = (await api("/api/drive").catch(() => ({}))).conectado; } catch (er) { corpo.innerHTML = `<small class="np-dica alerta">${esc(er.message)}</small>`; return; }
+    const prontas = d.contas.filter((c) => !c.de_castigo).length;
+    corpo.innerHTML = `<small class="np-dica">O garimpo usa estas contas para baixar os trechos. Sem conta ele tenta sem login, e o YouTube pode barrar.</small>
+      ${d.ip_quente ? '<small class="np-dica alerta">O YouTube barrou este endereço: o garimpo volta em até uma hora.</small>' : ""}
+      ${d.contas.length === 1 ? '<small class="np-dica alerta">Só uma conta: se ela bater no limite, não há outra para assumir.</small>' : ""}
+      ${d.contas.map((c) => `<div class="np-agente"><div><b>${esc(c.nome)}</b><small>${c.de_castigo ? "De castigo por uma hora" : "Pronta"}${avisos[c.nome] ? ` · ${esc(avisos[c.nome])}` : ""}</small></div>
+        <button type="button" class="botao contorno cyt-testar" data-nome="${esc(c.nome)}">Testar</button><button type="button" class="botao contorno cyt-tirar" data-nome="${esc(c.nome)}">Retirar</button></div>`).join("") || '<small class="np-dica">Nenhuma conta ainda.</small>'}
+      <small class="np-dica">${prontas} pronta${prontas === 1 ? "" : "s"}</small>
+      <div class="np-agente"><div><b>Google Drive</b><small>${d.drive ? "Conectado: o vídeo pronto sobe sozinho" : "Desconectado: o vídeo fica só no computador"}</small></div>
+        <button type="button" class="botao contorno" id="drive-botao">${d.drive ? "Desconectar" : "Conectar"}</button></div>
+      <label class="campo"><span>Nova conta</span><input id="cyt-nome" placeholder="Nome da conta" maxlength="40"></label>
+      <label class="campo"><span>cookies.txt <small>(formato Netscape, exportado do navegador logado)</small></span><textarea id="cyt-cookies" rows="5" spellcheck="false"></textarea></label>
+      <button type="button" class="botao" id="cyt-salvar">Conectar</button>`;
+    corpo.querySelector("#drive-botao").onclick = async () => {
+      try {
+        if (d.drive) { await api("/api/drive/desconectar", { method: "POST", body: {} }); desenhar(); return; }
+        window.open((await api("/api/drive/conectar", { method: "POST", body: {} })).url, "_blank");
+      } catch (er) { aviso(er.message); }
+    };
+    corpo.querySelector("#cyt-salvar").onclick = async () => {
+      try { await api("/api/contas-youtube", { method: "POST", body: { nome: corpo.querySelector("#cyt-nome").value, cookies: corpo.querySelector("#cyt-cookies").value } }); desenhar(); } catch (er) { aviso(er.message); }
+    };
+    corpo.querySelectorAll(".cyt-tirar").forEach((b) => (b.onclick = async () => { await api(`/api/contas-youtube/${encodeURIComponent(b.dataset.nome)}`, { method: "DELETE" }); desenhar(); }));
+    corpo.querySelectorAll(".cyt-testar").forEach((b) => (b.onclick = async () => {
+      b.disabled = true;
+      try { const r = await api(`/api/contas-youtube/${encodeURIComponent(b.dataset.nome)}/testar`, { method: "POST", body: {} }); desenhar({ ...avisos, [b.dataset.nome]: r.logada ? "Logada" : `Sem login: ${r.motivo}` }); } catch (er) { aviso(er.message); b.disabled = false; }
+    }));
+  };
+  desenhar();
+}
+
 async function telaDeMaquinas() {
   if (document.getElementById("maquinas-fundo")) return;
   document.body.insertAdjacentHTML("beforeend", `<div class="modal-fundo" id="maquinas-fundo"><div class="np" role="dialog" aria-label="Máquinas">
@@ -3045,7 +3087,21 @@ async function telaDeMaquinas() {
 }
 
 const TEMAS_ANIMACAO = [["", "Padrão do canal"], ["noticiario", "Noticiário"], ["dossie", "Dossiê"], ["cinema", "Cinema"],
-  ["jornal", "Jornal"], ["caderno", "Caderno"], ["planilha", "Planilha"], ["hacker", "Hacker"], ["terror", "Terror"]];
+  ["jornal", "Jornal"], ["caderno", "Caderno"], ["planilha", "Planilha"], ["hacker", "Hacker"], ["terror", "Terror"],
+  ["colagem", "Colagem"], ["cinetico", "Cinético"], ["arquivo", "Pasta de caso"], ["reaberto", "Caso reaberto"]];
+// o que a Nova produção deixa mudar só neste vídeo: [campo, rótulo, opções]. Vazio é o padrão do canal
+const OPCOES_DO_VIDEO = [
+  ["ritmo", "Segundos por cena", [["", "3 a 5 s"], ["4-6", "4 a 6 s"], ["5-8", "5 a 8 s"]]],
+  ["edicao", "Edição", [["", "Padrão do canal"], ["documentario", "Documentário"], ["investigacao", "Investigação"], ["noticiario", "Noticiário"], ["energia", "Energia"], ["cinema", "Cinema"]]],
+  ["transicao", "Transição", [["", "Corte seco"], ["preto", "Preto"], ["branco", "Branco"], ["brasa", "Brasa"], ["flash", "Flash"]]],
+  ["camada", "Partículas", [["", "Nenhuma"], ["brasas", "Brasas"], ["poeira", "Poeira"]]],
+  ["ia", "Imagem de IA", [["", "Ligada"], ["sem", "Desligada"]]],
+  ["video_ia", "Vídeo de IA (pago por clipe)", [["", "Nenhum"], ["10", "10% das cenas de IA"], ["25", "25% das cenas de IA"]]],
+  ["acervo", "Acervo de museus", [["", "Automático"], ["sempre", "Em toda cena"], ["sem", "Desligado"]]],
+  ["avatar", "Avatar", [["", "Padrão do canal"], ["sem", "Desligado"]]],
+  ["musica", "Música", [["", "Padrão do canal"], ["sem", "Sem música"]]],
+  ["som_textos", "Som nos textos", [["", "Desligado"], ["sim", "Ligado"]]],
+];
 
 async function novaProducao(preset = {}) {
   if (document.getElementById("nova-producao")) return;
@@ -3056,7 +3112,7 @@ async function novaProducao(preset = {}) {
   const lembrado = canais.some((c) => c.id === guardado("np-canal", "")) ? guardado("np-canal", "") : "";
   const N = { passo: 1, titulo: preset.titulo || "", link: preset.link || "", canal: preset.canal || CANAL_ATUAL || lembrado || (canais.length === 1 ? canais[0].id : ""), cfg: null, agente: "",
     lingua: "português", ppm: 150, caracteres: 0, modo: "claude", roteiro: "", nicho: "", obs: "", revisar: false, ref: null, custo: null,
-    footage: Number(guardado("np-footage", "0")) || 0, tema: guardado("np-tema", ""), destino: "", maquinas: [] };
+    footage: Number(guardado("np-footage", "0")) || 0, tema: guardado("np-tema", ""), destino: "", maquinas: [], opcoes: {}, opcoesAbertas: false };
   N.maquinas = maquinasDeFora;
   N.caracteres = Math.round(12 * N.ppm * CARACTERES_POR_PALAVRA / 10) * 10;
   const minutos = () => N.caracteres / CARACTERES_POR_PALAVRA / N.ppm;
@@ -3127,7 +3183,8 @@ async function novaProducao(preset = {}) {
       <select id="np-tema">${TEMAS_ANIMACAO.map(([v, r]) => `<option value="${v}" ${v === N.tema ? "selected" : ""}>${r}</option>`).join("")}</select></label>`;
     const destinoHtml = N.maquinas.length ? `<label class="campo"><span>Onde produzir</span>
       <select id="np-destino"><option value="">Esta máquina</option><option value="robo" ${N.destino ? "selected" : ""}>A primeira máquina livre (${N.maquinas.filter((m) => m.online).length} ligada${N.maquinas.filter((m) => m.online).length === 1 ? "" : "s"})</option></select></label>` : "";
-    const revisarHtml = footageHtml + temaHtml + destinoHtml + revisarSo;
+    const opcoesHtml = `<details class="campo np-opcoes" ${N.opcoesAbertas ? "open" : ""}><summary>Mais opções deste vídeo</summary><div class="np-duas">${OPCOES_DO_VIDEO.map(([campo, rotulo, lista]) => `<label class="campo"><span>${rotulo}</span><select class="np-opcao" data-campo="${campo}">${lista.map(([v, r]) => `<option value="${v}" ${v === (N.opcoes[campo] || "") ? "selected" : ""}>${r}</option>`).join("")}</select></label>`).join("")}</div></details>`;
+    const revisarHtml = footageHtml + temaHtml + destinoHtml + opcoesHtml + revisarSo;
     const passos = `<div class="np-passos"><span class="${N.passo === 1 ? "ativo" : ""}">1 · O vídeo</span><span class="${N.passo === 2 ? "ativo" : ""}">2 · Editar o roteiro</span></div>`;
     if (N.passo === 1) {
       campos.innerHTML = `${passos}
@@ -3195,6 +3252,8 @@ async function novaProducao(preset = {}) {
     $n("np-footage").onchange = (e) => { N.footage = Number(e.target.value) || 0; guardar("np-footage", String(N.footage)); desenhar(); desenharPrevia(); };
     $n("np-tema").onchange = (e) => { N.tema = e.target.value; guardar("np-tema", N.tema); desenharPrevia(); };
     if ($n("np-destino")) $n("np-destino").onchange = (e) => { N.destino = e.target.value; desenharPrevia(); };
+    campos.querySelector(".np-opcoes").ontoggle = (e) => { N.opcoesAbertas = e.target.open; };
+    campos.querySelectorAll(".np-opcao").forEach((s) => (s.onchange = () => { N.opcoes[s.dataset.campo] = s.value; desenharPrevia(); }));
   }
 
   const enviar = (botao, comecar) => carregando(botao, comecar ? "Criando…" : "Salvando…", async () => {
@@ -3204,6 +3263,7 @@ async function novaProducao(preset = {}) {
     if (!N.canal) { erro.textContent = "Escolha o canal."; N.passo = 2; desenhar(); return; }
     const pedido = { titulo: N.titulo, link: N.link, canal_id: N.canal, agente_id: N.agente, lingua: N.lingua, revisar: N.revisar,
       ...(N.footage ? { footage_real: N.footage } : {}), ...(N.tema ? { tema: N.tema } : {}), ...(N.destino ? { destino: N.destino } : {}),
+      ...Object.fromEntries(Object.entries(N.opcoes).filter(([, v]) => v)),
       ...(N.modo === "manual" ? { roteiro_manual: N.roteiro } : { caracteres: N.caracteres, nicho: N.nicho, observacao: N.obs }) };
     try {
       await api("/api/fila", { method: "POST", body: { pedido, comecar } });

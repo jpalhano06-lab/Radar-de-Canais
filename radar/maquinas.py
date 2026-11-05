@@ -11,15 +11,49 @@ O vídeo fica na máquina que fez. O que volta para cá é a prova da entrega: t
 """
 import hashlib
 import json
+import os
 import secrets
+import tempfile
 import time
+import zipfile
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 
 from . import banco, fila, roteiro_claude
 
 LEASE_SEGUNDOS = 300
 ONLINE_SEGUNDOS = 120
 MAX_EVENTOS = 50
+
+
+# O que vai para a outra máquina. Lista do que entra, e não do que sai: a pasta da fábrica tem .env.antes, chaves do
+# painel e dados de clientes, e um arquivo novo com segredo não pode ir embora porque ninguém lembrou de bloquear.
+PACOTE_PASTAS = ("fabrica", "perfis", "simbolos", "motores_voz", "musicas")
+PACOTE_ARQUIVOS = ("pyproject.toml", "uv.lock", "config.yaml", ".env.exemplo", "ROBO.ps1", "INSTALAR-ROBO.ps1", "README.md")
+FORA_DO_PACOTE = (".pyc", ".antes", ".antes-token", ".key", ".db", ".log")
+
+
+def _entra_no_pacote(caminho: Path) -> bool:
+    nome = caminho.name.lower()
+    return ("__pycache__" not in caminho.parts and not nome.endswith(FORA_DO_PACOTE) and ".antes" not in nome
+            and not nome.startswith(".env"))
+
+
+def pacote(raiz: Path, destino: Path | None = None) -> Path:
+    """Monta o zip da fábrica que o instalador baixa. Sem .env, sem projetos e sem nada de cliente."""
+    if destino is None:
+        aberto, nome = tempfile.mkstemp(suffix=".zip", prefix="fabrica-robo-")
+        os.close(aberto)  # no Windows o arquivo aberto aqui não deixaria apagar depois da entrega
+        destino = Path(nome)
+    with zipfile.ZipFile(destino, "w", zipfile.ZIP_DEFLATED) as saida:
+        for nome in PACOTE_ARQUIVOS:
+            if (raiz / nome).is_file():
+                saida.write(raiz / nome, nome)
+        for pasta in PACOTE_PASTAS:
+            for arquivo in sorted((raiz / pasta).rglob("*")):
+                if arquivo.is_file() and _entra_no_pacote(arquivo):
+                    saida.write(arquivo, arquivo.relative_to(raiz).as_posix())
+    return destino
 
 
 class LeaseVelha(RuntimeError):
@@ -92,11 +126,12 @@ def _trabalho(linha: dict, lease: str) -> dict:
     pedido = json.loads(linha["pedido"])
     cfg = fila._padrao()[2](linha["usuario_id"], pedido["canal_id"]) if pedido.get("canal_id") else {}
     pasta, meta = roteiro_claude._do_usuario(linha["usuario_id"], linha["roteiro"])
+    config, do_perfil = roteiro_claude.ajustes_do_video({k: pedido[k] for k in ("footage_real", *fila.ESCOLHAS) if pedido.get(k)})
     return {"id": linha["id"], "lease": lease, "lease_segundos": LEASE_SEGUNDOS, "projeto": f"robo-{linha['id']}",
             "perfil": fila.perfil_do(pedido, cfg), "titulo": pedido.get("titulo", ""),
             "titulo_entrega": roteiro_claude.titulo_de_entrega(meta),
             "roteiro": (pasta / "roteiro.txt").read_text(encoding="utf-8"),
-            "config_override": roteiro_claude.config_override(int(pedido.get("footage_real") or 0), pedido.get("tema") or "")}
+            "config_override": config, "perfil_override": do_perfil}
 
 
 def reivindicar(maquina: dict, capacidades: dict | None = None) -> dict | None:
