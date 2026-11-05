@@ -673,6 +673,25 @@ def titulo_de_entrega(meta: dict) -> str:
     return junto if len(junto) <= LIMITE_DO_NOME else junto[:LIMITE_DO_NOME - 1].rstrip() + ")"
 
 
+# o tema da Nova produção vale para os textos na tela (animacoes.TEMAS) e para as cenas animadas (animation_ai.TEMAS),
+# que têm os nomes deles
+TEMA_DAS_CENAS_ANIMADAS = {"noticiario": "editorial", "dossie": "misterio", "cinema": "cinema", "jornal": "editorial",
+                           "caderno": "apple", "planilha": "blueprint", "hacker": "neon", "terror": "noite"}
+
+
+def config_override(footage_real: int = 0, tema: str = "") -> dict:
+    """O que o pedido muda só neste vídeo, sem tocar no perfil do canal. A folga de 5 pontos é o teto da cota da fábrica."""
+    extras = {}
+    if footage_real:
+        alvo = footage_real / 100
+        extras["garimpo"] = {"ligado": True, "alvo": alvo, "teto": round(alvo + 0.05, 2)}
+    if tema:
+        extras["animacoes"] = {"estilo": {"tema": tema}}
+        if tema in TEMA_DAS_CENAS_ANIMADAS:
+            extras["animation_ai"] = {"tema": TEMA_DAS_CENAS_ANIMADAS[tema]}
+    return extras
+
+
 def enviar(usuario_id: int, nome: str, perfil: str, footage_real: int = 0, tema: str = "") -> dict:
     """Cria o projeto na fábrica com o roteiro e o título (`fabrica novo`, grátis: narrar e gerar imagens continuam
     pedindo confirmação lá). O título vai em titulo_entrega (o traduzido com o original entre parênteses), que a
@@ -701,13 +720,9 @@ def enviar(usuario_id: int, nome: str, perfil: str, footage_real: int = 0, tema:
         raise RuntimeError("A fábrica não criou o projeto: " + (r.stderr or r.stdout or "")[-400:])
     dados = json.loads((destino / "projeto.json").read_text(encoding="utf-8"))
     dados["titulo_entrega"] = titulo_de_entrega(meta)
-    if footage_real:
-        # o garimpo vale só para este vídeo: o perfil do canal não muda. A folga de 5 pontos é o teto da cota da fábrica
-        alvo = footage_real / 100
-        dados["config_override"] = {**(dados.get("config_override") or {}),
-                                    "garimpo": {"ligado": True, "alvo": alvo, "teto": round(alvo + 0.05, 2)}}
-    if tema:
-        dados["config_override"] = {**(dados.get("config_override") or {}), "animacoes": {"estilo": {"tema": tema}}}
+    extras = config_override(footage_real, tema)
+    if extras:
+        dados["config_override"] = {**(dados.get("config_override") or {}), **extras}
     (destino / "projeto.json").write_text(json.dumps(dados, ensure_ascii=False, indent=2), encoding="utf-8")
     if (pasta / "thumbnail.jpg").exists():
         shutil.copy2(pasta / "thumbnail.jpg", destino / "thumbnail_referencia.jpg")

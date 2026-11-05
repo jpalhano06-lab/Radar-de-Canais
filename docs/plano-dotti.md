@@ -34,7 +34,7 @@ Estado: `[ ]` aberto, `[~]` em andamento, `[x]` pronto e testado, `[-]` já exis
 
 - [x] 1. Garimpo no YouTube: busca, trecho, cota, veto, quadro real julgado, crop. Medido: 1 aceito (81), 3 reprovados (3, 50, 27). Sem vídeo inteiro ainda
 - [x] 2. Pool de contas: rotação, castigo, cópia dos cookies, `garimpo:` no perfil, aviso de conta única. Sem teste com conta real
-- [ ] 3. Robô em outras máquinas: fila, vigia e retomada locais já existem. Falta só despachar para outra máquina
+- [x] 3. Robô em outras máquinas pelo Radar: `radar/maquinas.py`, `fabrica/robo.py` (`fabrica maquina`), `ROBO.ps1`, `INSTALAR-ROBO.ps1`. Provado por HTTP com fábrica simulada; nunca rodou em outro computador. Sobrepõe o `palhano/`, parado desde 12/10
 - [x] 4. Repartir núcleos entre produções (`_parte_da_maquina`). Sem medida com dois renders juntos
 - [x] 5. Escada de codificadores. AMF só se pedir: na montagem real perdeu da CPU (41 s contra 34 s, 3 de 3)
 - [-] 6. Retomada por fase: `retomar_criacoes_interrompidas`, rota `/retomar`, `mcp_servidor.retomar_producoes`
@@ -42,9 +42,9 @@ Estado: `[ ]` aberto, `[~]` em andamento, `[x]` pronto e testado, `[-]` já exis
 - [-] 8. Imagem por assinatura: limite, queda para a chave e 16 ao mesmo tempo (`imagens.processos`). Sem navegador, a RAM não limita
 - [-] 9. Roteiro e miniatura: `radar/fila.py` escreve pelo Claude, `publicacao.py` faz as thumbs, `radar/trello.py` o cartão
 - [x] 10. Volume -14 LUFS (`fabrica/render.py`). Medido no vídeo 17: -14,3 LUFS, pico -2,3 dBFS
-- [~] 11. Estilos: 8 temas em `animacoes.TEMAS`, com escolha na Nova produção. Falta ver um tema claro renderizado
+- [x] 11. Estilos: 8 temas em `animacoes.TEMAS`, com escolha na Nova produção. Tema claro visto no navegador; sem vídeo inteiro
 - [x] 12. Espinha: `item_citado` e `bloco.ancora` já existiam; trecho com título de outro item sai antes de baixar
-- [ ] 13. Acabamento: capítulos, CREDITS e entrega por atalho já existem. Falta faxina de disco e Drive
+- [~] 13. Acabamento: capítulos, CREDITS e entrega por atalho já existiam. Faxina pronta (`fabrica/faxina.py`), provada com render depois. Drive pela API NÃO feito: precisa do consentimento do usuário no Google; `entrega.pasta` apontada para o Drive para Desktop já resolve
 - [x] 14. Garimpo pela tela do Radar: campo Footage real na Nova produção, provado no navegador até o Buscador
 
 Fábrica religada em 2026-11-05 01:43 (PID 10688, `fabrica.log`). O render do vídeo 17 terminou bem, então a falha de
@@ -57,4 +57,8 @@ Fábrica religada em 2026-11-05 01:43 (PID 10688, `fabrica.log`). O render do v�
   depende de alguém abrir a sessão.
 - 2026-11-05: duas quedas do Windows (Kernel-Power 41) às 20:41 e 23:24. A das 23:24 zerou `custos_reais.json` do vídeo
   17, e 203 cenas geraram imagem 574 vezes. `registrar` agora não estoura e `gravar_atomico` faz fsync.
+- 2026-11-05: garimpo só em Creative Commons por padrão, a regra escrita em `palhano/README.md`.
+  `garimpo.so_creative_commons: false` abre para qualquer vídeo.
+- 2026-11-05: `palhano/` (fora do git) é o painel de venda no modelo do robô, com máquinas e fila. Ninguém o liga desde
+  12/10. Ler antes de construir qualquer coisa de robô.
 

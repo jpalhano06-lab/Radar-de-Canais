@@ -19,6 +19,7 @@ from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 
+from . import maquinas
 from . import alvos, banco, canal_painel, chatgpt_conta, claude_projetos, custos, descricao, diagnostico, fabrica_api, fila, funcoes, garimpo, gosto, horarios, ia, integracoes, medir, mercado, metricas, nichos, pagina, perfil, producao, publicar, radar_paises, roteiro_claude, studio, tempo, thumb, trabalho, treinamento, trello, youtube
 from .config import DADOS, NOME, PLANOS, RAIZ, pode
 
@@ -2044,6 +2045,62 @@ def _na_fila(funcao, *args):
         return funcao(*args)
     except ValueError as erro:
         raise HTTPException(400, str(erro))
+
+
+def maquina_da_chave(request: Request) -> dict:
+    """A máquina de fora que está falando: entra pela chave dela, não por sessão de pessoa."""
+    maquina = maquinas.autenticar(request.headers.get("x-robo-chave", ""))
+    if not maquina:
+        raise HTTPException(401, "Chave de máquina inválida.")
+    return maquina
+
+
+def _do_lease(funcao, *args):
+    try:
+        return funcao(*args)
+    except maquinas.LeaseVelha:
+        raise HTTPException(409, "lease_velha")
+    except ValueError as erro:
+        raise HTTPException(400, str(erro))
+
+
+@app.post("/api/robo/reivindicar")
+def robo_reivindicar(corpo: dict, m: dict = Depends(maquina_da_chave)):
+    return {"trabalho": maquinas.reivindicar(m, corpo.get("capacidades") or {})}
+
+
+@app.post("/api/robo/bater")
+def robo_bater(corpo: dict, m: dict = Depends(maquina_da_chave)):
+    return _do_lease(maquinas.bater, m, int(corpo.get("id") or 0), corpo.get("lease") or "", corpo.get("passo") or "",
+                     corpo.get("eventos") or [])
+
+
+@app.post("/api/robo/concluir")
+def robo_concluir(corpo: dict, m: dict = Depends(maquina_da_chave)):
+    return {"ok": _do_lease(maquinas.concluir, m, int(corpo.get("id") or 0), corpo.get("lease") or "", corpo.get("prova") or {})}
+
+
+@app.post("/api/robo/falhar")
+def robo_falhar(corpo: dict, m: dict = Depends(maquina_da_chave)):
+    return {"ok": _do_lease(maquinas.falhar, m, int(corpo.get("id") or 0), corpo.get("lease") or "", corpo.get("erro") or "")}
+
+
+@app.get("/api/maquinas")
+def maquinas_lista(u: dict = Depends(dono_da_fabrica)):
+    return {"maquinas": maquinas.listar()}
+
+
+@app.post("/api/maquinas")
+def maquinas_nova(corpo: dict, u: dict = Depends(dono_da_fabrica)):
+    try:
+        return maquinas.criar(corpo.get("nome") or "")
+    except ValueError as erro:
+        raise HTTPException(400, str(erro))
+
+
+@app.delete("/api/maquinas/{mid}")
+def maquinas_tirar(mid: int, u: dict = Depends(dono_da_fabrica)):
+    return {"ok": maquinas.revogar(mid)}
 
 
 @app.get("/api/fila")

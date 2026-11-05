@@ -284,6 +284,15 @@ CREATE TABLE IF NOT EXISTS termos_auto (
     origem TEXT NOT NULL DEFAULT '',
     criado TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS maquinas (
+    id INTEGER PRIMARY KEY,
+    nome TEXT NOT NULL,
+    chave_hash TEXT NOT NULL UNIQUE,
+    criada TEXT NOT NULL,
+    visto_em TEXT NOT NULL DEFAULT '',
+    capacidades TEXT NOT NULL DEFAULT '{}',
+    ativa INTEGER NOT NULL DEFAULT 1
+);
 CREATE TABLE IF NOT EXISTS producoes_fila (
     id INTEGER PRIMARY KEY,
     usuario_id INTEGER NOT NULL,
@@ -317,6 +326,9 @@ CREATE TABLE IF NOT EXISTS traducoes (
 
 # colunas que entraram depois do primeiro banco: são criadas no banco que já existe
 COLUNAS_NOVAS = {
+    # o vídeo feito em outra máquina (maquinas.py): quem está com ele, até quando, e a prova da entrega
+    "producoes_fila": {"maquina_id": "INTEGER", "lease": "TEXT NOT NULL DEFAULT ''", "lease_ate": "REAL NOT NULL DEFAULT 0",
+                       "eventos": "TEXT NOT NULL DEFAULT '[]'", "prova": "TEXT NOT NULL DEFAULT ''"},
     "canais": {"subnicho": "TEXT NOT NULL DEFAULT ''", "velocidade": "REAL", "ganho_7d": "INTEGER",
                "anuncios": "INTEGER", "membros": "INTEGER"},   # monetização vista pela extensão (1, 0 ou sem saber)
     # painel: a ordem e as abas escondidas do menu de cada pessoa. Fica fora de `prefs` porque salvar_prefs reescreve

@@ -1887,12 +1887,13 @@ async function acompanhar() {
         <span class="acn-num"><b>${d.numeros.produzindo}</b> produzindo</span><span class="acn-num"><b>${d.numeros.na_fila}</b> na fila</span>
         <span class="acn-num ${d.numeros.precisa_voce ? "alerta" : ""}"><b>${d.numeros.precisa_voce}</b> precisa${d.numeros.precisa_voce === 1 ? "" : "m"} de você</span>
         <span class="acn-num"><b>${d.prontos_hoje}</b> pronto${d.prontos_hoje === 1 ? "" : "s"} hoje · <a href="#/resultados">Resultados</a></span>
-        ${EU.admin ? '<button class="botao" id="acn-nova-topo">+ Nova produção</button>' : ""}</div>
+        ${EU.admin ? '<button class="botao contorno" id="acn-maquinas">Máquinas</button><button class="botao" id="acn-nova-topo">+ Nova produção</button>' : ""}</div>
       <div class="acn-corpo"><div class="acn-lista"></div><div class="acn-video"></div></div>`;
     raiz.querySelector("#acn-limite")?.addEventListener("change", async (e) => {
       try { await api("/api/fila/ajustes", { method: "POST", body: { limite: Number(e.target.value) } }); aviso(`A fábrica faz até ${e.target.value} ao mesmo tempo.`); } catch (er) { aviso(er.message); }
     });
     raiz.querySelector("#acn-nova-topo")?.addEventListener("click", () => novaProducao());
+    raiz.querySelector("#acn-maquinas")?.addEventListener("click", () => telaDeMaquinas());
     desenharLista(); desenharVideo();
   };
 
@@ -3018,18 +3019,45 @@ async function custos() {
 const CARACTERES_POR_PALAVRA = 5.9;
 const ATALHOS_MIN = [8, 10, 12, 15, 20, 25, 30];
 
+async function telaDeMaquinas() {
+  if (document.getElementById("maquinas-fundo")) return;
+  document.body.insertAdjacentHTML("beforeend", `<div class="modal-fundo" id="maquinas-fundo"><div class="np" role="dialog" aria-label="Máquinas">
+    <header class="np-cab"><h2>Máquinas</h2><button class="np-fechar" title="Fechar (Esc)">×</button></header>
+    <div class="np-corpo"><div class="np-campos" id="maquinas-corpo"></div></div></div></div>`);
+  const fundo = document.getElementById("maquinas-fundo"), corpo = fundo.querySelector("#maquinas-corpo");
+  const fechar = () => fundo.remove();
+  fundo.querySelector(".np-fechar").onclick = fechar;
+  fundo.onclick = (e) => { if (e.target === fundo) fechar(); };
+  const desenhar = async (chave = null) => {
+    const { maquinas } = await api("/api/maquinas");
+    corpo.innerHTML = `<small class="np-dica">Outro computador com a fábrica pode pegar vídeos da fila. Ele usa as chaves de API dele e guarda o vídeo lá.</small>
+      ${chave ? `<div class="campo"><span>Chave de <b>${esc(chave.nome)}</b>. Copie agora: ela não aparece de novo.</span><input readonly value="${esc(chave.chave)}" onclick="this.select()"></div>` : ""}
+      ${maquinas.map((m) => `<div class="np-agente"><div><b>${esc(m.nome)}</b><small>${m.online ? "Ligada" : "Desligada"}${m.capacidades?.nucleos ? ` · ${m.capacidades.nucleos} núcleos · ${m.capacidades.disco_livre_gb ?? "?"} GB livres` : ""}${m.fazendo.length ? ` · ${m.fazendo.map((f) => esc(f.passo)).join(", ")}` : ""}</small></div>
+        <button type="button" class="botao contorno maq-tirar" data-id="${m.id}">Retirar</button></div>`).join("") || '<small class="np-dica">Nenhuma máquina ainda.</small>'}
+      <label class="campo"><span>Nova máquina</span><input id="maq-nome" placeholder="Nome do computador" maxlength="60"></label>
+      <button type="button" class="botao" id="maq-criar">Criar chave</button>`;
+    corpo.querySelector("#maq-criar").onclick = async () => {
+      try { desenhar(await api("/api/maquinas", { method: "POST", body: { nome: corpo.querySelector("#maq-nome").value } })); } catch (er) { aviso(er.message); }
+    };
+    corpo.querySelectorAll(".maq-tirar").forEach((b) => (b.onclick = async () => { await api(`/api/maquinas/${b.dataset.id}`, { method: "DELETE" }); desenhar(); }));
+  };
+  desenhar();
+}
+
 const TEMAS_ANIMACAO = [["", "Padrão do canal"], ["noticiario", "Noticiário"], ["dossie", "Dossiê"], ["cinema", "Cinema"],
   ["jornal", "Jornal"], ["caderno", "Caderno"], ["planilha", "Planilha"], ["hacker", "Hacker"], ["terror", "Terror"]];
 
 async function novaProducao(preset = {}) {
   if (document.getElementById("nova-producao")) return;
   if (!EU?.admin) { aviso("Só a administração cria produções."); return; }
-  const [canais, { projetos: todosAgentes }] = await Promise.all([meusCanais(), api("/api/projetos")]);
+  const [canais, { projetos: todosAgentes }, { maquinas: maquinasDeFora }] = await Promise.all([meusCanais(), api("/api/projetos"),
+    api("/api/maquinas").catch(() => ({ maquinas: [] }))]);
   const agentes = todosAgentes.filter((a) => (a.tipo || "roteiro") === "roteiro");
   const lembrado = canais.some((c) => c.id === guardado("np-canal", "")) ? guardado("np-canal", "") : "";
   const N = { passo: 1, titulo: preset.titulo || "", link: preset.link || "", canal: preset.canal || CANAL_ATUAL || lembrado || (canais.length === 1 ? canais[0].id : ""), cfg: null, agente: "",
     lingua: "português", ppm: 150, caracteres: 0, modo: "claude", roteiro: "", nicho: "", obs: "", revisar: false, ref: null, custo: null,
-    footage: Number(guardado("np-footage", "0")) || 0, tema: guardado("np-tema", "") };
+    footage: Number(guardado("np-footage", "0")) || 0, tema: guardado("np-tema", ""), destino: "", maquinas: [] };
+  N.maquinas = maquinasDeFora;
   N.caracteres = Math.round(12 * N.ppm * CARACTERES_POR_PALAVRA / 10) * 10;
   const minutos = () => N.caracteres / CARACTERES_POR_PALAVRA / N.ppm;
   const palavras = () => Math.round(N.caracteres / CARACTERES_POR_PALAVRA);
@@ -3066,6 +3094,7 @@ async function novaProducao(preset = {}) {
         <dt>Revisão</dt><dd>${N.revisar ? "Para para eu revisar" : "Segue direto"}</dd>
         <dt>Footage real</dt><dd>${N.footage ? `${N.footage}% das cenas` : "Não usar"}</dd>
         <dt>Animações</dt><dd>${esc(TEMAS_ANIMACAO.find(([v]) => v === N.tema)?.[1] || "Padrão do canal")}</dd>
+        ${N.maquinas.length ? `<dt>Onde</dt><dd>${N.destino ? "Outra máquina" : "Esta máquina"}</dd>` : ""}
         <dt>Custo</dt><dd>${N.custo?.usd != null ? `≈ US$ ${N.custo.usd.toFixed(2).replace(".", ",")}${N.custo.base === "geral" ? " (média geral)" : ""}` : "—"}</dd></dl>`;
   };
   const atualizarCusto = async () => {
@@ -3096,7 +3125,9 @@ async function novaProducao(preset = {}) {
     const revisarSo = `<label class="np-revisar"><input type="checkbox" id="np-revisar" ${N.revisar ? "checked" : ""}><span><b>Parar para eu revisar o roteiro</b><small>O Claude escreve e espera você aprovar no Acompanhar antes de ir para a fábrica.</small></span></label>`;
     const temaHtml = `<label class="campo"><span>Tema das animações</span>
       <select id="np-tema">${TEMAS_ANIMACAO.map(([v, r]) => `<option value="${v}" ${v === N.tema ? "selected" : ""}>${r}</option>`).join("")}</select></label>`;
-    const revisarHtml = footageHtml + temaHtml + revisarSo;
+    const destinoHtml = N.maquinas.length ? `<label class="campo"><span>Onde produzir</span>
+      <select id="np-destino"><option value="">Esta máquina</option><option value="robo" ${N.destino ? "selected" : ""}>A primeira máquina livre (${N.maquinas.filter((m) => m.online).length} ligada${N.maquinas.filter((m) => m.online).length === 1 ? "" : "s"})</option></select></label>` : "";
+    const revisarHtml = footageHtml + temaHtml + destinoHtml + revisarSo;
     const passos = `<div class="np-passos"><span class="${N.passo === 1 ? "ativo" : ""}">1 · O vídeo</span><span class="${N.passo === 2 ? "ativo" : ""}">2 · Editar o roteiro</span></div>`;
     if (N.passo === 1) {
       campos.innerHTML = `${passos}
@@ -3163,6 +3194,7 @@ async function novaProducao(preset = {}) {
     $n("np-revisar").onchange = (e) => { N.revisar = e.target.checked; desenharPrevia(); };
     $n("np-footage").onchange = (e) => { N.footage = Number(e.target.value) || 0; guardar("np-footage", String(N.footage)); desenhar(); desenharPrevia(); };
     $n("np-tema").onchange = (e) => { N.tema = e.target.value; guardar("np-tema", N.tema); desenharPrevia(); };
+    if ($n("np-destino")) $n("np-destino").onchange = (e) => { N.destino = e.target.value; desenharPrevia(); };
   }
 
   const enviar = (botao, comecar) => carregando(botao, comecar ? "Criando…" : "Salvando…", async () => {
@@ -3171,7 +3203,7 @@ async function novaProducao(preset = {}) {
     if (!N.titulo.trim()) { erro.textContent = "Escreva o título do vídeo."; return; }
     if (!N.canal) { erro.textContent = "Escolha o canal."; N.passo = 2; desenhar(); return; }
     const pedido = { titulo: N.titulo, link: N.link, canal_id: N.canal, agente_id: N.agente, lingua: N.lingua, revisar: N.revisar,
-      ...(N.footage ? { footage_real: N.footage } : {}), ...(N.tema ? { tema: N.tema } : {}),
+      ...(N.footage ? { footage_real: N.footage } : {}), ...(N.tema ? { tema: N.tema } : {}), ...(N.destino ? { destino: N.destino } : {}),
       ...(N.modo === "manual" ? { roteiro_manual: N.roteiro } : { caracteres: N.caracteres, nicho: N.nicho, observacao: N.obs }) };
     try {
       await api("/api/fila", { method: "POST", body: { pedido, comecar } });

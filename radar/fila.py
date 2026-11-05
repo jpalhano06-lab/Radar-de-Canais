@@ -17,7 +17,7 @@ MIN_CARACTERES, MAX_CARACTERES = 1000, 80000
 LIMITES = (1, 2, 3, 4, 6, 8)
 ESCRITAS_AO_MESMO_TEMPO = 2       # roteiros pelo Claude ao mesmo tempo (20 pedidos de uma vez eram 20 chamadas juntas)
 CAMPOS = ("titulo", "link", "canal_id", "agente_id", "lingua", "caracteres", "roteiro_manual", "nicho", "observacao",
-          "revisar", "perfil", "footage_real", "tema")
+          "revisar", "perfil", "footage_real", "tema", "destino")
 FOOTAGE_REAL = (0, 15, 25, 40)    # % das cenas com trecho de vídeo real do YouTube (o garimpo da fábrica)
 TEMAS = ("noticiario", "dossie", "cinema", "jornal", "caderno", "planilha", "hacker", "terror")  # animacoes.TEMAS
 
@@ -33,7 +33,7 @@ def caracteres_de(minutos: float, ppm: int) -> int:
 def _publico(linha: dict | None) -> dict | None:
     if not linha:
         return None
-    return {k: v for k, v in linha.items() if k != "pedido"} | {"pedido": json.loads(linha["pedido"] or "{}")}
+    return {k: v for k, v in linha.items() if k not in ("pedido", "lease")} | {"pedido": json.loads(linha["pedido"] or "{}")}
 
 
 def criar(usuario_id: int, pedido: dict, comecar: bool) -> dict:
@@ -44,6 +44,8 @@ def criar(usuario_id: int, pedido: dict, comecar: bool) -> dict:
     limpo["revisar"] = bool(pedido.get("revisar"))
     if int(limpo.get("footage_real") or 0) not in FOOTAGE_REAL:
         raise ValueError("A parte de footage real vai de 0 a 40%.")
+    if limpo.get("destino") not in (None, "robo"):
+        raise ValueError("Esse destino não existe.")
     if limpo.get("tema") and limpo["tema"] not in TEMAS:
         raise ValueError("Esse tema de animação não existe.")
     if not str(limpo.get("roteiro_manual") or "").strip():
@@ -214,6 +216,10 @@ def passo(fabrica=None, roteirista=None, em_thread: bool = True, config_canal=No
         return []
     mudaram = []
     try:
+        # antes da fábrica: uma máquina de fora que sumiu não depende de a fábrica daqui estar ligada
+        from . import maquinas
+
+        mudaram += maquinas.expirar()
         try:
             prod = fabrica.producoes()
         except fabrica_api.SemFabrica:
@@ -221,7 +227,8 @@ def passo(fabrica=None, roteirista=None, em_thread: bool = True, config_canal=No
         prontos = {p["nome"] for p in prod["prontos"]}
         andamento = {p["nome"]: p for p in prod["andamento"]}
         # 1. o que estava produzindo: ficou pronto, deu erro, parou no meio ou sumiu da fábrica
-        for linha in banco.todos("SELECT * FROM producoes_fila WHERE estado='produzindo'"):
+        # o que está em outra máquina não passa por aqui: a fábrica daqui não conhece esse projeto
+        for linha in banco.todos("SELECT * FROM producoes_fila WHERE estado='produzindo' AND maquina_id IS NULL"):
             p = andamento.get(linha["projeto"])
             if linha["projeto"] in prontos:
                 mudou = mudar(linha["id"], "entregue", de=("produzindo",))
@@ -253,7 +260,8 @@ def passo(fabrica=None, roteirista=None, em_thread: bool = True, config_canal=No
             if p and p.get("rodando") and p.get("status") != "erro" and mudar(linha["id"], "produzindo", de=("erro",), erro=""):
                 mudaram.append(linha["id"])
         # 2. as vagas: o limite menos o que a fila mandou e os vídeos da fábrica feitos fora dela
-        da_fila = {l["projeto"] for l in banco.todos("SELECT projeto FROM producoes_fila WHERE estado IN ('enviando', 'produzindo')")}
+        da_fila = {l["projeto"] for l in banco.todos("SELECT projeto FROM producoes_fila WHERE estado IN ('enviando', 'produzindo') "
+                                                     "AND maquina_id IS NULL")}
         fora = [n for n, p in andamento.items() if p.get("rodando") and n not in da_fila]
         vagas = limite() - len(da_fila) - len(fora)
         # 3. a fila, na ordem: primeiro o roteiro (não ocupa vaga, até ESCRITAS_AO_MESMO_TEMPO), depois o envio (ocupa)
@@ -272,6 +280,8 @@ def passo(fabrica=None, roteirista=None, em_thread: bool = True, config_canal=No
                 linha = banco.um("SELECT * FROM producoes_fila WHERE id=?", linha["id"])
                 if linha["estado"] != "na_fila":
                     continue
+            if json.loads(linha["pedido"]).get("destino") == "robo":
+                continue  # com o roteiro pronto, espera uma máquina reivindicar (maquinas.py)
             if vagas <= 0:
                 continue
             # cada passo só segue se o pedido ainda estiver onde estava: excluído no meio, para ali e não gasta
