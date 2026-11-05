@@ -54,17 +54,17 @@ Estado: `[ ]` aberto, `[~]` em andamento, `[x]` pronto, `[-]` fora.
 
 ### Canal
 
-- [ ] 15. Crachá do canal: tipo com o motivo, projeção de 30 dias, ritmo de postagem e queda dos vídeos novos.
+- [x] 15. Crachá do canal (`radar/cracha.py`): juízes com peso e motivo, ritmo, projeção e queda. Cortes nossos, não medidos contra resultado. Conferido em 400 canais reais.
 - [ ] 16. Método Fantasma do canal: os 10 vídeos mais vistos e os 10 seguintes, por língua, com títulos para copiar.
 - [ ] 17. O que o público pede: pedidos e perguntas dos comentários dos 10 vídeos mais vistos.
-- [ ] 18. Salvar em pastas pela extensão. A coluna `salvos.pasta` já existe.
-- [ ] 19. Aviso diário dos salvos que passaram de 5 vezes o normal.
-- [ ] 20. Medir o canal aberto pelo feed público.
-- [ ] 21. Parecidos: descer para os parecidos de um parecido e procurar o estilo em outra língua.
+- [x] 18. Salvar em pastas pela extensão: a caixa aparece depois de salvar.
+- [x] 19. Aviso diário dos salvos que passaram de 5 vezes o normal.
+- [x] 20. Medir o canal aberto pelo feed público: formato conferido no XML real.
+- [x] 21. Parecidos: descer para os parecidos de um parecido, salvar na lista, procurar o estilo em outra língua. Vídeos do Nicho ganhou recortes, ordem e planilha.
 
 ### Busca
 
-- [ ] 22. Resumo da busca: chance para canal novo e concentração no maior canal.
+- [x] 22. Resumo da busca: concentração no maior canal e chance para canal novo. Pesos são um chute, e a tela diz isso.
 
 ### Studio
 

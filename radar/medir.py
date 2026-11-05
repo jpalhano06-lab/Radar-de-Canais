@@ -149,8 +149,9 @@ def _videos_do_banco(ids: list[str]) -> list[dict]:
 
 
 def velocidades(ids: list[str]) -> dict[str, dict]:
-    """A velocidade de agora, medida entre a última leitura e a mais recente com pelo menos 1 hora antes dela. Sem as
-    duas leituras o vídeo fica de fora: quem pergunta usa a média desde a publicação, e diz que é estimativa."""
+    """A velocidade de agora, medida entre a última leitura e a mais recente com pelo menos 1 hora antes dela. Mais de
+    4 dias entre as duas já não é "agora". Sem as duas o vídeo fica de fora: quem pergunta usa a média desde a publicação,
+    e diz que é estimativa."""
     if not ids:
         return {}
     marcas = ",".join("?" * len(ids))
@@ -166,7 +167,8 @@ def velocidades(ids: list[str]) -> dict[str, dict]:
         for antes in lista[1:]:
             horas = (fim - datetime.fromisoformat(antes["quando"])).total_seconds() / 3600
             if horas >= 1:
-                saida[vid] = {"vph": round(max(0, ultima["views"] - antes["views"]) / horas, 1), "horas": round(horas, 1)}
+                if horas <= 96:
+                    saida[vid] = {"vph": round(max(0, ultima["views"] - antes["views"]) / horas, 1), "horas": round(horas, 1)}
                 break
     return saida
 

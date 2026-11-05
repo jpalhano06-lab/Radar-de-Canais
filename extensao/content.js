@@ -207,6 +207,11 @@
     const estourados = lista.filter((v) => v.nota >= 3);
     const pequenos = estourados.filter((v) => v.inscritos != null && v.inscritos < 10000);
     const comNota = lista.filter((v) => v.nota != null).length;
+    // quanto a busca é de um canal só, e a chance de um canal novo entrar. Os pesos são um chute: nada mediu isso ainda.
+    const porCanal = new Map();
+    lista.forEach((v) => porCanal.set(v.canal_id || v.canal, (porCanal.get(v.canal_id || v.canal) || 0) + 1));
+    const maior = Math.max(...porCanal.values()) / lista.length;
+    const chance = Math.round(100 * (0.4 * Math.min(1, pequenos.length / 3) + 0.3 * (recentes / lista.length) + 0.3 * (1 - maior)));
     const veredito = pequenos.length >= 2 ? ["boa", "🟢 Nicho aberto: canal pequeno está estourando com esse assunto."]
       : estourados.length >= 3 ? ["media", "🟡 O assunto estoura, mas mais em canais maiores."]
       : recentes / lista.length < 0.2 ? ["fraca", "⚪ Quase nada novo: o assunto está parado (ou ninguém achou ainda)."]
@@ -219,7 +224,10 @@
         h("div", {}, h("b", {}, num(mediana(views))), "views na mediana"),
         h("div", {}, h("b", {}, `${recentes}`), "dos últimos 30 dias"),
         h("div", {}, h("b", {}, `${estourados.length}`), "com 3x o normal ou mais"),
-        h("div", {}, h("b", {}, `${pequenos.length}`), "em canal pequeno (até 10 mil)")),
+        h("div", {}, h("b", {}, `${pequenos.length}`), "em canal pequeno (até 10 mil)"),
+        h("div", { title: "Vários canais: o tema puxa. Um só: pode ter sido sorte." }, h("b", {}, `${Math.round(maior * 100)}%`), `no maior de ${porCanal.size} canais`),
+        h("div", { title: "Estimativa de 0 a 100: canais pequenos estourando, vídeos recentes e muitos canais diferentes. Os pesos ainda não foram medidos." },
+          h("b", {}, `${chance}/100`), "chance para canal novo")),
       h("div", { class: "radar-fraco" }, comNota < lista.length
         ? `A nota de ${lista.length - comNota} vídeos ainda está chegando: o Radar está lendo os canais (sem gastar cota). Role a página para ler mais.`
         : "Role a página para ler mais vídeos. Para ordenar e filtrar, use o botão Vídeos desta página."));
@@ -622,8 +630,28 @@
       if (r.erro) return mostrarErro(b, r.erro);
       b.textContent = r.dados.salvo ? "Salvo ✓" : "Salvar canal";
       som(r.dados.salvo ? "salvar" : "desfazer");
+      document.querySelectorAll(".radar-pastas").forEach((p) => p.remove());
+      if (r.dados.salvo) escolherPasta(canal.id, b);
     });
     return b;
+  }
+
+  // logo depois de salvar: a pasta é opcional, e a caixa some sozinha com a escolha
+  async function escolherPasta(canalId, perto) {
+    const r = await api("/api/pastas");
+    if (r.erro) return;
+    const caixa = h("div", { class: "radar-pastas" }, h("div", { class: "radar-sub" }, "Guardar em qual pasta?"));
+    const guardar = async (nome) => {
+      const s = await api(`/api/salvos/${canalId}/pasta`, "POST", { pasta: nome });
+      if (s.erro) return mostrarErro(perto, s.erro);
+      caixa.remove();
+      avisoRapido(`Radar: guardado em ${nome} ✓`);
+    };
+    const nova = h("input", { class: "radar-pasta-nova", placeholder: "Nova pasta", maxlength: "60",
+      onkeydown: (e) => { e.stopPropagation(); if (e.key === "Enter" && nova.value.trim()) guardar(nova.value.trim()); } });
+    caixa.append(h("div", { class: "radar-tags-lista" }, r.dados.pastas.map((p) => h("button", { class: "radar-tag-chip", onclick: () => guardar(p.nome) }, p.nome)),
+      nova, h("button", { class: "radar-tag-chip", onclick: () => caixa.remove() }, "Sem pasta")));
+    perto.after(caixa);
   }
 
   function mostrarErro(perto, texto) {
@@ -752,6 +780,17 @@
         canais.map((c) => h("button", { class: "radar-tag-chip", onclick: () => marcar(b, "fila", c.id) }, c.titulo)),
         h("button", { class: "radar-tag-chip", onclick: () => marcar(b, "fila") }, "Decidir depois")));
     }, "modelar");
+  }
+
+  // o crachá: o tipo do canal na frente, os votos abertos embaixo para quem quiser discordar
+  function linhaDoCracha(x) {
+    if (!x) return null;
+    const fatos = [x.ritmo_dias ? `posta a cada ${x.ritmo_dias} ${x.ritmo_dias === 1 ? "dia" : "dias"}` : null,
+      x.projecao_30d ? `no ritmo de agora, ${num(x.projecao_30d)} views em 30 dias` : null,
+      x.views_30d ? `${num(x.views_30d)} views em 30 dias` : null].filter(Boolean);
+    return h("details", { class: `radar-cracha ${x.saude}` }, h("summary", {}, h("b", {}, x.rotulo), fatos.length ? h("span", {}, fatos[0]) : null),
+      h("ul", {}, x.motivos.map((m) => h("li", { class: m.voto ? "decidiu" : "" }, m.texto))),
+      fatos.length > 1 ? h("div", { class: "radar-fraco" }, fatos.slice(1).join(" · ")) : null);
   }
 
   function abrirCapa(url, titulo) {
@@ -912,7 +951,7 @@
     const rodarFantasma = (e) => { metodoFantasma(e.currentTarget); abrir("lingua"); };
     const abaLingua = () => [vista];
     painel.radarTranscricao = abaTranscricao;   // a janelinha da Transcrição (menu Radar) usa a mesma aba
-    painel.replaceChildren(
+    painel.replaceChildren(...[linhaDoCracha(p.cracha),
       h("div", { class: "radar-abas" }, botoesAba), corpo,
       h("div", { class: "radar-acoes radar-acoes-2" },
         botao("radar-botao radar-botao-sombra", "fantasma", "Método Fantasma", rodarFantasma, "sombra", "Alt+G"),
@@ -928,7 +967,7 @@
         botao("radar-botao", "capa", "Copiar a capa", (e) => copiarImagem(e.currentTarget.lastChild, capaUrl), "copiar-capa"),
         botao("radar-botao", "barras", "Print do cartão", (e) => copiarCartao(e.currentTarget.lastChild, capaUrl, v, c, n), "print-cartao"),
         lite && c.id ? botao("radar-botao", "parecidos", "Canais parecidos", () => parecidos(c.id, extra)) : null),
-      extra);
+      extra].filter(Boolean));
     abrir("capa");
     botoesDoPlayer(v, capaUrl, painel);
   }
@@ -1363,7 +1402,10 @@
       ["usuario", num(c.inscritos), "inscritos"], ["barras", num(c.normal_longos), "normal por vídeo"],
       ["play", c.videos_total ?? "—", "vídeos"], ["calendario", postando(c), "postando há"],
     ];
+    const tags = h("div", {}, h("div", { class: "radar-fraco" }, "Lendo as tags do canal…"));
+    tagsDoCanal(c.id).then((t) => tags.replaceChildren(...listaDeTags("neste canal", t).filter(Boolean)));
     return [
+      linhaDoCracha(c.cracha),
       h("div", { class: "radar-nicho-corpo" },
         h("div", { class: "radar-nicho-lado" },
           h("div", { class: "radar-nicho-veredito" },
@@ -1386,6 +1428,7 @@
         h("div", { class: "radar-quadros radar-quadros-4" }, quadros.map(([ic, x, rotulo]) =>
           h("div", { class: "radar-quadro" }, h("div", {}, icone(ic), h("b", {}, x)), h("small", {}, rotulo)))),
         h("div", { class: "radar-graficos" }, graficoVideos(c.videos), graficoInscritos(c.inscritos_dias)),
+        h("div", { class: "radar-sub" }, "Tags do canal"), tags,
         estouraram.length ? h("div", { class: "radar-lista" }, h("div", { class: "radar-sub" }, "Os que passaram do normal"),
           estouraram.map((v) => h("a", { class: "radar-item", href: `https://www.youtube.com/watch?v=${v.id}` },
             h("span", { class: `rf-nota ${corNota(v.nota)}` }, nota(v.nota)), h("span", {}, h("b", {}, v.titulo), h("small", {}, `${num(v.views)} views`)))))
@@ -1406,6 +1449,27 @@
   }
 
   // as abas do Radar junto das do YouTube: abrir uma esconde o conteúdo do YouTube; clicar numa aba dele volta
+  const LINGUAS_DO_ESTILO = [["en", "Inglês"], ["es", "Espanhol"], ["pt", "Português"], ["fr", "Francês"], ["de", "Alemão"], ["it", "Italiano"]];
+  const RECORTES_DO_NICHO = [["todos", "Todos os vídeos", ""], ["pequeno", "Viral em canal pequeno", "canais com menos de 100 mil inscritos, com 3x o normal ou mais"],
+    ["milhao", "Acima de 1 milhão", ""], ["mes", "Últimos 30 dias", ""], ["alto", "Outlier alto", "10x o normal ou mais"]];
+  const ORDENS_DO_NICHO = [["nota", "Maior outlier"], ["views", "Mais vistos"], ["vph", "Mais views por hora"], ["novos", "Mais recentes"]];
+  const idadeDoVideo = (v) => v.publicado ? (Date.now() - Date.parse(v.publicado)) / 864e5 : null;
+  function videosDoRecorte(todos, F) {
+    const passa = { todos: () => true, pequeno: (v) => v.inscritos != null && v.inscritos < 1e5 && v.nota >= 3, milhao: (v) => v.views >= 1e6,
+      mes: (v) => idadeDoVideo(v) != null && idadeDoVideo(v) <= 30, alto: (v) => v.nota >= 10 }[F.recorte];
+    const peso = { nota: (v) => v.nota || 0, views: (v) => v.views || 0, vph: (v) => (v.views || 0) / Math.max(1, (idadeDoVideo(v) ?? 1e4) * 24),
+      novos: (v) => -(idadeDoVideo(v) ?? 1e6) }[F.ordem];
+    return todos.filter(passa).sort((a, b) => peso(b) - peso(a));
+  }
+  function baixarPlanilha(nome, videos) {
+    const aspas = (x) => `"${String(x ?? "").replace(/"/g, '""')}"`;
+    const linhas = [["Título", "Canal", "Inscritos", "Views", "Outlier", "Publicado", "Link"].map(aspas).join(";"),
+      ...videos.map((v) => [v.titulo, v.canal, v.inscritos, v.views, v.nota, (v.publicado || "").slice(0, 10), `https://www.youtube.com/watch?v=${v.id}`].map(aspas).join(";"))];
+    const link = h("a", { href: URL.createObjectURL(new Blob(["\ufeff" + linhas.join("\n")], { type: "text/csv;charset=utf-8" })), download: nome });
+    link.click();
+    setTimeout(() => URL.revokeObjectURL(link.href), 5000);
+  }
+
   function abasDoCanal(c, cab) {
     const lista = document.querySelector("ytd-tabbed-page-header [role=tablist], ytd-browse[page-subtype='channels'] [role=tablist], #tabsContent");
     if (!lista) return;
@@ -1425,26 +1489,48 @@
     const parecidosAba = h("button", { class: "radar-do-canal radar-aba-yt", type: "button" }, icone("parecidos"), "Canais Parecidos");
     const nichoAba = h("button", { class: "radar-do-canal radar-aba-yt", type: "button" }, icone("fantasma"), "Vídeos do Nicho");
     const abas = [parecidosAba, nichoAba];
-    parecidosAba.onclick = (e) => { e.stopPropagation(); abrir(parecidosAba, async () => {
+    // descer pelos parecidos: cada parecido abre os parecidos dele, e o Voltar refaz o caminho
+    const caminho = [];
+    const topoDosParecidos = (alvo) => {
+      const lingua = h("select", { class: "radar-lingua-legenda radar-estilo-lingua", title: "Em que língua procurar este estilo de canal" },
+        LINGUAS_DO_ESTILO.map(([k, t]) => h("option", { value: k }, t)));
+      return h("div", { class: "radar-parecidos-topo" },
+        caminho.length > 1 ? h("button", { class: "radar-tag-chip", onclick: () => { caminho.pop(); parecidosDe(caminho.pop()); } }, "← Voltar") : null,
+        h("b", {}, `Parecidos de ${alvo.titulo}`), lingua,
+        botao("radar-botao", "parecidos", "Procurar este estilo", async (e) => {
+          const r = await api(`/api/ext/estilo/${alvo.id}?lingua=${lingua.value}`);
+          if (r.erro) return mostrarErro(e.target, r.erro);
+          window.open(r.dados.url, "_blank");
+        }));
+    };
+    const parecidosDe = async (alvo) => {
+      caminho.push(alvo);
       secao.replaceChildren(h("div", { class: "radar-fraco" }, "Procurando canais que fazem o mesmo tipo de vídeo…"));
-      const r = await api(`/api/ext/parecidos/${c.id}`);
+      const r = await api(`/api/ext/parecidos/${alvo.id}`);
       if (r.erro) return secao.replaceChildren(h("div", { class: "radar-erro" }, erroDoRadar(r)));
-      secao.replaceChildren(h("div", { class: "radar-parecidos-linhas" }, r.dados.canais.length ? r.dados.canais.map((x) =>
+      secao.replaceChildren(topoDosParecidos(alvo), h("div", { class: "radar-parecidos-linhas" }, r.dados.canais.length ? r.dados.canais.map((x) =>
         h("div", { class: "radar-parecido-linha" },
           h("a", { class: "radar-canal-cartao", href: `https://www.youtube.com/${x.handle || "channel/" + x.id}` },
             h("img", { src: x.foto, alt: "", referrerpolicy: "no-referrer" }), h("b", {}, x.titulo),
             h("small", {}, `${num(x.normal_longos)} por vídeo · ${num(x.inscritos)} inscritos`),
             x.fase ? h("span", { class: `radar-tag ${x.fase}` }, FASES[x.fase] || x.fase) : null),
+          h("div", { class: "radar-parecido-acoes" }, botaoSalvar(x, !!x.salvo),
+            h("button", { class: "radar-tag-chip", onclick: () => parecidosDe(x) }, "↳ Parecidos deste")),
           h("div", { class: "radar-parecido-videos" }, (x.videos || []).length ? x.videos.map(miniVideo)
             : h("div", { class: "radar-fraco" }, "O Radar ainda não tem os vídeos deste canal."))))
         : [h("div", { class: "radar-fraco" }, "Nenhum parecido achado.")]));
-    }); };
+    };
+    parecidosAba.onclick = (e) => { e.stopPropagation(); caminho.length = 0; abrir(parecidosAba, () => parecidosDe(c)); };
     nichoAba.onclick = (e) => { e.stopPropagation(); abrir(nichoAba, async () => {
       secao.replaceChildren(h("div", { class: "radar-fraco" }, "Juntando o que estourou nos canais parecidos…"));
       const r = await api(`/api/ext/nicho-videos/${c.id}`);
       if (r.erro) return secao.replaceChildren(h("div", { class: "radar-erro" }, erroDoRadar(r)));
-      const vs = r.dados.videos;
-      secao.replaceChildren(vs.length ? h("div", { class: "rf-grade radar-nicho-grade" }, vs.map((v) => {
+      const todos = r.dados.videos, F = { recorte: "todos", ordem: "nota" }, grade = h("div");
+      const chips = RECORTES_DO_NICHO.map(([k, t, dica]) => h("button", { class: "radar-tag-chip", title: dica, "data-recorte": k, onclick: () => { F.recorte = k; desenharNicho(); } }, t));
+      const desenharNicho = () => {
+      chips.forEach((b) => b.classList.toggle("ligada", b.dataset.recorte === F.recorte));
+      const vs = videosDoRecorte(todos, F);
+      grade.replaceChildren(vs.length ? h("div", { class: "rf-grade radar-nicho-grade" }, vs.map((v) => {
         const d = v.publicado ? (Date.now() - Date.parse(v.publicado)) / 864e5 : null;
         return h("a", { class: "rf-card", href: `https://www.youtube.com/watch?v=${v.id}` },
           h("div", { class: "rf-capa" }, h("img", { src: `https://i.ytimg.com/vi/${v.id}/mqdefault.jpg`, alt: "", loading: "lazy" }),
@@ -1454,7 +1540,13 @@
               h("div", { class: "rf-meta" }, [v.canal, v.inscritos != null ? `${num(v.inscritos)} inscritos` : null].filter(Boolean).join(" · ")),
               h("div", { class: "rf-meta" }, [`${num(v.views)} views`, idade(d)].filter(Boolean).join(" · ")),
               h("div", { class: "rf-pilulas" }, h("span", { class: `rf-nota ${corNota(v.nota)}` }, nota(v.nota))))));
-      })) : h("div", { class: "radar-fraco" }, "Os canais parecidos ainda não têm vídeos que passaram do normal no Radar."));
+      })) : h("div", { class: "radar-fraco" }, todos.length ? "Nenhum vídeo neste recorte." : "Os canais parecidos ainda não têm vídeos que passaram do normal no Radar."));
+      };
+      const ordem = h("select", { class: "radar-lingua-legenda radar-estilo-lingua", title: "Em que ordem mostrar", onchange: (e) => { F.ordem = e.target.value; desenharNicho(); } },
+        ORDENS_DO_NICHO.map(([k, t]) => h("option", { value: k }, t)));
+      secao.replaceChildren(h("div", { class: "radar-parecidos-topo" }, chips, ordem,
+        botao("radar-botao", "baixar", "Exportar planilha", () => baixarPlanilha(`videos-do-nicho-${c.id}.csv`, videosDoRecorte(todos, F)))), grade);
+      desenharNicho();
     }); };
     // uma aba do YouTube clicada: a seção do Radar some e o conteúdo dele volta
     lista.addEventListener("click", (e) => { if (!abas.some((a) => a.contains(e.target))) fechar(); });
@@ -1491,6 +1583,42 @@
     } catch { pintar(undefined); }
   }
 
+  // o feed público do canal aberto traz os vídeos recentes com as views: a curva dele fica em dia, sem gastar cota
+  const feedsLidos = new Set();
+  async function medirPeloFeed(id) {
+    if (!ligada("feed") || feedsLidos.has(id)) return;
+    feedsLidos.add(id);
+    try {
+      const xml = new DOMParser().parseFromString(await (await fetch(`https://www.youtube.com/feeds/videos.xml?channel_id=${id}`)).text(), "text/xml");
+      const videos = [...xml.getElementsByTagName("entry")].map((e) => {
+        const um = (nome) => e.getElementsByTagName(nome)[0];
+        return { id: (um("yt:videoId") || {}).textContent, titulo: (um("title") || {}).textContent || "", canal_id: id,
+          publicado: (um("published") || {}).textContent || "", views: +((um("media:statistics") || { getAttribute: () => 0 }).getAttribute("views")) || null };
+      }).filter((v) => v.id);
+      if (videos.length) await api("/api/ext/vistos", "POST", { videos });
+    } catch { /* o feed não abriu: a leitura da página continua valendo */ }
+  }
+
+  // o aviso do dia: só na primeira página do YouTube, e só se teve vídeo novo acima do corte
+  async function avisoDosSalvos() {
+    if (!ligada("salvos-estouraram") || semConta) return;
+    const hoje = new Date().toDateString();
+    const { salvosAvisoDia } = await chrome.storage.local.get("salvosAvisoDia");
+    if (salvosAvisoDia === hoje) return;
+    const r = await api("/api/ext/salvos-estouraram");
+    if (r.erro) return;
+    chrome.storage.local.set({ salvosAvisoDia: hoje });
+    const vs = r.dados.videos;
+    if (!vs.length) return;
+    const lista = h("div", { class: "radar-salvos-lista", hidden: "" }, vs.map((v) => h("a", { class: "radar-item", href: `https://www.youtube.com/watch?v=${v.id}` },
+      h("span", { class: `rf-nota ${corNota(v.nota)}` }, nota(v.nota)), h("span", {}, h("b", {}, v.titulo), h("small", {}, `${v.canal} · ${num(v.views)} views`)))));
+    const caixa = h("div", { class: "radar-salvos" },
+      h("button", { class: "radar-salvos-cab", onclick: () => { lista.hidden = !lista.hidden; } }, icone("fogo"),
+        vs.length === 1 ? "1 vídeo dos seus salvos passou de 5x o normal" : `${vs.length} vídeos dos seus salvos passaram de 5x o normal`),
+      h("button", { class: "radar-janela-x", title: "Fechar", onclick: () => caixa.remove() }, "×"), lista);
+    document.body.append(caixa);
+  }
+
   async function painelDoCanal(ref) {
     sairDoCanal();
     const cab = document.querySelector("ytd-browse[page-subtype='channels'] #page-header, ytd-browse #header, #page-header");
@@ -1518,7 +1646,8 @@
     if (!vivo()) return;
     if (r.erro) return aviso(`Radar: ${r.erro}`);
     const c = r.dados, ver = vereditoDoNicho(c);
-    analise.append(...analiseDoCanal(c, ver));
+    analise.append(...analiseDoCanal(c, ver).filter(Boolean));
+    medirPeloFeed(c.id);
     resumo.replaceChildren(h("b", {}, ver.titulo), h("small", {}, [ver.i != null ? FASES_NICHO[ver.i].nome : null, ver.dias != null ? `${ver.dias} dias` : null].filter(Boolean).join(" · ")));
     analisar.disabled = false;
     aviso("Analisar nicho");
@@ -2042,4 +2171,5 @@
     .observe(document.body, { childList: true, subtree: true });
   pagina(); varrer();
   carregarTreino().then(() => varrer());
+  setTimeout(avisoDosSalvos, 4000);
 })();

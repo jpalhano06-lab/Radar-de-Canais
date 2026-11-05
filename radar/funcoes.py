@@ -58,6 +58,8 @@ FUNCOES: list[dict] = [
     # ---- na página do canal e na busca
     {"chave": "numeros-canal", "nome": "Números do canal", "onde": "canal", "recurso": "extensao",
      "desc": "Na página do canal: a análise, a fase do nicho e os vídeos que passaram do normal."},
+    {"chave": "cracha", "nome": "Crachá do canal", "onde": "canal", "recurso": "extensao",
+     "desc": "Que tipo de canal é, com o motivo: novo explodindo, bom para tirar títulos, perdendo força. Com o ritmo de postagem e a projeção de 30 dias."},
     {"chave": "resumo-busca", "nome": "Resumo da busca", "onde": "busca", "recurso": "extensao",
      "desc": "Uma faixa em cima dos resultados com os números dos vídeos da página e se o nicho está aberto."},
     {"chave": "filtros", "nome": "Filtros dos vídeos da página", "onde": "busca", "recurso": "extensao",
@@ -84,6 +86,10 @@ FUNCOES: list[dict] = [
              "houver) e as tags que as pessoas buscam. Quem lê e muda antes de publicar é você."},
 
     # ---- o que depende do plano
+    {"chave": "salvos-estouraram", "nome": "Aviso dos salvos que estouraram", "onde": "video", "recurso": "salvar",
+     "desc": "Uma vez por dia, ao abrir o YouTube: quantos vídeos dos seus canais salvos passaram de 5 vezes o normal."},
+    {"chave": "feed", "nome": "Medir o canal que você abre", "onde": "canal", "recurso": "extensao",
+     "desc": "Lê o feed público do canal aberto e guarda as views dos vídeos recentes, para a curva ficar em dia."},
     {"chave": "modelar", "nome": "Fila de modelagem", "onde": "painel", "recurso": "outliers",
      "desc": "Do painel do vídeo para a fila de modelagem do Radar, dizendo para qual canal seu ele é."},
     {"chave": "salvar", "nome": "Salvar canal no Radar", "onde": "video", "recurso": "salvar",

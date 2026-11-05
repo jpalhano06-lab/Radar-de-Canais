@@ -580,6 +580,21 @@ def ext_concorrentes(canal_id: str, medir: int = 0, u: dict = Depends(exigir("pa
         _sem_cota(erro)
 
 
+@app.get("/api/ext/salvos-estouraram")
+def ext_salvos_estouraram(u: dict = Depends(exigir("salvar"))):
+    """O aviso do dia: o que passou de 5 vezes o normal nos canais salvos."""
+    return {"videos": pagina.salvos_estouraram(u["id"])}
+
+
+@app.get("/api/ext/estilo/{canal_id}")
+def ext_estilo(canal_id: str, lingua: str = "en", u: dict = Depends(exigir("parecidos"))):
+    """A busca de canais deste estilo em outra língua, para abrir no YouTube."""
+    achado = pagina.estilo_em_lingua(canal_id, lingua)
+    if not achado:
+        raise HTTPException(404, "Ainda não sei o assunto deste canal.")
+    return achado
+
+
 @app.get("/api/ext/nicho-videos/{canal_id}")
 def ext_nicho_videos(canal_id: str, u: dict = Depends(exigir("parecidos"))):
     """A aba Vídeos do Nicho da página do canal: o que estourou nos canais parecidos (do banco)."""

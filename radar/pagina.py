@@ -9,8 +9,9 @@ import time
 from collections import Counter
 from datetime import datetime, timedelta, timezone
 from statistics import median
+from urllib.parse import quote
 
-from . import banco, garimpo, gosto, medir, metricas, risco, youtube
+from . import banco, cracha, garimpo, gosto, medir, metricas, radar_paises, risco, youtube
 
 RX_VIDEO = re.compile(r"^[\w-]{11}$")
 RX_CANAL = re.compile(r"^UC[\w-]{22}$")
@@ -242,6 +243,51 @@ def _passa(c: dict, lista: list[dict], exato: bool, meses: float | None) -> bool
     return not risco.avaliar(titulos)
 
 
+def _views_30d(canal_id: str) -> int | None:
+    """As views que o canal ganhou em 30 dias, pela conta do histórico. Sem leitura de 30 dias atrás, não dá para saber."""
+    dias = banco.todos("SELECT dia, views_total FROM historico WHERE canal_id=? AND views_total IS NOT NULL ORDER BY dia DESC "
+                       "LIMIT 40", canal_id)
+    if len(dias) < 2:
+        return None
+    corte = (datetime.fromisoformat(dias[0]["dia"]) - timedelta(days=30)).date().isoformat()
+    antes = next((d for d in dias if d["dia"] <= corte), None)
+    return max(0, dias[0]["views_total"] - antes["views_total"]) if antes else None
+
+
+def _cracha(c: dict) -> dict:
+    videos = banco.todos("SELECT views, publicado, duracao_s FROM videos WHERE canal_id=? AND publicado<>'' "
+                         "ORDER BY publicado DESC LIMIT 60", c["id"])
+    for v in videos:
+        v["nota"] = metricas.nota_outlier(v["views"], c["base_curtos"] if metricas.curto(v["duracao_s"]) else c["base_longos"])
+    return cracha.julgar(c, videos, views_30d_canal=_views_30d(c["id"]))
+
+
+def salvos_estouraram(usuario_id: int, corte: float = 5, horas: int = 24, quantos: int = 20) -> list[dict]:
+    """Os vídeos dos canais salvos que passaram de `corte` vezes o normal nas últimas `horas`: o aviso do dia no YouTube."""
+    desde = (datetime.now(timezone.utc) - timedelta(hours=horas)).isoformat()
+    return banco.todos("SELECT o.video_id AS id, o.nota, v.titulo, v.views, c.titulo AS canal FROM outliers o "
+                       "JOIN salvos s ON s.canal_id=o.canal_id AND s.usuario_id=? JOIN videos v ON v.id=o.video_id "
+                       "JOIN canais c ON c.id=o.canal_id WHERE o.nota>=? AND o.achado>=? ORDER BY o.nota DESC LIMIT ?",
+                       usuario_id, corte, desde, quantos)
+
+
+def estilo_em_lingua(canal_id: str, lingua: str) -> dict | None:
+    """A busca de canais deste estilo em outra língua: o assunto do canal traduzido, com o filtro de canais do YouTube."""
+    achados = medir._canais_do_banco([canal_id]) if RX_CANAL.match(canal_id or "") else []
+    if not achados or lingua not in radar_paises.LINGUAS:
+        return None
+    c = achados[0]
+    assunto = c.get("subnicho") or c.get("nicho") or ""
+    if not assunto:
+        titulos = banco.todos("SELECT titulo FROM videos WHERE canal_id=? ORDER BY views DESC LIMIT 20", canal_id)
+        contagem = Counter(p for t in titulos for p in radar_paises.palavras(t["titulo"]) if len(p) > 3)
+        assunto = " ".join(p for p, _ in contagem.most_common(3))
+    if not assunto:
+        return None
+    busca = radar_paises._traducoes(assunto, [lingua]).get(lingua) or assunto
+    return {"busca": busca, "url": f"https://www.youtube.com/results?search_query={quote(busca)}&sp=EgIQAg%253D%253D"}
+
+
 def painel(video_id: str, canal_id: str, usuario_id: int) -> dict:
     """O que o painel do vídeo aberto precisa e o banco já tem (não pede nada à API): o canal, a curva e se está salvo."""
     achados = medir._canais_do_banco([canal_id]) if RX_CANAL.match(canal_id or "") else []
@@ -250,7 +296,8 @@ def painel(video_id: str, canal_id: str, usuario_id: int) -> dict:
     marcado = banco.um("SELECT estado FROM modelar WHERE usuario_id=? AND video_id=?", usuario_id, video_id)
     return {"canal": medir._canal_publico(c) if c and c.get("base_longos") is not None else None,
             "curva": medir.curva(video_id) if RX_VIDEO.match(video_id or "") else [], "salvo": salvo,
-            "modelar": marcado["estado"] if marcado else "", "rpm": garimpo.rpm(c.get("nicho") or "") if c else None}
+            "modelar": marcado["estado"] if marcado else "", "rpm": garimpo.rpm(c.get("nicho") or "") if c else None,
+            "cracha": _cracha(c) if c and c.get("base_longos") is not None else None}
 
 
 def _primeiro_exato(c: dict) -> dict:
@@ -288,7 +335,7 @@ def canal_dados(canal_id: str, usuario_id: int) -> dict | None:
             "salvo": bool(banco.um("SELECT 1 AS x FROM salvos WHERE usuario_id=? AND canal_id=?", usuario_id, canal_id)),
             "inscritos_dias": banco.todos("SELECT dia, inscritos FROM historico WHERE canal_id=? AND inscritos IS NOT NULL "
                                           "ORDER BY dia DESC LIMIT 60", canal_id)[::-1],
-            "videos": videos[::-1]}
+            "videos": videos[::-1], "cracha": _cracha(c)}
 
 
 def em_alta(dias: int = 90, quantos: int = 12) -> list[dict]:
