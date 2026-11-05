@@ -17,7 +17,8 @@ MIN_CARACTERES, MAX_CARACTERES = 1000, 80000
 LIMITES = (1, 2, 3, 4, 6, 8)
 ESCRITAS_AO_MESMO_TEMPO = 2       # roteiros pelo Claude ao mesmo tempo (20 pedidos de uma vez eram 20 chamadas juntas)
 CAMPOS = ("titulo", "link", "canal_id", "agente_id", "lingua", "caracteres", "roteiro_manual", "nicho", "observacao",
-          "revisar", "perfil")
+          "revisar", "perfil", "footage_real")
+FOOTAGE_REAL = (0, 15, 25, 40)    # % das cenas com trecho de vídeo real do YouTube (o garimpo da fábrica)
 
 
 def minutos_de(caracteres: int, ppm: int) -> float:
@@ -40,6 +41,8 @@ def criar(usuario_id: int, pedido: dict, comecar: bool) -> dict:
     if not limpo["titulo"]:
         raise ValueError("Escreva o título do vídeo.")
     limpo["revisar"] = bool(pedido.get("revisar"))
+    if int(limpo.get("footage_real") or 0) not in FOOTAGE_REAL:
+        raise ValueError("A parte de footage real vai de 0 a 40%.")
     if not str(limpo.get("roteiro_manual") or "").strip():
         limpo.pop("roteiro_manual", None)
         caracteres = int(pedido.get("caracteres") or 0)
@@ -277,7 +280,9 @@ def passo(fabrica=None, roteirista=None, em_thread: bool = True, config_canal=No
             try:
                 if not projeto:
                     # o projeto fica guardado assim que existe: "Tentar de novo" e um reinício reaproveitam, sem pagar outro
-                    projeto = roteirista.enviar(linha["usuario_id"], linha["roteiro"], perfil_do(pedido, cfg))["projeto"]
+                    footage = int(pedido.get("footage_real") or 0)
+                    projeto = roteirista.enviar(linha["usuario_id"], linha["roteiro"], perfil_do(pedido, cfg),
+                                                **({"footage_real": footage} if footage else {}))["projeto"]
                     banco.executar("UPDATE producoes_fila SET projeto=? WHERE id=?", projeto, linha["id"])
                 if not mudar(linha["id"], "enviando", de=("enviando",)):
                     continue

@@ -3025,7 +3025,8 @@ async function novaProducao(preset = {}) {
   const agentes = todosAgentes.filter((a) => (a.tipo || "roteiro") === "roteiro");
   const lembrado = canais.some((c) => c.id === guardado("np-canal", "")) ? guardado("np-canal", "") : "";
   const N = { passo: 1, titulo: preset.titulo || "", link: preset.link || "", canal: preset.canal || CANAL_ATUAL || lembrado || (canais.length === 1 ? canais[0].id : ""), cfg: null, agente: "",
-    lingua: "português", ppm: 150, caracteres: 0, modo: "claude", roteiro: "", nicho: "", obs: "", revisar: false, ref: null, custo: null };
+    lingua: "português", ppm: 150, caracteres: 0, modo: "claude", roteiro: "", nicho: "", obs: "", revisar: false, ref: null, custo: null,
+    footage: Number(guardado("np-footage", "0")) || 0 };
   N.caracteres = Math.round(12 * N.ppm * CARACTERES_POR_PALAVRA / 10) * 10;
   const minutos = () => N.caracteres / CARACTERES_POR_PALAVRA / N.ppm;
   const palavras = () => Math.round(N.caracteres / CARACTERES_POR_PALAVRA);
@@ -3060,6 +3061,7 @@ async function novaProducao(preset = {}) {
         <dt>Estilo</dt><dd>${N.modo === "manual" ? "roteiro colado" : esc(agente?.nome || "padrão do Claude")}</dd>
         <dt>Tamanho</dt><dd>${N.modo === "manual" ? `${(N.roteiro.split(/\s+/).filter(Boolean).length).toLocaleString("pt-BR")} palavras` : `≈ ${Math.round(minutos())} min · ~${palavras().toLocaleString("pt-BR")} palavras`}</dd>
         <dt>Revisão</dt><dd>${N.revisar ? "Para para eu revisar" : "Segue direto"}</dd>
+        <dt>Footage real</dt><dd>${N.footage ? `${N.footage}% das cenas` : "Não usar"}</dd>
         <dt>Custo</dt><dd>${N.custo?.usd != null ? `≈ US$ ${N.custo.usd.toFixed(2).replace(".", ",")}${N.custo.base === "geral" ? " (média geral)" : ""}` : "—"}</dd></dl>`;
   };
   const atualizarCusto = async () => {
@@ -3084,7 +3086,11 @@ async function novaProducao(preset = {}) {
     const canaisHtml = `<div class="campo"><span>Canal</span><div class="np-canais">${canais.map((c) => `<button type="button" class="np-canal ${c.id === N.canal ? "escolhido" : ""}" data-id="${esc(c.id)}">
           ${c.foto ? `<img src="${esc(c.foto)}" alt="" data-sigla="${esc(sigla(c.titulo))}">` : `<i>${esc(sigla(c.titulo))}</i>`}${esc(c.titulo)}</button>`).join("") || '<span class="np-dica">Nenhum canal: adicione em Meu trabalho → Canais.</span>'}</div>
         ${N.canal && N.cfg && !N.cfg.perfil ? '<span class="np-dica alerta">Este canal ainda não tem voz da fábrica: configure em Canais antes de começar.</span>' : ""}</div>`;
-    const revisarHtml = `<label class="np-revisar"><input type="checkbox" id="np-revisar" ${N.revisar ? "checked" : ""}><span><b>Parar para eu revisar o roteiro</b><small>O Claude escreve e espera você aprovar no Acompanhar antes de ir para a fábrica.</small></span></label>`;
+    const footageHtml = `<label class="campo"><span>Footage real do YouTube <small>(trechos de vídeos de outros canais; o resto segue com banco e IA)</small></span>
+      <select id="np-footage">${[[0, "Não usar"], [15, "15% das cenas"], [25, "25% das cenas"], [40, "40% das cenas"]].map(([v, r]) => `<option value="${v}" ${v === N.footage ? "selected" : ""}>${r}</option>`).join("")}</select>
+      ${N.footage ? '<small class="np-dica alerta">Trecho de terceiro pode render reivindicação de direitos no YouTube.</small>' : ""}</label>`;
+    const revisarSo = `<label class="np-revisar"><input type="checkbox" id="np-revisar" ${N.revisar ? "checked" : ""}><span><b>Parar para eu revisar o roteiro</b><small>O Claude escreve e espera você aprovar no Acompanhar antes de ir para a fábrica.</small></span></label>`;
+    const revisarHtml = footageHtml + revisarSo;
     const passos = `<div class="np-passos"><span class="${N.passo === 1 ? "ativo" : ""}">1 · O vídeo</span><span class="${N.passo === 2 ? "ativo" : ""}">2 · Editar o roteiro</span></div>`;
     if (N.passo === 1) {
       campos.innerHTML = `${passos}
@@ -3149,6 +3155,7 @@ async function novaProducao(preset = {}) {
     $n("np-nicho")?.addEventListener("input", (e) => { N.nicho = e.target.value; });
     $n("np-obs")?.addEventListener("input", (e) => { N.obs = e.target.value; });
     $n("np-revisar").onchange = (e) => { N.revisar = e.target.checked; desenharPrevia(); };
+    $n("np-footage").onchange = (e) => { N.footage = Number(e.target.value) || 0; guardar("np-footage", String(N.footage)); desenhar(); desenharPrevia(); };
   }
 
   const enviar = (botao, comecar) => carregando(botao, comecar ? "Criando…" : "Salvando…", async () => {
@@ -3157,6 +3164,7 @@ async function novaProducao(preset = {}) {
     if (!N.titulo.trim()) { erro.textContent = "Escreva o título do vídeo."; return; }
     if (!N.canal) { erro.textContent = "Escolha o canal."; N.passo = 2; desenhar(); return; }
     const pedido = { titulo: N.titulo, link: N.link, canal_id: N.canal, agente_id: N.agente, lingua: N.lingua, revisar: N.revisar,
+      ...(N.footage ? { footage_real: N.footage } : {}),
       ...(N.modo === "manual" ? { roteiro_manual: N.roteiro } : { caracteres: N.caracteres, nicho: N.nicho, observacao: N.obs }) };
     try {
       await api("/api/fila", { method: "POST", body: { pedido, comecar } });

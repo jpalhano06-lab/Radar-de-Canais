@@ -673,7 +673,7 @@ def titulo_de_entrega(meta: dict) -> str:
     return junto if len(junto) <= LIMITE_DO_NOME else junto[:LIMITE_DO_NOME - 1].rstrip() + ")"
 
 
-def enviar(usuario_id: int, nome: str, perfil: str) -> dict:
+def enviar(usuario_id: int, nome: str, perfil: str, footage_real: int = 0) -> dict:
     """Cria o projeto na fábrica com o roteiro e o título (`fabrica novo`, grátis: narrar e gerar imagens continuam
     pedindo confirmação lá). O título vai em titulo_entrega (o traduzido com o original entre parênteses), que a
     fábrica usa no nome do vídeo entregue."""
@@ -701,6 +701,11 @@ def enviar(usuario_id: int, nome: str, perfil: str) -> dict:
         raise RuntimeError("A fábrica não criou o projeto: " + (r.stderr or r.stdout or "")[-400:])
     dados = json.loads((destino / "projeto.json").read_text(encoding="utf-8"))
     dados["titulo_entrega"] = titulo_de_entrega(meta)
+    if footage_real:
+        # o garimpo vale só para este vídeo: o perfil do canal não muda. A folga de 5 pontos é o teto da cota da fábrica
+        alvo = footage_real / 100
+        dados["config_override"] = {**(dados.get("config_override") or {}),
+                                    "garimpo": {"ligado": True, "alvo": alvo, "teto": round(alvo + 0.05, 2)}}
     (destino / "projeto.json").write_text(json.dumps(dados, ensure_ascii=False, indent=2), encoding="utf-8")
     if (pasta / "thumbnail.jpg").exists():
         shutil.copy2(pasta / "thumbnail.jpg", destino / "thumbnail_referencia.jpg")

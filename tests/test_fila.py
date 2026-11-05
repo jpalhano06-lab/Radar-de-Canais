@@ -384,3 +384,35 @@ def test_fabrica_que_cai_no_envio_nao_vira_erro(db):
     for pedido in (a, b):
         atual = fila.item(1, pedido["id"])
         assert (atual["estado"], atual["erro"]) == ("na_fila", "")
+
+
+def _enviados_com_footage(pedido):
+    """Roda a fila de verdade até o envio e devolve o que o roteirista recebeu."""
+    enviados = []
+
+    class R(Roteirista):
+        def enviar(self, usuario_id, nome, perfil, **extras):
+            enviados.append(extras)
+            return super().enviar(usuario_id, nome, perfil)
+
+    rot = R()
+    fila.criar(1, {"titulo": "Mercados do Canadá", "caracteres": 2650, "agente_id": "8", "lingua": "inglês",
+                   "perfil": "canal-jan-de-wolf", "canal_id": "", **pedido}, True)
+    for _ in range(3):
+        fila.passo(fabrica=Fabrica(), roteirista=rot, em_thread=False, config_canal=lambda uid, cid: {},
+                   ritmo=lambda uid, perfil, lingua: {"ppm": 150})
+    return enviados
+
+
+def test_footage_real_chega_ao_envio_para_a_fabrica(db):
+    assert _enviados_com_footage({"footage_real": 25}) == [{"footage_real": 25}]
+
+
+def test_sem_footage_real_o_envio_fica_como_sempre_foi(db):
+    assert _enviados_com_footage({}) == [{}]
+
+
+def test_footage_real_fora_da_lista_e_recusado(db):
+    fila.criar(1, {"titulo": "ok", "caracteres": 2000, "footage_real": 25}, False)
+    with pytest.raises(ValueError, match="footage"):
+        fila.criar(1, {"titulo": "x", "caracteres": 2000, "footage_real": 90}, False)
