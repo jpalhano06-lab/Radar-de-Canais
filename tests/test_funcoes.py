@@ -112,7 +112,7 @@ def test_a_rota_devolve_o_que_as_telas_montam():
 def test_a_rota_responde_com_o_plano_de_quem_pediu():
     trancadas = lambda d: {f["chave"] for f in d["funcoes"] if f["liberada"] is False}  # noqa: E731
     assert "salvar" in trancadas(pedir_como("gratis"))
-    assert trancadas(pedir_como("lite")) == {"alta"}
+    assert trancadas(pedir_como("lite")) == {"alta", "modelar"}
     assert trancadas(pedir_como("pro")) == set()
 
 

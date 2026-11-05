@@ -709,3 +709,37 @@ html[dark] .radar-np select option { background: #1c1c1c; }
 .radar-selo-raro.epico { background: #b28cff; color: #1a0d33; }
 .radar-selo-raro.raro { background: #8fd3ff; color: #06283d; }
 .radar-selo-reacao { background: #ff4d6d; color: #fff; display: inline-flex; gap: 3px; align-items: center; }
+
+/* em baixo da capa: velocidade, inscritos e monetização */
+.radar-selo-mais { position: absolute; left: 6px; bottom: 6px; z-index: 51; display: flex; gap: 4px; pointer-events: none; }
+.radar-selo-mais > span { pointer-events: auto; font: 600 11px/1 Roboto, Arial, sans-serif; padding: 3px 6px; border-radius: 6px;
+  background: rgba(0,0,0,.72); color: #f1f1f1; }
+.radar-selo-din { background: #1f7a3d !important; color: #fff; }
+
+.radar-tag-chip { font: 12px/1.3 Roboto, Arial, sans-serif; color: var(--yt-spec-text-primary, #0f0f0f); background: var(--yt-spec-badge-chip-background, rgba(0,0,0,.06));
+  border: 0; border-radius: 8px; padding: 5px 9px; cursor: pointer; }
+.radar-tag-chip:hover { background: var(--yt-spec-10-percent-layer, rgba(0,0,0,.12)); }
+.radar-rpm { display: flex; align-items: center; gap: 6px; margin-top: 8px; font-size: 12px; color: var(--yt-spec-text-secondary, #606060); }
+.radar-lingua-legenda { width: 100%; margin: 8px 0 4px; padding: 6px; border-radius: 8px; font: 13px Roboto, Arial, sans-serif;
+  color: var(--yt-spec-text-primary, #0f0f0f); background: var(--yt-spec-base-background, #fff); border: 1px solid var(--yt-spec-10-percent-layer, #ccc); }
+
+/* os botões do Radar na barra do player */
+.radar-ytp { display: inline-flex !important; align-items: center; justify-content: center; vertical-align: top; color: #fff; }
+.radar-ytp svg { width: 22px; height: 22px; }
+
+.radar-capa-janela { position: fixed; inset: 0; z-index: 2300; background: rgba(0,0,0,.72); display: grid; place-items: center; padding: 24px; }
+.radar-capa-caixa { max-width: min(1100px, 92vw); display: grid; gap: 10px; }
+.radar-capa-caixa img { width: 100%; border-radius: 12px; }
+
+/* Personalizar: o que a pessoa desligou no ícone da extensão */
+.radar-sem-nota .radar-selo-x, .radar-sem-selo .radar-selo-raro, .radar-sem-reacao .radar-selo-reacao,
+.radar-sem-vph .radar-selo-vph, .radar-sem-inscritos .radar-selo-insc, .radar-sem-monetizado .radar-selo-din,
+.radar-sem-painel .radar-painel, .radar-sem-painel .radar-ytp, .radar-sem-resumo-busca .radar-resumo, .radar-sem-filtros .radar-filtros-botao,
+.radar-sem-provar .radar-provar-botao, .radar-sem-alta .radar-alta, .radar-sem-claude .radar-claude-aba,
+.radar-sem-capa .radar-aba[data-aba="capa"], .radar-sem-capa .radar-ytp-capa,
+.radar-sem-tags .radar-aba[data-aba="tags"],
+.radar-sem-transcricao .radar-aba[data-aba="transcricao"], .radar-sem-transcricao .radar-ytp-transcricao,
+.radar-sem-print-quadro .radar-ytp-print, .radar-sem-linguas .radar-aba[data-aba="lingua"],
+.radar-sem-titulo .radar-botao[data-acao="titulo"], .radar-sem-print-cartao .radar-botao[data-acao="print-cartao"],
+.radar-sem-roteiro .radar-botao[data-acao="roteiro"], .radar-sem-ideia .radar-botao[data-acao="ideia"],
+.radar-sem-modelar .radar-botao[data-acao="modelar"] { display: none !important; }

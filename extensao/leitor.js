@@ -88,25 +88,31 @@
     if (/\/api\/timedtext/.test(String(url))) this.addEventListener("load", () => guardarLegenda(String(url), this.responseText));
     return abrirXhr.apply(this, arguments);
   };
-  const guardada = (id, t) => {
+  // `exata`: a língua foi escolhida no seletor, e outra legenda já baixada não serve no lugar dela
+  const guardada = (id, t, exata = false) => {
     const lista = legendas.get(id) || [];
-    return (lista.find((l) => l.lingua === t.languageCode && l.kind === (t.kind || "")) || lista[0] || {}).dados || null;
+    return (lista.find((l) => l.lingua === t.languageCode && l.kind === (t.kind || "")) || (exata ? null : lista[0]) || {}).dados || null;
   };
 
   // a legenda feita à mão na língua do vídeo; senão a automática; senão a primeira que houver
-  function trilha(r) {
-    const trilhas = (r && r.captions && r.captions.playerCaptionsTracklistRenderer
-      && r.captions.playerCaptionsTracklistRenderer.captionTracks) || [];
+  const trilhasDe = (r) => (r && r.captions && r.captions.playerCaptionsTracklistRenderer
+    && r.captions.playerCaptionsTracklistRenderer.captionTracks) || [];
+  const chaveDa = (t) => `${t.languageCode}|${t.kind || ""}`;
+
+  function trilha(r, pedida) {
+    const trilhas = trilhasDe(r);
+    const escolhida = pedida && trilhas.find((t) => chaveDa(t) === pedida);
+    if (escolhida) return escolhida;
     const auto = trilhas.find((t) => t.kind === "asr");
     return (auto && trilhas.find((t) => t.kind !== "asr" && t.languageCode.split("-")[0] === auto.languageCode.split("-")[0]))
       || auto || trilhas[0] || null;
   }
 
-  async function legendaDoPlayer(id) {
+  async function legendaDoPlayer(id, pedida) {
     const p = document.getElementById("movie_player"), r = resposta();
-    const t = trilha(r);
+    const t = trilha(r, pedida);
     if (!p || !p.setOption || !t || !r.videoDetails || r.videoDetails.videoId !== id) return [];
-    let j = guardada(id, t);
+    let j = guardada(id, t, !!pedida);
     if (!j) {
       const antes = p.getOption && p.getOption("captions", "track");
       let pronto = () => {};
@@ -121,7 +127,7 @@
       esperandoLegenda.delete(avisar);
       if (antes && antes.languageCode) p.setOption("captions", "track", antes);
       else { p.setOption("captions", "track", {}); if (p.unloadModule) p.unloadModule("captions"); }
-      j = guardada(id, t);
+      j = guardada(id, t, !!pedida);
     }
     const linhas = [];
     for (const ev of (j && j.events) || []) {
@@ -146,31 +152,40 @@
   // pedidos juntos ligavam e desligavam a legenda do player ao mesmo tempo (era um dos jeitos de bugar).
   const emAndamento = new Map();
 
-  async function transcricao(id) {
-    if (emAndamento.has(id)) return emAndamento.get(id);
+  // as legendas que o YouTube já tem: o seletor da aba Transcrição mostra estas, nada é traduzido aqui. A trilha
+  // automática é a língua falada: o YouTube só gera a automática da fala, as outras são escritas ou traduzidas.
+  const faixasDe = (r) => {
+    const trilhas = trilhasDe(r), auto = trilhas.find((t) => t.kind === "asr");
+    return { falada: auto ? auto.languageCode : "", faixas: trilhas.map((t) => ({ chave: chaveDa(t), codigo: t.languageCode,
+      nome: L.texto(t.name) || t.languageCode, auto: t.kind === "asr" })) };
+  };
+
+  async function transcricao(id, pedida = "") {
+    const chave = `${id}|${pedida}`;
+    if (emAndamento.has(chave)) return emAndamento.get(chave);
     const tarefa = (async () => {
       let linhas = [];
-      try { linhas = await legendaDoPlayer(id); } catch { /* tenta o outro jeito */ }
-      if (!linhas.length) {
+      try { linhas = await legendaDoPlayer(id, pedida); } catch { /* tenta o outro jeito */ }
+      if (!linhas.length && !pedida) {
         try { linhas = await painelDoYoutube(id); } catch { linhas = []; }
       }
-      if (linhas.length) return { linhas };
+      const r = resposta(), t = trilha(r, pedida), lista = faixasDe(r);
+      if (linhas.length) return { linhas, ...lista, atual: t ? chaveDa(t) : "" };
       // sem nenhuma trilha de legenda o vídeo não tem transcrição mesmo; com trilha, foi o YouTube que não entregou
-      const r = resposta();
-      return { linhas: [], motivo: r && !trilha(r) ? "sem-legenda" : "nao-deu" };
+      return { linhas: [], ...lista, atual: t ? chaveDa(t) : "", motivo: r && !t ? "sem-legenda" : "nao-deu" };
     })();
-    emAndamento.set(id, tarefa);
+    emAndamento.set(chave, tarefa);
     // só o acerto fica guardado: o que falhou tem de poder ser tentado de novo
-    tarefa.then((t) => { if (!t.linhas.length) emAndamento.delete(id); }, () => emAndamento.delete(id));
+    tarefa.then((t) => { if (!t.linhas.length) emAndamento.delete(chave); }, () => emAndamento.delete(chave));
     return tarefa;
   }
 
   window.addEventListener("message", async (e) => {
     if (e.source !== window || !e.data || !e.data.radarPedido) return;
-    const { radarPedido: n, tipo, id } = e.data;
+    const { radarPedido: n, tipo, id, lingua } = e.data;
     let dados = null;
     try {
-      dados = tipo === "video" ? dadosDoVideo() : tipo === "transcricao" ? await transcricao(id)
+      dados = tipo === "video" ? dadosDoVideo() : tipo === "transcricao" ? await transcricao(id, lingua)
         : tipo === "canal" ? (ultimoCanal || L.canal(window.ytInitialData)) : null;
     } catch { dados = null; }
     window.postMessage({ radarResposta: n, dados }, location.origin);

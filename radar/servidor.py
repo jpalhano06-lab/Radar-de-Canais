@@ -547,13 +547,16 @@ def esteira(u: dict = Depends(exigir("outliers"))):
 @app.post("/api/modelar/{video_id}")
 async def marcar_modelar(video_id: str, request: Request, u: dict = Depends(exigir("outliers"))):
     """`fila` = vou modelar, `feito` = já modelei, vazio = tira o marcador."""
-    estado = str((await request.json()).get("estado", ""))
+    d = await request.json()
+    estado, canal = str(d.get("estado", "")), str(d.get("canal_id") or "")[:40]
     if estado and estado not in ESTEIRA:
         raise HTTPException(400, "Estado desconhecido para a esteira.")
     if estado:
-        banco.executar("INSERT INTO modelar (usuario_id, video_id, estado, quando) VALUES (?,?,?,?) "
-                       "ON CONFLICT(usuario_id, video_id) DO UPDATE SET estado=excluded.estado, quando=excluded.quando",
-                       u["id"], video_id, estado, banco.agora())
+        # a tela do site só muda o estado: sem canal no pedido, o que a extensão escolheu continua valendo
+        banco.executar("INSERT INTO modelar (usuario_id, video_id, estado, quando, canal_id) VALUES (?,?,?,?,?) "
+                       "ON CONFLICT(usuario_id, video_id) DO UPDATE SET estado=excluded.estado, quando=excluded.quando, "
+                       "canal_id=CASE WHEN excluded.canal_id<>'' THEN excluded.canal_id ELSE modelar.canal_id END",
+                       u["id"], video_id, estado, banco.agora(), canal)
     else:
         banco.executar("DELETE FROM modelar WHERE usuario_id=? AND video_id=?", u["id"], video_id)
     return {"ok": True, "estado": estado}
@@ -1206,9 +1209,10 @@ def outliers(request: Request, u: dict = Depends(exigir("outliers"))):
     # o marcador da esteira vem junto com o vídeo: o cartão precisa saber se já está na fila ou já foi modelado
     linhas = banco.todos(
         f"SELECT ROUND({_NOTA_VIVA}, 1) AS nota, (SELECT estado FROM modelar m WHERE m.usuario_id=? AND m.video_id=v.id) "
-        f"AS modelar, v.id, v.titulo, v.views, v.publicado, v.duracao_s, c.id AS canal_id, c.titulo AS canal, "
+        f"AS modelar, (SELECT d.titulo FROM modelar m JOIN canais d ON d.id=m.canal_id WHERE m.usuario_id=? AND m.video_id=v.id) "
+        f"AS modelar_canal, v.id, v.titulo, v.views, v.publicado, v.duracao_s, c.id AS canal_id, c.titulo AS canal, "
         f"c.foto, c.handle, c.inscritos, c.nicho, c.subnicho, c.sem_rosto, c.fase, c.base_longos AS normal {base} "
-        f"ORDER BY {_ordem_videos(q.get('ordem', ''), q.get('sentido', ''))}", u["id"], *args)
+        f"ORDER BY {_ordem_videos(q.get('ordem', ''), q.get('sentido', ''))}", u["id"], u["id"], *args)
     for l in linhas:
         l["por_hora"] = metricas.views_por_hora(l["views"], l["publicado"])
     # os bloqueios e as respostas da primeira vez (língua, rosto, o que nunca mostrar) valem aqui também

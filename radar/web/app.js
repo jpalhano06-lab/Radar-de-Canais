@@ -461,7 +461,7 @@ const ESTEIRA = {
 const marcadorEsteira = (v) => {
   const estado = ESTEIRA[v.modelar] ? v.modelar : "";
   return `<button class="marcador ${estado}" data-modelar="${esc(v.id)}" data-estado="${estado}"
-    title="${ESTEIRA[estado].dica}">${ESTEIRA[estado].sinal}</button>`;
+    title="${ESTEIRA[estado].dica}${v.modelar_canal ? ` · para ${esc(v.modelar_canal)}` : ""}">${ESTEIRA[estado].sinal}</button>`;
 };
 document.addEventListener("click", async (e) => {
   const b = e.target.closest("[data-modelar]");

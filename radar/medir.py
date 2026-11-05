@@ -148,6 +148,29 @@ def _videos_do_banco(ids: list[str]) -> list[dict]:
     return banco.todos(f"SELECT * FROM videos WHERE id IN ({','.join('?' * len(ids))})", *ids)
 
 
+def velocidades(ids: list[str]) -> dict[str, dict]:
+    """A velocidade de agora, medida entre a última leitura e a mais recente com pelo menos 1 hora antes dela. Sem as
+    duas leituras o vídeo fica de fora: quem pergunta usa a média desde a publicação, e diz que é estimativa."""
+    if not ids:
+        return {}
+    marcas = ",".join("?" * len(ids))
+    leituras: dict[str, list[dict]] = {}
+    for l in banco.todos(f"SELECT video_id, quando, views FROM (SELECT video_id, quando, views, ROW_NUMBER() OVER "
+                         f"(PARTITION BY video_id ORDER BY quando DESC) AS n FROM leituras WHERE video_id IN ({marcas})) "
+                         f"WHERE n<=12", *ids):
+        leituras.setdefault(l["video_id"], []).append(l)
+    saida = {}
+    for vid, lista in leituras.items():
+        ultima = lista[0]
+        fim = datetime.fromisoformat(ultima["quando"])
+        for antes in lista[1:]:
+            horas = (fim - datetime.fromisoformat(antes["quando"])).total_seconds() / 3600
+            if horas >= 1:
+                saida[vid] = {"vph": round(max(0, ultima["views"] - antes["views"]) / horas, 1), "horas": round(horas, 1)}
+                break
+    return saida
+
+
 def _canal_publico(c: dict) -> dict:
     meses = metricas.meses_postando(c.get("primeiro_video", ""))
     return {

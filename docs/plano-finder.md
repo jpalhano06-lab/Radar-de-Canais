@@ -37,20 +37,20 @@ Estado: `[ ]` aberto, `[~]` em andamento, `[x]` pronto, `[-]` fora.
 
 ### Vídeo
 
-- [ ] 1. Tags do vídeo e do canal no painel. O catálogo anunciava e nunca teve código.
-- [ ] 2. Sons dos gestos: ao salvar, ao desfazer e ao achar canal raro. O catálogo anunciava e nunca teve código.
-- [ ] 3. Botões na barra do player: Capa, Transcrição e Print do quadro atual.
-- [ ] 4. Painel do vídeo abre sozinho, como opção.
+- [x] 1. Tags do vídeo e do canal: aba Tags, chips e aviso dos 500 caracteres.
+- [x] 2. Sons dos gestos: sintetizados, quietos com vídeo tocando. Sem prova de ouvido.
+- [x] 3. Botões na barra do player: Capa, Transcrição e Print do quadro. Sem prova no player de verdade.
+- [-] 4. Painel do vídeo abre sozinho: já era assim. Agora dá para desligar em Personalizar.
 - [ ] 5. Capas parecidas que estouraram: índice de capas nos vídeos do banco, com a nota de parecença.
 - [ ] 6. Mesmo molde de título: quem mais escreve assim, quantos canais, quanto rende.
 - [ ] 7. Por que este vídeo estourou: IA decompõe o título, lê os primeiros segundos e explica o clique.
 - [ ] 8. Títulos neste molde: 10 títulos para o assunto da pessoa, sem copiar.
 - [ ] 9. Levar o título para outra língua, adaptado ao público de lá, avisando quando já há dublagem.
 - [ ] 10. A receita da capa: IA olha a capa e escreve seis campos e a instrução pronta em inglês.
-- [ ] 11. RPM estimado do nicho no painel do vídeo.
-- [ ] 12. Mandar para a fila de modelagem pelo YouTube, escolhendo o canal. A tabela e a tela já existem.
-- [ ] 13. Views por hora medida entre duas leituras. Hoje é a média desde a publicação.
-- [ ] 14. Seletor de língua na transcrição, avisando quando a legenda é tradução.
+- [x] 11. RPM estimado do nicho no painel: faixa de `garimpo.NICHOS` menos os 45% do YouTube.
+- [x] 12. Fila de modelagem pelo painel, perguntando o canal. Só no plano Pro, como a tela.
+- [x] 13. Views por hora medida entre duas leituras com 1 h ou mais (`medir.velocidades`), com inscritos e `$` nos cartões.
+- [x] 14. Seletor de língua na transcrição, com aviso quando a legenda não é a língua falada.
 
 ### Canal
 
@@ -75,7 +75,7 @@ Estado: `[ ]` aberto, `[~]` em andamento, `[x]` pronto, `[-]` fora.
 - [ ] 27. Nota do título e títulos no molde, embaixo do campo Título.
 - [ ] 28. Capítulos da fala: lê a legenda e separa as partes do vídeo.
 - [ ] 29. Hora por país do público, lembrada por canal, e as horas com mais views.
-- [ ] 30. Comprimir a capa para ficar abaixo de 2 MB.
+- [-] 30. Comprimir a capa para ficar abaixo de 2 MB: já existe em `publicar.js`.
 
 ### Claude e ChatGPT
 
@@ -84,7 +84,7 @@ Estado: `[ ]` aberto, `[~]` em andamento, `[x]` pronto, `[-]` fora.
 
 ### Geral
 
-- [ ] 33. Personalizar: ligar e desligar cada função.
+- [x] 33. Personalizar no ícone da extensão: liga e desliga na hora.
 - [ ] 34. Patente e degraus por canais salvos.
 - [ ] 35. Números do seu canal fora do Studio.
 - [ ] 36. Popup: contadores da aba e atalhos.

@@ -34,6 +34,14 @@ NICHOS = {
 }
 
 
+def rpm(nicho: str) -> dict | None:
+    """O RPM do nicho: o CPM da faixa pública menos os 45% que o YouTube fica. Estimativa do nicho, não ganho de vídeo."""
+    if nicho not in NICHOS:
+        return None
+    minimo, maximo, _ = NICHOS[nicho]
+    return {"nicho": nicho, "minimo": round(minimo * 0.55, 2), "maximo": round(maximo * 0.55, 2)}
+
+
 def prioridade(nicho: str) -> float:
     """CPM médio do nicho, com até 50% a mais pelo engajamento: o que paga bem E segura o espectador vem primeiro."""
     if nicho not in NICHOS:

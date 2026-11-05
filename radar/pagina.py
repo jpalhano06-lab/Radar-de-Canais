@@ -162,6 +162,7 @@ def vistos(videos: list, canal: dict | None = None) -> dict:
     ler = [i for i in ids if i not in canais or (canais[i]["base_longos"] is None and (canais[i]["medido"] or "") < corte)]
     # a reação sai das curtidas e dos comentários, que vêm da API e não da página: só tem para o que o Radar já mediu
     normais = normal_do_nicho()
+    velocidades = medir.velocidades([v["id"] for v in lista])
     def reacao_de(v):  # noqa: E306
         guardado, canal = medidos.get(v["id"]), canais.get(v["canal_id"])
         if not guardado or not canal:
@@ -173,7 +174,8 @@ def vistos(videos: list, canal: dict | None = None) -> dict:
                              "inscritos": (canais.get(v["canal_id"]) or {}).get("inscritos"),
                              "normal": (canais.get(v["canal_id"]) or {}).get("base_longos"),
                              "raridade": (canais.get(v["canal_id"]) or {}).get("raridade") or "",
-                             "reacao": reacao_de(v)} for v in lista},
+                             "reacao": reacao_de(v), "anuncios": (canais.get(v["canal_id"]) or {}).get("anuncios"),
+                             "medida": velocidades.get(v["id"])} for v in lista},
         "ler": ler[:LER_POR_VEZ],
         "reacao_alta": metricas.REACAO_ALTA,   # o corte de "reagiu muito" é do Radar, não da extensão
     }
@@ -245,8 +247,10 @@ def painel(video_id: str, canal_id: str, usuario_id: int) -> dict:
     achados = medir._canais_do_banco([canal_id]) if RX_CANAL.match(canal_id or "") else []
     c = achados[0] if achados else None
     salvo = bool(c and banco.um("SELECT 1 AS x FROM salvos WHERE usuario_id=? AND canal_id=?", usuario_id, canal_id))
+    marcado = banco.um("SELECT estado FROM modelar WHERE usuario_id=? AND video_id=?", usuario_id, video_id)
     return {"canal": medir._canal_publico(c) if c and c.get("base_longos") is not None else None,
-            "curva": medir.curva(video_id) if RX_VIDEO.match(video_id or "") else [], "salvo": salvo}
+            "curva": medir.curva(video_id) if RX_VIDEO.match(video_id or "") else [], "salvo": salvo,
+            "modelar": marcado["estado"] if marcado else "", "rpm": garimpo.rpm(c.get("nicho") or "") if c else None}
 
 
 def _primeiro_exato(c: dict) -> dict:

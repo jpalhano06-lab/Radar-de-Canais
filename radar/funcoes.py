@@ -65,6 +65,8 @@ FUNCOES: list[dict] = [
      "atalho": "Alt+V"},
 
     # ---- no YouTube Studio
+    {"chave": "print-quadro", "nome": "Botões no player", "onde": "painel", "recurso": "extensao",
+     "desc": "Capa, transcrição e print do quadro atual na barra do player. O print vai para colar com Ctrl+V."},
     {"chave": "numeros-meu-canal", "nome": "Números do seu canal", "onde": "studio", "recurso": "extensao",
      "desc": "As views e os ganhos do SEU canal, lidos do YouTube Studio conectado."},
     {"chave": "foto-studio", "nome": "Foto com um clique no Studio", "onde": "studio", "recurso": "extensao",
@@ -82,6 +84,8 @@ FUNCOES: list[dict] = [
              "houver) e as tags que as pessoas buscam. Quem lê e muda antes de publicar é você."},
 
     # ---- o que depende do plano
+    {"chave": "modelar", "nome": "Fila de modelagem", "onde": "painel", "recurso": "outliers",
+     "desc": "Do painel do vídeo para a fila de modelagem do Radar, dizendo para qual canal seu ele é."},
     {"chave": "salvar", "nome": "Salvar canal no Radar", "onde": "video", "recurso": "salvar",
      "desc": "Um clique no vídeo ou na página do canal guarda o canal no Radar, para você acompanhar.", "atalho": "Alt+S"},
     {"chave": "parecidos", "nome": "Canais parecidos", "onde": "canal", "recurso": "parecidos",

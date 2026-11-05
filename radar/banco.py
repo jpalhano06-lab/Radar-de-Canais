@@ -326,6 +326,7 @@ CREATE TABLE IF NOT EXISTS traducoes (
 
 # colunas que entraram depois do primeiro banco: são criadas no banco que já existe
 COLUNAS_NOVAS = {
+    "modelar": {"canal_id": "TEXT NOT NULL DEFAULT ''"},   # para qual canal seu é esse vídeo da fila (a extensão pergunta)
     # o vídeo feito em outra máquina (maquinas.py): quem está com ele, até quando, e a prova da entrega
     "producoes_fila": {"maquina_id": "INTEGER", "lease": "TEXT NOT NULL DEFAULT ''", "lease_ate": "REAL NOT NULL DEFAULT 0",
                        "eventos": "TEXT NOT NULL DEFAULT '[]'", "prova": "TEXT NOT NULL DEFAULT ''"},

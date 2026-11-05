@@ -37,6 +37,43 @@ async function mostrar() {
   $("sair").hidden = !!resposta.livre;
   carregarCanais(servidor, token);
   carregarHoje(servidor, token);
+  carregarFuncoes(servidor, token);
+}
+
+// `ler` fica de fora: sem ele não há nota nenhuma para mostrar. As do Studio não passam pelo content.js.
+const SEM_INTERRUPTOR = new Set(["ler", "publicar", "sem-shorts", "treino", "capa-2mb", "horario-postar", "escrever-publicacao",
+  "numeros-meu-canal", "foto-studio"]);
+
+async function carregarFuncoes(servidor, token) {
+  const caixa = $("funcoes");
+  try {
+    const r = await fetch(servidor + "/api/ext/funcoes", { headers: token ? { Authorization: `Bearer ${token}` } : {} });
+    const { funcoes, onde } = await r.json();
+    const { funcoesDesligadas } = await chrome.storage.local.get("funcoesDesligadas");
+    const desligadas = new Set(funcoesDesligadas || []);
+    caixa.replaceChildren();
+    for (const [chave, titulo] of Object.entries(onde)) {
+      const grupo = funcoes.filter((f) => f.onde === chave && f.liberada !== false && !SEM_INTERRUPTOR.has(f.chave));
+      if (!grupo.length) continue;
+      const cabeca = document.createElement("b");
+      cabeca.textContent = titulo;
+      caixa.append(cabeca);
+      for (const f of grupo) {
+        const rotulo = document.createElement("label"), marca = document.createElement("input");
+        rotulo.className = "linha-check";
+        rotulo.title = f.desc;
+        marca.type = "checkbox";
+        marca.checked = !desligadas.has(f.chave);
+        marca.onchange = () => {
+          if (marca.checked) desligadas.delete(f.chave); else desligadas.add(f.chave);
+          chrome.storage.local.set({ funcoesDesligadas: [...desligadas] });
+        };
+        rotulo.append(marca, " " + f.nome);
+        caixa.append(rotulo);
+      }
+    }
+    $("personalizar").hidden = !caixa.children.length;
+  } catch { $("personalizar").hidden = true; }
 }
 
 // o que a extensão leu hoje nas páginas do YouTube (contado pelo servidor)
