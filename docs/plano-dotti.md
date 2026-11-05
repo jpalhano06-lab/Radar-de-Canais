@@ -32,7 +32,7 @@ A lista é a da dissecção do Robô do Dotti: tudo o que ele tem e nós não, e
 
 Estado: `[ ]` aberto, `[~]` em andamento, `[x]` pronto e testado, `[-]` já existia.
 
-- [x] 1. Garimpo no YouTube: busca, trecho, cota, veto, quadro real julgado, crop. Medido: 1 aceito (81), 3 reprovados (3, 50, 27). Sem vídeo inteiro ainda
+- [x] 1. Garimpo no YouTube: busca só em CC, trecho, cota, quadro real julgado, crop. Medido: 1 aceito (81), 3 reprovados (3, 50, 27); trecho montado num vídeo; SUBSCRIBE queimado reprovado. Sem produção inteira pela escolha do modelo
 - [x] 2. Pool de contas: rotação, castigo, cópia dos cookies, `garimpo:` no perfil, aviso de conta única. Sem teste com conta real
 - [x] 3. Robô em outras máquinas pelo Radar: `radar/maquinas.py`, `fabrica/robo.py` (`fabrica maquina`), `ROBO.ps1`, `INSTALAR-ROBO.ps1`. Provado por HTTP com fábrica simulada; nunca rodou em outro computador. Sobrepõe o `palhano/`, parado desde 12/10
 - [x] 4. Repartir núcleos entre produções (`_parte_da_maquina`). Sem medida com dois renders juntos
@@ -61,4 +61,7 @@ Fábrica religada em 2026-11-05 01:43 (PID 10688, `fabrica.log`). O render do v�
   `garimpo.so_creative_commons: false` abre para qualquer vídeo.
 - 2026-11-05: `palhano/` (fora do git) é o painel de venda no modelo do robô, com máquinas e fila. Ninguém o liga desde
   12/10. Ler antes de construir qualquer coisa de robô.
+- 2026-11-05, fim da noite. Em aberto: Drive pela API (consentimento do usuário), instalador .exe (hoje é
+  `INSTALAR-ROBO.ps1`, nunca executado), robô em outro computador de verdade, dois renders juntos sem medida, produção
+  inteira com garimpo pela escolha do modelo. Nada da fábrica foi commitado: rodar LIGAR-TIPLABS pode mandar para o stash.
 
