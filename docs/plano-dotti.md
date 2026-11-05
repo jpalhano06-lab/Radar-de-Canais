@@ -15,7 +15,7 @@ Quem retoma: leia este arquivo inteiro, siga a primeira linha em aberto, atualiz
   nossos projetos (sons, transições, `lugares_nomes.json`), e não reuse cookies nem credenciais de lá.
 - Nunca pare a fábrica com produção em andamento. Antes de parar: `criacao.json` em `processando`, gravação recente em
   `projetos\*`, `ffmpeg` rodando e `producoes_fila` em `produzindo`. Olhar só o `ffmpeg` não basta.
-- Nunca rode `LIGAR-TIPLABS` (ele faz `git pull` e `stash`, e a `main` da fábrica segue divergida do GitHub). Para
+- Nunca rode `LIGAR-TIPLABS` (ele faz `git pull` e `stash`; a `main` da fábrica já contém o GitHub, mas está 8 commits à frente, sem push). Para
   religar a fábrica: `uv run fabrica servidor --porta 8080 --frontend C:\Users\Palhano\Documents\tiplabs\front-editor`,
   escondida, com saída em `fabrica.log` e `fabrica.log.erros`.
 - O Radar que roda é o checkout principal: mudança só vale depois de religar. Ele também só se religa sem produção
