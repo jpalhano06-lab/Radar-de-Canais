@@ -52,6 +52,8 @@
     if (!d) return null;
     return { id: d.videoId, titulo: d.title, canal_id: d.channelId, canal: d.author, views: +d.viewCount || null,
       duracao_s: +d.lengthSeconds || null, tags: d.keywords || [], descricao: d.shortDescription || "",
+      // as faixas de áudio dubladas: o id vem como "en.4"
+      audios: [...new Set(((r.streamingData && r.streamingData.adaptiveFormats) || []).map((f) => f.audioTrack && String(f.audioTrack.id || "").split(".")[0]).filter(Boolean))],
       publicado: (mf && (mf.publishDate || mf.uploadDate)) || "", ao_vivo: !!d.isLive,
       // anúncio no player = canal monetizado (quem tem YouTube Premium não recebe anúncio: aí não dá para saber)
       anuncios: !!((r.adPlacements && r.adPlacements.length) || (r.playerAds && r.playerAds.length)) };

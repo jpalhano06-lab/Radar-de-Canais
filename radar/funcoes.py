@@ -67,6 +67,12 @@ FUNCOES: list[dict] = [
      "atalho": "Alt+V"},
 
     # ---- no YouTube Studio
+    {"chave": "ia-video", "nome": "IA no painel do vídeo", "onde": "painel", "recurso": "extensao",
+     "desc": "Por que o vídeo estourou, 10 títulos no molde dele para o seu assunto, o título levado para outra língua e a receita da capa."},
+    {"chave": "molde", "nome": "Mesmo molde de título", "onde": "painel", "recurso": "extensao",
+     "desc": "Quem mais escreve títulos na mesma estrutura deste vídeo, quantos canais são e quanto esse molde rende."},
+    {"chave": "capas-parecidas", "nome": "Capas parecidas", "onde": "painel", "recurso": "extensao",
+     "desc": "As capas que estouraram mais parecidas com a deste vídeo, com o canal, as views e quantas vezes o normal cada uma fez."},
     {"chave": "print-quadro", "nome": "Botões no player", "onde": "painel", "recurso": "extensao",
      "desc": "Capa, transcrição e print do quadro atual na barra do player. O print vai para colar com Ctrl+V."},
     {"chave": "numeros-meu-canal", "nome": "Números do seu canal", "onde": "studio", "recurso": "extensao",

@@ -793,6 +793,70 @@
       fatos.length > 1 ? h("div", { class: "radar-fraco" }, fatos.slice(1).join(" · ")) : null);
   }
 
+  // ------------------------------------------------------------ a aba IA do painel: molde, capas parecidas e leituras
+  function linhaDeVideo(v, direita) {
+    return h("a", { class: "radar-item", href: `https://www.youtube.com/watch?v=${v.id}` },
+      h("img", { class: "radar-ia-capa", src: `https://i.ytimg.com/vi/${v.id}/mqdefault.jpg`, alt: "", loading: "lazy" }),
+      h("span", {}, h("b", {}, v.titulo), h("small", {}, [v.canal, `${num(v.views)} views`, v.nota != null ? nota(v.nota) : null, direita].filter(Boolean).join(" · "))));
+  }
+
+  function campoDaLeitura(rotulo, texto) {
+    return texto ? h("div", { class: "radar-ia-campo" }, h("small", {}, rotulo), h("div", {}, texto)) : null;
+  }
+
+  // um botão que chama a IA e troca a si mesmo pelo resultado. A resposta do Claude leva até um minuto.
+  function leitura(titulo, dica, pedir, desenhar) {
+    const saida = h("div", { class: "radar-ia-saida" });
+    const b = botao("radar-botao", "ideia", titulo, async () => {
+      saida.replaceChildren(h("div", { class: "radar-fraco" }, "Lendo… pode levar até um minuto."));
+      b.disabled = true;
+      const r = await pedir();
+      b.disabled = false;
+      saida.replaceChildren(...(r.erro ? [h("div", { class: "radar-erro" }, r.erro)] : desenhar(r.dados).filter(Boolean)));
+    });
+    return h("div", { class: "radar-ia-bloco" }, b, dica ? h("div", { class: "radar-fraco" }, dica) : null, saida);
+  }
+
+  function abaIa(v, n) {
+    const base = { video_id: v.id, titulo: v.titulo };
+    const molde = h("div", { class: "radar-ia-molde" }, h("div", { class: "radar-fraco" }, "Procurando o mesmo molde…"));
+    api(`/api/ext/molde/${v.id}?titulo=${encodeURIComponent(v.titulo)}`).then((r) => {
+      const d = r.dados;
+      if (r.erro || !d.molde) return molde.replaceChildren(h("div", { class: "radar-fraco" }, r.erro || "Este título não tem um molde reconhecível."));
+      molde.replaceChildren(h("div", { class: "radar-sub" }, "Mesmo molde de título"), h("div", { class: "radar-ia-molde-texto" }, d.molde),
+        h("div", { class: "radar-fraco" }, d.total ? `${d.total} vídeos em ${d.canais} ${d.canais === 1 ? "canal" : "canais"}${d.lift != null ? ` · rende ${nota(d.lift)} o normal` : ""}`
+          : "Nenhum outro vídeo no Radar usa este molde ainda."),
+        d.videos.length ? h("div", { class: "radar-lista" }, d.videos.slice(0, 6).map((x) => linhaDeVideo(x))) : null);
+    });
+    const assunto = h("input", { class: "radar-pasta-nova radar-ia-entrada", placeholder: "Seu assunto", maxlength: "200", onkeydown: (e) => e.stopPropagation() });
+    const lingua = h("select", { class: "radar-lingua-legenda" }, [["inglês dos EUA", "en"], ["espanhol do México", "es"], ["português do Brasil", "pt"], ["alemão", "de"], ["francês", "fr"],
+      ["italiano", "it"], ["holandês", "nl"], ["japonês", "ja"], ["coreano", "ko"]].map(([t, c]) => h("option", { value: t, "data-codigo": c }, t)));
+    const copiarTudo = (texto) => botao("radar-botao", "titulo", "Copiar", (e) => { navigator.clipboard.writeText(texto); e.currentTarget.lastChild.textContent = "Copiado ✓"; });
+    const fala = async () => {
+      const t = await pedirPagina("transcricao", v.id, 25000);
+      return ((t && t.linhas) || []).filter((l) => l.ms < 90000).map((l) => l.texto).join(" ");
+    };
+    return [molde,
+      h("div", { class: "radar-ia-capas" }, leitura("Capas parecidas que estouraram", "", () => api(`/api/ext/capas-parecidas/${v.id}`), (d) =>
+        [d.videos.length ? h("div", { class: "radar-lista" }, d.videos.map((x) => linhaDeVideo(x, `${x.parecido}% parecida`)))
+          : h("div", { class: "radar-fraco" }, `Nenhuma capa bem parecida entre as ${num(d.indice)} já lidas. O índice cresce sozinho.`)])),
+      leitura("Por que este vídeo estourou", "", async () => api("/api/ext/ia/por-que", "POST", { ...base, nota: n.nota, fala: await fala() }), (d) => [
+        campoDaLeitura("Por que clicaram", d.resumo), campoDaLeitura("Quebra de padrão", d.quebra), campoDaLeitura("Prova específica", d.prova),
+        campoDaLeitura("Loop aberto", d.loop), campoDaLeitura("Os primeiros segundos", d.comeco)]),
+      h("div", { class: "radar-ia-bloco" }, assunto, leitura("Escrever 10 títulos neste molde", "Mesma estrutura e mesma sensação, assunto novo.",
+        () => assunto.value.trim() ? api("/api/ext/ia/titulos", "POST", { ...base, assunto: assunto.value.trim() }) : Promise.resolve({ erro: "Escreva o seu assunto." }), (d) => [
+          campoDaLeitura("A sensação que fica", d.sensacao), h("ol", { class: "radar-ia-titulos" }, d.titulos.map((t) => h("li", {}, t))), copiarTudo(d.titulos.join("\n"))])),
+      h("div", { class: "radar-ia-bloco" }, lingua, leitura("Levar o título para esta língua", "", () => {
+        const codigo = lingua.selectedOptions[0].dataset.codigo;
+        if ((v.audios || []).includes(codigo)) return Promise.resolve({ erro: "O vídeo já tem faixa dublada nesta língua: o espaço não está livre." });
+        return api("/api/ext/ia/adaptar", "POST", { ...base, lingua: lingua.value });
+      }, (d) => [campoDaLeitura("Título", d.titulo), campoDaLeitura("Em português", d.em_portugues), campoDaLeitura("O que mudou", d.mudou),
+        campoDaLeitura("O público de lá procura", d.procura), copiarTudo(d.titulo || "")])),
+      leitura("A receita da capa", "A IA olha a capa e escreve o que ela mostra e a instrução pronta para fazer a sua.", () => api("/api/ext/ia/capa", "POST", base), (d) => [
+        campoDaLeitura("O que mostra", d.mostra), campoDaLeitura("Composição", d.composicao), campoDaLeitura("Cores", d.cores), campoDaLeitura("Texto", d.texto),
+        campoDaLeitura("Emoção", d.emocao), campoDaLeitura("O que faz clicar", d.gancho), campoDaLeitura("A instrução para gerar (em inglês)", d.instrucao), copiarTudo(d.instrucao || "")])];
+  }
+
   function abrirCapa(url, titulo) {
     document.querySelectorAll(".radar-capa-janela").forEach((j) => j.remove());
     const img = h("img", { src: url, alt: "" });
@@ -867,11 +931,11 @@
     const extra = h("div", { class: "radar-extra" });
     const corpo = h("div", { class: "radar-aba-corpo" });
     // a Capa é a aba principal: a capa com o "quantos x" em vermelho em cima
-    const abas = [["capa", "Capa"], ["transcricao", "Transcrição"], ["tags", "Tags"], ["lingua", "Método Fantasma"]];
+    const abas = [["capa", "Capa"], ["transcricao", "Transcrição"], ["tags", "Tags"], ["ia", "IA"], ["lingua", "Método Fantasma"]];
     const botoesAba = abas.map(([k, t]) => h("button", { class: "radar-aba", "data-aba": k, onclick: () => abrir(k) }, t));
     const abrir = (k) => {
       botoesAba.forEach((b) => b.classList.toggle("ligada", b.dataset.aba === k));
-      corpo.replaceChildren(...({ capa: abaCapa, transcricao: abaTranscricao, tags: abaTags, lingua: abaLingua }[k])().filter(Boolean));
+      corpo.replaceChildren(...({ capa: abaCapa, transcricao: abaTranscricao, tags: abaTags, ia: () => abaIa(v, n), lingua: abaLingua }[k])().filter(Boolean));
     };
     const capaUrl = `https://i.ytimg.com/vi/${id}/maxresdefault.jpg`;
     const abaCapa = () => {

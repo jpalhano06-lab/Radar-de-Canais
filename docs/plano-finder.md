@@ -41,12 +41,12 @@ Estado: `[ ]` aberto, `[~]` em andamento, `[x]` pronto, `[-]` fora.
 - [x] 2. Sons dos gestos: sintetizados, quietos com vídeo tocando. Sem prova de ouvido.
 - [x] 3. Botões na barra do player: Capa, Transcrição e Print do quadro. Sem prova no player de verdade.
 - [-] 4. Painel do vídeo abre sozinho: já era assim. Agora dá para desligar em Personalizar.
-- [ ] 5. Capas parecidas que estouraram: índice de capas nos vídeos do banco, com a nota de parecença.
-- [ ] 6. Mesmo molde de título: quem mais escreve assim, quantos canais, quanto rende.
-- [ ] 7. Por que este vídeo estourou: IA decompõe o título, lê os primeiros segundos e explica o clique.
-- [ ] 8. Títulos neste molde: 10 títulos para o assunto da pessoa, sem copiar.
-- [ ] 9. Levar o título para outra língua, adaptado ao público de lá, avisando quando já há dublagem.
-- [ ] 10. A receita da capa: IA olha a capa e escreve seis campos e a instrução pronta em inglês.
+- [x] 5. Capas parecidas (`radar/capas.py`): dHash dos outliers, índice cresce sozinho depois de religar. Corte em 85: sorteadas chegam a 72. Mede composição, não assunto.
+- [x] 6. Mesmo molde de título (`radar/molde.py`): 70% dos títulos reais têm molde. A coluna se preenche sozinha depois de religar.
+- [x] 7. Por que este vídeo estourou: Claude real, resposta guardada.
+- [x] 8. Títulos neste molde: Claude real.
+- [x] 9. Levar o título para outra língua: Claude real, com aviso de faixa dublada. O aviso não foi visto num vídeo dublado de verdade.
+- [x] 10. A receita da capa: visão real.
 - [x] 11. RPM estimado do nicho no painel: faixa de `garimpo.NICHOS` menos os 45% do YouTube.
 - [x] 12. Fila de modelagem pelo painel, perguntando o canal. Só no plano Pro, como a tela.
 - [x] 13. Views por hora medida entre duas leituras com 1 h ou mais (`medir.velocidades`), com inscritos e `$` nos cartões.

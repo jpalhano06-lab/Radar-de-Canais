@@ -768,3 +768,13 @@ html[dark] .radar-np select option { background: #1c1c1c; }
 .radar-salvos-cab { display: flex; align-items: center; gap: 6px; width: 100%; border: 0; background: none; color: inherit; font: 500 13px Roboto, Arial, sans-serif; text-align: left; cursor: pointer; }
 .radar-salvos .radar-janela-x { position: absolute; top: 4px; right: 6px; }
 .radar-salvos-lista { margin-top: 6px; }
+
+/* a aba IA do painel */
+.radar-ia-bloco, .radar-ia-molde, .radar-ia-capas { display: grid; gap: 6px; margin-top: 10px; }
+.radar-ia-saida { display: grid; gap: 6px; }
+.radar-ia-entrada { width: 100%; box-sizing: border-box; }
+.radar-ia-molde-texto { font-weight: 500; }
+.radar-ia-capa { width: 96px; height: 54px; object-fit: cover; border-radius: 6px; flex: none; }
+.radar-ia-campo small { display: block; color: var(--yt-spec-text-secondary, #606060); }
+.radar-ia-titulos { margin: 0; padding-left: 20px; font-size: 13px; }
+.radar-sem-ia-video .radar-aba[data-aba="ia"], .radar-sem-molde .radar-ia-molde, .radar-sem-capas-parecidas .radar-ia-capas { display: none !important; }

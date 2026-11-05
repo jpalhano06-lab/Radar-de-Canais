@@ -1,13 +1,15 @@
 """O que veio do Dotti Finder para a extensão: o que o servidor entrega para cada função nova."""
+import io
 import sys
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import pytest
+from PIL import Image, ImageDraw
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from radar import banco, cracha, garimpo, medir, pagina  # noqa: E402
+from radar import banco, capas, cracha, garimpo, lente_ia, medir, molde, pagina  # noqa: E402
 
 
 @pytest.fixture
@@ -150,3 +152,104 @@ def test_aviso_dos_salvos_so_traz_o_que_passou_do_corte_nas_ultimas_24_horas(bas
     _salvo_com_outlier(9, (agora - timedelta(days=3)).isoformat())
     assert [v["nota"] for v in pagina.salvos_estouraram(1)] == [8]
     assert pagina.salvos_estouraram(2) == []
+
+
+def test_mesmo_molde_com_assuntos_diferentes():
+    assert molde.de("Why Nobody Talks About Tesla Anymore") == molde.de("Why Nobody Talks About the Roman Empire Anymore".replace(" the Roman Empire", " Rome"))
+    assert molde.de("Why Nobody Talks About Tesla Anymore") != molde.de("How I Built a Boat in 30 Days")
+
+
+def test_numero_vira_marca_e_o_nome_do_canal_no_fim_nao_conta():
+    assert molde.de("10 Things You Never Knew About Sharks | Canal X") == molde.de("25 Things You Never Knew About Trains")
+
+
+def test_titulo_sem_estrutura_nao_tem_molde():
+    assert molde.de("Tesla Cybertruck Review") == ""
+    assert molde.de("") == ""
+
+
+def _video_molde(vid, canal, titulo, views):
+    banco.executar("INSERT INTO canais (id, titulo, base_longos) VALUES (?, ?, 1000) ON CONFLICT DO NOTHING", canal, canal)
+    banco.executar("INSERT INTO videos (id, canal_id, titulo, views, duracao_s) VALUES (?,?,?,?,600)", vid, canal, titulo, views)
+
+
+def test_molde_preenche_e_conta_quem_escreve_assim(base):
+    _video_molde("a", "UC1", "Why Nobody Talks About Tesla", 9000)
+    _video_molde("b", "UC2", "Why Nobody Talks About Rome", 3000)
+    _video_molde("c", "UC2", "Why Nobody Talks About Sharks", 1000)
+    _video_molde("d", "UC3", "Boat Review", 500)
+    assert molde.preencher() == 4 and molde.preencher() == 0
+    d = molde.parecidos("Why Nobody Talks About Trains", "c")
+    assert d["total"] == 2 and d["canais"] == 2 and d["lift"] == 6.0
+    assert [v["id"] for v in d["videos"]] == ["a", "b"]
+
+
+def _imagem(desenhar):
+    tela = Image.new("L", (320, 180), 30)
+    desenhar(ImageDraw.Draw(tela))
+    saida = io.BytesIO()
+    tela.convert("RGB").save(saida, "JPEG")
+    return saida.getvalue()
+
+
+def test_capas_de_mesma_composicao_sao_parecidas_e_as_outras_nao():
+    esquerda = lambda d: d.rectangle((0, 0, 150, 180), fill=230)  # noqa: E731
+    quase = lambda d: d.rectangle((0, 0, 156, 180), fill=220)  # noqa: E731
+    outra = lambda d: [d.rectangle((x, 0, x + 18, 180), fill=240) for x in range(0, 320, 40)]  # noqa: E731
+    a, b, c = (capas.impressao(_imagem(f)) for f in (esquerda, quase, outra))
+    assert capas.parecenca(a, a) == 100
+    assert capas.parecenca(a, b) > capas.parecenca(a, c)
+
+
+def test_impressao_cabe_no_sqlite(base):
+    banco.executar("INSERT INTO capas (video_id, hash) VALUES ('x', ?)", -(1 << 63))
+    assert banco.um("SELECT hash FROM capas WHERE video_id='x'")["hash"] == -(1 << 63)
+
+
+def test_capa_apagada_nao_e_tentada_de_novo(base):
+    banco.executar("INSERT INTO videos (id, canal_id, titulo) VALUES ('m', 'UC1', 't')")
+    banco.executar("INSERT INTO outliers (video_id, canal_id, nota, achado) VALUES ('m', 'UC1', 9, '')")
+    assert capas.preencher(baixar=lambda v: None) == 1
+    assert capas.preencher(baixar=lambda v: None) == 0
+
+
+def test_falha_de_rede_nao_marca_a_capa_como_apagada(base):
+    banco.executar("INSERT INTO videos (id, canal_id, titulo) VALUES ('r', 'UC1', 't')")
+    banco.executar("INSERT INTO outliers (video_id, canal_id, nota, achado) VALUES ('r', 'UC1', 9, '')")
+    capas.preencher(baixar=lambda v: capas.TENTAR_DEPOIS)
+    assert banco.um("SELECT COUNT(*) AS n FROM capas")["n"] == 0
+    assert capas.preencher(baixar=lambda v: 7) == 1
+    assert banco.um("SELECT hash FROM capas WHERE video_id='r'")["hash"] == 7
+
+
+def test_parecidas_nao_devolve_o_proprio_video_e_respeita_o_minimo(base):
+    _video_molde("p1", "UC1", "Um", 100)
+    _video_molde("p2", "UC1", "Dois", 200)
+    _video_molde("p3", "UC1", "Três", 300)
+    for vid, h in (("p1", 0), ("p2", 1), ("p3", 0x7FFFFFFFFFFFFFFF)):
+        banco.executar("INSERT INTO outliers (video_id, canal_id, nota, achado) VALUES (?, 'UC1', 9, '')", vid)
+        banco.executar("INSERT INTO capas (video_id, hash) VALUES (?, ?)", vid, h)
+    d = capas.parecidas("p1")
+    assert [(v["id"], v["parecido"]) for v in d["videos"]] == [("p2", 98)] and d["indice"] == 3
+
+
+def test_leitura_da_ia_fica_guardada(base, monkeypatch):
+    chamadas = []
+    monkeypatch.setattr(lente_ia.roteiro_claude, "_claude", lambda s, p: chamadas.append(p) or '```json\n{"resumo": "curiosidade"}\n```')
+    assert lente_ia.por_que("abcdefghijk", "Título")["resumo"] == "curiosidade"
+    lente_ia.por_que("abcdefghijk", "Título")
+    assert len(chamadas) == 1
+    lente_ia.por_que("abcdefghijk", "Título", novo=True)
+    assert len(chamadas) == 2
+
+
+def test_titulos_sem_nenhum_titulo_e_erro(base, monkeypatch):
+    monkeypatch.setattr(lente_ia.roteiro_claude, "_claude", lambda s, p: '{"titulos": []}')
+    with pytest.raises(RuntimeError):
+        lente_ia.titulos("Título", "assunto")
+
+
+def test_receita_da_capa_sem_resposta_da_visao_e_erro(base, monkeypatch):
+    monkeypatch.setattr(lente_ia.ia, "_perguntar", lambda *a, **k: None)
+    with pytest.raises(RuntimeError):
+        lente_ia.receita_da_capa("abcdefghijk")

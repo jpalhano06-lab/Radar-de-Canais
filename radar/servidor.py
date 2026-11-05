@@ -22,7 +22,7 @@ from fastapi.staticfiles import StaticFiles
 from starlette.background import BackgroundTask
 
 from . import maquinas
-from . import alvos, banco, canal_painel, chatgpt_conta, claude_projetos, custos, descricao, diagnostico, fabrica_api, fila, funcoes, garimpo, gosto, horarios, ia, integracoes, medir, mercado, metricas, nichos, pagina, perfil, producao, publicar, radar_paises, roteiro_claude, studio, tempo, thumb, trabalho, treinamento, trello, youtube
+from . import alvos, banco, canal_painel, capas, lente_ia, molde, chatgpt_conta, claude_projetos, custos, descricao, diagnostico, fabrica_api, fila, funcoes, garimpo, gosto, horarios, ia, integracoes, medir, mercado, metricas, nichos, pagina, perfil, producao, publicar, radar_paises, roteiro_claude, studio, tempo, thumb, trabalho, treinamento, trello, youtube
 from .config import DADOS, NOME, PLANOS, RAIZ, pode
 
 WEB = RAIZ / "radar" / "web"
@@ -578,6 +578,41 @@ def ext_concorrentes(canal_id: str, medir: int = 0, u: dict = Depends(exigir("pa
         return garimpo.concorrentes(canal_id, medir_agora=bool(medir))
     except youtube.SemCota as erro:
         _sem_cota(erro)
+
+
+@app.get("/api/ext/molde/{video_id}")
+def ext_molde(video_id: str, titulo: str = "", u: dict = Depends(exigir("extensao"))):
+    """Quem escreve no mesmo molde deste título, e quanto rende."""
+    return molde.parecidos(titulo, video_id)
+
+
+@app.get("/api/ext/capas-parecidas/{video_id}")
+def ext_capas_parecidas(video_id: str, u: dict = Depends(exigir("extensao"))):
+    """As capas que estouraram mais parecidas com a deste vídeo."""
+    return capas.parecidas(video_id)
+
+
+@app.post("/api/ext/ia/{acao}")
+async def ext_ia(acao: str, request: Request, u: dict = Depends(exigir("extensao"))):
+    """As leituras de IA do painel do vídeo. Só rodam pelo botão, e o que já foi lido volta do banco."""
+    d = await request.json()
+    video, titulo = str(d.get("video_id") or ""), " ".join(str(d.get("titulo") or "").split())[:300]
+    if not re.fullmatch(r"[\w-]{11}", video) or not titulo:
+        raise HTTPException(400, "Abra um vídeo primeiro.")
+    tarefas = {
+        "por-que": lambda: lente_ia.por_que(video, titulo, str(d.get("fala") or ""), d.get("nota"), bool(d.get("novo"))),
+        "titulos": lambda: lente_ia.titulos(titulo, str(d.get("assunto") or "").strip()[:200]),
+        "adaptar": lambda: lente_ia.adaptar(video, titulo, str(d.get("lingua") or "").strip()[:40]),
+        "capa": lambda: lente_ia.receita_da_capa(video, titulo),
+    }
+    if acao not in tarefas:
+        raise HTTPException(404, "Essa leitura não existe.")
+    if acao == "titulos" and not str(d.get("assunto") or "").strip():
+        raise HTTPException(400, "Escreva o seu assunto.")
+    try:
+        return await run_in_threadpool(tarefas[acao])
+    except RuntimeError as erro:
+        raise HTTPException(502, str(erro))
 
 
 @app.get("/api/ext/salvos-estouraram")
@@ -3083,6 +3118,8 @@ def _ligar():
     threading.Thread(target=_relogio, daemon=True).start()
     threading.Thread(target=_acordado, daemon=True, name="acordado").start()
     fila.iniciar_vigia()
+    molde.iniciar()
+    capas.iniciar()
 
 
 # ---------------------------------------------------------------- site

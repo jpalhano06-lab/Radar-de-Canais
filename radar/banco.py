@@ -152,6 +152,10 @@ CREATE TABLE IF NOT EXISTS depoimentos (
     quando TEXT NOT NULL,
     mostrar INTEGER NOT NULL DEFAULT 1
 );
+CREATE TABLE IF NOT EXISTS capas (
+    video_id TEXT PRIMARY KEY,
+    hash INTEGER
+);
 CREATE TABLE IF NOT EXISTS modelar (
     usuario_id INTEGER NOT NULL,
     video_id TEXT NOT NULL,
@@ -326,6 +330,7 @@ CREATE TABLE IF NOT EXISTS traducoes (
 
 # colunas que entraram depois do primeiro banco: são criadas no banco que já existe
 COLUNAS_NOVAS = {
+    "videos": {"molde": "TEXT"},   # a estrutura do título (molde.py); NULL = ainda não preenchido, vazio = não tem molde
     "modelar": {"canal_id": "TEXT NOT NULL DEFAULT ''"},   # para qual canal seu é esse vídeo da fila (a extensão pergunta)
     # o vídeo feito em outra máquina (maquinas.py): quem está com ele, até quando, e a prova da entrega
     "producoes_fila": {"maquina_id": "INTEGER", "lease": "TEXT NOT NULL DEFAULT ''", "lease_ate": "REAL NOT NULL DEFAULT 0",
@@ -369,6 +374,7 @@ def _migrar(c: sqlite3.Connection) -> None:
             if nome not in existentes:
                 c.execute(f"ALTER TABLE {tabela} ADD COLUMN {nome} {tipo}")
     c.execute("CREATE INDEX IF NOT EXISTS canais_subnicho ON canais(subnicho)")
+    c.execute("CREATE INDEX IF NOT EXISTS videos_molde ON videos(molde)")
     feitos = {l[0] for l in c.execute("SELECT chave FROM ajustes WHERE chave LIKE 'conserto:%'")}
     for nome, sql in CONSERTOS.items():
         if f"conserto:{nome}" not in feitos:
