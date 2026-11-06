@@ -1420,13 +1420,16 @@ async function formProducao(caixa, canalId, depois = () => {}, perguntarDeNovo =
       <p class="sub">O agente guarda o jeito de escrever do canal: tom, público, como abrir e fechar, o que evitar. Vale para os próximos roteiros${a.id ? " de todos os canais que usam este agente" : ""}.</p>
       <label class="campo"><span>Nome</span><input id="ag-nome" value="${esc(a.nome)}" placeholder="Ex.: canal de animais em português"></label>
       <label class="campo"><span>Ideal para (opcional)</span><input id="ag-ideal" value="${esc(a.ideal_para || "")}" placeholder="Ex.: modelar um vídeo que foi muito bem num canal de outro país"></label>
+      ${seletorDeTema("ag-tema", a.tema || "", "Tema dos vídeos deste agente", "A Nova produção já abre com ele.")}
       ${a.claude_uuid ? `<p class="sub">${ligadoAoClaude(a)}. As instruções e os arquivos vêm de lá: para mudar, mude o projeto no claude.ai.</p>` : ""}
       <label class="campo"><span>Instruções</span><textarea id="ag-instr" rows="12" ${a.claude_uuid ? "readonly" : ""} placeholder="Cole aqui as instruções (de um projeto do claude.ai, por exemplo)">${esc(a.instrucoes)}</textarea></label>
       <div class="linha"><button class="botao" id="ag-salvar">Salvar o agente</button><button class="botao sec" id="ag-cancelar">Cancelar</button></div></div>`;
+    let tema = a.tema || "";
+    ligarTema(caixa.querySelector("#ag-tema"), (v) => { tema = v; });
     caixa.querySelector("#ag-cancelar").onclick = () => resumo();
     caixa.querySelector("#ag-salvar").onclick = (e) => carregando(e.currentTarget, "Salvando…", async () => {
       const r = await api("/api/projetos", { method: "POST", body: { id: a.id || null, nome: caixa.querySelector("#ag-nome").value,
-        instrucoes: caixa.querySelector("#ag-instr").value, ideal_para: caixa.querySelector("#ag-ideal").value } });
+        instrucoes: caixa.querySelector("#ag-instr").value, ideal_para: caixa.querySelector("#ag-ideal").value, tema } });
       projetos = (await api("/api/projetos")).projetos;
       if (!a.id) {
         await api(`/api/producao/${encodeURIComponent(canalId)}`, { method: "POST", body: { ...p, projeto_roteiro_id: String(r.id) } });
@@ -3089,6 +3092,65 @@ async function telaDeMaquinas() {
 const TEMAS_ANIMACAO = [["", "Padrão do canal"], ["noticiario", "Noticiário"], ["dossie", "Dossiê"], ["cinema", "Cinema"],
   ["jornal", "Jornal"], ["caderno", "Caderno"], ["planilha", "Planilha"], ["hacker", "Hacker"], ["terror", "Terror"],
   ["colagem", "Colagem"], ["cinetico", "Cinético"], ["arquivo", "Pasta de caso"], ["reaberto", "Caso reaberto"]];
+// o que aparece ao passar o mouse: como o tema fica na tela (animacoes.TEMAS e DESENHOS, na fábrica) e para que serve
+const DICAS_DO_TEMA = {
+  "": "Sem tema próprio: o vídeo sai com o visual já configurado no canal.",
+  noticiario: "Telejornal: azul-escuro, vermelho e uma faixa na parte de baixo. Bom para notícias, economia e dados.",
+  dossie: "Documento secreto: letra de máquina de escrever, tons de papel velho e moldura tracejada. Bom para investigações e mistérios.",
+  cinema: "Filme: faixas pretas em cima e embaixo e tons dourados. Bom para documentários, biografias e viagens.",
+  jornal: "Jornal impresso: fundo de papel claro, letra com serifa e linha dupla no topo. Bom para notícias e fatos históricos.",
+  caderno: "Caderno pautado: papel claro, linhas azuis e margem vermelha. Bom para explicativos e curiosidades.",
+  planilha: "Planilha: fundo claro com grade verde. Bom para finanças, negócios, números e rankings.",
+  hacker: "Terminal: verde neon no escuro, letra de código e linhas de monitor. Bom para tecnologia, golpes e segurança digital.",
+  terror: "Escuro, vermelho-sangue e bordas apagadas. Bom para terror, lendas e casos sem explicação.",
+  colagem: "Recorte de revista: papel bege, texto um pouco torto e fita amarela. Bom para biografias, cultura e história.",
+  cinetico: "Impacto: letra grossa em maiúsculas, amarelo sobre preto. Bom para listas, curiosidades rápidas e motivação.",
+  arquivo: "Pasta de arquivo: papel pardo, aba no topo e letra de máquina de escrever. Bom para true crime e investigações.",
+  reaberto: "Fita de isolamento: fundo escuro com fita amarela e preta inclinada. Bom para true crime pesado e casos reabertos.",
+};
+// os botões do tema, usados na Nova produção e no formulário do agente
+function seletorDeTema(id, valor, rotulo, nota = "") {
+  return `<div class="campo" id="${id}-campo"><span>${esc(rotulo)}</span>
+    <div class="tema-lista" id="${id}" role="group" aria-label="${esc(rotulo)}">${TEMAS_ANIMACAO.map(([v, r]) => `<button type="button"
+      class="np-canal tema-opcao ${v === valor ? "escolhido" : ""}" data-tema="${v}" aria-pressed="${v === valor}" aria-description="${esc(DICAS_DO_TEMA[v])}">${esc(r)}</button>`).join("")}</div>
+    <small class="np-dica">Muda a cor, a letra e a moldura das animações e dos textos na tela.${nota ? " " + esc(nota) : ""}</small></div>`;
+}
+function marcarTema(lista, valor) {
+  lista?.querySelectorAll(".tema-opcao").forEach((b) => {
+    const escolhido = b.dataset.tema === valor;
+    b.classList.toggle("escolhido", escolhido);
+    b.setAttribute("aria-pressed", String(escolhido));
+  });
+}
+// o clique fica em cada lista; a dica mora no body, fora de qualquer caixa que corte o que passa da borda
+function ligarTema(lista, aoEscolher) {
+  if (!lista) return;
+  lista.onclick = (e) => {
+    const b = e.target.closest(".tema-opcao");
+    if (!b) return;
+    marcarTema(lista, b.dataset.tema);
+    aoEscolher(b.dataset.tema);
+  };
+}
+function fecharDicaDoTema() { document.getElementById("dica-tema")?.remove(); }
+function abrirDicaDoTema(b) {
+  fecharDicaDoTema();
+  const dica = document.createElement("div");
+  dica.id = "dica-tema";
+  dica.setAttribute("role", "tooltip");
+  dica.textContent = DICAS_DO_TEMA[b.dataset.tema] || "";
+  document.body.append(dica);
+  const r = b.getBoundingClientRect(), d = dica.getBoundingClientRect();
+  dica.style.left = `${Math.max(8, Math.min(r.left, innerWidth - d.width - 8))}px`;
+  dica.style.top = `${r.bottom + 8 + d.height > innerHeight ? r.top - d.height - 8 : r.bottom + 8}px`;
+}
+for (const entra of ["mouseover", "focusin"]) document.addEventListener(entra, (e) => {
+  const b = e.target.closest?.(".tema-opcao");
+  if (b) abrirDicaDoTema(b);
+});
+for (const sai of ["mouseout", "focusout"]) document.addEventListener(sai, (e) => {
+  if (e.target.closest?.(".tema-opcao")) fecharDicaDoTema();
+});
 // o que a Nova produção deixa mudar só neste vídeo: [campo, rótulo, opções]. Vazio é o padrão do canal
 const OPCOES_DO_VIDEO = [
   ["ritmo", "Segundos por cena", [["", "3 a 5 s"], ["4-6", "4 a 6 s"], ["5-8", "5 a 8 s"]]],
@@ -3157,6 +3219,10 @@ async function novaProducao(preset = {}) {
     try { N.custo = await api("/api/fila/estimativa?" + consulta({ canal: N.cfg?.perfil || "", minutos: minutos().toFixed(1) })); } catch { N.custo = null; }
     desenharPrevia();
   };
+  // o agente traz o tema dele; sem tema no agente, volta o último escolhido aqui. Clicar em outro vale só para este vídeo
+  const temaDoAgenteEscolhido = () => {
+    N.tema = agentes.find((a) => String(a.id) === String(N.agente))?.tema || guardado("np-tema", "");
+  };
   const escolherCanal = async (id) => {
     N.canal = id;
     guardar("np-canal", id);
@@ -3164,6 +3230,7 @@ async function novaProducao(preset = {}) {
       N.cfg = await api(`/api/producao/${encodeURIComponent(id)}`);
       N.lingua = N.cfg.lingua || N.lingua;
       N.agente = N.cfg.projeto_roteiro_id || "";
+      temaDoAgenteEscolhido();
       N.ppm = (await api("/api/roteiros/ritmo?" + consulta({ perfil: N.cfg.perfil, lingua: N.lingua }))).ppm || 150;
       N.caracteres = Math.round((N.cfg.minutos || 12) * N.ppm * CARACTERES_POR_PALAVRA / 10) * 10;
     } catch { N.cfg = null; }
@@ -3179,8 +3246,7 @@ async function novaProducao(preset = {}) {
       <select id="np-footage">${[[0, "Não usar"], [15, "15% das cenas"], [25, "25% das cenas"], [40, "40% das cenas"]].map(([v, r]) => `<option value="${v}" ${v === N.footage ? "selected" : ""}>${r}</option>`).join("")}</select>
       ${N.footage ? '<small class="np-dica alerta">Trecho de terceiro pode render reivindicação de direitos no YouTube.</small>' : ""}</label>`;
     const revisarSo = `<label class="np-revisar"><input type="checkbox" id="np-revisar" ${N.revisar ? "checked" : ""}><span><b>Parar para eu revisar o roteiro</b><small>O Claude escreve e espera você aprovar no Acompanhar antes de ir para a fábrica.</small></span></label>`;
-    const temaHtml = `<label class="campo"><span>Tema das animações</span>
-      <select id="np-tema">${TEMAS_ANIMACAO.map(([v, r]) => `<option value="${v}" ${v === N.tema ? "selected" : ""}>${r}</option>`).join("")}</select></label>`;
+    const temaHtml = seletorDeTema("np-tema", N.tema, "Tema das animações", agente?.tema ? `O agente ${agente.nome} usa ${TEMAS_ANIMACAO.find(([v]) => v === agente.tema)?.[1]}.` : "");
     const destinoHtml = N.maquinas.length ? `<label class="campo"><span>Onde produzir</span>
       <select id="np-destino"><option value="">Esta máquina</option><option value="robo" ${N.destino ? "selected" : ""}>A primeira máquina livre (${N.maquinas.filter((m) => m.online).length} ligada${N.maquinas.filter((m) => m.online).length === 1 ? "" : "s"})</option></select></label>` : "";
     const opcoesHtml = `<details class="campo np-opcoes" ${N.opcoesAbertas ? "open" : ""}><summary>Mais opções deste vídeo</summary><div class="np-duas">${OPCOES_DO_VIDEO.map(([campo, rotulo, lista]) => `<label class="campo"><span>${rotulo}</span><select class="np-opcao" data-campo="${campo}">${lista.map(([v, r]) => `<option value="${v}" ${v === (N.opcoes[campo] || "") ? "selected" : ""}>${r}</option>`).join("")}</select></label>`).join("")}</div></details>`;
@@ -3238,7 +3304,7 @@ async function novaProducao(preset = {}) {
     campos.querySelectorAll(".np-canal img").forEach((img) => (img.onerror = () => {
       const i = document.createElement("i"); i.textContent = img.dataset.sigla; img.replaceWith(i);
     }));
-    $n("np-agente")?.addEventListener("change", (e) => { N.agente = e.target.value; desenhar(); desenharPrevia(); });
+    $n("np-agente")?.addEventListener("change", (e) => { N.agente = e.target.value; temaDoAgenteEscolhido(); desenhar(); desenharPrevia(); });
     $n("np-lingua")?.addEventListener("change", (e) => { N.lingua = e.target.value; desenharPrevia(); });
     campos.querySelectorAll("[data-modo]").forEach((b) => (b.onclick = () => { N.modo = b.dataset.modo; desenhar(); desenharPrevia(); }));
     $n("np-roteiro")?.addEventListener("input", (e) => { N.roteiro = e.target.value; desenharPrevia(); });
@@ -3250,7 +3316,7 @@ async function novaProducao(preset = {}) {
     $n("np-obs")?.addEventListener("input", (e) => { N.obs = e.target.value; });
     $n("np-revisar").onchange = (e) => { N.revisar = e.target.checked; desenharPrevia(); };
     $n("np-footage").onchange = (e) => { N.footage = Number(e.target.value) || 0; guardar("np-footage", String(N.footage)); desenhar(); desenharPrevia(); };
-    $n("np-tema").onchange = (e) => { N.tema = e.target.value; guardar("np-tema", N.tema); desenharPrevia(); };
+    ligarTema($n("np-tema"), (v) => { N.tema = v; guardar("np-tema", v); desenharPrevia(); });
     if ($n("np-destino")) $n("np-destino").onchange = (e) => { N.destino = e.target.value; desenharPrevia(); };
     campos.querySelector(".np-opcoes").ontoggle = (e) => { N.opcoesAbertas = e.target.open; };
     campos.querySelectorAll(".np-opcao").forEach((s) => (s.onchange = () => { N.opcoes[s.dataset.campo] = s.value; desenharPrevia(); }));
@@ -3262,7 +3328,7 @@ async function novaProducao(preset = {}) {
     if (!N.titulo.trim()) { erro.textContent = "Escreva o título do vídeo."; return; }
     if (!N.canal) { erro.textContent = "Escolha o canal."; N.passo = 2; desenhar(); return; }
     const pedido = { titulo: N.titulo, link: N.link, canal_id: N.canal, agente_id: N.agente, lingua: N.lingua, revisar: N.revisar,
-      ...(N.footage ? { footage_real: N.footage } : {}), ...(N.tema ? { tema: N.tema } : {}), ...(N.destino ? { destino: N.destino } : {}),
+      ...(N.footage ? { footage_real: N.footage } : {}), ...(N.tema ? { tema: N.tema } : { tema_do_canal: true }), ...(N.destino ? { destino: N.destino } : {}),
       ...Object.fromEntries(Object.entries(N.opcoes).filter(([, v]) => v)),
       ...(N.modo === "manual" ? { roteiro_manual: N.roteiro } : { caracteres: N.caracteres, nicho: N.nicho, observacao: N.obs }) };
     try {

@@ -17,7 +17,7 @@ MIN_CARACTERES, MAX_CARACTERES = 1000, 80000
 LIMITES = (1, 2, 3, 4, 6, 8)
 ESCRITAS_AO_MESMO_TEMPO = 2       # roteiros pelo Claude ao mesmo tempo (20 pedidos de uma vez eram 20 chamadas juntas)
 CAMPOS = ("titulo", "link", "canal_id", "agente_id", "lingua", "caracteres", "roteiro_manual", "nicho", "observacao",
-          "revisar", "perfil", "footage_real", "tema", "destino", "ritmo", "edicao", "transicao", "camada", "ia", "acervo",
+          "revisar", "perfil", "footage_real", "tema", "tema_do_canal", "destino", "ritmo", "edicao", "transicao", "camada", "ia", "acervo",
           "avatar", "musica", "som_textos", "video_ia")
 FOOTAGE_REAL = (0, 15, 25, 40)    # % das cenas com trecho de vídeo real do YouTube (o garimpo da fábrica)
 # o que a Nova produção deixa escolher por vídeo. Vazio é o padrão do canal, e aí nada é gravado no projeto
@@ -35,6 +35,18 @@ ESCOLHAS = {
     "som_textos": ("sim",),
     "video_ia": ("10", "25"),  # % das cenas de imagem de IA que ganham movimento; cada clipe é pago à parte
 }
+
+
+def opcoes_do(usuario_id: int, pedido: dict, cfg: dict | None = None) -> dict:
+    """O que vai para o projeto. Sem tema escolhido vale o do agente, a não ser que a pessoa tenha pedido o padrão do
+    canal (tema_do_canal), que aí fica como está."""
+    opcoes = {k: pedido[k] for k in ("footage_real", *ESCOLHAS) if pedido.get(k)}
+    agente = pedido.get("agente_id") or (cfg or {}).get("projeto_roteiro_id")
+    if "tema" not in opcoes and not pedido.get("tema_do_canal") and agente:
+        linha = banco.um("SELECT tema FROM projetos_roteiro WHERE id=? AND usuario_id=?", int(agente), usuario_id)
+        if linha and linha["tema"] in ESCOLHAS["tema"]:
+            opcoes["tema"] = linha["tema"]
+    return opcoes
 
 
 def minutos_de(caracteres: int, ppm: int) -> float:
@@ -309,7 +321,7 @@ def passo(fabrica=None, roteirista=None, em_thread: bool = True, config_canal=No
             try:
                 if not projeto:
                     # o projeto fica guardado assim que existe: "Tentar de novo" e um reinício reaproveitam, sem pagar outro
-                    opcoes = {k: pedido[k] for k in ("footage_real", *ESCOLHAS) if pedido.get(k)}
+                    opcoes = opcoes_do(linha["usuario_id"], pedido, cfg)
                     projeto = roteirista.enviar(linha["usuario_id"], linha["roteiro"], perfil_do(pedido, cfg),
                                                 **({"opcoes": opcoes} if opcoes else {}))["projeto"]
                     banco.executar("UPDATE producoes_fila SET projeto=? WHERE id=?", projeto, linha["id"])

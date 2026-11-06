@@ -126,7 +126,7 @@ def _trabalho(linha: dict, lease: str) -> dict:
     pedido = json.loads(linha["pedido"])
     cfg = fila._padrao()[2](linha["usuario_id"], pedido["canal_id"]) if pedido.get("canal_id") else {}
     pasta, meta = roteiro_claude._do_usuario(linha["usuario_id"], linha["roteiro"])
-    config, do_perfil = roteiro_claude.ajustes_do_video({k: pedido[k] for k in ("footage_real", *fila.ESCOLHAS) if pedido.get(k)})
+    config, do_perfil = roteiro_claude.ajustes_do_video(fila.opcoes_do(linha["usuario_id"], pedido, cfg))
     return {"id": linha["id"], "lease": lease, "lease_segundos": LEASE_SEGUNDOS, "projeto": f"robo-{linha['id']}",
             "perfil": fila.perfil_do(pedido, cfg), "titulo": pedido.get("titulo", ""),
             "titulo_entrega": roteiro_claude.titulo_de_entrega(meta),

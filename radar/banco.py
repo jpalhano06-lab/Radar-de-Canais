@@ -346,7 +346,8 @@ COLUNAS_NOVAS = {
     # claude_*, arquivos e sincronizado: o projeto do claude.ai ligado ao agente (claude_projetos.py)
     "projetos_roteiro": {"ideal_para": "TEXT NOT NULL DEFAULT ''", "tipo": "TEXT NOT NULL DEFAULT 'roteiro'",
                          "claude_uuid": "TEXT NOT NULL DEFAULT ''", "claude_nome": "TEXT NOT NULL DEFAULT ''",
-                         "arquivos": "TEXT NOT NULL DEFAULT ''", "sincronizado": "TEXT NOT NULL DEFAULT ''"},
+                         "arquivos": "TEXT NOT NULL DEFAULT ''", "sincronizado": "TEXT NOT NULL DEFAULT ''",
+                         "tema": "TEXT NOT NULL DEFAULT ''"},  # o tema dos vídeos deste agente (fila.ESCOLHAS)
     "buscas_feitas": {"vezes": "INTEGER NOT NULL DEFAULT 0", "total": "INTEGER NOT NULL DEFAULT 0", "zeros": "INTEGER NOT NULL DEFAULT 0"},
 }
 

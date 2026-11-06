@@ -420,6 +420,35 @@ def test_opcoes_do_video_viram_ajustes_do_projeto():
     assert perfil == {"musica": None, "avatar": {"ativo": False}, "visual": "cinema", "transicao": "preto", "camada": "poeira"}
 
 
+def _agente(tema):
+    return banco.executar("INSERT INTO projetos_roteiro (usuario_id, nome, instrucoes, tema, criado) VALUES (1,'A','',?,'')", tema)
+
+
+def test_o_tema_do_agente_vale_quando_o_pedido_nao_escolhe(db):
+    banco.um("SELECT 1")
+    agente = _agente("hacker")
+    assert fila.opcoes_do(1, {"agente_id": str(agente)}) == {"tema": "hacker"}
+    assert fila.opcoes_do(1, {}, {"projeto_roteiro_id": str(agente)}) == {"tema": "hacker"}     # o agente do canal
+    assert fila.opcoes_do(2, {"agente_id": str(agente)}) == {}                                   # agente de outra pessoa
+
+
+def test_a_escolha_do_video_vale_por_cima_do_agente(db):
+    banco.um("SELECT 1")
+    agente = _agente("hacker")
+    assert fila.opcoes_do(1, {"agente_id": agente, "tema": "terror"}) == {"tema": "terror"}
+    assert fila.opcoes_do(1, {"agente_id": agente, "tema_do_canal": True}) == {}
+
+
+def test_agente_sem_tema_nao_muda_nada(db):
+    banco.um("SELECT 1")
+    assert fila.opcoes_do(1, {"agente_id": _agente(""), "footage_real": 15}) == {"footage_real": 15}
+
+
+def test_tema_do_canal_fica_guardado_no_pedido(db):
+    linha = fila.criar(1, {"titulo": "T", "caracteres": 10620, "tema_do_canal": True}, True)
+    assert fila.item(1, linha["id"])["pedido"]["tema_do_canal"] is True
+
+
 def test_sem_opcao_nada_e_gravado_no_projeto():
     from radar import roteiro_claude
 

@@ -2800,7 +2800,7 @@ async def roteiro_descricao(nome: str, request: Request, u: dict = Depends(usuar
 
 @app.get("/api/projetos")
 def projetos(u: dict = Depends(usuario)):
-    lista = banco.todos("""SELECT id, nome, instrucoes, ideal_para, tipo, claude_uuid, claude_nome, sincronizado, arquivos
+    lista = banco.todos("""SELECT id, nome, instrucoes, ideal_para, tipo, tema, claude_uuid, claude_nome, sincronizado, arquivos
                            FROM projetos_roteiro WHERE usuario_id=? ORDER BY tipo, nome""", u["id"])
     for p in lista:     # os arquivos do projeto do claude.ai são grandes: a tela só mostra quantos são
         try:
@@ -2838,12 +2838,18 @@ async def salvar_projeto(request: Request, u: dict = Depends(usuario)):
     tipo = str(d.get("tipo") or "roteiro")
     if tipo not in ("roteiro", "descricao"):
         raise HTTPException(400, "O agente é de roteiro ou de descrição.")
+    # o tema dos vídeos deste agente; vazio é o padrão do canal, e sem o campo no pedido fica o que já estava
+    tema = str(d["tema"] or "") if "tema" in d else None
+    if tema and tema not in fila.ESCOLHAS["tema"]:
+        raise HTTPException(400, "Esse tema não existe.")
     if d.get("id"):
-        banco.executar("""UPDATE projetos_roteiro SET nome=?, instrucoes=?, ideal_para=COALESCE(?, ideal_para), tipo=?
-                           WHERE id=? AND usuario_id=?""", nome, instrucoes, ideal, tipo, int(d["id"]), u["id"])
+        banco.executar("""UPDATE projetos_roteiro SET nome=?, instrucoes=?, ideal_para=COALESCE(?, ideal_para), tipo=?,
+                                 tema=COALESCE(?, tema) WHERE id=? AND usuario_id=?""",
+                       nome, instrucoes, ideal, tipo, tema, int(d["id"]), u["id"])
         return {"id": int(d["id"])}
-    return {"id": banco.executar("""INSERT INTO projetos_roteiro (usuario_id, nome, instrucoes, ideal_para, tipo, criado)
-                                    VALUES (?,?,?,?,?,?)""", u["id"], nome, instrucoes, ideal or "", tipo, banco.agora())}
+    return {"id": banco.executar("""INSERT INTO projetos_roteiro (usuario_id, nome, instrucoes, ideal_para, tipo, tema, criado)
+                                    VALUES (?,?,?,?,?,?,?)""", u["id"], nome, instrucoes, ideal or "", tipo, tema or "",
+                                 banco.agora())}
 
 
 @app.delete("/api/projetos/{pid}")
