@@ -436,7 +436,7 @@ def test_a_escolha_do_video_vale_por_cima_do_agente(db):
     banco.um("SELECT 1")
     agente = _agente("hacker")
     assert fila.opcoes_do(1, {"agente_id": agente, "tema": "terror"}) == {"tema": "terror"}
-    assert fila.opcoes_do(1, {"agente_id": agente, "tema_do_canal": True}) == {}
+    assert fila.opcoes_do(1, {"agente_id": agente, "escolhido_na_tela": True}) == {}
 
 
 def test_agente_sem_tema_nao_muda_nada(db):
@@ -444,9 +444,33 @@ def test_agente_sem_tema_nao_muda_nada(db):
     assert fila.opcoes_do(1, {"agente_id": _agente(""), "footage_real": 15}) == {"footage_real": 15}
 
 
-def test_tema_do_canal_fica_guardado_no_pedido(db):
-    linha = fila.criar(1, {"titulo": "T", "caracteres": 10620, "tema_do_canal": True}, True)
-    assert fila.item(1, linha["id"])["pedido"]["tema_do_canal"] is True
+def test_o_que_foi_escolhido_na_tela_fica_guardado_no_pedido(db):
+    linha = fila.criar(1, {"titulo": "T", "caracteres": 10620, "escolhido_na_tela": True, "ia_pct": 0}, True)
+    pedido = fila.item(1, linha["id"])["pedido"]
+    assert pedido["escolhido_na_tela"] is True and pedido["ia_pct"] == 0
+
+
+def test_as_partes_de_ia_e_youtube_vem_do_agente(db):
+    agente = _agente("")
+    banco.executar("UPDATE projetos_roteiro SET ia_pct=75, footage_real=25 WHERE id=?", agente)
+    assert fila.opcoes_do(1, {"agente_id": agente}) == {"ia_pct": 75, "footage_real": 25}
+    assert fila.opcoes_do(1, {"agente_id": agente, "ia_pct": 10, "footage_real": 0}) == {"ia_pct": 10}
+    assert fila.opcoes_do(1, {"agente_id": agente, "escolhido_na_tela": True}) == {}
+
+
+def test_recusa_parte_de_ia_que_nao_existe_ou_que_passa_de_100(db):
+    banco.um("SELECT 1")
+    with pytest.raises(ValueError):
+        fila.criar(1, {"titulo": "T", "caracteres": 10620, "ia_pct": 33}, True)
+    with pytest.raises(ValueError):
+        fila.criar(1, {"titulo": "T", "caracteres": 10620, "ia_pct": 75, "footage_real": 40}, True)
+
+
+def test_parte_de_ia_vira_alvo_e_teto_na_fabrica():
+    from radar import roteiro_claude
+
+    assert roteiro_claude.ajustes_do_video({"ia_pct": 75})[0]["ia"] == {"fracao": 0.75, "teto": 0.75}
+    assert roteiro_claude.ajustes_do_video({"ia_pct": 0})[0]["ia"] == {"ativa": False}
 
 
 def test_sem_opcao_nada_e_gravado_no_projeto():

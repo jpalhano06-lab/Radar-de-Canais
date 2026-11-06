@@ -347,7 +347,9 @@ COLUNAS_NOVAS = {
     "projetos_roteiro": {"ideal_para": "TEXT NOT NULL DEFAULT ''", "tipo": "TEXT NOT NULL DEFAULT 'roteiro'",
                          "claude_uuid": "TEXT NOT NULL DEFAULT ''", "claude_nome": "TEXT NOT NULL DEFAULT ''",
                          "arquivos": "TEXT NOT NULL DEFAULT ''", "sincronizado": "TEXT NOT NULL DEFAULT ''",
-                         "tema": "TEXT NOT NULL DEFAULT ''"},  # o tema dos vídeos deste agente (fila.ESCOLHAS)
+                         "tema": "TEXT NOT NULL DEFAULT ''",  # o tema dos vídeos deste agente (fila.ESCOLHAS)
+                         # a parte de IA e de YouTube dos vídeos deste agente. Vazio é o padrão do canal
+                         "ia_pct": "INTEGER", "footage_real": "INTEGER"},
     "buscas_feitas": {"vezes": "INTEGER NOT NULL DEFAULT 0", "total": "INTEGER NOT NULL DEFAULT 0", "zeros": "INTEGER NOT NULL DEFAULT 0"},
 }
 

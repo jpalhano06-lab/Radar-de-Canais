@@ -537,8 +537,15 @@ nav .secao { color: var(--acento2); font-weight: 700; }
 #cores .caixa-cores { width: 290px; max-height: 80vh; overflow-y: auto; }
 
 /* a explicação de cada tema: fica solta na tela porque a lista da Nova produção corta o que passa da borda */
-.tema-lista { display: flex; flex-wrap: wrap; gap: 6px; }
-.tema-opcao { padding: 6px 12px; font-size: 13px; }
+.tema-lista { display: grid; grid-template-columns: repeat(auto-fill, minmax(112px, 1fr)); gap: 8px; }
+.tema-opcao { display: grid; gap: 0; padding: 0; overflow: hidden; border: 2px solid var(--linha); border-radius: 10px; background: var(--painel2);
+  color: var(--texto); font: inherit; font-size: 12px; font-weight: 600; cursor: pointer; text-align: left; }
+.tema-opcao img, .tema-opcao i { display: grid; place-items: center; width: 100%; aspect-ratio: 16 / 9; object-fit: cover; background: var(--linha);
+  font-style: normal; font-size: 11px; color: var(--fraco); }
+.tema-opcao span { padding: 6px 8px; }
+.tema-opcao:hover { border-color: var(--fraco); }
+.tema-opcao.escolhido { border-color: var(--acento); }
+.tema-opcao:focus-visible { outline: 2px solid var(--acento); outline-offset: 1px; }
 #dica-tema { position: fixed; z-index: 400; width: 260px; background: var(--texto); color: var(--painel); font-size: 12px;
   font-weight: 500; line-height: 1.4; padding: 9px 11px; border-radius: 10px; box-shadow: 0 10px 30px rgba(0,0,0,.25);
   pointer-events: none; }

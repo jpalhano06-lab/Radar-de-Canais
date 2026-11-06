@@ -1421,6 +1421,8 @@ async function formProducao(caixa, canalId, depois = () => {}, perguntarDeNovo =
       <label class="campo"><span>Nome</span><input id="ag-nome" value="${esc(a.nome)}" placeholder="Ex.: canal de animais em português"></label>
       <label class="campo"><span>Ideal para (opcional)</span><input id="ag-ideal" value="${esc(a.ideal_para || "")}" placeholder="Ex.: modelar um vídeo que foi muito bem num canal de outro país"></label>
       ${seletorDeTema("ag-tema", a.tema || "", "Tema dos vídeos deste agente", "A Nova produção já abre com ele.")}
+      <div class="np-duas"><label class="campo"><span>Imagem de IA</span><select id="ag-ia">${opcoesDe(PARTES_DE_IA, a.ia_pct)}</select></label>
+        <label class="campo"><span>Vídeo do YouTube</span><select id="ag-yt">${opcoesDe([["", "Padrão do canal"], ...PARTES_DE_YOUTUBE], a.footage_real)}</select></label></div>
       ${a.claude_uuid ? `<p class="sub">${ligadoAoClaude(a)}. As instruções e os arquivos vêm de lá: para mudar, mude o projeto no claude.ai.</p>` : ""}
       <label class="campo"><span>Instruções</span><textarea id="ag-instr" rows="12" ${a.claude_uuid ? "readonly" : ""} placeholder="Cole aqui as instruções (de um projeto do claude.ai, por exemplo)">${esc(a.instrucoes)}</textarea></label>
       <div class="linha"><button class="botao" id="ag-salvar">Salvar o agente</button><button class="botao sec" id="ag-cancelar">Cancelar</button></div></div>`;
@@ -1429,7 +1431,8 @@ async function formProducao(caixa, canalId, depois = () => {}, perguntarDeNovo =
     caixa.querySelector("#ag-cancelar").onclick = () => resumo();
     caixa.querySelector("#ag-salvar").onclick = (e) => carregando(e.currentTarget, "Salvando…", async () => {
       const r = await api("/api/projetos", { method: "POST", body: { id: a.id || null, nome: caixa.querySelector("#ag-nome").value,
-        instrucoes: caixa.querySelector("#ag-instr").value, ideal_para: caixa.querySelector("#ag-ideal").value, tema } });
+        instrucoes: caixa.querySelector("#ag-instr").value, ideal_para: caixa.querySelector("#ag-ideal").value, tema,
+        ia_pct: caixa.querySelector("#ag-ia").value, footage_real: caixa.querySelector("#ag-yt").value } });
       projetos = (await api("/api/projetos")).projetos;
       if (!a.id) {
         await api(`/api/producao/${encodeURIComponent(canalId)}`, { method: "POST", body: { ...p, projeto_roteiro_id: String(r.id) } });
@@ -3108,11 +3111,16 @@ const DICAS_DO_TEMA = {
   arquivo: "Pasta de arquivo: papel pardo, aba no topo e letra de máquina de escrever. Bom para true crime e investigações.",
   reaberto: "Fita de isolamento: fundo escuro com fita amarela e preta inclinada. Bom para true crime pesado e casos reabertos.",
 };
+// quanto do vídeo sai de cada lugar: o resto é foto e vídeo de banco
+const PARTES_DE_IA = [["", "Padrão do canal"], ["0", "Sem IA"], ["10", "10% das cenas"], ["25", "25% das cenas"], ["50", "50% das cenas"],
+  ["75", "75% das cenas"], ["100", "100% das cenas"]];
+const PARTES_DE_YOUTUBE = [["0", "Não usar"], ["15", "15% das cenas"], ["25", "25% das cenas"], ["40", "40% das cenas"]];
+const opcoesDe = (lista, valor) => lista.map(([v, r]) => `<option value="${v}" ${v === String(valor ?? "") ? "selected" : ""}>${r}</option>`).join("");
 // os botões do tema, usados na Nova produção e no formulário do agente
 function seletorDeTema(id, valor, rotulo, nota = "") {
   return `<div class="campo" id="${id}-campo"><span>${esc(rotulo)}</span>
     <div class="tema-lista" id="${id}" role="group" aria-label="${esc(rotulo)}">${TEMAS_ANIMACAO.map(([v, r]) => `<button type="button"
-      class="np-canal tema-opcao ${v === valor ? "escolhido" : ""}" data-tema="${v}" aria-pressed="${v === valor}" aria-description="${esc(DICAS_DO_TEMA[v])}">${esc(r)}</button>`).join("")}</div>
+      class="tema-opcao ${v === valor ? "escolhido" : ""}" data-tema="${v}" aria-pressed="${v === valor}" aria-description="${esc(DICAS_DO_TEMA[v])}">${v ? `<img src="/web/temas/${v}.jpg" alt="" loading="lazy">` : "<i>Como no canal</i>"}<span>${esc(r)}</span></button>`).join("")}</div>
     <small class="np-dica">Muda a cor, a letra e a moldura das animações e dos textos na tela.${nota ? " " + esc(nota) : ""}</small></div>`;
 }
 function marcarTema(lista, valor) {
@@ -3174,7 +3182,7 @@ async function novaProducao(preset = {}) {
   const lembrado = canais.some((c) => c.id === guardado("np-canal", "")) ? guardado("np-canal", "") : "";
   const N = { passo: 1, titulo: preset.titulo || "", link: preset.link || "", canal: preset.canal || CANAL_ATUAL || lembrado || (canais.length === 1 ? canais[0].id : ""), cfg: null, agente: "",
     lingua: "português", ppm: 150, caracteres: 0, modo: "claude", roteiro: "", nicho: "", obs: "", revisar: false, ref: null, custo: null,
-    footage: Number(guardado("np-footage", "0")) || 0, tema: guardado("np-tema", ""), destino: "", maquinas: [], opcoes: {}, opcoesAbertas: false };
+    footage: Number(guardado("np-footage", "0")) || 0, tema: guardado("np-tema", ""), iaPct: guardado("np-ia", ""), destino: "", maquinas: [], opcoes: {}, opcoesAbertas: false };
   N.maquinas = maquinasDeFora;
   N.caracteres = Math.round(12 * N.ppm * CARACTERES_POR_PALAVRA / 10) * 10;
   const minutos = () => N.caracteres / CARACTERES_POR_PALAVRA / N.ppm;
@@ -3211,6 +3219,7 @@ async function novaProducao(preset = {}) {
         <dt>Tamanho</dt><dd>${N.modo === "manual" ? `${(N.roteiro.split(/\s+/).filter(Boolean).length).toLocaleString("pt-BR")} palavras` : `≈ ${Math.round(minutos())} min · ~${palavras().toLocaleString("pt-BR")} palavras`}</dd>
         <dt>Revisão</dt><dd>${N.revisar ? "Para para eu revisar" : "Segue direto"}</dd>
         <dt>Footage real</dt><dd>${N.footage ? `${N.footage}% das cenas` : "Não usar"}</dd>
+        <dt>Imagem de IA</dt><dd>${N.iaPct === "" ? "Padrão do canal" : N.iaPct === "0" ? "Sem IA" : `${N.iaPct}% das cenas`}</dd>
         <dt>Animações</dt><dd>${esc(TEMAS_ANIMACAO.find(([v]) => v === N.tema)?.[1] || "Padrão do canal")}</dd>
         ${N.maquinas.length ? `<dt>Onde</dt><dd>${N.destino ? "Outra máquina" : "Esta máquina"}</dd>` : ""}
         <dt>Custo</dt><dd>${N.custo?.usd != null ? `≈ US$ ${N.custo.usd.toFixed(2).replace(".", ",")}${N.custo.base === "geral" ? " (média geral)" : ""}` : "—"}</dd></dl>`;
@@ -3219,9 +3228,13 @@ async function novaProducao(preset = {}) {
     try { N.custo = await api("/api/fila/estimativa?" + consulta({ canal: N.cfg?.perfil || "", minutos: minutos().toFixed(1) })); } catch { N.custo = null; }
     desenharPrevia();
   };
-  // o agente traz o tema dele; sem tema no agente, volta o último escolhido aqui. Clicar em outro vale só para este vídeo
+  // o agente traz o tema e as partes de IA e de YouTube dele; o que ele não tem volta ao último escolhido aqui.
+  // Mudar aqui vale só para este vídeo
   const temaDoAgenteEscolhido = () => {
-    N.tema = agentes.find((a) => String(a.id) === String(N.agente))?.tema || guardado("np-tema", "");
+    const a = agentes.find((x) => String(x.id) === String(N.agente));
+    N.tema = a?.tema || guardado("np-tema", "");
+    N.iaPct = String(a?.ia_pct ?? guardado("np-ia", ""));
+    N.footage = a?.footage_real ?? (Number(guardado("np-footage", "0")) || 0);
   };
   const escolherCanal = async (id) => {
     N.canal = id;
@@ -3243,14 +3256,19 @@ async function novaProducao(preset = {}) {
           ${c.foto ? `<img src="${esc(c.foto)}" alt="" data-sigla="${esc(sigla(c.titulo))}">` : `<i>${esc(sigla(c.titulo))}</i>`}${esc(c.titulo)}</button>`).join("") || '<span class="np-dica">Nenhum canal: adicione em Meu trabalho → Canais.</span>'}</div>
         ${N.canal && N.cfg && !N.cfg.perfil ? '<span class="np-dica alerta">Este canal ainda não tem voz da fábrica: configure em Canais antes de começar.</span>' : ""}</div>`;
     const footageHtml = `<label class="campo"><span>Footage real do YouTube <small>(trechos de vídeos de outros canais; o resto segue com banco e IA)</small></span>
-      <select id="np-footage">${[[0, "Não usar"], [15, "15% das cenas"], [25, "25% das cenas"], [40, "40% das cenas"]].map(([v, r]) => `<option value="${v}" ${v === N.footage ? "selected" : ""}>${r}</option>`).join("")}</select>
+      <select id="np-footage">${opcoesDe(PARTES_DE_YOUTUBE, N.footage)}</select>
       ${N.footage ? '<small class="np-dica alerta">Trecho de terceiro pode render reivindicação de direitos no YouTube.</small>' : ""}</label>`;
     const revisarSo = `<label class="np-revisar"><input type="checkbox" id="np-revisar" ${N.revisar ? "checked" : ""}><span><b>Parar para eu revisar o roteiro</b><small>O Claude escreve e espera você aprovar no Acompanhar antes de ir para a fábrica.</small></span></label>`;
     const temaHtml = seletorDeTema("np-tema", N.tema, "Tema das animações", agente?.tema ? `O agente ${agente.nome} usa ${TEMAS_ANIMACAO.find(([v]) => v === agente.tema)?.[1]}.` : "");
     const destinoHtml = N.maquinas.length ? `<label class="campo"><span>Onde produzir</span>
       <select id="np-destino"><option value="">Esta máquina</option><option value="robo" ${N.destino ? "selected" : ""}>A primeira máquina livre (${N.maquinas.filter((m) => m.online).length} ligada${N.maquinas.filter((m) => m.online).length === 1 ? "" : "s"})</option></select></label>` : "";
     const opcoesHtml = `<details class="campo np-opcoes" ${N.opcoesAbertas ? "open" : ""}><summary>Mais opções deste vídeo</summary><div class="np-duas">${OPCOES_DO_VIDEO.map(([campo, rotulo, lista]) => `<label class="campo"><span>${rotulo}</span><select class="np-opcao" data-campo="${campo}">${lista.map(([v, r]) => `<option value="${v}" ${v === (N.opcoes[campo] || "") ? "selected" : ""}>${r}</option>`).join("")}</select></label>`).join("")}</div></details>`;
-    const revisarHtml = footageHtml + temaHtml + destinoHtml + opcoesHtml + revisarSo;
+    const passou = Number(N.iaPct || 0) + N.footage > 100;
+    const iaHtml = `<label class="campo"><span>Imagem de IA <small>(o resto segue com fotos e vídeos de banco)</small></span>
+      <select id="np-ia">${opcoesDe(PARTES_DE_IA, N.iaPct)}</select>
+      ${passou ? '<small class="np-dica alerta">IA e YouTube juntos passam de 100% das cenas.</small>' : ""}
+      ${Number(N.iaPct) >= 50 ? '<small class="np-dica">Muitas imagens gastam o limite da assinatura do ChatGPT; acabando, as que faltam saem pela chave de API, pagas.</small>' : ""}</label>`;
+    const revisarHtml = footageHtml + iaHtml + temaHtml + destinoHtml + opcoesHtml + revisarSo;
     const passos = `<div class="np-passos"><span class="${N.passo === 1 ? "ativo" : ""}">1 · O vídeo</span><span class="${N.passo === 2 ? "ativo" : ""}">2 · Editar o roteiro</span></div>`;
     if (N.passo === 1) {
       campos.innerHTML = `${passos}
@@ -3316,6 +3334,7 @@ async function novaProducao(preset = {}) {
     $n("np-obs")?.addEventListener("input", (e) => { N.obs = e.target.value; });
     $n("np-revisar").onchange = (e) => { N.revisar = e.target.checked; desenharPrevia(); };
     $n("np-footage").onchange = (e) => { N.footage = Number(e.target.value) || 0; guardar("np-footage", String(N.footage)); desenhar(); desenharPrevia(); };
+    $n("np-ia").onchange = (e) => { N.iaPct = e.target.value; guardar("np-ia", N.iaPct); desenhar(); desenharPrevia(); };
     ligarTema($n("np-tema"), (v) => { N.tema = v; guardar("np-tema", v); desenharPrevia(); });
     if ($n("np-destino")) $n("np-destino").onchange = (e) => { N.destino = e.target.value; desenharPrevia(); };
     campos.querySelector(".np-opcoes").ontoggle = (e) => { N.opcoesAbertas = e.target.open; };
@@ -3328,7 +3347,7 @@ async function novaProducao(preset = {}) {
     if (!N.titulo.trim()) { erro.textContent = "Escreva o título do vídeo."; return; }
     if (!N.canal) { erro.textContent = "Escolha o canal."; N.passo = 2; desenhar(); return; }
     const pedido = { titulo: N.titulo, link: N.link, canal_id: N.canal, agente_id: N.agente, lingua: N.lingua, revisar: N.revisar,
-      ...(N.footage ? { footage_real: N.footage } : {}), ...(N.tema ? { tema: N.tema } : { tema_do_canal: true }), ...(N.destino ? { destino: N.destino } : {}),
+      ...(N.footage ? { footage_real: N.footage } : {}), escolhido_na_tela: true, ...(N.tema ? { tema: N.tema } : {}), ...(N.iaPct !== "" ? { ia_pct: Number(N.iaPct) } : {}), ...(N.destino ? { destino: N.destino } : {}),
       ...Object.fromEntries(Object.entries(N.opcoes).filter(([, v]) => v)),
       ...(N.modo === "manual" ? { roteiro_manual: N.roteiro } : { caracteres: N.caracteres, nicho: N.nicho, observacao: N.obs }) };
     try {

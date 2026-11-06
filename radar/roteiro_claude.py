@@ -713,8 +713,11 @@ def ajustes_do_video(opcoes: dict | None) -> tuple[dict, dict]:
     if o.get("ritmo") in RITMOS:
         minimo, maximo = RITMOS[o["ritmo"]]
         config["cenas"] = {"segundos_minimo": minimo, "segundos_maximo": maximo}
-    if o.get("ia") == "sem":
+    if o.get("ia") == "sem" or o.get("ia_pct") == 0:
         config["ia"] = {"ativa": False}
+    elif o.get("ia_pct"):
+        # a mesma parte como alvo e como teto: a fábrica sobe até ela e não passa dela
+        config["ia"] = {"fracao": int(o["ia_pct"]) / 100, "teto": int(o["ia_pct"]) / 100}
     if o.get("video_ia"):
         config["video_ia"] = {"fracao": int(o["video_ia"]) / 100}
     if o.get("acervo"):

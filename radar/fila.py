@@ -17,9 +17,10 @@ MIN_CARACTERES, MAX_CARACTERES = 1000, 80000
 LIMITES = (1, 2, 3, 4, 6, 8)
 ESCRITAS_AO_MESMO_TEMPO = 2       # roteiros pelo Claude ao mesmo tempo (20 pedidos de uma vez eram 20 chamadas juntas)
 CAMPOS = ("titulo", "link", "canal_id", "agente_id", "lingua", "caracteres", "roteiro_manual", "nicho", "observacao",
-          "revisar", "perfil", "footage_real", "tema", "tema_do_canal", "destino", "ritmo", "edicao", "transicao", "camada", "ia", "acervo",
+          "revisar", "perfil", "footage_real", "ia_pct", "tema", "escolhido_na_tela", "destino", "ritmo", "edicao", "transicao", "camada", "ia", "acervo",
           "avatar", "musica", "som_textos", "video_ia")
 FOOTAGE_REAL = (0, 15, 25, 40)    # % das cenas com trecho de vídeo real do YouTube (o garimpo da fábrica)
+IA_PCT = (0, 10, 25, 50, 75, 100)  # % das cenas com imagem de IA. Sem escolha, quem decide é o agente de cenas, até ia.teto
 # o que a Nova produção deixa escolher por vídeo. Vazio é o padrão do canal, e aí nada é gravado no projeto
 ESCOLHAS = {
     "tema": ("noticiario", "dossie", "cinema", "jornal", "caderno", "planilha", "hacker", "terror", "colagem", "cinetico",
@@ -38,14 +39,24 @@ ESCOLHAS = {
 
 
 def opcoes_do(usuario_id: int, pedido: dict, cfg: dict | None = None) -> dict:
-    """O que vai para o projeto. Sem tema escolhido vale o do agente, a não ser que a pessoa tenha pedido o padrão do
-    canal (tema_do_canal), que aí fica como está."""
+    """O que vai para o projeto. O que o pedido não disse vem do agente; a Nova produção já mostrou o do agente e a
+    pessoa pode ter mudado, então o que vem dela (escolhido_na_tela) fica como está."""
     opcoes = {k: pedido[k] for k in ("footage_real", *ESCOLHAS) if pedido.get(k)}
+    if pedido.get("ia_pct") is not None:
+        opcoes["ia_pct"] = int(pedido["ia_pct"])
     agente = pedido.get("agente_id") or (cfg or {}).get("projeto_roteiro_id")
-    if "tema" not in opcoes and not pedido.get("tema_do_canal") and agente:
-        linha = banco.um("SELECT tema FROM projetos_roteiro WHERE id=? AND usuario_id=?", int(agente), usuario_id)
-        if linha and linha["tema"] in ESCOLHAS["tema"]:
-            opcoes["tema"] = linha["tema"]
+    if pedido.get("escolhido_na_tela") or not agente:
+        return opcoes
+    linha = banco.um("SELECT tema, ia_pct, footage_real FROM projetos_roteiro WHERE id=? AND usuario_id=?",
+                     int(agente), usuario_id)
+    if not linha:
+        return opcoes
+    if "tema" not in opcoes and linha["tema"] in ESCOLHAS["tema"]:
+        opcoes["tema"] = linha["tema"]
+    if "ia_pct" not in opcoes and linha["ia_pct"] is not None:
+        opcoes["ia_pct"] = linha["ia_pct"]
+    if "footage_real" not in pedido and linha["footage_real"]:
+        opcoes["footage_real"] = linha["footage_real"]
     return opcoes
 
 
@@ -71,6 +82,11 @@ def criar(usuario_id: int, pedido: dict, comecar: bool) -> dict:
     limpo["revisar"] = bool(pedido.get("revisar"))
     if int(limpo.get("footage_real") or 0) not in FOOTAGE_REAL:
         raise ValueError("A parte de footage real vai de 0 a 40%.")
+    if limpo.get("ia_pct") is not None:
+        if int(limpo["ia_pct"]) not in IA_PCT:
+            raise ValueError("Essa parte de IA não existe.")
+        if int(limpo["ia_pct"]) + int(limpo.get("footage_real") or 0) > 100:
+            raise ValueError("IA e YouTube juntos passam de 100% das cenas.")
     if limpo.get("destino") not in (None, "robo"):
         raise ValueError("Esse destino não existe.")
     for campo, validos in ESCOLHAS.items():

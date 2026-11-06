@@ -2800,7 +2800,7 @@ async def roteiro_descricao(nome: str, request: Request, u: dict = Depends(usuar
 
 @app.get("/api/projetos")
 def projetos(u: dict = Depends(usuario)):
-    lista = banco.todos("""SELECT id, nome, instrucoes, ideal_para, tipo, tema, claude_uuid, claude_nome, sincronizado, arquivos
+    lista = banco.todos("""SELECT id, nome, instrucoes, ideal_para, tipo, tema, ia_pct, footage_real, claude_uuid, claude_nome, sincronizado, arquivos
                            FROM projetos_roteiro WHERE usuario_id=? ORDER BY tipo, nome""", u["id"])
     for p in lista:     # os arquivos do projeto do claude.ai são grandes: a tela só mostra quantos são
         try:
@@ -2842,14 +2842,24 @@ async def salvar_projeto(request: Request, u: dict = Depends(usuario)):
     tema = str(d["tema"] or "") if "tema" in d else None
     if tema and tema not in fila.ESCOLHAS["tema"]:
         raise HTTPException(400, "Esse tema não existe.")
+    # a parte de IA e de YouTube dos vídeos deste agente; vazio é o padrão do canal, sem o campo fica o que já estava
+    partes = {c: (None if d[c] in (None, "") else int(d[c])) for c in ("ia_pct", "footage_real") if c in d}
+    if partes.get("ia_pct") not in (None, *fila.IA_PCT) or partes.get("footage_real") not in (None, *fila.FOOTAGE_REAL):
+        raise HTTPException(400, "Essa porcentagem não existe.")
+    if (partes.get("ia_pct") or 0) + (partes.get("footage_real") or 0) > 100:
+        raise HTTPException(400, "IA e YouTube juntos passam de 100% das cenas.")
     if d.get("id"):
         banco.executar("""UPDATE projetos_roteiro SET nome=?, instrucoes=?, ideal_para=COALESCE(?, ideal_para), tipo=?,
                                  tema=COALESCE(?, tema) WHERE id=? AND usuario_id=?""",
                        nome, instrucoes, ideal, tipo, tema, int(d["id"]), u["id"])
-        return {"id": int(d["id"])}
-    return {"id": banco.executar("""INSERT INTO projetos_roteiro (usuario_id, nome, instrucoes, ideal_para, tipo, tema, criado)
-                                    VALUES (?,?,?,?,?,?,?)""", u["id"], nome, instrucoes, ideal or "", tipo, tema or "",
-                                 banco.agora())}
+        novo = int(d["id"])
+    else:
+        novo = banco.executar("""INSERT INTO projetos_roteiro (usuario_id, nome, instrucoes, ideal_para, tipo, tema, criado)
+                                 VALUES (?,?,?,?,?,?,?)""", u["id"], nome, instrucoes, ideal or "", tipo, tema or "",
+                              banco.agora())
+    for campo, valor in partes.items():
+        banco.executar(f"UPDATE projetos_roteiro SET {campo}=? WHERE id=? AND usuario_id=?", valor, novo, u["id"])
+    return {"id": novo}
 
 
 @app.delete("/api/projetos/{pid}")
