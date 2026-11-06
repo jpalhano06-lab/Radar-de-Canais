@@ -262,7 +262,7 @@
       await esperar(1500);
     }
     await esperarPeloPlayer();
-    if (!videoDaTela()) {
+    if (!videoDaTela() && !globalThis.RadarAnuncios?.pronto()) {
       estado.trabalhando = "";
       return recado("Liguei os anúncios. A linha do tempo dos intermediários ainda não carregou (o vídeo costuma "
         + "precisar terminar de processar): quando ela aparecer, aperte o botão de novo.", true);
@@ -313,7 +313,8 @@
       recado(`${fim.erro.message || fim.erro} Coloquei ${fim.feitos} de ${tempos.length}: confira a linha do tempo e siga você.`, true);
     } else if (fim.feitos === tempos.length) {
       recado(`${fim.feitos} anúncios colocados${estado.modoAnuncio === "cada" ? ` (um a cada ${estado.cadaMin} min)` : ""}.`);
-      clicar(/^(Concluído|Concluir|Salvar|Done|Save)$/i);
+      // a janela dos espaços fecha com Continuar: sem ele, o que foi colocado não vale
+      clicar(/^(Continuar|Continue|Concluído|Concluir|Salvar|Done|Save)$/i);
       await esperar(800);
       proximaEtapa();
     } else {

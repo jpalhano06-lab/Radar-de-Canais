@@ -182,7 +182,7 @@
 
   const TELA = {
     cabecalho: "ytve-ad-breaks-editor-options-panel div.options-header",
-    linhas: "ytve-ad-breaks-editor-options-panel .ad-break-row",
+    linhas: "ytve-ad-breaks-editor-options-panel .ad-break-row, .ytve-ad-breaks-editor-options-panel .ad-break-row",
     campo: "ytve-framestamp-input input, ytve-formatted-input input",
     inserir: "#add-ad-break, ytcp-button[test-id='insert-ad-slot'] button",
     agulha: "ytve-playhead#playhead #label",
@@ -196,7 +196,6 @@
     zoomMenos: "#zoom-out, #zoom-out-button, [aria-label='Diminuir zoom'], [aria-label='Menos zoom'], [aria-label='Zoom out'], [aria-label='Afastar']",
     automatico: "ytcp-checkbox-lit[test-id='auto-midroll-checkbox']",
     apagar: "ytcp-icon-button.delete-button",
-    rotulo: ".manual-midroll-label",
     alerta: ".warning-icon",
   };
   const PAROU = new Error("parou");
@@ -208,7 +207,8 @@
   const linhas = () => $$(TELA.linhas);
   const campoDa = (l) => $(TELA.campo, l);
   const valorDa = (l) => String(campoDa(l)?.value || "").trim();
-  const vermelha = (l) => /interrup|interromp/i.test($(TELA.rotulo, l)?.textContent || "") || !!$(TELA.alerta, l);
+  // na tela de 2026-11-06 o aviso é o ícone, com "Mova este espaço" na linha; o rótulo antigo não existe mais
+  const vermelha = (l) => /interrup|interromp|mova este espa|move this/i.test(l.textContent) || !!$(TELA.alerta, l);
   const temposDasLinhas = (fps) => linhas().map((l) => deCarimbo(valorDa(l), fps)).filter((t) => t !== null);
 
   function duracao() {
@@ -222,7 +222,7 @@
     return dur ? parseFloat(dur[1]) : 0;
   }
 
-  const agulha = () => deCarimbo($(TELA.agulha)?.textContent || $(TELA.relogio)?.textContent) ?? 0;
+  const agulha = () => deCarimbo($(TELA.agulha)?.textContent.trim() || $(TELA.relogio)?.textContent.trim()) ?? 0;
 
   // o campo é do Polymer: ele só percebe o valor novo pelo setter nativo e pelos eventos
   const gravarValor = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value").set;
@@ -701,7 +701,7 @@
   }
 
   function fechamento({ feitos, pulados = [], deslocados = [], erro, total, tirados }) {
-    const salvar = " Confira e salve no Studio.", tirou = tirados ? `${plural(tirados, "apagado", "apagados")}, ` : "";
+    const salvar = " Aperte Continuar e depois Salvar para valer.", tirou = tirados ? `${plural(tirados, "apagado", "apagados")}, ` : "";
     if (erro === PAROU) return { texto: `Parei: ${tirou}${feitos} de ${total} colocados.${feitos || tirados ? salvar : ""}`, tipo: "" };
     if (erro) return { texto: `${erro.message || erro}${feitos || tirados ? ` ${tirou}${feitos} colocados.${salvar}` : ""}`, tipo: "erro" };
     const foram = deslocados.length ? ` ${plural(deslocados.length, "foi", "foram")} para o tempo aceito mais perto (${deslocados.slice(0, 3)
@@ -758,7 +758,7 @@
     try { tirados = await tirar(tipo, ctrl.signal, (k) => { tirados = k; corrida.feitos = k; pintar(); }); }
     catch (e) { erro = e; }
     corrida = null;
-    const salvar = tirados ? " Confira e salve no Studio." : "";
+    const salvar = tirados ? " Aperte Continuar e depois Salvar para valer." : "";
     recado = erro === PAROU ? { texto: `Parei: ${plural(tirados, "tirado", "tirados")}.${salvar}`, tipo: "" }
       : erro ? { texto: `${erro.message || erro}${salvar}`, tipo: "erro" }
         : { texto: `${plural(tirados, "anúncio tirado", "anúncios tirados")}.${salvar}`, tipo: "ok" };
@@ -794,7 +794,9 @@
     }
     ui ||= montar();
     if (!ui.raiz.isConnected) document.body.append(ui.raiz);
-    if (ui.ancora.nextElementSibling !== cabecalho) cabecalho.before(ui.ancora);
+    // basta estar no mesmo painel: exigir ficar colado no cabeçalho brigava com o botão do Dotti Finder, que exige o mesmo.
+    // Um movia o outro a cada quadro, e o clique nunca chegava no botão (print do usuário em 2026-11-06)
+    if (ui.ancora.parentElement !== cabecalho.parentElement) cabecalho.before(ui.ancora);
     if (aberto) { pintar(); posicionar(); } // a agulha mexe na tela a cada quadro: fechado, não há o que atualizar
   }
   const agendar = () => { if (!agendado && !document.hidden) { agendado = true; requestAnimationFrame(olhar); } };
