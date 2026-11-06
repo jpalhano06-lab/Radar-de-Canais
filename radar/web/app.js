@@ -3222,10 +3222,10 @@ async function novaProducao(preset = {}) {
         <dt>Imagem de IA</dt><dd>${N.iaPct === "" ? "Padrão do canal" : N.iaPct === "0" ? "Sem IA" : `${N.iaPct}% das cenas`}</dd>
         <dt>Animações</dt><dd>${esc(TEMAS_ANIMACAO.find(([v]) => v === N.tema)?.[1] || "Padrão do canal")}</dd>
         ${N.maquinas.length ? `<dt>Onde</dt><dd>${N.destino ? "Outra máquina" : "Esta máquina"}</dd>` : ""}
-        <dt>Custo</dt><dd>${N.custo?.usd != null ? `≈ US$ ${N.custo.usd.toFixed(2).replace(".", ",")}${N.custo.base === "geral" ? " (média geral)" : ""}` : "—"}</dd></dl>`;
+        <dt>Custo</dt><dd>${N.custo?.usd != null ? `≈ US$ ${N.custo.usd.toFixed(2).replace(".", ",")}${N.custo.base === "geral" ? " (média geral)" : ""}` : "—"}${N.custo?.imagens ? `<small class="np-custo-ia">≈ ${N.custo.imagens} imagens de IA, sem custo pela assinatura. Se o limite acabar, até US$ ${N.custo.usd_limite.toFixed(2).replace(".", ",")}</small>` : ""}</dd></dl>`;
   };
   const atualizarCusto = async () => {
-    try { N.custo = await api("/api/fila/estimativa?" + consulta({ canal: N.cfg?.perfil || "", minutos: minutos().toFixed(1) })); } catch { N.custo = null; }
+    try { N.custo = await api("/api/fila/estimativa?" + consulta({ canal: N.cfg?.perfil || "", minutos: minutos().toFixed(1), ...(N.iaPct !== "" ? { ia_pct: N.iaPct } : {}) })); } catch { N.custo = null; }
     desenharPrevia();
   };
   // o agente traz o tema e as partes de IA e de YouTube dele; o que ele não tem volta ao último escolhido aqui.
@@ -3322,7 +3322,7 @@ async function novaProducao(preset = {}) {
     campos.querySelectorAll(".np-canal img").forEach((img) => (img.onerror = () => {
       const i = document.createElement("i"); i.textContent = img.dataset.sigla; img.replaceWith(i);
     }));
-    $n("np-agente")?.addEventListener("change", (e) => { N.agente = e.target.value; temaDoAgenteEscolhido(); desenhar(); desenharPrevia(); });
+    $n("np-agente")?.addEventListener("change", (e) => { N.agente = e.target.value; temaDoAgenteEscolhido(); desenhar(); atualizarCusto(); });
     $n("np-lingua")?.addEventListener("change", (e) => { N.lingua = e.target.value; desenharPrevia(); });
     campos.querySelectorAll("[data-modo]").forEach((b) => (b.onclick = () => { N.modo = b.dataset.modo; desenhar(); desenharPrevia(); }));
     $n("np-roteiro")?.addEventListener("input", (e) => { N.roteiro = e.target.value; desenharPrevia(); });
@@ -3334,7 +3334,7 @@ async function novaProducao(preset = {}) {
     $n("np-obs")?.addEventListener("input", (e) => { N.obs = e.target.value; });
     $n("np-revisar").onchange = (e) => { N.revisar = e.target.checked; desenharPrevia(); };
     $n("np-footage").onchange = (e) => { N.footage = Number(e.target.value) || 0; guardar("np-footage", String(N.footage)); desenhar(); desenharPrevia(); };
-    $n("np-ia").onchange = (e) => { N.iaPct = e.target.value; guardar("np-ia", N.iaPct); desenhar(); desenharPrevia(); };
+    $n("np-ia").onchange = (e) => { N.iaPct = e.target.value; guardar("np-ia", N.iaPct); desenhar(); atualizarCusto(); };
     ligarTema($n("np-tema"), (v) => { N.tema = v; guardar("np-tema", v); desenharPrevia(); });
     if ($n("np-destino")) $n("np-destino").onchange = (e) => { N.destino = e.target.value; desenharPrevia(); };
     campos.querySelector(".np-opcoes").ontoggle = (e) => { N.opcoesAbertas = e.target.open; };

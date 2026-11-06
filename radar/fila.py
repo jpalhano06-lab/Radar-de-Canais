@@ -373,16 +373,29 @@ def iniciar_vigia(intervalo: int = 20) -> None:
 
 # ---------------------------------------------------------------- o custo provável, na prévia da Nova produção
 
-def estimativa(entregues: list[dict], canal: str, minutos: float) -> dict:
-    """Minutos × a média de US$ por minuto dos vídeos entregues do canal (sem nenhum, a de todos)."""
-    def por_minuto(lista):
-        total = sum(e["minutos"] for e in lista)
-        return sum(e["usd"] for e in lista) / total if total else None
-    do_canal = por_minuto([e for e in entregues if e["canal"] == canal])
-    if do_canal is not None:
-        return {"usd": round(do_canal * minutos, 2), "base": "canal"}
-    geral = por_minuto(entregues)
-    return {"usd": round(geral * minutos, 2), "base": "geral"} if geral is not None else {"usd": None, "base": None}
+CENAS_POR_MINUTO = 17         # medido: 518 cenas nos 30 min do os-10-leoes
+IMAGEM_NA_RESERVA = 0.005     # US$ por imagem pela chave de API, quando o limite da assinatura acaba (medido)
+IA_DOS_ENTREGUES = 0.25       # a parte de IA dos vídeos que servem de média: a conferência olha só o resto
+
+
+def estimativa(entregues: list[dict], canal: str, minutos: float, ia_pct: int | None = None) -> dict:
+    """Minutos × a média de US$ por minuto dos vídeos entregues do canal (sem nenhum, a de todos). Com a parte de IA
+    escolhida: tira da média o que foi pago em imagem, a conferência acompanha o que sobra de material real, e
+    usd_limite diz quanto fica se a assinatura do ChatGPT não der conta e todas as imagens saírem pela chave."""
+    do_canal = [e for e in entregues if e["canal"] == canal]
+    lista, base = (do_canal, "canal") if do_canal else (entregues, "geral")
+    total = sum(e["minutos"] for e in lista)
+    if not total:
+        return {"usd": None, "base": None}
+    media = sum(e["usd"] for e in lista) / total
+    if ia_pct is None:
+        return {"usd": round(media * minutos, 2), "base": base}
+    imagem = sum(e.get("imagem", 0) for e in lista) / total
+    conferencia = sum(e.get("conferencia", 0) for e in lista) / total
+    sobra_real = (1 - ia_pct / 100) / (1 - IA_DOS_ENTREGUES)
+    usd = (media - imagem - conferencia + conferencia * sobra_real) * minutos
+    imagens = round(CENAS_POR_MINUTO * minutos * ia_pct / 100)
+    return {"usd": round(usd, 2), "base": base, "imagens": imagens, "usd_limite": round(usd + imagens * IMAGEM_NA_RESERVA, 2)}
 
 
 _ENTREGUES: dict = {"t": 0, "lista": []}
@@ -400,9 +413,12 @@ def entregues() -> list[dict]:
             fabrica = fabrica_api.custo(p["nome"])
         except fabrica_api.SemFabrica:
             fabrica = None
-        usd = sum(l["usd"] for l in custos.combinar(fabrica, custos.linhas(FABRICA / "projetos" / p["nome"])))
+        gastos = custos.combinar(fabrica, custos.linhas(FABRICA / "projetos" / p["nome"]))
+        usd = sum(l["usd"] for l in gastos)
         if usd and p.get("duracao"):
             # "canal" aqui é o perfil da fábrica: é ele que a Nova produção conhece de cada canal
-            lista.append({"canal": p.get("perfil") or "", "minutos": p["duracao"] / 60, "usd": usd})
+            lista.append({"canal": p.get("perfil") or "", "minutos": p["duracao"] / 60, "usd": usd,
+                          "imagem": sum(l["usd"] for l in gastos if l["categoria"] == "imagem"),
+                          "conferencia": sum(l["usd"] for l in gastos if l["categoria"] in ("visao", "juiz"))})
     _ENTREGUES.update(t=time.time(), lista=lista)
     return lista

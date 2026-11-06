@@ -215,6 +215,15 @@ def test_reparar_depois_de_reiniciar(db):
     assert fila.item(1, a["id"])["estado"] == "na_fila"
 
 
+def test_estimativa_pela_parte_de_ia():
+    entregues = [{"canal": "A", "minutos": 10, "usd": 1.0, "imagem": 0.2, "conferencia": 0.3}]
+    sem_ia = fila.estimativa(entregues, "A", 10, 0)
+    assert sem_ia == {"usd": 0.9, "base": "canal", "imagens": 0, "usd_limite": 0.9}
+    muita = fila.estimativa(entregues, "A", 10, 75)
+    assert muita["usd"] == 0.6 and muita["imagens"] == 128 and muita["usd_limite"] == 1.24
+    assert fila.estimativa(entregues, "A", 10) == {"usd": 1.0, "base": "canal"}
+
+
 def test_estimativa_pela_media_do_canal():
     entregues = [{"canal": "A", "minutos": 30, "usd": 3.0}, {"canal": "A", "minutos": 10, "usd": 1.0},
                  {"canal": "B", "minutos": 10, "usd": 5.0}]

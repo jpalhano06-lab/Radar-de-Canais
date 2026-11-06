@@ -2306,10 +2306,10 @@ def fila_ajustes(corpo: dict, u: dict = Depends(dono_da_fabrica)):
 
 
 @app.get("/api/fila/estimativa")
-def fila_estimativa(canal: str = "", minutos: float = 0, u: dict = Depends(usuario)):
+def fila_estimativa(canal: str = "", minutos: float = 0, ia_pct: int | None = None, u: dict = Depends(usuario)):
     """O custo provável do vídeo na prévia da Nova produção (canal = o perfil da fábrica do canal)."""
     try:
-        return fila.estimativa(fila.entregues(), canal, minutos)
+        return fila.estimativa(fila.entregues(), canal, minutos, ia_pct)
     except fabrica_api.SemFabrica:
         return {"usd": None, "base": None}
 

@@ -536,6 +536,7 @@ nav .secao { color: var(--acento2); font-weight: 700; }
 #cores .temas { grid-template-columns: 1fr 1fr 1fr; }
 #cores .caixa-cores { width: 290px; max-height: 80vh; overflow-y: auto; }
 
+.np-custo-ia { display: block; margin-top: 3px; color: var(--fraco); font-size: 11px; font-weight: 400; line-height: 1.35; }
 /* a explicação de cada tema: fica solta na tela porque a lista da Nova produção corta o que passa da borda */
 .tema-lista { display: grid; grid-template-columns: repeat(auto-fill, minmax(112px, 1fr)); gap: 8px; }
 .tema-opcao { display: grid; gap: 0; padding: 0; overflow: hidden; border: 2px solid var(--linha); border-radius: 10px; background: var(--painel2);
