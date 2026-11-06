@@ -123,6 +123,20 @@ Regras:
 - Termine com um fechamento curto.
 - Respeite o tamanho pedido (palavras ou caracteres), porque ele vira o tempo do vídeo."""
 
+# Vem da comparação com os 16 roteiros do Robô do Dotti (2026-11-05). No primeiro minuto, os nossos falavam "eu" 4 vezes
+# mais (2,59 contra 0,65 por 100 palavras), se apresentavam 5 vezes mais e tinham 5 vezes mais ressalvas: o asdas abria
+# com "I can't stand behind that one, so I'm not going to lean on it". Os deles abrem no fato e deixam uma promessa no ar.
+# Vai depois das instruções do canal, que mandam o apresentador se apresentar logo no começo
+ABERTURA = """
+
+Sobre o primeiro minuto do vídeo, por cima das instruções do canal:
+- Comece pelo fato: um número, uma cena ou uma decisão concreta, com o que quem assiste ganha ou perde com isso.
+- Antes dos 30 segundos, prometa o ponto mais importante do vídeo e guarde a resposta para mais tarde.
+- Nada de apresentação no primeiro minuto: sem nome, idade ou ofício do narrador, sem "neste vídeo", sem pedir inscrição.
+  Se o canal tem apresentador, ele se apresenta depois, numa frase só, quando já tiver entregado o primeiro ponto.
+- No primeiro minuto o assunto é o fato e quem assiste, não o narrador: quase nenhum "eu".
+- Em nenhum ponto do vídeo avise o que você não vai afirmar nem duvide dos próprios números. Sem certeza, deixe de fora."""
+
 # vai no FIM do sistema, depois das instruções do canal: é a última palavra, e vale por cima delas
 SEM_PERGUNTA = """
 
@@ -338,7 +352,7 @@ def gerar(usuario_id: int, titulo: str, link: str, minutos: int, lingua: str, pr
                    "das observações e do estilo do canal, sem nenhuma base de transcrição.\n")
     else:
         pedido += "\nSem vídeo de referência: escreva a partir do título.\n"
-    sistema += SEM_PERGUNTA
+    sistema += ABERTURA + SEM_PERGUNTA
     aviso(f"O Claude está escrevendo (cerca de {_tamanho(palavras, lingua)})…")
     inicio = time.time()
     roteiro, rascunhos = _primeiro_rascunho(sistema, pedido, aviso)

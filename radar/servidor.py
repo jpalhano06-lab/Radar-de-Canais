@@ -1429,6 +1429,7 @@ async def conectar_canal(request: Request, u: dict = Depends(usuario)):
 @app.delete("/api/perfil/canais/{canal_id}")
 def desconectar_canal(canal_id: str, u: dict = Depends(usuario)):
     banco.executar("DELETE FROM meus_canais WHERE usuario_id=? AND canal_id=?", u["id"], canal_id)
+    studio.desconectar(u["id"], canal_id)
     return {"ok": True}
 
 
@@ -2693,6 +2694,11 @@ def studio_metricas(canal_id: str, dias: int = 28, u: dict = Depends(usuario)):
         raise HTTPException(403, str(erro))
     except RuntimeError as erro:
         raise HTTPException(502, str(erro))
+
+
+@app.get("/api/youtube/contas")
+def studio_contas(u: dict = Depends(usuario)):
+    return {"configurado": studio.configurado(), "contas": studio.contas(u["id"])}
 
 
 @app.delete("/api/youtube/{canal_id}")

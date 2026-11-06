@@ -2441,6 +2441,8 @@ async function inicio() {
         <button class="tirar-canal" data-canal="${esc(c.id)}" data-nome="${esc(c.titulo)}" title="Tirar este canal do Radar">×</button>
       </article>`).join("") || '<div class="vazio">Nenhum canal ainda. <a href="#/canais/novo">Adicione o primeiro</a>.</div>'}</div></section>
 
+    <section class="secao-inicio"><h2>Conexões com o YouTube Studio</h2><div class="bloco" id="conexoes-studio"></div></section>
+
     <section class="secao-inicio"><h2>Como funciona</h2>
       <div class="caminho">${CAMINHO.map(([ic, t, s], i) => `<div class="etapa"><span class="num">${i + 1}</span><span class="ic">${ic}</span><b>${t}</b><small>${s}</small></div>`).join("")}</div></section>
 
@@ -2452,6 +2454,34 @@ async function inicio() {
   tela.querySelectorAll(".ini-fazer").forEach((b) => (b.onclick = () => novaProducao({ canal: b.dataset.canal })));
   // o × no canto do cartão: tira o canal do Radar (o canal no YouTube não é tocado), sempre perguntando antes
   ligarTirarCanal(inicio);
+  conexoesDoStudio(document.getElementById("conexoes-studio"));
+}
+
+// as conexões com o YouTube Studio: reconectar a que venceu, excluir, e entrar com outra conta do Google. O mesmo bloco
+// aparece em Seus canais, em Meus canais, na página do canal e em Integrações. canalId mostra só aquele canal
+async function conexoesDoStudio(caixa, canalId = "") {
+  if (!caixa) return;
+  let d;
+  try { d = await api("/api/youtube/contas"); } catch (erro) { caixa.innerHTML = `<p class="sub">${esc(porque(erro))}</p>`; return; }
+  if (!d.configurado) { caixa.innerHTML = '<p class="sub">Falta o login do Google no .env.</p>'; return; }
+  const contas = canalId ? d.contas.filter((c) => c.canal_id === canalId) : d.contas;
+  caixa.innerHTML = `<div class="studio-contas">
+    ${contas.map((c) => `<div class="studio-conta"><b>${esc(c.titulo)}</b>
+      <span class="ig-st ${c.valida ? "ok" : "erro"}">${c.valida ? "✓ conectado" : "acesso vencido"}</span>
+      <button type="button" class="botao sec studio-entrar">${c.valida ? "Trocar conta" : "Reconectar"}</button>
+      <button type="button" class="botao contorno studio-excluir" data-canal="${esc(c.canal_id)}" data-nome="${esc(c.titulo)}">Excluir</button></div>`).join("")}
+    ${contas.length ? "" : `<p class="sub">${canalId ? "Este canal não está conectado ao YouTube Studio." : "Nenhum canal conectado ao YouTube Studio."}</p>`}
+    <div><button type="button" class="botao sec studio-entrar">${contas.length ? "Conectar outra conta" : "Conectar com o Google"}</button></div></div>`;
+  caixa.querySelectorAll(".studio-entrar").forEach((b) => (b.onclick = async () => {
+    try { location.href = (await api("/api/youtube/conectar")).url; } catch (erro) { aviso(porque(erro)); }
+  }));
+  caixa.querySelectorAll(".studio-excluir").forEach((b) => (b.onclick = async () => {
+    if (!confirm(`Excluir a conexão de "${b.dataset.nome}" com o YouTube Studio?
+
+O Radar para de ler as métricas dele. O canal no YouTube continua igual, e dá para conectar de novo depois.`)) return;
+    try { await api(`/api/youtube/${encodeURIComponent(b.dataset.canal)}`, { method: "DELETE" }); conexoesDoStudio(caixa, canalId); }
+    catch (erro) { aviso(porque(erro)); }
+  }));
 }
 
 // o × no canto do cartão do canal: tira o canal do Radar (o canal no YouTube não é tocado), sempre perguntando antes
@@ -2460,7 +2490,7 @@ function ligarTirarCanal(redesenhar) {
     e.preventDefault(); e.stopPropagation();
     if (!confirm(`Tirar "${b.dataset.nome}" dos seus canais?
 
-Sai do Radar com a configuração de produção (língua, voz, agente). O canal no YouTube continua igual, e dá para adicionar de novo depois.`)) return;
+Sai do Radar com a configuração de produção (língua, voz, agente) e a conexão com o YouTube Studio. O canal no YouTube continua igual, e dá para adicionar de novo depois.`)) return;
     try { await api(`/api/perfil/canais/${b.dataset.canal}`, { method: "DELETE" }); redesenhar(); }
     catch (erro) { aviso(porque(erro)); }
   }));
@@ -2483,7 +2513,8 @@ async function canais(acao) {
         <b>${esc(c.titulo)}</b><small>${num(c.inscritos)} inscritos · ${num(c.normal_longos)} por vídeo</small>
         <span class="tile-etapas"><i class="${c.studio ? "ok" : ""}">📊 ${c.studio ? "Studio" : "sem Studio"}</i></span>
         <button class="tirar-canal" data-canal="${esc(c.id)}" data-nome="${esc(c.titulo)}" title="Tirar este canal do Radar">×</button></a>`).join("")
-        || '<div class="vazio">Nenhum canal ainda. Clique em <b>Adicionar canal</b>.</div>'}</div></div>
+        || '<div class="vazio">Nenhum canal ainda. Clique em <b>Adicionar canal</b>.</div>'}</div>
+      <div class="bloco" style="margin-top:14px"><h3>Conexões com o YouTube Studio</h3><div id="conexoes-studio"></div></div></div>
     <div id="op-adicionar-caixa" ${acao === "novo" ? "" : "hidden"}>
       <div class="duas">
         <div class="bloco"><h3>Pelo Google (com as métricas do Studio)</h3>
@@ -2502,6 +2533,7 @@ async function canais(acao) {
   document.getElementById("op-trabalhar").onclick = () => alternar(false);
   document.getElementById("op-adicionar").onclick = () => alternar(true);
   ligarTirarCanal(() => { MEUS = null; canais(acao); });
+  conexoesDoStudio(document.getElementById("conexoes-studio"));
   const b = document.getElementById("studio");
   if (b) b.onclick = async () => { const { url } = await api("/api/youtube/conectar"); location.href = url; };
   const conectar = () => {
@@ -2536,12 +2568,14 @@ async function canal(id, aba) {
   aba = "metricas";
   tela.innerHTML = `<div class="canal-pagina"><div class="canal-centro"><a class="voltar" href="#/inicio">← início</a>
     <article class="canal">${miolo(c)}</article>
+    <div class="bloco" style="margin:12px 0"><h3>YouTube Studio</h3><div id="studio-do-canal"></div></div>
     <div id="producao-canal"></div>
     <section class="cp-bloco" id="horarios-canal"></section>
     <div id="painel-canal"></div>
     <div id="aba-corpo"></div>
     <div id="sugestoes-canal"></div></div></div>`;
   formProducao(document.getElementById("producao-canal"), id);
+  conexoesDoStudio(document.getElementById("studio-do-canal"), id);
   horariosDoCanal(document.getElementById("horarios-canal"), d.horarios);
   painelCanal(document.getElementById("painel-canal"), id);
   sugestoesDoCanal(document.getElementById("sugestoes-canal"), c);
@@ -2873,7 +2907,8 @@ async function integracoes(dados) {
      <h2 class="ig-h2">Chaves de API</h2><div class="ig-grade">${cartoes}</div>
      <h2 class="ig-h2">Conexões da conta</h2><p class="sub">Autorizações separadas das chaves de API.</p>
      <div class="ig-contas">${cartaoGpt}
-       <div class="bloco ig-conta"><b>Google / YouTube Studio</b><span>${conta}</span><a href="#/canais">Abrir Canais</a></div></div>`;
+       <div class="bloco ig-conta"><b>Google / YouTube Studio</b><span>${conta}</span><div id="conexoes-studio"></div></div></div>`;
+  conexoesDoStudio(document.getElementById("conexoes-studio"));
 
   const trocarGpt = async (corpo) => {
     await api("/api/integracoes/chatgpt/canais", { method: "POST", body: corpo });
@@ -3045,10 +3080,15 @@ async function telaDeContasYoutube() {
         <button type="button" class="botao contorno cyt-testar" data-nome="${esc(c.nome)}">Testar</button><button type="button" class="botao contorno cyt-tirar" data-nome="${esc(c.nome)}">Retirar</button></div>`).join("") || '<small class="np-dica">Nenhuma conta ainda.</small>'}
       <small class="np-dica">${prontas} pronta${prontas === 1 ? "" : "s"}</small>
       <div class="np-agente"><div><b>Google Drive</b><small>${d.drive ? "Conectado: o vídeo pronto sobe sozinho" : "Desconectado: o vídeo fica só no computador"}</small></div>
+        ${d.drive ? '<button type="button" class="botao contorno" id="drive-trocar">Trocar conta</button>' : ""}
         <button type="button" class="botao contorno" id="drive-botao">${d.drive ? "Desconectar" : "Conectar"}</button></div>
       <label class="campo"><span>Nova conta</span><input id="cyt-nome" placeholder="Nome da conta" maxlength="40"></label>
       <label class="campo"><span>cookies.txt <small>(formato Netscape, exportado do navegador logado)</small></span><textarea id="cyt-cookies" rows="5" spellcheck="false"></textarea></label>
       <button type="button" class="botao" id="cyt-salvar">Conectar</button>`;
+    const trocarDrive = corpo.querySelector("#drive-trocar");
+    if (trocarDrive) trocarDrive.onclick = async () => {
+      try { window.open((await api("/api/drive/conectar", { method: "POST", body: {} })).url, "_blank"); } catch (er) { aviso(er.message); }
+    };
     corpo.querySelector("#drive-botao").onclick = async () => {
       try {
         if (d.drive) { await api("/api/drive/desconectar", { method: "POST", body: {} }); desenhar(); return; }
