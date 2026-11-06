@@ -68,7 +68,7 @@ Estado: `[ ]` aberto, `[~]` em andamento, `[x]` pronto, `[-]` fora.
 
 ### Studio
 
-- [x] 23. Anúncios pela onda do som: pausas, distância mínima, tirar vermelhos e todos. Contas testadas; a onda de verdade do editor nunca foi lida. Precisa do zoom afastado.
+- [x] 23. Anúncios pela onda do som: pausas, distância mínima, tirar vermelhos e todos. Refeito em 2026-11-06 como o painel do Finder (`extensao/anuncios.js`): a cada, quantidade e pausas, prévia, trocar os atuais, tempo escrito em cada linha e conferido, zoom afastado sozinho. Testado numa tela simulada; o Studio de verdade ainda não.
 - [x] 24. Visualizações engajadas: coluna no Conteúdo e linha no cartão do último vídeo. A coluna só foi vista em tela simulada, e a linha não foi vista.
 - [x] 25. Foto do cartão com um clique, para colar com Ctrl+V. Botão visto em tela simulada; a cópia da imagem não foi provada.
 - [x] 26. Onde o vídeo perde gente: as 3 maiores quedas e o que era falado. Só vista em tela simulada.

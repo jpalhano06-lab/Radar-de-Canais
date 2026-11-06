@@ -1,6 +1,6 @@
 // O que a extensão acrescenta às telas do YouTube Studio, além da publicação (publicar.js): visualizações engajadas,
-// foto do cartão, onde o vídeo perde gente, nota do título, capítulos da fala, hora por país e anúncios pela onda do
-// som. Cada peça olha a tela a cada segundo e só aparece onde o elemento dela existe. O Studio muda sem aviso: elemento
+// foto do cartão, onde o vídeo perde gente, nota do título, capítulos da fala, e hora por país (os anúncios ficam em
+// anuncios.js). Cada peça olha a tela a cada segundo e só aparece onde o elemento dela existe. O Studio muda sem aviso: elemento
 // que não existe mais faz a peça sumir, nunca quebra a página.
 // As contas puras ficam em globalThis.RadarStudio para os testes.
 (() => {
@@ -36,41 +36,6 @@
     return fica.sort((a, b) => a.i - b.i);
   }
 
-  // a força do som em cada coluna do canvas: quantos pontos dela estão pintados
-  function ondaDaImagem(rgba, largura, altura) {
-    const onda = new Array(largura).fill(0);
-    for (let c = 0; c < largura; c++) {
-      let n = 0;
-      for (let l = 0; l < altura; l++) if (rgba[(l * largura + c) * 4 + 3] > 10) n++;
-      onda[c] = altura ? n / altura : 0;
-    }
-    return onda;
-  }
-
-  // os trechos quietos da onda, em segundos: abaixo de `corte` (fração do pico) por pelo menos `minimo` segundos
-  function pausasDaOnda(onda, duracao, corte = 0.08, minimo = 0.35) {
-    const pico = Math.max(0, ...onda);
-    if (!pico || !(duracao > 0)) return [];
-    const porColuna = duracao / onda.length, pausas = [];
-    let inicio = -1;
-    for (let c = 0; c <= onda.length; c++) {
-      if (c < onda.length && onda[c] <= corte * pico) { if (inicio < 0) inicio = c; continue; }
-      if (inicio >= 0 && (c - inicio) * porColuna >= minimo) pausas.push({ t: (inicio + c) / 2 * porColuna, dura: (c - inicio) * porColuna });
-      inicio = -1;
-    }
-    return pausas;
-  }
-
-  // as pausas mais longas primeiro, respeitando a distância mínima, o começo e o fim do vídeo
-  function escolherPausas(pausas, duracao, distancia, naoAntes = 30, fim = 20) {
-    const fica = [];
-    for (const p of [...pausas].sort((a, b) => b.dura - a.dura || a.t - b.t)) {
-      if (p.t < naoAntes || p.t > duracao - fim) continue;
-      if (!fica.some((t) => Math.abs(t - p.t) < distancia)) fica.push(p.t);
-    }
-    return fica.sort((a, b) => a - b).map((t) => Math.round(t));
-  }
-
   const tempo = (s) => {
     s = Math.max(0, Math.round(s));
     const h = Math.floor(s / 3600), m = Math.floor(s % 3600 / 60), x = String(s % 60).padStart(2, "0");
@@ -86,7 +51,7 @@
     return `${linhas.join("\n").trimEnd()}\n\n${capitulos.map((c) => `${c.tempo} ${c.titulo}`).join("\n")}`.trimStart();
   }
 
-  globalThis.RadarStudio = { curvaDoPath, maioresQuedas, ondaDaImagem, pausasDaOnda, escolherPausas, comCapitulos, horaEm, tempo };
+  globalThis.RadarStudio = { curvaDoPath, maioresQuedas, comCapitulos, horaEm, tempo };
   if (typeof chrome === "undefined" || !chrome.runtime || window.__radarStudioLente) return;
   window.__radarStudioLente = true;
 
@@ -343,58 +308,8 @@
     mostrar();
   }
 
-  // ------------------------------------------------------------ anúncios pela onda do som
-
-  const LINHA_ANUNCIO = "ytve-ad-breaks-editor-options-panel .ad-break-row";
-  const vermelha = (l) => /interrup/i.test(l.textContent) || !!l.querySelector(".error, [class*='warning']");
-  async function tirarAnuncios(filtro, aviso) {
-    const linhas = $$(LINHA_ANUNCIO).filter(filtro).reverse();
-    let tirados = 0;
-    for (const l of linhas) {
-      const lixo = l.querySelector("ytcp-icon-button.delete-button");
-      if (!lixo) continue;
-      lixo.click(); tirados++;
-      await espera(120);
-    }
-    aviso.textContent = tirados ? `${tirados} tirados.` : "Nada para tirar.";
-  }
-
-  async function anunciosPelaOnda(aviso, minutos) {
-    const video = $("ytcp-html5-video-source video") || $("video"), canvas = $("ytve-audio-waveform canvas");
-    if (!video || !video.duration) return (aviso.textContent = "O vídeo do editor ainda não carregou.");
-    if (!canvas || !canvas.width) return (aviso.textContent = "Não achei a onda do som nesta tela.");
-    let imagem;
-    try { imagem = canvas.getContext("2d").getImageData(0, 0, canvas.width, canvas.height).data; }
-    catch { return (aviso.textContent = "O Studio não deixou ler a onda do som."); }
-    const pausas = pausasDaOnda(ondaDaImagem(imagem, canvas.width, canvas.height), video.duration);
-    const tempos = escolherPausas(pausas, video.duration, minutos * 60);
-    if (!tempos.length) return (aviso.textContent = `Achei ${pausas.length} pausas, nenhuma serve. Afaste o zoom para a onda mostrar o vídeo inteiro.`);
-    const inserir = $("#add-ad-break") || $("ytcp-button[test-id='insert-ad-slot'] button");
-    if (!inserir) return (aviso.textContent = "Não achei o botão de inserir anúncio.");
-    let postos = 0;
-    for (const t of tempos) {
-      video.currentTime = t;
-      await espera(350);
-      inserir.click();
-      postos++;
-      aviso.textContent = `${postos} de ${tempos.length}…`;
-      await espera(300);
-    }
-    aviso.textContent = `${postos} anúncios em pausas da fala. Confira e salve você.`;
-  }
-
-  function barraDeAnuncios() {
-    const painel = $("ytve-ad-breaks-editor-options-panel");
-    if (!painel || !ligada("anuncios-onda") || $(".radar-onda")) return;
-    const aviso = el("small", {}), minutos = el("input", { type: "number", min: "1", max: "30", value: "2", title: "Distância mínima entre anúncios, em minutos" });
-    painel.prepend(el("div", { class: "radar-onda" }, el("b", {}, "Radar"), el("label", {}, "A cada ", minutos, " min"),
-      el("button", { type: "button", onclick: () => anunciosPelaOnda(aviso, Math.max(1, +minutos.value || 2)) }, "Colocar nas pausas"),
-      el("button", { type: "button", onclick: () => tirarAnuncios(vermelha, aviso) }, "Tirar os vermelhos"),
-      el("button", { type: "button", onclick: () => tirarAnuncios(() => true, aviso) }, "Tirar todos"), aviso));
-  }
-
   // ------------------------------------------------------------ a olhada de cada segundo
 
-  const PECAS = [colunaEngajadas, linhaEngajadas, botoesDeFoto, perdeGente, notaDoTitulo, botaoCapitulos, horaPorPais, barraDeAnuncios];
+  const PECAS = [colunaEngajadas, linhaEngajadas, botoesDeFoto, perdeGente, notaDoTitulo, botaoCapitulos, horaPorPais];
   setInterval(() => PECAS.forEach((p) => { try { Promise.resolve(p()).catch(() => {}); } catch { /* peça que não achou a tela */ } }), 1000);
 })();

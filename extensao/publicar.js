@@ -286,8 +286,7 @@
   const videoDaTela = () => [...document.querySelectorAll("video")].find((v) => v.duration > 1) || null;
 
   function quantosAnuncios() {
-    const v = videoDaTela();
-    const dur = v && v.duration ? v.duration : (estado.kit && estado.kit.duracao) || 0;
+    const dur = globalThis.RadarAnuncios?.duracao?.() || videoDaTela()?.duration || (estado.kit && estado.kit.duracao) || 0;
     if (!dur) return { dur: 0, tempos: [] };
     const passo = estado.modoAnuncio === "cada" ? Math.max(5, estado.cadaMin * 60) : dur / (Math.max(1, estado.quantos) + 1);
     const tempos = [];
@@ -301,28 +300,24 @@
   async function colocarAnuncios() {
     const { dur, tempos } = quantosAnuncios();
     if (!dur) return recado("Não achei a duração do vídeo nesta tela.", true);
-    const v = videoDaTela();
-    if (!v) return recado("Esta tela não tem o player dos espaços de anúncio.", true);
+    if (!tempos.length) return recado("Nenhum anúncio cabe neste vídeo com esse ajuste.", true);
+    const painel = globalThis.RadarAnuncios;
+    if (!painel?.pronto()) return recado("Esta tela não tem o botão de inserir espaço de anúncio.", true);
     estado.trabalhando = "anuncios"; desenhar();
-    let postos = 0;
-    for (const t of tempos) {
-      try { v.currentTime = t; } catch { break; }
-      await esperar(400);
-      const b = botao(/espaço de anúncio|adicionar espaço|inserir anúncio|ad break|adicionar anúncio|add ad/i);
-      if (!b) { recado(`Coloquei ${postos}. Não achei o botão de adicionar espaço de anúncio nesta tela.`, true); break; }
-      b.click();
-      postos++;
-      estado.trabalhando = `anuncios:${postos}/${tempos.length}`; desenhar();
-      await esperar(400);
-    }
+    // o tempo de cada espaço é escrito na linha dele e conferido depois (anuncios.js): mexer no player não muda onde o Studio cria
+    const fim = await painel.colocar(tempos, (fase, total, feitos) => {
+      estado.trabalhando = `anuncios:${fase === "tirar" ? "apagando " : ""}${feitos}/${total}`; desenhar();
+    });
     estado.trabalhando = "";
-    if (postos === tempos.length) {
-      recado(`${postos} anúncios colocados${estado.modoAnuncio === "cada" ? ` (um a cada ${estado.cadaMin} min)` : ""}.`);
+    if (fim.erro) {
+      recado(`${fim.erro.message || fim.erro} Coloquei ${fim.feitos} de ${tempos.length}: confira a linha do tempo e siga você.`, true);
+    } else if (fim.feitos === tempos.length) {
+      recado(`${fim.feitos} anúncios colocados${estado.modoAnuncio === "cada" ? ` (um a cada ${estado.cadaMin} min)` : ""}.`);
       clicar(/^(Concluído|Concluir|Salvar|Done|Save)$/i);
       await esperar(800);
       proximaEtapa();
-    } else if (postos) {
-      recado(`Coloquei ${postos} de ${tempos.length}. Confira a linha do tempo e siga você.`, true);
+    } else {
+      recado(`Coloquei ${fim.feitos} de ${tempos.length}. Confira a linha do tempo e siga você.`, true);
     }
     desenhar();
   }
