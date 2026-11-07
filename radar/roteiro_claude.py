@@ -383,6 +383,13 @@ def gerar(usuario_id: int, titulo: str, link: str, minutos: int, lingua: str, pr
               f"({minutos} minutos narrados)\n")
     if observacoes:
         pedido += f"Observações de quem pediu: {observacoes}\n"
+    # o que os vídeos anteriores deste canal ensinaram (retencao.py). Sem Studio conectado, fica vazio
+    from . import retencao
+    aviso("Vendo o que segurou o público neste canal…")
+    licao = retencao.licoes(usuario_id, (canal or {}).get("id", ""))
+    if licao:
+        (pasta / "retencao.json").write_text(json.dumps(licao, ensure_ascii=False, indent=1), encoding="utf-8")
+    pedido += retencao.texto(licao)
     if base:
         # a transcrição muito longa é cortada: o começo e a estrutura importam mais
         pedido += f"\nTranscrição do vídeo de referência (língua: {lingua_base}):\n{base[:60000]}\n"
@@ -402,7 +409,7 @@ def gerar(usuario_id: int, titulo: str, link: str, minutos: int, lingua: str, pr
             "projeto": projeto["nome"] if projeto else "", "palavras": contar_palavras(roteiro),
             "palavras_base": contar_palavras(base), "base_erro": base_erro[:300], "thumbnail": thumb,
             "segundos": round(time.time() - inicio), "criado": banco.agora(), "usuario_id": usuario_id, "ritmo": ritmo,
-            "conferencia": conferencia, "canal": canal or {}, "rascunhos": rascunhos, "por_que": bool(leitura)}
+            "conferencia": conferencia, "canal": canal or {}, "rascunhos": rascunhos, "por_que": bool(leitura), "retencao": bool(licao)}
     (pasta / "roteiro.json").write_text(json.dumps(meta, ensure_ascii=False, indent=1), encoding="utf-8")
     _escrever_descricao(usuario_id, pasta, projeto_descricao_id, aviso)
     return _publico(pasta)

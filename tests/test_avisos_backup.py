@@ -102,6 +102,7 @@ def test_uma_verificacao_quebrada_nao_cala_as_outras(monkeypatch):
     def quebra():
         raise RuntimeError("fora do ar")
     monkeypatch.setattr(avisos, "fila", quebra)
+    monkeypatch.setattr(avisos, "qualidade", lambda: [])
     monkeypatch.setattr(avisos, "fabrica", lambda: [])
     monkeypatch.setattr(avisos, "openrouter", lambda: [])
     monkeypatch.setattr(avisos, "assinatura", lambda: [])
@@ -112,7 +113,7 @@ def test_uma_verificacao_quebrada_nao_cala_as_outras(monkeypatch):
 
 
 def test_erro_vem_antes_da_atencao(monkeypatch):
-    for nome in ("fila", "fabrica", "openrouter", "assinatura", "disco"):
+    for nome in ("fila", "qualidade", "fabrica", "openrouter", "assinatura", "disco"):
         monkeypatch.setattr(avisos, nome, lambda: [])
     monkeypatch.setattr(avisos, "conexoes", lambda _u: [avisos._aviso("a", "atencao", "t", "x")])
     monkeypatch.setattr(avisos, "copia", lambda: [avisos._aviso("b", "erro", "t", "x")])
@@ -128,3 +129,20 @@ def test_celular_nao_repete_o_mesmo_erro(monkeypatch):
     avisos._uma_volta(1)
     avisos._uma_volta(1)
     assert [a["chave"] for a in enviados] == ["x"]
+
+
+def test_qualidade_so_avisa_video_ruim_de_verdade(tmp_path, monkeypatch):
+    monkeypatch.setattr(avisos.config, "FABRICA", tmp_path)
+    monkeypatch.setattr(avisos.banco, "todos", lambda *_a: [{"id": 1, "projeto": "ruim"}, {"id": 2, "projeto": "normal"}, {"id": 3, "projeto": "sem-nota"}])
+    for nome, q in (("ruim", {"cenas": 100, "boas_pct": 40, "erradas": list(range(5))}), ("normal", {"cenas": 100, "boas_pct": 54, "erradas": list(range(10))})):
+        (tmp_path / "projetos" / nome).mkdir(parents=True)
+        (tmp_path / "projetos" / nome / "qualidade.json").write_text(json.dumps({"atual": q}))
+    assert [a["chave"] for a in avisos.qualidade()] == ["qualidade-1"]
+
+
+def test_o_celular_recebe_pelo_ntfy(monkeypatch):
+    enviados = []
+    monkeypatch.setattr(avisos.config, "AMBIENTE", {"RADAR_NTFY_TOPICO": "radar-x"})
+    monkeypatch.setattr(avisos.httpx, "post", lambda url, **k: enviados.append((url, k["json"])))
+    avisos._no_celular(avisos._aviso("a", "erro", "Título", "Texto"))
+    assert enviados == [("https://ntfy.sh/", {"topic": "radar-x", "title": "Título", "message": "Texto", "priority": 4})]

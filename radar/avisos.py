@@ -2,7 +2,8 @@
 
 Antes o pedido 76 parou sem ninguém saber, e a assinatura do ChatGPT e o limite da chave do OpenRouter acabaram no meio de
 um vídeo sem aviso. Uma linha de fundo olha tudo de 10 em 10 minutos. O site mostra no topo, a extensão avisa pelo Chrome,
-e com RADAR_TELEGRAM_TOKEN e RADAR_TELEGRAM_CHAT no .env o que for grave chega no celular.
+e o que for grave chega no celular: pelo ntfy com RADAR_NTFY_TOPICO no .env, ou pelo Telegram com RADAR_TELEGRAM_TOKEN e
+RADAR_TELEGRAM_CHAT. O tópico do ntfy não tem senha: quem souber o nome lê, por isso ele é sorteado e nunca vai para o Git.
 
 Cada aviso é {chave, nivel, titulo, texto, link}. A chave é o que impede repetir: é a mesma enquanto o problema for o mesmo.
 Nivel: "erro" é parado agora, "atencao" é vai parar. Cada verificação falha sozinha: uma que quebre não cala as outras.
@@ -11,7 +12,7 @@ import json
 import shutil
 import threading
 import time
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 import httpx
 
@@ -24,6 +25,9 @@ SALDO_MINIMO = 5.0             # US$
 ASSINATURA_CHEIA = 90          # % usado da janela
 DISCO_MINIMO_GB = 40
 HORAS_DEMORANDO = 6
+QUALIDADE_MINIMA = 50          # % das cenas certas. A média de hoje é uns 54%: abaixo disso o vídeo foi mal de verdade
+ERRADAS_MAXIMO = 15            # % das cenas mostrando outra coisa
+DIAS_DA_QUALIDADE = 3
 HORAS_SEM_BACKUP = 8 * 24     # a cópia sai de 7 em 7 dias: um dia de folga antes de avisar
 
 _atuais: list = []
@@ -44,6 +48,22 @@ def fila() -> list:
         horas = (agora - datetime.fromisoformat(r["criado"])).total_seconds() / 3600
         if horas >= HORAS_DEMORANDO:
             saida.append(_aviso(f"fila-lenta-{r['id']}", "atencao", f"O pedido {r['id']} está demorando", f"Já são {round(horas)} horas.", "#/acompanhar"))
+    return saida
+
+
+def qualidade() -> list:
+    """O vídeo entregue nos últimos dias com muita cena errada. Nada para a entrega: quem decide publicar é você."""
+    limite = (datetime.now(timezone.utc) - timedelta(days=DIAS_DA_QUALIDADE)).isoformat()
+    saida = []
+    for r in banco.todos("SELECT id, projeto FROM producoes_fila WHERE estado='entregue' AND atualizado>=? ORDER BY id DESC LIMIT 20", limite):
+        arquivo = config.FABRICA / "projetos" / str(r["projeto"]) / "qualidade.json"
+        if not arquivo.exists():
+            continue
+        q = json.loads(arquivo.read_text(encoding="utf-8")).get("atual") or {}
+        cenas, erradas = q.get("cenas") or 0, len(q.get("erradas") or [])
+        if cenas and (q.get("boas_pct", 100) < QUALIDADE_MINIMA or 100 * erradas / cenas > ERRADAS_MAXIMO or q.get("vazias")):
+            saida.append(_aviso(f"qualidade-{r['id']}", "atencao", f"Revise o pedido {r['id']} antes de publicar",
+                                f"{q.get('boas_pct')}% das cenas certas e {erradas} mostrando outra coisa.", "#/acompanhar"))
     return saida
 
 
@@ -113,7 +133,7 @@ def disco() -> list:
 
 def verificar(usuario_id: int) -> list:
     saida = []
-    for olhar in (fila, fabrica, openrouter, assinatura, lambda: conexoes(usuario_id), copia, disco):
+    for olhar in (fila, qualidade, fabrica, openrouter, assinatura, lambda: conexoes(usuario_id), copia, disco):
         try:
             saida += olhar()
         except Exception as erro:  # noqa: BLE001
@@ -127,14 +147,15 @@ def atuais() -> list:
 
 
 def _no_celular(aviso: dict) -> None:
-    token, chat = config.AMBIENTE.get("RADAR_TELEGRAM_TOKEN"), config.AMBIENTE.get("RADAR_TELEGRAM_CHAT")
-    if not token or not chat:
-        return
+    token, chat, topico = (config.AMBIENTE.get(k) for k in ("RADAR_TELEGRAM_TOKEN", "RADAR_TELEGRAM_CHAT", "RADAR_NTFY_TOPICO"))
     try:
-        httpx.post(f"https://api.telegram.org/bot{token}/sendMessage", timeout=15,
-                   json={"chat_id": chat, "text": f"{aviso['titulo']}\n{aviso['texto']}"})
+        if topico:
+            httpx.post("https://ntfy.sh/", timeout=15, json={"topic": topico, "title": aviso["titulo"], "message": aviso["texto"], "priority": 4})
+        if token and chat:
+            httpx.post(f"https://api.telegram.org/bot{token}/sendMessage", timeout=15,
+                       json={"chat_id": chat, "text": f"{aviso['titulo']}\n{aviso['texto']}"})
     except httpx.HTTPError as erro:
-        print("o aviso não chegou no Telegram:", type(erro).__name__)
+        print("o aviso não chegou no celular:", type(erro).__name__)
 
 
 def _uma_volta(usuario_id: int) -> None:
