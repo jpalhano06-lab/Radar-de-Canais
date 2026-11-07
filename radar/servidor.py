@@ -214,6 +214,28 @@ async def entrar(request: Request):
     return _com_cookie(request, {"ok": True}, u["id"])
 
 
+def _so_neste_computador(request: Request, u: dict = Depends(usuario)) -> dict:
+    """Criar senha é coisa do computador do Radar: de fora, quem entrou não troca a senha de ninguém."""
+    if _de_fora(request):
+        raise HTTPException(403, "A senha só muda no computador onde o Radar está ligado.")
+    return u
+
+
+@app.get("/api/senha")
+def ver_conta(u: dict = Depends(_so_neste_computador)):
+    return {"email": u["email"]}
+
+
+@app.post("/api/senha")
+async def criar_senha(request: Request, u: dict = Depends(_so_neste_computador)):
+    """Quem sempre entrou pelo acesso livre nunca teve senha para usar: é com ela que o celular entra (2026-11-06)."""
+    senha = str((await request.json()).get("senha", ""))
+    if len(senha) < 8:
+        raise HTTPException(400, "A senha precisa de pelo menos 8 caracteres.")
+    banco.executar("UPDATE usuarios SET senha_hash=? WHERE id=?", banco.hash_senha(senha), u["id"])
+    return {"ok": True}
+
+
 @app.post("/api/sair")
 def sair(request: Request):
     token = request.cookies.get(COOKIE)

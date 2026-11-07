@@ -4625,7 +4625,7 @@ const VELHAS = {
   ideias: "#/videos", explorar: "#/videos?ordem=aleatorio", novidades: "#/videos?base=salvos&publicado_dias=7&nota_min=3",
 };
 const ROTAS = { entrar: () => entrar(false), criar: () => entrar(true), inicio, canais, perfil: canais, canal,
-  "ideias-canal": ideiasCanal, treino, trabalho, acompanhar, resultados, titulo: () => { location.hash = "#/trabalho"; }, thumbnail: () => { location.hash = "#/trabalho"; },
+  senha: telaSenha, "ideias-canal": ideiasCanal, treino, trabalho, acompanhar, resultados, titulo: () => { location.hash = "#/trabalho"; }, thumbnail: () => { location.hash = "#/trabalho"; },
   base: baseCanais, videos: videosLista, acharam, grupos, titulos, medir, extensao, bloqueados, admin, integracoes, custos,
   entraram: () => { location.hash = "#/base?visao=entraram_hoje"; },
   planos: telaPlanos,
@@ -4636,6 +4636,28 @@ const ROTAS = { entrar: () => entrar(false), criar: () => entrar(true), inicio, 
 const RECORTES_ANTIGOS = ["alerta", "explorar", "procura", "ideias", "ideias-canal", "filtro-grupos",
   "nicho-ranking", "dias-novidades", "custos-dias", "resultados-canal"];
 try { RECORTES_ANTIGOS.forEach((k) => localStorage.removeItem("radar:" + k)); } catch {}
+
+// a senha com que o celular entra. Só abre no computador do Radar (/api/senha)
+async function telaSenha() {
+  let conta;
+  try { conta = await api("/api/senha"); }
+  catch (e) { tela.innerHTML = titulo("Criar senha") + `<p>${esc(e.message || "Abra esta tela no computador onde o Radar está ligado.")}</p>`; return; }
+  tela.innerHTML = titulo("Criar senha") + `
+    <form id="form-senha" style="max-width:420px;display:grid;gap:12px;padding:16px;background:var(--painel);border:1px solid var(--linha);border-radius:14px">
+      <div>Seu e-mail de entrada: <b>${esc(conta.email)}</b></div>
+      <input id="senha-1" type="password" placeholder="Nova senha (8 ou mais letras)" autocomplete="new-password" required minlength="8">
+      <input id="senha-2" type="password" placeholder="Repita a senha" autocomplete="new-password" required minlength="8">
+      <button class="botao" type="submit">Salvar senha</button>
+    </form>`;
+  document.getElementById("form-senha").onsubmit = async (e) => {
+    e.preventDefault();
+    const senha = document.getElementById("senha-1").value;
+    if (senha !== document.getElementById("senha-2").value) { aviso("As duas senhas não são iguais."); return; }
+    await api("/api/senha", { method: "POST", body: { senha } });
+    e.target.reset();
+    aviso("Senha salva. Use este e-mail e esta senha no celular.");
+  };
+}
 
 // no celular o menu inteiro ocupava a primeira tela e empurrava a fila para baixo: fica fechado, atrás de um botão
 document.getElementById("abrir-menu")?.addEventListener("click", (e) => {
