@@ -784,6 +784,18 @@ def _kit_com_modelo(usuario_id: int, pasta) -> dict:
     cfg = producao.config(usuario_id, canal_id) if canal_id else {}
     k["canal"] = canal
     k["modelo"] = "rodape" if producao.rodape_do_perfil(perfil) else "fabrica"
+    lingua = cfg.get("lingua") or ""
+    # canal sem rodapé na fábrica: a descrição do Radar ganha o texto fixo pronto na língua do canal. Os coreanos
+    # saíam só com a sinopse e as hashtags (2026-11-07, "muito curta e bem ruim")
+    if k["modelo"] == "fabrica" and k.get("origem") == "radar" and lingua in publicar.MODELOS:
+        rodape = publicar.rodape_padrao(lingua, cfg.get("modelo_tipo") or "geral", canal or "", cfg.get("marcas") or "")
+        k["descricao"] = descricao.montar({"sinopse": k.get("sinopse"), "hashtags": k.get("hashtags")}, rodape)
+        k["modelo"] = "padrao"
+    if lingua and "portug" not in lingua:
+        try:
+            k["traducao"] = publicar.traduzir(pasta, k)
+        except Exception:      # a tradução ajuda, nunca segura o painel
+            k["traducao"] = k.get("traducao") or {}
     # o padrão de publicação do canal: a extensão não precisa perguntar nada no Studio, já vem decidido daqui
     k["padrao"] = {"anuncio_cada": cfg.get("anuncio_cada") or 1,
                    "tela_final": cfg.get("tela_final") or "melhor",

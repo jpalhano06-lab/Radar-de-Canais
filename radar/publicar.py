@@ -90,9 +90,11 @@ def opcoes(raiz: Path, limite: int = 40) -> list[dict]:
 
 
 def _titulo(pasta: Path) -> str:
+    # o do Radar primeiro: é o título pedido, limpo. O da fábrica no vídeo japonês veio com o original coreano entre
+    # parênteses ("韓国の… (한국의…)") e ia assim para o YouTube (2026-11-07)
     pub = _ler(pasta / "publicacao.json")
-    return str(pub.get("titulo") or (pub.get("textos") or {}).get("titulo")
-               or _ler(pasta / RADAR).get("titulo") or pasta.name)
+    return str(_ler(pasta / RADAR).get("titulo") or pub.get("titulo") or (pub.get("textos") or {}).get("titulo")
+               or pasta.name)
 
 
 def kit(pasta: Path) -> dict:
@@ -122,7 +124,33 @@ def kit(pasta: Path) -> dict:
         "origem": "radar" if radar.get("descricao") else "fabrica",
         "legenda": str(pub.get("legenda") or ""),
         "duracao": _duracao(pasta),
+        # o título e a sinopse em português, só para quem publica entender (nunca vão para o YouTube)
+        "traducao": radar.get("traducao") or _ler(pasta / TRADUCAO) or {},
     }
+
+
+TRADUCAO = "traducao_radar.json"   # a tradução feita depois, para os vídeos de antes desta função
+
+
+def traduzir(pasta: Path, k: dict) -> dict:
+    """O título e a sinopse em português, para o kit que ainda não trouxe. Fica guardado na pasta do projeto."""
+    if (k.get("traducao") or {}).get("titulo"):
+        return k["traducao"]
+    from . import ia
+    from .config import MODELO_TEXTO
+    titulo = (ia.traduzir_exato(k.get("titulo") or "", ["pt"]) or {}).get("pt", "")
+    sinopse = ""
+    if (k.get("sinopse") or "").strip():
+        r = ia._perguntar(MODELO_TEXTO, "Traduza para o português do Brasil, fiel, sem resumir. Responda só JSON: "
+                          "{\"texto\": \"...\"}.", k["sinopse"][:3000], esperar=20) or {}
+        sinopse = str(r.get("texto") or "").strip()
+    feito = {"titulo": titulo, "sinopse": sinopse}
+    if titulo or sinopse:
+        try:
+            (pasta / TRADUCAO).write_text(json.dumps(feito, ensure_ascii=False, indent=1), encoding="utf-8")
+        except OSError:
+            pass
+    return feito
 
 
 # ---------------------------------------------------------------- os modelos de descrição
@@ -233,6 +261,66 @@ Este canal se hace con fines informativos y educativos. Los videos presentan com
 El contenido no acusa a ninguna persona, marca o empresa de conducta ilegal. Las personas, los productos y las empresas se citan solo para informar, comentar y discutir un asunto de interés público. Consulte las fuentes oficiales y saque sus propias conclusiones.
 
 La información cambia con el tiempo. Nada de esto es consejo médico, jurídico o profesional. Verifique en las fuentes oficiales antes de decidir.
+
+{hashtags}""",
+    },
+    # coreano e japonês (pedido do usuário em 2026-11-07): sem eles, o vídeo coreano saía com a sinopse em coreano e
+    # todo o texto fixo do canal em inglês logo embaixo
+    "coreano": {
+        "consumo": """{sinopse}
+
+{canal}은(는) 공개된 정보와 공식 자료를 바탕으로 마트 상품, 가격, 소비 트렌드를 알기 쉽게 풀어 드립니다. {marcas} 같은 잘 알려진 브랜드와 대형 유통업체도 다룹니다.
+식품과 음료부터 생활필수품까지, 원재료와 가격 변화, 가격 대비 가치, 그리고 소비자에게 실제로 영향을 주는 내용을 살펴봅니다. 새 영상은 매주 올라옵니다.
+
+안내:
+
+이 채널은 정보 제공과 교육을 목적으로 합니다. 영상은 원재료 표시, 영양 정보, 포장, 기업 발표, 규제 기관의 공식 자료, 가격과 독립 보도 등 공개된 정보를 바탕으로 한 해설과 분석, 의견입니다.
+
+특정 개인, 브랜드, 유통업체, 기업이 불법 행위를 했다고 주장하지 않습니다. 상품과 기업은 소비자 정보 제공과 공익적 논의를 위해서만 언급됩니다. 공식 자료를 확인하고 스스로 판단해 주세요.
+
+제품 구성, 가격, 판매 여부와 정책은 바뀔 수 있습니다. 이 채널의 내용은 의학적, 법률적, 전문적 조언이 아닙니다.
+
+{hashtags}""",
+        "geral": """{sinopse}
+
+{canal}은(는) 공개된 정보와 공식 자료를 바탕으로 이 주제를 알기 쉽게 풀어 드립니다. 새 영상은 매주 올라옵니다.
+
+안내:
+
+이 채널은 정보 제공과 교육을 목적으로 합니다. 영상은 공식 발표, 기업 자료, 독립 보도와 그 밖의 공개 기록을 바탕으로 한 해설과 분석, 의견입니다.
+
+특정 개인, 브랜드, 기업이 불법 행위를 했다고 주장하지 않습니다. 사람과 상품, 기업은 정보 제공과 공익적 논의를 위해서만 언급됩니다. 공식 자료를 확인하고 스스로 판단해 주세요.
+
+정보는 시간이 지나며 바뀔 수 있습니다. 이 채널의 내용은 의학적, 법률적, 전문적 조언이 아닙니다.
+
+{hashtags}""",
+    },
+    "japonês": {
+        "consumo": """{sinopse}
+
+{canal}では、公開されている情報と公式の資料をもとに、スーパーの商品や価格、消費の動きをわかりやすく解説しています。{marcas}など、よく知られたブランドや大手チェーンも取り上げます。
+食品や飲み物から日用品まで、原材料、価格の変化、値段に見合う価値、そして買う人に本当に関わることを見ていきます。新しい動画は毎週公開しています。
+
+ご案内:
+
+このチャンネルは情報提供と学習を目的としています。動画は、原材料表示、栄養成分、パッケージ、企業の発表、行政機関の公式資料、価格、独立した報道など、公開された情報にもとづく解説・分析・意見です。
+
+特定の個人、ブランド、チェーン、企業が違法な行為をしたと主張するものではありません。商品や企業は、消費者への情報提供と公共の関心にもとづく議論のためにのみ取り上げています。公式の情報源を確認し、ご自身で判断してください。
+
+商品の内容、価格、販売状況や方針は変わることがあります。このチャンネルの内容は医療・法律・専門的な助言ではありません。
+
+{hashtags}""",
+        "geral": """{sinopse}
+
+{canal}では、公開されている情報と公式の資料をもとに、このテーマをわかりやすく解説しています。新しい動画は毎週公開しています。
+
+ご案内:
+
+このチャンネルは情報提供と学習を目的としています。動画は、公式の発表、企業の資料、独立した報道、その他の公開記録にもとづく解説・分析・意見です。
+
+特定の個人、ブランド、企業が違法な行為をしたと主張するものではありません。人物や商品、企業は、情報提供と公共の関心にもとづく議論のためにのみ取り上げています。公式の情報源を確認し、ご自身で判断してください。
+
+情報は時間とともに変わることがあります。このチャンネルの内容は医療・法律・専門的な助言ではありません。
 
 {hashtags}""",
     },
