@@ -478,6 +478,14 @@ document.addEventListener("click", async (e) => {
   } catch (erro) { aviso(porque(erro)); }
 });
 
+// por onde o canal entrou no Radar (radar/descoberta.py ORIGENS)
+const ORIGENS = {
+  busca: "Busca do garimpo no YouTube", garimpo: "Busca do garimpo no YouTube", categoria: "Em alta na categoria do YouTube",
+  navegador: "Achado no navegador", lente: "A extensão leu enquanto você navegava", parecidos: "Parecido com um canal salvo",
+  procura: "Procura de nicho na hora", treino: "Treino do algoritmo", manual: "Você adicionou",
+  repescagem: "Repescagem: voltou a crescer",
+};
+
 function tagsDoCanal(c) {
   return [
     c.novo && '<span class="tag novo">novo</span>',
@@ -485,6 +493,8 @@ function tagsDoCanal(c) {
     (c.subnicho || c.nicho) && `<span class="tag">${esc(c.subnicho || c.nicho)}</span>`,
     c.fase && `<span class="tag ${c.fase}">${FASES[c.fase] || c.fase}</span>`,
     c.sem_rosto && '<span class="tag">sem rosto</span>',
+    c.origem === "repescagem" && '<span class="tag repescado">voltou a crescer</span>',
+    c.origem && ORIGENS[c.origem] && `<span class="tag origem" title="De onde veio">↳ ${esc(ORIGENS[c.origem])}</span>`,
   ].filter(Boolean).join("");
 }
 
@@ -673,7 +683,8 @@ const paraApi = (f) => ({ visao: f.visao, busca: f.busca, nicho: f.nicho, fase: 
   idade_max: f.etapa && ETAPAS_DIAS[f.etapa] ? emMeses(ETAPAS_DIAS[f.etapa][1]) : f.idade,
   idade_min: f.etapa && ETAPAS_DIAS[f.etapa] ? emMeses(ETAPAS_DIAS[f.etapa][0]) : "",
   achado_dias: f.achado, rosto: f.rosto, ordem: f.ordem, sentido: f.sentido,
-  salvos: f.base === "salvos" ? "1" : "", acharam: f.base === "acharam" ? "1" : "" });
+  salvos: f.base === "salvos" ? "1" : "", acharam: f.base === "acharam" ? "1" : "",
+  origem: f.base === "repescagem" ? "repescagem" : "" });
 
 // ---------------------------------------------------------------- entrar
 
@@ -2521,9 +2532,11 @@ async function canal(id, aba) {
   const c = d.canal;
   if (!d.meu) {   // canal que não é da pessoa: só os números e os vídeos
     tela.innerHTML = `<a class="voltar" href="javascript:history.back()">← voltar</a><article class="canal">${miolo(c)}</article>
+      <section class="cp-bloco" id="ideias-do-canal"></section>
       <section class="cp-bloco" id="horarios-canal"></section>
       <div class="secao-tela"><h2>Últimos vídeos</h2><div class="grade-videos">${d.ultimos.map((v) => cartaoVideo(v, { canal: false })).join("")}</div></div>`;
     horariosDoCanal(document.getElementById("horarios-canal"), d.horarios);
+    ideiasDoCanal(document.getElementById("ideias-do-canal"), c);
     ligarCartoes(); ligarRoteiro(); return;
   }
   CANAL_ATUAL = id;
@@ -2533,6 +2546,7 @@ async function canal(id, aba) {
     <div class="bloco" style="margin:12px 0"><h3>YouTube Studio</h3><div id="studio-do-canal"></div></div>
     <div id="producao-canal"></div>
     <section class="cp-bloco" id="horarios-canal"></section>
+    <section class="cp-bloco" id="ideias-do-canal"></section>
     <div id="painel-canal"></div>
     <div id="aba-corpo"></div>
     <div id="sugestoes-canal"></div></div></div>`;
@@ -2540,6 +2554,7 @@ async function canal(id, aba) {
   conexoesDoStudio(document.getElementById("studio-do-canal"), id);
   horariosDoCanal(document.getElementById("horarios-canal"), d.horarios);
   painelCanal(document.getElementById("painel-canal"), id);
+  ideiasDoCanal(document.getElementById("ideias-do-canal"), c);
   sugestoesDoCanal(document.getElementById("sugestoes-canal"), c);
   ligarCartoes();
   const corpo = document.getElementById("aba-corpo");
@@ -2555,6 +2570,40 @@ async function canal(id, aba) {
     corpo.innerHTML = `<div class="secao-tela"><h2>Seus últimos vídeos</h2><p class="linha-sub">A nota é quantas vezes o vídeo fez o normal do canal (${num(c.normal_longos)} por vídeo).</p>
         <div class="grade-videos">${d.ultimos.map((v) => cartaoVideo(v, { canal: false, roteiro: false, bloquear: false })).join("")}</div></div>`;
   }
+}
+
+// de onde tirar ideia deste canal (pedido do usuário em 2026-11-07, depois de ver o Dotti Finder): o que o dono
+// cadastrou como palavra-chave (as compostas, entre aspas, são onde ele apostou), os tópicos do YouTube e os
+// subtemas dos vídeos que estouraram. Os subtemas são escritos pelo modelo só quando a pessoa pede, e ficam guardados.
+function ideiasDoCanal(caixa, c) {
+  if (!caixa) return;
+  const palavras = c.palavras || [], topicos = c.topicos || [];
+  caixa.innerHTML = `<h3>Ideias deste canal</h3>
+    ${c.origem && ORIGENS[c.origem] ? `<p class="sub">Entrou no Radar por: <b>${esc(ORIGENS[c.origem])}</b></p>` : ""}
+    <div class="sub-tit">Palavras-chave que o dono cadastrou${palavras.length ? ` (${palavras.length})` : ""}</div>
+    ${palavras.length ? `<div class="palavras">${palavras.map((p) => `<span class="palavra ${p.composto ? "forte" : ""}"
+        title="${p.composto ? "Termo composto: é nele que o dono apostou" : ""}">${esc(p.termo)}</span>`).join("")}</div>
+      <p class="sub">As destacadas são termos compostos, onde o dono apostou: bom ponto de partida para subtemas.</p>`
+      : '<p class="sub">Sem palavras-chave cadastradas (ou o canal ainda não foi medido de novo depois desta função).</p>'}
+    ${topicos.length ? `<div class="sub-tit">Tópicos do YouTube</div><div class="palavras">${topicos.map((t) => `<span class="palavra">${esc(t)}</span>`).join("")}</div>` : ""}
+    <div class="sub-tit">Subtemas dos vídeos que estouraram</div>
+    <div id="subtemas-caixa"><button class="botao sec" id="ver-subtemas">Ver os subtemas</button></div>`;
+  const alvo = caixa.querySelector("#subtemas-caixa");
+  caixa.querySelector("#ver-subtemas").onclick = async () => {
+    alvo.innerHTML = '<div class="vazio">Lendo os vídeos que estouraram…</div>';
+    let d;
+    try { d = await api(`/api/canal/${encodeURIComponent(c.id)}/subtemas`); }
+    catch (e) { alvo.innerHTML = `<div class="vazio">${esc(porque(e))}</div>`; return; }
+    if (!d.videos.length) {
+      alvo.innerHTML = `<p class="sub">Nenhum vídeo longo com ${d.nota_minima}× o normal e ${num(d.views_minimas)} views ou mais.</p>`;
+      return;
+    }
+    alvo.innerHTML = `<table class="tabela"><thead><tr><th class="n">Outlier</th><th class="n">Views</th><th>Subtema</th><th>Vídeo</th></tr></thead>
+      <tbody>${d.videos.map((v) => `<tr><td class="n"><b>${v.nota.toFixed(1)}×</b></td><td class="n">${num(v.views)}</td>
+        <td><b>${esc(v.subtema || "—")}</b></td>
+        <td><a href="${linkVideo(esc(v.id))}" target="_blank" rel="noopener">${esc(v.titulo)}</a></td></tr>`).join("")}</tbody></table>
+      <p class="sub">Vídeos longos com ${d.nota_minima}× o normal do canal ou mais e ${num(d.views_minimas)} views ou mais.</p>`;
+  };
 }
 
 // o melhor horário para postar, das curvas de views por hora que o Radar já guarda deste canal (sem cota).
@@ -3873,13 +3922,28 @@ async function visaoVida(caixa, f, abrirCanais, acompanhar) {
   }
 }
 
+// a sondagem do nicho vazio: subnicho em que vídeo estourou há pouco e quase ninguém do Radar faz (descoberta.py)
+function nichosComEspaco(e) {
+  if (!e || !e.nichos || !e.nichos.length) return "";
+  return `<div class="bloco espaco-nichos"><h3>Nichos com espaço</h3>
+    <p class="sub">Vídeo estourou nos últimos ${e.dias} dias e só ${e.max_canais} canais ou menos do Radar fazem.</p>
+    <table class="tabela"><thead><tr><th>Subnicho</th><th class="n">Canais</th><th class="n">Estouros</th><th>Exemplo</th></tr></thead>
+    <tbody>${e.nichos.map((l) => `<tr><td><b>${esc(l.subnicho)}</b><small class="sub"> · ${esc(l.nicho || "")}</small></td>
+      <td class="n">${l.canais}</td><td class="n" style="color:var(--verde)">${l.estouros}</td>
+      <td>${l.exemplo ? `<a href="${linkVideo(esc(l.exemplo.video_id))}" target="_blank" rel="noopener">${esc(l.exemplo.titulo || "vídeo")}</a>
+        <small class="sub"> · ${(l.exemplo.nota || 0).toFixed(1)}× · <a href="#/canal/${esc(l.exemplo.canal_id)}">${esc(l.exemplo.canal)}</a></small>` : ""}</td></tr>`).join("")}</tbody></table></div>`;
+}
+
 async function visaoNichos(caixa, f, abrirNicho) {
   caixa.innerHTML = '<div class="vazio">Somando os nichos…</div>';
-  let d;
-  try { d = await api("/api/nichos/tabela?" + consulta({ nicho: f.nicho })); }
+  let d, espaco = null;
+  try {
+    [d, espaco] = await Promise.all([api("/api/nichos/tabela?" + consulta({ nicho: f.nicho })),
+      f.nicho ? Promise.resolve(null) : api("/api/nichos/espaco").catch(() => null)]);
+  }
   catch (e) { caixa.innerHTML = `<div class="vazio">${esc(porque(e))}</div>`; return; }
   if (!d.nichos.length) { caixa.innerHTML = '<div class="vazio">Nenhum nicho com canais nestes filtros.</div>'; return; }
-  caixa.innerHTML = `<table class="tabela tab-nichos"><thead><tr>
+  caixa.innerHTML = nichosComEspaco(espaco) + `<table class="tabela tab-nichos"><thead><tr>
       <th>Nicho</th><th class="n">Canais</th><th class="n">Tráfego típico</th><th class="n">Crescendo</th>
       <th class="n">Parados</th><th class="n">Views no mês</th><th class="n">Público</th><th></th></tr></thead>
     <tbody>${d.nichos.map((l) => `<tr>
@@ -3908,7 +3972,8 @@ async function baseCanais() {
     <div class="visoes" id="visoes"></div>
     <div class="procura"><input id="busca" placeholder="Ex.: cobras, história de Roma, custo de vida" value="${esc(f.busca)}"><button class="botao vermelho" id="ir">Procurar</button></div>
     <div class="filtra">${selects([
-      ["base", "Todos os canais", [["salvos", "Só os que eu salvei"], ["acharam", "Só os que acharam para mim"]]],
+      ["base", "Todos os canais", [["salvos", "Só os que eu salvei"], ["acharam", "Só os que acharam para mim"],
+        ["repescagem", "Só os que voltaram a crescer"]]],
       ...(opcoesDePasta(p).length ? [["pasta", "Todas as pastas", opcoesDePasta(p)]] : []),
       ["nicho", "Todos os nichos", o.nichos.map((n) => [n.valor, n.valor])],
       ["idade", "Qualquer idade", [[1, "Canal de até 1 mês"], [3, "Até 3 meses"], [6, "Até 6 meses"], [12, "Até 1 ano"]]],
@@ -4038,7 +4103,8 @@ async function videosLista() {
     <div class="busca-caixa" id="busca-caixa">
     <div class="procura"><input id="busca" placeholder="Procurar no título do vídeo ou do canal" value="${esc(f.busca)}"><button class="botao vermelho" id="ir">Procurar</button></div>
     <div class="filtra">${selects([
-      ["base", "Todos os canais", [["salvos", "Só os que eu salvei"], ["acharam", "Só os que acharam para mim"]]],
+      ["base", "Todos os canais", [["salvos", "Só os que eu salvei"], ["acharam", "Só os que acharam para mim"],
+        ["repescagem", "Só os que voltaram a crescer"]]],
       ...(opcoesDePasta(p).length ? [["pasta", "Todas as pastas", opcoesDePasta(p)]] : []),
       ["modelar_estado", "Toda a esteira", [["fila", "🔖 Vou modelar"], ["feito", "✓ Já modelei"]]],
       ["lingua", "", [["ptenes", "Português, inglês e espanhol"], ["pt", "Só português"], ["en", "Só inglês"], ["es", "Só espanhol"], ["todas", "Todas as línguas"]]],

@@ -2123,3 +2123,12 @@ input, select, textarea, .selects select, .selects .limpar { border-radius: 8px;
   .lateral:not(.aberta) #menu, .lateral:not(.aberta) #quadro-cota, .lateral:not(.aberta) .rodape { display: none; }
   #avisos-topo:not(:empty) { padding: 12px 0 0; }
 }
+
+/* ideias do canal e nichos com espaço (descoberta.py) */
+.palavras { display: flex; flex-wrap: wrap; gap: 6px; margin: 6px 0 4px; }
+.palavra { padding: 3px 9px; border-radius: 12px; border: 1px solid var(--borda, #333); font-size: 12.5px; }
+.palavra.forte { border-color: var(--verde, #12b76a); color: var(--verde, #12b76a); font-weight: 600; }
+.sub-tit { margin: 12px 0 2px; font-weight: 600; font-size: 13px; opacity: .85; }
+.tag.origem { opacity: .75; font-weight: 400; }
+.tag.repescado { border-color: var(--verde, #12b76a); color: var(--verde, #12b76a); }
+.espaco-nichos { margin-bottom: 14px; }

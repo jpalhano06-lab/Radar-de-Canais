@@ -174,8 +174,8 @@ def _proximos_termos() -> list[tuple[str, str]]:
     return [(nicho, t) for nicho, t in ordem if not (t in vistos or vistos.add(t))]
 
 
-def _avaliar(ids: list[str], log, contagem: dict, rapido: bool = False) -> list[str]:
-    """Mede os canais novos e põe no Radar os que passam. Devolve os que entraram."""
+def _avaliar(ids: list[str], log, contagem: dict, rapido: bool = False, origem: str = "busca") -> list[str]:
+    """Mede os canais novos e põe no Radar os que passam. Devolve os que entraram. origem: por onde chegaram."""
     conhecidos = {c["id"]: c for c in medir._canais_do_banco(ids)}
     # canal já medido nesta semana não é lido de novo
     semana = (datetime.now(timezone.utc) - timedelta(days=7)).isoformat()
@@ -191,19 +191,93 @@ def _avaliar(ids: list[str], log, contagem: dict, rapido: bool = False) -> list[
         else:
             banco.gravar("canais", "id", {"id": c["id"], "titulo": c["titulo"], "medido": banco.agora()})
     entraram = []
-    for cid, c in medir.medir_canais(candidatos, forcar=True, origem="garimpo").items():
-        meses = metricas.meses_postando(c["primeiro_video"])
-        if (c["base_longos"] or 0) >= MINIMO_POR_VIDEO and meses is not None and meses <= CANAL_ATE_MESES:
-            titulos = [v["titulo"] for v in banco.todos(
-                "SELECT titulo FROM videos WHERE canal_id=? ORDER BY publicado DESC LIMIT 20", cid)]
-            if risco.avaliar(titulos):
-                continue      # canal com risco de desmonetização (reaproveitado, em série...) não entra no Radar
-            if _completar(c, rapido=rapido):
-                entraram.append(cid)
+    for cid, c in medir.medir_canais(candidatos, forcar=True, origem=origem).items():
+        if _passa(cid, c) and _completar(c, rapido=rapido):
+            entraram.append(cid)
     contagem["novos"] += len(entraram)
     if entraram:
         log(f"{len(entraram)} canais novos no Radar")
     return entraram
+
+
+def _passa(cid: str, c: dict) -> bool:
+    """O canal medido entra no Radar: novo, com views por vídeo e sem risco de desmonetização."""
+    meses = metricas.meses_postando(c["primeiro_video"])
+    if (c["base_longos"] or 0) < MINIMO_POR_VIDEO or meses is None or meses > CANAL_ATE_MESES:
+        return False
+    titulos = [v["titulo"] for v in banco.todos(
+        "SELECT titulo FROM videos WHERE canal_id=? ORDER BY publicado DESC LIMIT 20", cid)]
+    return not risco.avaliar(titulos)   # reaproveitado, em série... não entra no Radar
+
+
+# ---------------------------------------------------------------- categoria em alta e repescagem (2026-11-07)
+# As duas ideias vieram de ver o Dotti Finder: canal achado nos vídeos em alta de cada categoria do YouTube (1
+# unidade a cada 50 vídeos, a busca custa 100) e o canal que ficou de fora e voltou a crescer.
+CATEGORIAS = {"27": "Educação", "28": "Ciência e tecnologia", "25": "Notícias e política", "24": "Entretenimento",
+              "22": "Pessoas e blogs", "15": "Animais", "2": "Carros", "19": "Viagens"}
+CATEGORIA_DIAS = 1          # cada categoria, em cada país, uma vez por dia
+FRACAO_CATEGORIAS = 0.05
+REPESCAR_DIAS = 21          # o canal que ficou de fora é olhado de novo depois de 3 semanas
+REPESCAR_LOTE = 20
+FRACAO_REPESCAGEM = 0.1
+
+
+@youtube.por("garimpo")
+def varrer_categorias(log, orcamento: int, contagem: dict) -> int:
+    """Os canais dos vídeos em alta de cada categoria, nos países de língua inglesa. Devolve quantos entraram."""
+    inicio, entraram = youtube.cota_hoje()["usado"], 0
+    ontem = (datetime.now(timezone.utc) - timedelta(days=CATEGORIA_DIAS)).isoformat()
+    n = 0
+    for cat, nome in CATEGORIAS.items():
+        for regiao in dict.fromkeys(mercado.regiao(k) for k in range(6)):
+            termo = f"categoria:{cat}:{regiao}"
+            antes = banco.um("SELECT quando, vezes, total FROM buscas_feitas WHERE termo=?", termo) or {}
+            if (antes.get("quando") or "") >= ontem:
+                continue
+            if youtube.cota_hoje()["usado"] - inicio + 60 > orcamento:
+                return entraram
+            n += 1
+            try:
+                ids = list(dict.fromkeys(v["canal_id"] for v in youtube.populares(cat, regiao)))
+                novos = _avaliar(ids, log, contagem, rapido=True, origem="categoria")
+            except youtube.SemCota:
+                raise
+            except Exception as erro:   # categoria que o país não tem em alta não para o resto
+                log(f"[categoria {nome} {regiao}] falhou: {str(erro)[:120]}")
+                novos = []
+            banco.executar("INSERT OR REPLACE INTO buscas_feitas (termo, nicho, quando, canais, vezes, total, zeros) "
+                           "VALUES (?,?,?,?,?,?,0)", termo, "Categoria", banco.agora(), len(novos),
+                           (antes.get("vezes") or 0) + 1, (antes.get("total") or 0) + len(novos))
+            entraram += len(novos)
+    if n:
+        log(f"Categorias em alta: {n} listas olhadas, {entraram} canais entraram")
+    return entraram
+
+
+@youtube.por("garimpo")
+def repescagem(log, orcamento: int, contagem: dict) -> int:
+    """O canal que já foi medido inteiro e ficou de fora é medido de novo; se agora passa, entra no Radar."""
+    agora = datetime.now(timezone.utc)
+    velho = (agora - timedelta(days=REPESCAR_DIAS)).isoformat()
+    novo_ainda = (agora - timedelta(days=CANAL_ATE_MESES * 31)).isoformat()
+    ids = [c["id"] for c in banco.todos(
+        "SELECT id FROM canais WHERE no_radar=0 AND base_longos IS NOT NULL AND medido<? AND primeiro_video>=? "
+        "AND (repescado='' OR repescado<?) ORDER BY base_longos DESC LIMIT 200", velho, novo_ainda, velho)]
+    inicio, entraram = youtube.cota_hoje()["usado"], []
+    for i in range(0, len(ids), REPESCAR_LOTE):
+        if youtube.cota_hoje()["usado"] - inicio + 3 * REPESCAR_LOTE > orcamento:
+            break
+        lote = ids[i:i + REPESCAR_LOTE]
+        for cid, c in medir.medir_canais(lote, forcar=True).items():
+            banco.executar("UPDATE canais SET repescado=? WHERE id=?", banco.agora(), cid)
+            if _passa(cid, c) and _completar(c, rapido=True):
+                banco.executar("UPDATE canais SET origem='repescagem' WHERE id=?", cid)
+                entraram.append(cid)
+    contagem["novos"] += len(entraram)
+    if ids:
+        log(f"Repescagem: {min(len(ids), i + REPESCAR_LOTE) if ids else 0} canais olhados de novo, "
+            f"{len(entraram)} voltaram para o Radar")
+    return len(entraram)
 
 
 def _completar(c: dict, rapido: bool = False) -> None:
@@ -345,7 +419,7 @@ def fila_do_navegador(log, orcamento: int) -> int:
         if youtube.cota_hoje()["usado"] - inicio + 3 * FILA_LOTE > orcamento:
             break
         try:
-            _avaliar(ids[i:i + FILA_LOTE], log, contagem, rapido=True)
+            _avaliar(ids[i:i + FILA_LOTE], log, contagem, rapido=True, origem="navegador")
         except youtube.SemCota:
             break
         except Exception as erro:          # um lote ruim não para o resto da fila
@@ -468,6 +542,9 @@ def rodar(log=print, unidades: int | None = None) -> dict:
         remedir(anotar, int(orcamento * FRACAO_REMEDIR))
         # antes das buscas: a fila do navegador é o canal mais barato por unidade (só a medida custa cota)
         contagem["novos"] += fila_do_navegador(anotar, int(orcamento * FRACAO_FILA))
+        # os canais que entram já somam no contador dentro de _avaliar e da repescagem
+        varrer_categorias(anotar, int(orcamento * FRACAO_CATEGORIAS), contagem)
+        repescagem(anotar, int(orcamento * FRACAO_REPESCAGEM), contagem)
         depois = (datetime.now(timezone.utc) - timedelta(days=DIAS_DO_VIDEO)).strftime("%Y-%m-%dT%H:%M:%SZ")
         for n, (nicho, termo) in enumerate(_proximos_termos()):
             if youtube.cota_hoje()["usado"] - inicio + 110 > orcamento:
@@ -670,7 +747,7 @@ def _parecidos(canal_id: str) -> list[dict]:
                 if a["canal_id"] != canal_id:
                     vistos[a["canal_id"]] += 50 - posicao
         candidatos = [c for c, _ in vistos.most_common(CANDIDATOS_MEDIDOS)]
-        medir.medir_canais(candidatos)
+        medir.medir_canais(candidatos, origem="parecidos")
         nota = {c: parecenca_do_canal(c, assunto) for c in candidatos}
         ids = sorted((c for c in candidatos if nota[c] >= MINIMO_PARECENCA),
                      key=lambda c: (-round(nota[c], 1), -vistos[c]))[:25]

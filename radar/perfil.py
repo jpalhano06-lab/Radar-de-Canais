@@ -141,7 +141,7 @@ def mais_ideias(canal: dict, tentativa: int = 0, usuario_id: int | None = None) 
         achados += youtube.buscar(_termo(b, jeito), publicado_depois=depois, duracao=jeito["duracao"],
                                   ordem=jeito["ordem"], quantos=25)
     achados = [a for a in achados if a["canal_id"] != canal["id"]]
-    canais = medir.medir_canais(list(dict.fromkeys(a["canal_id"] for a in achados))[:20])
+    canais = medir.medir_canais(list(dict.fromkeys(a["canal_id"] for a in achados))[:20], origem="procura")
     videos = [v for v in _videos_com_nota([a["video_id"] for a in achados], canais) if (v["nota"] or 0) >= 1.5]
     videos.sort(key=lambda v: -(v["nota"] or 0))
     return {"videos": videos[:24], "buscas": buscas, "jeito": jeito["texto"], "proxima": tentativa + 1}

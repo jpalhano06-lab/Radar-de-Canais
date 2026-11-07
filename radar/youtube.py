@@ -182,8 +182,9 @@ def canais(ids: list[str]) -> list[dict]:
     saida = []
     ids = [i for i in dict.fromkeys(ids) if i and i.startswith("UC")]
     for i in range(0, len(ids), 50):
-        dados = _pedir("channels", {"part": "snippet,statistics,contentDetails", "id": ",".join(ids[i:i + 50]),
-                                    "maxResults": 50}, 1)
+        # brandingSettings e topicDetails não custam a mais: channels.list é 1 unidade com qualquer parte
+        dados = _pedir("channels", {"part": "snippet,statistics,contentDetails,brandingSettings,topicDetails",
+                                    "id": ",".join(ids[i:i + 50]), "maxResults": 50}, 1)
         saida += [_canal(item) for item in dados.get("items", [])]
     return saida
 
@@ -203,7 +204,17 @@ def _canal(item: dict) -> dict:
         "inscritos": None if st.get("hiddenSubscriberCount") else _int(st.get("subscriberCount")),
         "videos_total": _int(st.get("videoCount")), "views_total": _int(st.get("viewCount")),
         "uploads": item.get("contentDetails", {}).get("relatedPlaylists", {}).get("uploads", ""),
+        "keywords": ((item.get("brandingSettings") or {}).get("channel") or {}).get("keywords", "") or "",
+        "topicos": (item.get("topicDetails") or {}).get("topicCategories") or [],
     }
+
+
+def populares(categoria: str, regiao: str = "US", quantos: int = 50) -> list[dict]:
+    """Os vídeos em alta de uma categoria num país (videos.list chart=mostPopular, 1 unidade a cada 50)."""
+    dados = _pedir("videos", {"part": "snippet", "chart": "mostPopular", "regionCode": regiao,
+                              "videoCategoryId": categoria, "maxResults": min(50, quantos)}, 1)
+    return [{"video_id": i["id"], "canal_id": i["snippet"]["channelId"], "titulo": i["snippet"]["title"]}
+            for i in dados.get("items", []) if i.get("snippet", {}).get("channelId")]
 
 
 def envios(canal_id: str, quantos: int = 50) -> list[str]:

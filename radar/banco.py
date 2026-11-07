@@ -336,7 +336,10 @@ COLUNAS_NOVAS = {
     "producoes_fila": {"maquina_id": "INTEGER", "lease": "TEXT NOT NULL DEFAULT ''", "lease_ate": "REAL NOT NULL DEFAULT 0",
                        "eventos": "TEXT NOT NULL DEFAULT '[]'", "prova": "TEXT NOT NULL DEFAULT ''"},
     "canais": {"subnicho": "TEXT NOT NULL DEFAULT ''", "velocidade": "REAL", "ganho_7d": "INTEGER",
-               "anuncios": "INTEGER", "membros": "INTEGER"},   # monetização vista pela extensão (1, 0 ou sem saber)
+               "anuncios": "INTEGER", "membros": "INTEGER",   # monetização vista pela extensão (1, 0 ou sem saber)
+               # por onde o canal entrou, o que o dono cadastrou e a última repescagem (descoberta.py, 2026-11-07)
+               "origem": "TEXT NOT NULL DEFAULT ''", "keywords": "TEXT NOT NULL DEFAULT ''",
+               "topicos": "TEXT NOT NULL DEFAULT '[]'", "repescado": "TEXT NOT NULL DEFAULT ''"},
     # painel: a ordem e as abas escondidas do menu de cada pessoa. Fica fora de `prefs` porque salvar_prefs reescreve
     # aquele JSON inteiro a cada resposta das perguntas, e levaria o menu junto
     "usuarios": {"prefs": "TEXT NOT NULL DEFAULT '{}'", "painel": "TEXT NOT NULL DEFAULT '{}'"},

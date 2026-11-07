@@ -21,7 +21,7 @@ from fastapi.staticfiles import StaticFiles
 
 from starlette.background import BackgroundTask
 
-from . import avisos, backup, maquinas
+from . import avisos, backup, descoberta, maquinas
 from . import alvos, banco, canal_painel, capas, lente_ia, molde, pedidos, ponte, chatgpt_conta, claude_projetos, custos, descricao, diagnostico, fabrica_api, fila, funcoes, garimpo, gosto, horarios, ia, integracoes, medir, mercado, metricas, nichos, pagina, perfil, producao, publicar, radar_paises, roteiro_claude, studio, tempo, thumb, trabalho, treinamento, trello, youtube
 from .config import DADOS, NOME, PLANOS, RAIZ, pode
 
@@ -1170,6 +1170,8 @@ def radar(request: Request, u: dict = Depends(exigir("radar"))):
         onde.append("c.id IN (SELECT canal_id FROM salvos WHERE usuario_id=?)"); args.append(u["id"])
     if q.get("acharam") == "1":
         onde.append("c.id IN (SELECT canal_id FROM achados WHERE usuario_id=?)"); args.append(u["id"])
+    if q.get("origem") in descoberta.ORIGENS:      # por onde o canal entrou (a repescagem, por exemplo)
+        onde.append("c.origem=?"); args.append(q["origem"])
     if q.get("pasta"):      # `sem_pasta` é o nome reservado para os salvos que ainda não foram guardados em nenhuma
         pedida = "" if q["pasta"] == "sem_pasta" else q["pasta"]
         onde.append("c.id IN (SELECT canal_id FROM salvos WHERE usuario_id=? AND pasta=?)")
@@ -1254,6 +1256,24 @@ def grupos(nicho: str = "", u: dict = Depends(exigir("radar"))):
 def nichos_vida(nicho: str = "", idioma: str = "", u: dict = Depends(exigir("radar"))):
     """A faixa das cinco etapas da vida de um canal, somando os canais da mesma lista que a tela Canais mostra."""
     return nichos.linha_da_vida(nicho, idioma, garimpo.MINIMO_POR_VIDEO)
+
+
+@app.get("/api/nichos/espaco")
+def nichos_espaco(u: dict = Depends(exigir("radar"))):
+    """Subnichos em que vídeos estouraram há pouco e quase ninguém do Radar faz (descoberta.com_espaco)."""
+    return {"nichos": descoberta.com_espaco(), "dias": descoberta.ESPACO_DIAS, "max_canais": descoberta.ESPACO_MAX_CANAIS}
+
+
+@app.get("/api/repescagem")
+def repescagem(u: dict = Depends(exigir("radar"))):
+    """Os canais que ficaram de fora, voltaram a crescer e entraram de novo no Radar."""
+    return {"canais": [_vitrine(c, u["id"]) for c in descoberta.repescados()]}
+
+
+@app.get("/api/canal/{canal_id}/subtemas")
+def subtemas_do_canal(canal_id: str, u: dict = Depends(usuario)):
+    """Os subtemas dos vídeos que estouraram no canal (o modelo de texto escreve uma vez; depois fica guardado)."""
+    return descoberta.subtemas(canal_id)
 
 
 @app.get("/api/nichos/tabela")
@@ -2944,7 +2964,7 @@ async def medir_canal(request: Request, u: dict = Depends(exigir("extensao"))):
             ref = achado["id"] if achado else None
         if not ref:
             raise HTTPException(404, "Não achei esse canal. Cole o @ do canal, o link dele ou o link de um vídeo.")
-        medir.medir_canais([ref])
+        medir.medir_canais([ref], origem="manual")
     except youtube.SemCota as erro:
         _sem_cota(erro)
     c = banco.um("SELECT * FROM canais WHERE id=?", ref)

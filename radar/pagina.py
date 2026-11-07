@@ -221,6 +221,7 @@ def canal_lido(canal: dict, videos: list) -> dict:
              "raridade": metricas.raridade(b["base_longos"], meses) if exato else ""}
     if not antes:
         dados["descoberto"] = banco.agora()
+        dados["origem"] = "lente"
     _canal_basico(canal)
     banco.gravar("canais", "id", dados)
     if _int(canal.get("inscritos")) is not None:

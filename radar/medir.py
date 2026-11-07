@@ -6,7 +6,7 @@ import json
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta, timezone
 
-from . import banco, metricas, youtube
+from . import banco, descoberta, metricas, youtube
 
 NOTA_OUTLIER = 3.0   # a mesma do garimpo: 3 vezes o normal do canal
 
@@ -92,6 +92,9 @@ def medir_canais(ids: list[str], forcar: bool = False, origem: str = "") -> dict
                 "raridade": metricas.raridade(b["base_longos"], meses), "medido": banco.agora(), **b,
                 "velocidade": metricas.velocidade(lista),
             }
+            if canal.get("keywords") is not None and "keywords" in canal:
+                dados["keywords"] = str(canal["keywords"])[:2000]
+                dados["topicos"] = json.dumps(canal.get("topicos") or [])
             # uma foto por dia dos números do canal: é dela que sai o ganho de inscritos da semana
             dia = banco.agora()[:10]
             banco.executar("INSERT OR REPLACE INTO historico (canal_id, dia, inscritos, views_total, videos_total) "
@@ -103,6 +106,9 @@ def medir_canais(ids: list[str], forcar: bool = False, origem: str = "") -> dict
             if origem and canal["id"] not in guardados:
                 dados["descoberto"] = banco.agora()
             banco.gravar("canais", "id", dados)
+        if origem:
+            from . import descoberta
+            descoberta.marcar_origem(faltam, origem)
         guardados = {c["id"]: c for c in _canais_do_banco(ids)}
     return guardados
 
@@ -185,6 +191,8 @@ def _canal_publico(c: dict) -> dict:
         "velocidade": c.get("velocidade"), "ganho_7d": c.get("ganho_7d"), "no_radar": bool(c.get("no_radar")),
         "sem_rosto": None if c["sem_rosto"] is None else bool(c["sem_rosto"]),
         "anuncios": c.get("anuncios"), "membros": c.get("membros"),
+        "origem": c.get("origem") or "", "palavras": descoberta.palavras(c.get("keywords") or ""),
+        "topicos": descoberta.topicos(c.get("topicos") or "[]"),
     }
 
 
