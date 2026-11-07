@@ -21,7 +21,7 @@ from fastapi.staticfiles import StaticFiles
 
 from starlette.background import BackgroundTask
 
-from . import maquinas
+from . import avisos, backup, maquinas
 from . import alvos, banco, canal_painel, capas, lente_ia, molde, pedidos, ponte, chatgpt_conta, claude_projetos, custos, descricao, diagnostico, fabrica_api, fila, funcoes, garimpo, gosto, horarios, ia, integracoes, medir, mercado, metricas, nichos, pagina, perfil, producao, publicar, radar_paises, roteiro_claude, studio, tempo, thumb, trabalho, treinamento, trello, youtube
 from .config import DADOS, NOME, PLANOS, RAIZ, pode
 
@@ -407,6 +407,23 @@ async def ext_canal_lido(request: Request, u: dict = Depends(exigir("extensao"))
 def ext_painel(video_id: str, canal: str = "", u: dict = Depends(exigir("extensao"))):
     """O painel do vídeo aberto com o que o banco já tem: o canal, a curva de views e se está salvo (sem cota)."""
     return {**pagina.painel(video_id, canal, u["id"]), "plano": _plano(u)}
+
+
+@app.get("/api/avisos")
+def ver_avisos(u: dict = Depends(usuario)):
+    """O que precisa de você agora, e como anda a cópia de segurança (avisos.py, backup.py)."""
+    return {"avisos": avisos.atuais(), "backup": backup.ultimo()}
+
+
+@app.get("/api/ext/avisos")
+def ext_avisos(u: dict = Depends(exigir("extensao"))):
+    return {"avisos": avisos.atuais()}
+
+
+@app.get("/api/ext/publico/{canal_id}")
+def ext_publico(canal_id: str, u: dict = Depends(exigir("extensao"))):
+    """O país que mais assiste o canal, para o horário de postar abrir nele. Só o banco: nenhuma leitura nova."""
+    return {"pais": studio.pais_do_publico(u["id"], canal_id)}
 
 
 @app.get("/api/ext/canal-dados/{canal_id}")
@@ -3219,6 +3236,7 @@ def _ligar():
     fila.iniciar_vigia()
     molde.iniciar()
     capas.iniciar()
+    avisos.iniciar()
 
 
 # ---------------------------------------------------------------- site

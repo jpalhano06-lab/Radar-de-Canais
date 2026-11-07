@@ -1,6 +1,6 @@
 // O que a extensão acrescenta às telas do YouTube Studio, além da publicação (publicar.js): visualizações engajadas,
-// foto do cartão, onde o vídeo perde gente, nota do título, capítulos da fala, e hora por país (os anúncios ficam em
-// anuncios.js). Cada peça olha a tela a cada segundo e só aparece onde o elemento dela existe. O Studio muda sem aviso: elemento
+// foto do cartão, onde o vídeo perde gente, nota do título, e capítulos da fala (os anúncios ficam em
+// anuncios.js e o horário de postar em horario.js). Cada peça olha a tela a cada segundo e só aparece onde o elemento dela existe. O Studio muda sem aviso: elemento
 // que não existe mais faz a peça sumir, nunca quebra a página.
 // As contas puras ficam em globalThis.RadarStudio para os testes.
 (() => {
@@ -42,16 +42,13 @@
     return h ? `${h}:${String(m).padStart(2, "0")}:${x}` : `${m}:${x}`;
   };
 
-  // a hora de um instante num fuso, como o relógio de lá mostra
-  const horaEm = (quando, fuso) => new Intl.DateTimeFormat("pt-BR", { timeZone: fuso, hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).format(quando);
-
   // os capítulos entram no fim da descrição, no lugar dos que já estavam lá
   function comCapitulos(descricao, capitulos) {
     const linhas = String(descricao || "").split("\n").filter((l) => !/^\s*\d{1,2}:\d{2}(:\d{2})?\s/.test(l));
     return `${linhas.join("\n").trimEnd()}\n\n${capitulos.map((c) => `${c.tempo} ${c.titulo}`).join("\n")}`.trimStart();
   }
 
-  globalThis.RadarStudio = { curvaDoPath, maioresQuedas, comCapitulos, horaEm, tempo };
+  globalThis.RadarStudio = { curvaDoPath, maioresQuedas, comCapitulos, tempo };
   if (typeof chrome === "undefined" || !chrome.runtime || window.__radarStudioLente) return;
   window.__radarStudioLente = true;
 
@@ -275,41 +272,8 @@
     (campo.closest("#description-textarea") || campo.parentElement).after(el("div", { class: "radar-capitulos" }, botao, lista));
   }
 
-  // ------------------------------------------------------------ hora por país
-
-  const FUSOS = [["Estados Unidos (Nova York)", "America/New_York"], ["Estados Unidos (Los Angeles)", "America/Los_Angeles"], ["Reino Unido", "Europe/London"],
-    ["Canadá (Toronto)", "America/Toronto"], ["Austrália (Sydney)", "Australia/Sydney"], ["Portugal", "Europe/Lisbon"], ["Espanha", "Europe/Madrid"],
-    ["México", "America/Mexico_City"], ["Argentina", "America/Argentina/Buenos_Aires"], ["França", "Europe/Paris"], ["Alemanha", "Europe/Berlin"],
-    ["Itália", "Europe/Rome"], ["Polônia", "Europe/Warsaw"], ["Turquia", "Europe/Istanbul"], ["Índia", "Asia/Kolkata"], ["Japão", "Asia/Tokyo"], ["Coreia do Sul", "Asia/Seoul"]];
-
-  async function horaPorPais() {
-    const agenda = $("ytcp-datetime-picker, #schedule-radio-button, ytcp-video-visibility-select");
-    if (!agenda || !ligada("hora-pais") || $(".radar-hora-pais")) return;
-    const canal = (await chrome.storage.local.get("numerosCanal")).numerosCanal?.canal || "";
-    const chave = `fusoDoCanal:${canal}`;
-    const guardado = (await chrome.storage.local.get(chave))[chave] || FUSOS[0][1];
-    if ($(".radar-hora-pais")) return;
-    const seletor = el("select", { title: "O país do público deste canal", onchange: () => { chrome.storage.local.set({ [chave]: seletor.value }); mostrar(); } },
-      FUSOS.map(([nome, fuso]) => { const o = el("option", { value: fuso }, nome); if (fuso === guardado) o.selected = true; return o; }));
-    const saida = el("span", {}), melhores = el("small", {});
-    function mostrar() {
-      saida.textContent = `Agora são ${horaEm(new Date(), seletor.value)} lá`;
-      if (melhores.dataset.base) {
-        const base = JSON.parse(melhores.dataset.base), hoje = new Date();
-        melhores.textContent = `Horas com mais views: ${base.map((h) => horaEm(new Date(hoje.getFullYear(), hoje.getMonth(), hoje.getDate(), h), seletor.value)).join(", ")} lá`;
-      }
-    }
-    agenda.after(el("div", { class: "radar-hora-pais" }, seletor, saida, melhores));
-    const r = canal ? await api(`/api/ext/horarios/${canal}?fuso=${-new Date().getTimezoneOffset()}`) : { erro: "sem canal" };
-    if (!r.erro && r.dados.suficiente) {
-      const v = r.dados.por_dia.geral || [];
-      melhores.dataset.base = JSON.stringify(v.map((x, i) => [x, r.dados.faixas[i][0]]).sort((a, b) => b[0] - a[0]).slice(0, 3).map(([, h]) => h));
-    }
-    mostrar();
-  }
-
   // ------------------------------------------------------------ a olhada de cada segundo
 
-  const PECAS = [colunaEngajadas, linhaEngajadas, botoesDeFoto, perdeGente, notaDoTitulo, botaoCapitulos, horaPorPais];
+  const PECAS = [colunaEngajadas, linhaEngajadas, botoesDeFoto, perdeGente, notaDoTitulo, botaoCapitulos];
   setInterval(() => PECAS.forEach((p) => { try { Promise.resolve(p()).catch(() => {}); } catch { /* peça que não achou a tela */ } }), 1000);
 })();

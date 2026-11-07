@@ -28,7 +28,8 @@ descrição, as tags da busca e as hashtags. Você recebe o título e o roteiro 
 Responda SÓ com um JSON, sem nada antes nem depois, sem markdown e sem cercas de código, neste formato:
 {"sinopse": "...", "tags": ["...", "..."], "hashtags": ["#...", "#..."]}
 
-sinopse: de 2 a 4 frases dizendo o que a pessoa vai ver, na mesma língua do roteiro, em tom direto. Nada de "neste
+sinopse: de 4 a 6 frases dizendo o que a pessoa vai ver, na mesma língua do roteiro, em tom direto, com pelo menos o
+número de caracteres que o pedido disser. Cite os assuntos do vídeo pelo nome. Nada de "neste
 vídeo você vai descobrir", nada de emoji, nada de link, nada de pedir inscrição (o canal já tem um rodapé fixo para
 isso) e nada de entregar o fim. Só o que o roteiro de fato diz: não invente fato, número, data nem fala de pessoa
 real.
@@ -37,6 +38,27 @@ tags: de 12 a 20 palavras que as pessoas digitam na busca para achar um vídeo d
 roteiro, das mais buscadas para as mais específicas, sem repetir a mesma ideia, sem hashtag e sem número na frente.
 
 hashtags: de 3 a 5, começando com #, sem espaço dentro, as mais ligadas ao assunto."""
+
+
+# Medido em 2026-11-06 nas descrições já escritas: "de 2 a 4 frases" dava 550 caracteres em português, 255 em coreano e
+# 155 em japonês, porque essas línguas dizem o mesmo com bem menos caracteres. O tamanho agora é pedido em cada língua
+MINIMO_DA_SINOPSE = 550
+MINIMO_POR_ESCRITA = ((re.compile(r"[\uac00-\ud7a3]"), 450), (re.compile(r"[\u3040-\u30ff\u4e00-\u9fff]"), 400))
+
+ALONGAR = """A sinopse abaixo ficou com {atual} caracteres e precisa de pelo menos {minimo}. Reescreva mais completa, na mesma
+língua, citando mais assuntos do roteiro, com as mesmas regras e sem entregar o fim. Responda só com o mesmo JSON.
+
+Sinopse:
+{sinopse}"""
+
+
+def minimo_da_sinopse(texto: str) -> int:
+    """Quantos caracteres a sinopse precisa ter, pela escrita do roteiro."""
+    amostra = (texto or "")[:2000]
+    for escrita, minimo in MINIMO_POR_ESCRITA:
+        if len(escrita.findall(amostra)) > len(amostra) * 0.2:
+            return minimo
+    return MINIMO_DA_SINOPSE
 
 
 # ---------------------------------------------------------------- o agente de descrição
@@ -92,11 +114,22 @@ def escrever(titulo: str, roteiro: str, lingua: str = "", instrucoes: str = "") 
     texto = (roteiro or "").strip()
     if len(texto) > 24000:
         texto = texto[:16000] + "\n\n[…]\n\n" + texto[-8000:]
-    pedido += f"\nRoteiro do vídeo:\n{texto}\n\nEscreva a sinopse, as tags e as hashtags."
+    minimo = minimo_da_sinopse(texto)
+    pedido += (f"\nRoteiro do vídeo:\n{texto}\n\nEscreva a sinopse (pelo menos {minimo} caracteres), as tags e as hashtags.")
     dados = _json_do_claude(roteiro_claude._claude(sistema, pedido))
     sinopse = " ".join(str(dados.get("sinopse") or "").split())[:1500]
     if not sinopse:
         raise RuntimeError("O Claude não devolveu nenhuma sinopse.")
+    if len(sinopse) < minimo:
+        # uma volta só, e nunca fica pior: a curta ainda é melhor que descrição nenhuma
+        try:
+            nova = _json_do_claude(roteiro_claude._claude(sistema, f"{pedido}\n\n" + ALONGAR.format(
+                atual=len(sinopse), minimo=minimo, sinopse=sinopse)))
+            nova_sinopse = " ".join(str(nova.get("sinopse") or "").split())[:1500]
+            if len(nova_sinopse) > len(sinopse):
+                sinopse = nova_sinopse
+        except (RuntimeError, ValueError):
+            pass
     tags = publicar.tags_que_cabem([t for t in (dados.get("tags") or []) if 2 <= len(str(t).strip()) <= 60])
     hashtags = [h for h in (_hashtag(x) for x in (dados.get("hashtags") or [])) if h][:5]
     return {"sinopse": sinopse, "tags": tags, "hashtags": hashtags}

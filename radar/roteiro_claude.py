@@ -299,6 +299,42 @@ def traduzir_titulo(titulo: str, lingua: str) -> str:
     return traduzido
 
 
+def titulo_do_video(video_id: str) -> str:
+    """O título do vídeo de referência, pelo oEmbed do YouTube: sem chave e sem gastar a cota."""
+    r = httpx.get("https://www.youtube.com/oembed", params={"url": f"https://www.youtube.com/watch?v={video_id}", "format": "json"}, timeout=8)
+    r.raise_for_status()
+    return str(r.json().get("title") or "")
+
+
+def por_que_estourou(video_id: str, titulo: str, base: str, aviso=lambda _t: None) -> dict:
+    """A mesma leitura do botão "Por que este vídeo estourou" da extensão, e guardada junto com ela: quem já apertou o
+    botão não gasta outra chamada. Falhou, o roteiro sai só com a transcrição, como antes."""
+    from . import lente_ia  # lente_ia importa este arquivo
+
+    aviso("Lendo por que o vídeo de referência estourou…")
+    try:
+        try:
+            titulo = titulo_do_video(video_id) or titulo
+        except (httpx.HTTPError, ValueError):
+            pass  # sem o título da referência, vale o que foi pedido
+        return lente_ia.por_que(video_id, titulo, base)
+    except Exception as erro:  # noqa: BLE001
+        aviso(f"Sem a leitura do que fez o vídeo estourar, seguindo com a transcrição: {str(erro)[:120]}")
+        return {}
+
+
+def texto_do_por_que(leitura: dict) -> str:
+    """Pedido do usuário em 2026-11-06: além da transcrição, o roteiro leva em conta por que a referência estourou."""
+    campos = (("Por que clicaram", "resumo"), ("Quebra de padrão", "quebra"), ("Prova específica", "prova"),
+              ("Pergunta que fica aberta", "loop"), ("Os primeiros segundos", "comeco"))
+    linhas = [f"- {rotulo}: {leitura[chave]}" for rotulo, chave in campos if str(leitura.get(chave) or "").strip()]
+    if not linhas:
+        return ""
+    return ("\nPor que o vídeo de referência estourou (leitura do Radar). Use estes mecanismos no roteiro, principalmente no "
+            "começo: a mesma quebra de padrão, um dado específico que dê a mesma credibilidade e uma pergunta aberta que só "
+            "o fim fecha. Use só dados que estejam na transcrição, e nunca copie as frases:\n" + "\n".join(linhas) + "\n")
+
+
 def gerar(usuario_id: int, titulo: str, link: str, minutos: int, lingua: str, projeto_id: int | None,
           observacoes: str, perfil: str = "", canal: dict | None = None, projeto_descricao_id: int | None = None,
           aviso=lambda _t: None) -> dict:
@@ -322,6 +358,9 @@ def gerar(usuario_id: int, titulo: str, link: str, minutos: int, lingua: str, pr
         aviso("Copiando a thumbnail…")
         thumb = copiar_thumbnail(video_id, pasta / "thumbnail.jpg")
     original = titulo
+    leitura = por_que_estourou(video_id, titulo, base, aviso) if base else {}
+    if leitura:
+        (pasta / "por_que.json").write_text(json.dumps(leitura, ensure_ascii=False, indent=1), encoding="utf-8")
     if lingua:
         aviso(f"Traduzindo o título para {lingua}…")
         titulo = traduzir_titulo(titulo, lingua)
@@ -347,6 +386,7 @@ def gerar(usuario_id: int, titulo: str, link: str, minutos: int, lingua: str, pr
     if base:
         # a transcrição muito longa é cortada: o começo e a estrutura importam mais
         pedido += f"\nTranscrição do vídeo de referência (língua: {lingua_base}):\n{base[:60000]}\n"
+        pedido += texto_do_por_que(leitura)
     elif base_erro:
         pedido += ("\nO vídeo de referência existe, mas não deu para ler a legenda dele: escreva a partir do título, "
                    "das observações e do estilo do canal, sem nenhuma base de transcrição.\n")
@@ -362,7 +402,7 @@ def gerar(usuario_id: int, titulo: str, link: str, minutos: int, lingua: str, pr
             "projeto": projeto["nome"] if projeto else "", "palavras": contar_palavras(roteiro),
             "palavras_base": contar_palavras(base), "base_erro": base_erro[:300], "thumbnail": thumb,
             "segundos": round(time.time() - inicio), "criado": banco.agora(), "usuario_id": usuario_id, "ritmo": ritmo,
-            "conferencia": conferencia, "canal": canal or {}, "rascunhos": rascunhos}
+            "conferencia": conferencia, "canal": canal or {}, "rascunhos": rascunhos, "por_que": bool(leitura)}
     (pasta / "roteiro.json").write_text(json.dumps(meta, ensure_ascii=False, indent=1), encoding="utf-8")
     _escrever_descricao(usuario_id, pasta, projeto_descricao_id, aviso)
     return _publico(pasta)

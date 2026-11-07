@@ -1,14 +1,14 @@
 /* O painel de anúncios no editor do Studio (anuncios.js) */
 .radar-an-ancora { display: flex; margin: 8px 0; }
-.radar-an-abrir { padding: 7px 14px; border: 1px solid #12b76a; border-radius: 18px; background: none; color: #12b76a; font: 500 13px Roboto, Arial, sans-serif; cursor: pointer; }
-.radar-an-abrir.on, .radar-an-abrir:hover { background: #12b76a; color: #06140d; }
+.radar-an-abrir { padding: 7px 14px; border: 1px solid #b6f23a; border-radius: 18px; background: #b6f23a; color: #10160a; font: 500 13px Roboto, Arial, sans-serif; cursor: pointer; }
+.radar-an-abrir.on, .radar-an-abrir:hover { background: #c8ff4d; color: #10160a; }
 .radar-an { position: fixed; z-index: 2300; box-sizing: border-box; display: grid; gap: 12px; padding: 14px; overflow-y: auto; border: 1px solid #343842; border-radius: 12px; background: #16181d; color: #eceef2; box-shadow: 0 12px 32px rgba(0,0,0,.45); font: 13px/1.4 Roboto, Arial, sans-serif; }
 .radar-an[hidden], .radar-an [hidden] { display: none !important; }
 .radar-an button { font: inherit; color: inherit; cursor: pointer; }
 .radar-an button:disabled { opacity: .45; cursor: default; }
 .radar-an-modos { display: grid; grid-template-columns: repeat(3, 1fr); gap: 2px; padding: 3px; border-radius: 9px; background: #23262e; }
 .radar-an-modo { padding: 6px 4px; border: 0; border-radius: 7px; background: none; }
-.radar-an-modo.on { background: #12b76a; color: #06140d; font-weight: 500; }
+.radar-an-modo.on { background: #b6f23a; color: #06140d; font-weight: 500; }
 .radar-an-linha { display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: center; }
 .radar-an-parte { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
 .radar-an-sel, .radar-an-num { box-sizing: border-box; padding: 4px 6px; border: 1px solid #434855; border-radius: 6px; background: #23262e; color: inherit; font: inherit; }
@@ -18,7 +18,7 @@
 .radar-an-trilha.procurando { animation: radar-an-pisca 1s ease-in-out infinite alternate; }
 @keyframes radar-an-pisca { to { opacity: .45; } }
 .radar-an-t { position: absolute; top: 3px; bottom: 3px; width: 2px; margin-left: -1px; background: #8b92a1; }
-.radar-an-t.novo { background: #12b76a; }
+.radar-an-t.novo { background: #b6f23a; }
 .radar-an-t.vermelho { background: #ff5263; }
 .radar-an-t.sai { opacity: .35; }
 .radar-an-regua { display: flex; justify-content: space-between; margin-top: 3px; font-size: 11px; opacity: .65; }
@@ -27,19 +27,19 @@
 .radar-an-troca { display: flex; gap: 8px; align-items: center; padding: 0; border: 0; background: none; text-align: left; }
 .radar-an-troca i { position: relative; flex: none; width: 30px; height: 16px; border-radius: 8px; background: #434855; }
 .radar-an-troca i::after { content: ""; position: absolute; top: 2px; left: 2px; width: 12px; height: 12px; border-radius: 50%; background: #fff; transition: left .12s; }
-.radar-an-troca[aria-checked="true"] i { background: #12b76a; }
+.radar-an-troca[aria-checked="true"] i { background: #b6f23a; }
 .radar-an-troca[aria-checked="true"] i::after { left: 16px; }
-.radar-an-colocar { padding: 9px; border: 0; border-radius: 8px; background: #12b76a; color: #06140d !important; font-weight: 500 !important; }
+.radar-an-colocar { padding: 9px; border: 0; border-radius: 8px; background: #b6f23a; color: #06140d !important; font-weight: 500 !important; }
 .radar-an-andamento { display: flex; gap: 10px; align-items: center; }
 .radar-an-barra { flex: 1; height: 6px; border-radius: 3px; background: #23262e; overflow: hidden; }
-.radar-an-barra i { display: block; width: 0; height: 100%; background: #12b76a; transition: width .15s; }
+.radar-an-barra i { display: block; width: 0; height: 100%; background: #b6f23a; transition: width .15s; }
 .radar-an-conta { font-variant-numeric: tabular-nums; white-space: nowrap; }
 .radar-an-aviso { margin: 0; }
-.radar-an-aviso.ok { color: #12b76a; }
+.radar-an-aviso.ok { color: #b6f23a; }
 .radar-an-aviso.erro { color: #ff5263; }
 .radar-an-rodape { display: flex; gap: 6px; align-items: center; padding-top: 10px; border-top: 1px solid #2c3039; }
 .radar-an-mini { padding: 4px 9px; border: 1px solid #434855; border-radius: 7px; background: none; font-size: 12px !important; }
 .radar-an-mini.armado { border-color: #ff5263; color: #ff5263; }
-.radar-an-mini.on { border-color: #12b76a; }
+.radar-an-mini.on { border-color: #b6f23a; }
 .radar-an-direita { margin-left: auto; }
 .radar-an-gaveta { display: grid; gap: 8px; }

@@ -133,6 +133,28 @@
     window.postMessage({ radarEngajadasResposta: 1, pedido: e.data.pedido, dados }, location.origin);
   });
 
+  // os últimos vídeos do canal, publicados ou agendados, para o horário de postar avisar quando um novo sai colado neles
+  async function ultimosVideos(canal) {
+    const auth = await autorizacao();
+    if (!auth) return [];
+    const cabecalho = { "content-type": "application/json", authorization: auth, "x-origin": location.origin,
+      "x-goog-authuser": String(cfg("SESSION_INDEX") || 0) };
+    if (cfg("DELEGATED_SESSION_ID")) cabecalho["x-goog-pageid"] = cfg("DELEGATED_SESSION_ID");
+    const r = await fetch("/youtubei/v1/creator/list_creator_videos?alt=json", { method: "POST", credentials: "include", headers: cabecalho,
+      body: JSON.stringify({ context: cfg("INNERTUBE_CONTEXT"), order: "VIDEO_ORDER_DISPLAY_TIME_DESC", pageSize: 30,
+        filter: { and: { operands: [{ channelIdIs: { value: canal } }, { videoOriginIs: { value: "VIDEO_ORIGIN_UPLOAD" } }] } },
+        mask: { videoId: true, title: true, timePublishedSeconds: true, scheduledPublishingDetails: { all: true } } }) });
+    if (!r.ok) return [];
+    return ((await r.json()).videos || []).map((v) => ({ id: v.videoId, titulo: v.title || "", publicado: +v.timePublishedSeconds * 1000 || 0,
+      agendamento: v.scheduledPublishingDetails || null }));
+  }
+  window.addEventListener("message", async (e) => {
+    if (e.source !== window || !e.data || e.data.radarVideos !== 1) return;
+    let videos = [];
+    try { videos = await ultimosVideos(e.data.canal); } catch { /* o Studio mudou: o aviso só não aparece */ }
+    window.postMessage({ radarVideosResposta: 1, pedido: e.data.pedido, videos }, location.origin);
+  });
+
   // o painel e as estatísticas trocam de tela sem recarregar: pede de novo a cada minuto e quando a tela muda
   setTimeout(coletar, 2500);
   setInterval(coletar, 60 * 1000);

@@ -722,7 +722,7 @@
     .acima { display: grid; gap: 8px; justify-items: end; }
     .acima:empty { display: none; }
     .botoes { display: flex; gap: 1px; }
-    .botoes button { border: 0; cursor: pointer; font: 700 13px Roboto, Arial, sans-serif; background: #cc0000; color: #fff;
+    .botoes button { border: 0; cursor: pointer; font: 700 13px Roboto, Arial, sans-serif; background: #b6f23a; color: #10160a;
       padding: 10px 16px; display: flex; align-items: center; gap: 8px; box-shadow: 0 4px 14px rgba(0,0,0,.4); }
     .botoes button:disabled { opacity: .6; cursor: default; }
     .botoes .acao { border-radius: 4px; }
@@ -735,7 +735,7 @@
     /* o cartão da capa grande tem botão dentro dele, fora da fileira de botões do rodapé */
     .cartao b { font-size: 13px; }
     .cartao small { display: block; color: #8b93a7; font-size: 11px; margin: 2px 0 8px; }
-    .cartao .acao { border: 0; cursor: pointer; font: 700 13px Roboto, Arial, sans-serif; background: #cc0000;
+    .cartao .acao { border: 0; cursor: pointer; font: 700 13px Roboto, Arial, sans-serif; background: #b6f23a;
       color: #fff; padding: 8px 14px; border-radius: 4px; display: flex; align-items: center; gap: 8px; }
     .cartao .acao:disabled { opacity: .6; cursor: default; }
     .cartao .dupla { display: flex; gap: 6px; flex-wrap: wrap; }
@@ -746,7 +746,7 @@
     .hr-c { display: grid; grid-template-rows: 1fr auto; gap: 3px; height: 100%; justify-items: center; }
     .hr-c u { display: block; width: 100%; height: 100%; display: flex; align-items: flex-end; background: #1b1f29; border-radius: 4px; overflow: hidden; }
     .hr-c u i { display: block; width: 100%; background: #39404f; border-radius: 4px; }
-    .hr-c.pico u i { background: #cc0000; }
+    .hr-c.pico u i { background: #b6f23a; }
     .hr-c span { color: #8b93a7; font-size: 10px; } .hr-c.pico span { color: #eef1f7; font-weight: 700; }
   </style><div class="barra" hidden></div>`;
   const barra = raiz.querySelector(".barra");

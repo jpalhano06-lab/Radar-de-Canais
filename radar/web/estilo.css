@@ -2106,3 +2106,11 @@ input, select, textarea, .selects select, .selects .limpar { border-radius: 8px;
   #cores .caixa-cores { position: fixed; top: auto; bottom: 64px; right: 12px; }
   main { padding-bottom: 90px; }
 }
+
+/* o que precisa de você, no topo de toda tela (avisos.py) */
+#avisos-topo { display: grid; gap: 6px; }
+#avisos-topo:not(:empty) { padding: 12px 24px 0; }
+.aviso-topo { display: flex; gap: 12px; align-items: center; padding: 10px 14px; border-radius: 10px; border: 1px solid #f5b301; background: rgba(245,179,1,.12); }
+.aviso-topo.grave { border-color: #ff5263; background: rgba(255,82,99,.12); }
+.aviso-topo > div { flex: 1; min-width: 0; }
+.aviso-topo button { border: 0; background: none; color: inherit; cursor: pointer; opacity: .7; }

@@ -113,3 +113,36 @@ chrome.runtime.onInstalled.addListener(() => {
   sincronizarClaude();
 });
 chrome.alarms.onAlarm.addListener((a) => { if (a.name === "claude-projetos") sincronizarClaude(); });
+
+// o que precisa de você vira notificação do Chrome (radar/avisos.py). O mesmo aviso só volta depois de 12 horas. Radar fora do
+// ar também avisa, mas só na segunda volta seguida: ligar o Radar de novo leva um minuto
+const AVISAR_DE_NOVO = 12 * 3600 * 1000;
+
+function notificar(chave, titulo, texto, link = "") {
+  chrome.notifications.create(`radar:${chave}:${link}`, { type: "basic", iconUrl: "icones/128.png", title: titulo, message: texto || "" });
+}
+
+async function olharAvisos() {
+  const guardado = await chrome.storage.local.get(["funcoesDesligadas", "avisosVistos", "radarFora"]);
+  if ((guardado.funcoesDesligadas || []).includes("avisos")) return;
+  const r = await pedir({ caminho: "/api/ext/avisos" });
+  const fora = r.erro && !r.status ? (guardado.radarFora || 0) + 1 : 0;
+  await chrome.storage.local.set({ radarFora: fora });
+  if (fora === 2) notificar("radar-fora", "O Radar está fora do ar", "A fila e os avisos ficam parados até ligar de novo.");
+  if (r.erro) return;
+  const vistos = guardado.avisosVistos || {}, agora = Date.now(), atuais = {};
+  for (const a of r.dados.avisos || []) {
+    atuais[a.chave] = vistos[a.chave] || 0;
+    if (agora - atuais[a.chave] > AVISAR_DE_NOVO) { notificar(a.chave, a.titulo, a.texto, a.link); atuais[a.chave] = agora; }
+  }
+  await chrome.storage.local.set({ avisosVistos: atuais });
+}
+
+chrome.runtime.onInstalled.addListener(() => chrome.alarms.create("avisos", { periodInMinutes: 5 }));
+chrome.runtime.onStartup.addListener(() => chrome.alarms.create("avisos", { periodInMinutes: 5 }));
+chrome.alarms.onAlarm.addListener((a) => { if (a.name === "avisos") olharAvisos(); });
+chrome.notifications.onClicked.addListener(async (id) => {
+  const { servidor } = await config();
+  chrome.tabs.create({ url: `${servidor}/${id.split(":").slice(2).join(":")}` });
+  chrome.notifications.clear(id);
+});

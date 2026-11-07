@@ -97,6 +97,15 @@ def conectados(usuario_id: int) -> list[str]:
     return [l["canal_id"] for l in banco.todos("SELECT canal_id FROM studio WHERE usuario_id=?", usuario_id)]
 
 
+def pais_do_publico(usuario_id: int, canal_id: str) -> str:
+    """A sigla do país que mais assiste o canal, pelo último relatório guardado. Vazio sem Studio conectado."""
+    for linha in banco.todos("SELECT dados FROM traducoes WHERE chave LIKE ? ORDER BY criado DESC", f"studio:{usuario_id}:{canal_id}:%"):
+        paises = json.loads(linha["dados"]).get("paises") or []
+        if paises and paises[0].get("country"):
+            return str(paises[0]["country"])
+    return ""
+
+
 def contas(usuario_id: int) -> list[dict]:
     """Cada canal ligado ao Studio e se o acesso ainda vale. Vencido é o que pede Reconectar."""
     lista = banco.todos("SELECT canal_id, titulo FROM studio WHERE usuario_id=? ORDER BY titulo", usuario_id)

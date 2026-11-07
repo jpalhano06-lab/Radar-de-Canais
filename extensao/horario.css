@@ -1,0 +1,16 @@
+/* O horário de postar na tela de agendar do Studio (horario.js) */
+.radar-hr { display: grid; gap: 8px; margin: 12px 0; padding: 12px; border-radius: 10px; background: rgba(127,127,127,.12); font: 13px/1.4 Roboto, Arial, sans-serif; }
+.radar-hr-cab { display: flex; justify-content: space-between; gap: 8px; }
+.radar-hr-agora { opacity: .7; }
+.radar-hr-linha { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.radar-hr select, .radar-hr input { max-width: 100%; padding: 5px 6px; border: 1px solid rgba(127,127,127,.45); border-radius: 7px; background: transparent; color: inherit; font: inherit; color-scheme: light dark; }
+.radar-hr select { flex: 1 1 180px; }
+.radar-hr option { color: #111; background: #fff; }
+.radar-hr-resposta b { font-size: 15px; }
+.radar-hr button { padding: 5px 11px; border: 1px solid rgba(127,127,127,.45); border-radius: 8px; background: none; color: inherit; font: inherit; cursor: pointer; }
+.radar-hr-colocar { border-color: #b6f23a !important; background: #b6f23a !important; color: #10160a !important; font-weight: 500 !important; }
+.radar-hr-aviso { margin: 0; color: #f5b301; }
+.radar-hr-aviso[hidden] { display: none; }
+.radar-hr-canal { display: grid; gap: 6px; padding-top: 8px; border-top: 1px solid rgba(127,127,127,.25); }
+.radar-hr-canal p { margin: 0; opacity: .75; font-size: 12px; }
+.radar-hr-horas { display: flex; flex-wrap: wrap; gap: 6px; }

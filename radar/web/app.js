@@ -4675,6 +4675,26 @@ const RECORTES_ANTIGOS = ["alerta", "explorar", "procura", "ideias", "ideias-can
   "nicho-ranking", "dias-novidades", "custos-dias", "resultados-canal"];
 try { RECORTES_ANTIGOS.forEach((k) => localStorage.removeItem("radar:" + k)); } catch {}
 
+// ---------------------------------------------------------------- o que precisa de você (avisos.py)
+// fechar um aviso vale até o problema mudar de chave. A chave de um problema resolvido some sozinha da resposta
+const AVISOS_FECHADOS = new Set();
+
+async function pintarAvisos() {
+  const topo = document.getElementById("avisos-topo");
+  if (!topo || !EU) return;
+  let lista = [];
+  try { lista = (await api("/api/avisos")).avisos || []; } catch { return; }
+  topo.innerHTML = lista.filter((a) => !AVISOS_FECHADOS.has(a.chave)).map((a) => `
+    <div class="aviso-topo ${a.nivel === "erro" ? "grave" : ""}">
+      <div><b>${esc(a.titulo)}</b> <span>${esc(a.texto)}</span></div>
+      ${a.link ? `<a href="${esc(a.link)}">Abrir</a>` : ""}
+      <button type="button" data-fechar="${esc(a.chave)}" aria-label="Fechar">✕</button>
+    </div>`).join("");
+  topo.querySelectorAll("[data-fechar]").forEach((b) => { b.onclick = () => { AVISOS_FECHADOS.add(b.dataset.fechar); pintarAvisos(); }; });
+}
+setInterval(pintarAvisos, 5 * 60 * 1000);
+setTimeout(pintarAvisos, 2000);
+
 async function rota() {
   const [nome, param, extra] = location.hash.replace(/^#\/?/, "").split("?")[0].split("/");
   if (!EU && !["entrar", "criar"].includes(nome)) { location.hash = "#/entrar"; return; }
