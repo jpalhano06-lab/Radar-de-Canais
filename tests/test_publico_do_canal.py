@@ -13,3 +13,15 @@ def test_pega_o_primeiro_pais_do_relatorio(monkeypatch):
 def test_sem_relatorio_fica_vazio(monkeypatch):
     monkeypatch.setattr(studio.banco, "todos", lambda *_a: [])
     assert studio.pais_do_publico(1, "UCx") == ""
+
+
+def test_gravar_so_a_chave_nao_quebra(tmp_path, monkeypatch):
+    import sqlite3
+
+    from radar import banco
+    c = sqlite3.connect(tmp_path / "t.db")
+    c.execute("CREATE TABLE canais (id TEXT PRIMARY KEY, titulo TEXT)")
+    monkeypatch.setattr(banco, "executar", lambda sql, *v: c.execute(sql, v))
+    banco.gravar("canais", "id", {"id": "UC1"})
+    banco.gravar("canais", "id", {"id": "UC1"})
+    assert c.execute("select count(*) from canais").fetchone()[0] == 1

@@ -463,8 +463,11 @@ def varios(sql: str, linhas: list[tuple]) -> None:
 def gravar(tabela: str, chave: str, dados: dict) -> None:
     """INSERT ou UPDATE pelos campos dados (os outros ficam como estão)."""
     campos = list(dados)
+    # só a chave, sem mais nenhum campo (o canal que a página mostrou sem nome nem foto): o SET vazio era SQL pela metade,
+    # e o pedido inteiro caía com "incomplete input"
+    resto = ", ".join(f"{c}=excluded.{c}" for c in campos if c != chave)
     sql = (f"INSERT INTO {tabela} ({', '.join(campos)}) VALUES ({', '.join('?' * len(campos))}) "
-           f"ON CONFLICT({chave}) DO UPDATE SET " + ", ".join(f"{c}=excluded.{c}" for c in campos if c != chave))
+           f"ON CONFLICT({chave}) DO " + (f"UPDATE SET {resto}" if resto else "NOTHING"))
     executar(sql, *[json.dumps(v) if isinstance(v, (list, dict)) else v for v in dados.values()])
 
 

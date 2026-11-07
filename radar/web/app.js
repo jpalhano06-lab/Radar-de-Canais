@@ -775,44 +775,6 @@ function resumoDaSincronizacao(d) {
     + ((d.criados || []).length ? ` · novos: ${d.criados.join(", ")}` : "");
 }
 
-function gerenciarProjetos(caixa, projetos, depois) {
-  // dois tipos de agente (2026-10-28): o que escreve o roteiro e o que escreve a descrição junto com ele
-  const linha = (p) => `<div class="titulo-linha"><span class="t"><b>${esc(p.nome)}</b><small>${esc(p.instrucoes.slice(0, 120))}${p.instrucoes.length > 120 ? "…" : ""}</small></span>
-      <button class="botao sec editar-projeto" data-id="${p.id}">Editar</button><button class="botao sec apagar-projeto" data-id="${p.id}">×</button></div>`;
-  const deDescricao = projetos.filter((p) => p.tipo === "descricao");
-  caixa.innerHTML = `<div class="bloco" style="margin-top:6px"><h3>Agentes</h3>
-    <p class="sub">Cada agente guarda o jeito de escrever de um canal (tom, público, como abrir e fechar). Cole aqui as instruções de um projeto do claude.ai: vão junto em todo roteiro feito com esse agente.</p>
-    <h4 class="rt-sub">De roteiro</h4>
-    ${projetos.filter((p) => (p.tipo || "roteiro") === "roteiro").map(linha).join("") || '<p class="sub">Nenhum ainda.</p>'}
-    <h4 class="rt-sub">De descrição</h4>
-    <p class="sub">Escrevem a sinopse, as tags e as hashtags no mesmo minuto do roteiro, enquanto o vídeo ainda está sendo feito. No YouTube Studio a extensão põe esse texto sozinha.</p>
-    ${deDescricao.map(linha).join("") || '<p class="sub">Nenhum ainda: sem um destes, valem as regras do Radar.</p>'}
-    <input id="p-nome" placeholder="Nome do agente (ex.: canal de animais)"><input type="hidden" id="p-id">
-    <label class="campo"><span>O que este agente escreve</span><select id="p-tipo">
-      <option value="roteiro">O roteiro do vídeo</option><option value="descricao">A descrição, as tags e as hashtags</option></select></label>
-    <input id="p-ideal" placeholder="Ideal para… (opcional: aparece embaixo do estilo na Nova produção)">
-    <textarea id="p-instrucoes" rows="6" placeholder="Instruções: tom de voz, público, estrutura, o que evitar…"></textarea>
-    <button class="botao" id="p-salvar" style="justify-self:start">Salvar agente</button></div>`;
-  caixa.querySelectorAll(".editar-projeto").forEach((b) => (b.onclick = () => {
-    const p = projetos.find((x) => x.id === +b.dataset.id);
-    caixa.querySelector("#p-id").value = p.id; caixa.querySelector("#p-nome").value = p.nome; caixa.querySelector("#p-instrucoes").value = p.instrucoes;
-    caixa.querySelector("#p-ideal").value = p.ideal_para || "";
-    caixa.querySelector("#p-tipo").value = p.tipo || "roteiro";
-  }));
-  caixa.querySelectorAll(".apagar-projeto").forEach((b) => (b.onclick = async () => {
-    if (!confirm("Apagar este agente?")) return;
-    await api(`/api/projetos/${b.dataset.id}`, { method: "DELETE" }); depois();
-  }));
-  caixa.querySelector("#p-salvar").onclick = async () => {
-    try {
-      await api("/api/projetos", { method: "POST", body: { id: caixa.querySelector("#p-id").value || null,
-        nome: caixa.querySelector("#p-nome").value, instrucoes: caixa.querySelector("#p-instrucoes").value,
-        tipo: caixa.querySelector("#p-tipo").value, ideal_para: caixa.querySelector("#p-ideal").value } });
-      aviso("Agente salvo."); depois();
-    } catch (e) { aviso(porque(e)); }
-  };
-}
-
 // O Produzir, em 4 passos e centralizado (pedidos do usuário em 2026-10-15: "passo a passo, pra não ficar tão
 // bagunçado"; "tudo centralizado bonitinho"; "no primeiro passo o canal, que você escolhe e já configura tudo"; "retirar
 // a parte de fazer a thumbnail, só a thumbnail do lado para pegar a referência"). Ao lado, o ponto de partida.
@@ -4674,6 +4636,16 @@ const ROTAS = { entrar: () => entrar(false), criar: () => entrar(true), inicio, 
 const RECORTES_ANTIGOS = ["alerta", "explorar", "procura", "ideias", "ideias-canal", "filtro-grupos",
   "nicho-ranking", "dias-novidades", "custos-dias", "resultados-canal"];
 try { RECORTES_ANTIGOS.forEach((k) => localStorage.removeItem("radar:" + k)); } catch {}
+
+// no celular o menu inteiro ocupava a primeira tela e empurrava a fila para baixo: fica fechado, atrás de um botão
+document.getElementById("abrir-menu")?.addEventListener("click", (e) => {
+  const aberto = document.getElementById("lateral").classList.toggle("aberta");
+  e.currentTarget.setAttribute("aria-expanded", String(aberto));
+});
+addEventListener("hashchange", () => {
+  document.getElementById("lateral")?.classList.remove("aberta");
+  document.getElementById("abrir-menu")?.setAttribute("aria-expanded", "false");
+});
 
 // ---------------------------------------------------------------- o que precisa de você (avisos.py)
 // fechar um aviso vale até o problema mudar de chave. A chave de um problema resolvido some sozinha da resposta

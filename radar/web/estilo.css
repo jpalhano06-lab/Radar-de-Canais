@@ -2114,3 +2114,12 @@ input, select, textarea, .selects select, .selects .limpar { border-radius: 8px;
 .aviso-topo.grave { border-color: #ff5263; background: rgba(255,82,99,.12); }
 .aviso-topo > div { flex: 1; min-width: 0; }
 .aviso-topo button { border: 0; background: none; color: inherit; cursor: pointer; opacity: .7; }
+
+/* no celular o menu fica atrás de um botão */
+#abrir-menu { display: none; }
+@media (max-width: 760px) {
+  .lateral { position: relative; }
+  #abrir-menu { display: block; position: absolute; top: 10px; right: 12px; padding: 7px 14px; border: 1px solid var(--linha); border-radius: 9px; background: var(--painel2); color: var(--texto); font: inherit; cursor: pointer; }
+  .lateral:not(.aberta) #menu, .lateral:not(.aberta) #quadro-cota, .lateral:not(.aberta) .rodape { display: none; }
+  #avisos-topo:not(:empty) { padding: 12px 0 0; }
+}

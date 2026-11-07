@@ -1,7 +1,7 @@
 /* O painel de anúncios no editor do Studio (anuncios.js) */
 .radar-an-ancora { display: flex; margin: 8px 0; }
-.radar-an-abrir { padding: 7px 14px; border: 1px solid #b6f23a; border-radius: 18px; background: #b6f23a; color: #10160a; font: 500 13px Roboto, Arial, sans-serif; cursor: pointer; }
-.radar-an-abrir.on, .radar-an-abrir:hover { background: #c8ff4d; color: #10160a; }
+.radar-an-abrir { padding: 7px 14px; border: 1px solid #12b76a; border-radius: 18px; background: none; color: #12b76a; font: 500 13px Roboto, Arial, sans-serif; cursor: pointer; }
+.radar-an-abrir.on, .radar-an-abrir:hover { background: #12b76a; color: #06140d; }
 .radar-an { position: fixed; z-index: 2300; box-sizing: border-box; display: grid; gap: 12px; padding: 14px; overflow-y: auto; border: 1px solid #343842; border-radius: 12px; background: #16181d; color: #eceef2; box-shadow: 0 12px 32px rgba(0,0,0,.45); font: 13px/1.4 Roboto, Arial, sans-serif; }
 .radar-an[hidden], .radar-an [hidden] { display: none !important; }
 .radar-an button { font: inherit; color: inherit; cursor: pointer; }
