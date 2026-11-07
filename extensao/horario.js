@@ -328,8 +328,13 @@
       colado.hidden = !perto;
     }
     raiz.pintar = pintar;
-    raiz.append(criar("div", { class: "radar-hr-cab" }, criar("b", {}, "Horário de postar"), agoraLa),
-      criar("div", { class: "radar-hr-linha" }, seletor, entrada, "→", criar("span", { class: "radar-hr-resposta" }, respostaHora, " no Studio"), colocar), aviso, colado);
+    // em três andares (pedido do usuário em 2026-11-07, "mais arrumadinho"): o título, a hora lá fora e, embaixo, a
+    // hora grande do Studio com o botão ao lado
+    raiz.append(criar("div", { class: "radar-hr-cab" }, criar("span", { class: "radar-hr-ic" }), criar("b", {}, "Horário de postar"), agoraLa),
+      criar("div", { class: "radar-hr-linha" }, seletor, entrada),
+      criar("div", { class: "radar-hr-final" },
+        criar("div", { class: "radar-hr-resposta" }, respostaHora, criar("small", {}, "no Studio")), colocar),
+      aviso, colado);
 
     const relogio = relogioDoStudio(caixa), melhores = melhoresHoras((dados[CHAVE_HORAS] || {})[canal], relogio.zona);
     const canalCaixa = criar("div", { class: "radar-hr-canal" }, criar("b", {}, "Horas com mais views no seu canal"));

@@ -1,16 +1,35 @@
-/* O horário de postar na tela de agendar do Studio (horario.js) */
-.radar-hr { display: grid; gap: 8px; margin: 12px 0; padding: 12px; border-radius: 10px; background: rgba(127,127,127,.12); font: 13px/1.4 Roboto, Arial, sans-serif; }
-.radar-hr-cab { display: flex; justify-content: space-between; gap: 8px; }
-.radar-hr-agora { opacity: .7; }
-.radar-hr-linha { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
-.radar-hr select, .radar-hr input { max-width: 100%; padding: 5px 6px; border: 1px solid rgba(127,127,127,.45); border-radius: 7px; background: transparent; color: inherit; font: inherit; color-scheme: light dark; }
-.radar-hr select { flex: 1 1 180px; }
+/* O horário de postar na tela de agendar do Studio (horario.js). Verde forte do Radar (pedido do usuário em
+   2026-11-07: "o nosso verde tem que ser mais forte"): o #12b76a cheio, com texto branco */
+.radar-hr { --radar-hr-verde: #12b76a; --radar-hr-verde-escuro: #0e9a59;
+  display: grid; gap: 10px; margin: 12px 0; padding: 14px; border: 1px solid rgba(127,127,127,.28); border-radius: 12px;
+  background: rgba(127,127,127,.08); font: 13px/1.4 Roboto, Arial, sans-serif; }
+.radar-hr-cab { display: flex; align-items: center; gap: 8px; }
+.radar-hr-cab b { font-size: 14px; }
+.radar-hr-ic { width: 10px; height: 10px; flex: none; border-radius: 50%; background: var(--radar-hr-verde);
+  box-shadow: 0 0 0 3px rgba(18,183,106,.25); }
+.radar-hr-agora { margin-left: auto; opacity: .65; font-size: 12px; }
+.radar-hr-linha { display: flex; gap: 8px; align-items: center; }
+.radar-hr select, .radar-hr input { min-width: 0; height: 34px; padding: 0 10px; border: 1px solid rgba(127,127,127,.45);
+  border-radius: 8px; background: transparent; color: inherit; font: inherit; color-scheme: light dark; }
+.radar-hr select { flex: 1 1 auto; }
+.radar-hr input[type=time] { flex: 0 0 auto; }
 .radar-hr option { color: #111; background: #fff; }
-.radar-hr-resposta b { font-size: 15px; }
-.radar-hr button { padding: 5px 11px; border: 1px solid rgba(127,127,127,.45); border-radius: 8px; background: none; color: inherit; font: inherit; cursor: pointer; }
-.radar-hr-colocar { border-color: #b6f23a !important; background: #b6f23a !important; color: #10160a !important; font-weight: 500 !important; }
-.radar-hr-aviso { margin: 0; color: #f5b301; }
+.radar-hr-seta { opacity: .6; }
+.radar-hr-final { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.radar-hr-resposta { display: grid; line-height: 1.05; }
+.radar-hr-resposta b { font-size: 26px; font-weight: 700; letter-spacing: -.5px; }
+.radar-hr-resposta small { opacity: .65; font-size: 11px; margin-top: 2px; }
+.radar-hr button { padding: 6px 12px; border: 1px solid rgba(127,127,127,.45); border-radius: 8px; background: none;
+  color: inherit; font: inherit; cursor: pointer; }
+.radar-hr button:hover { border-color: var(--radar-hr-verde); }
+.radar-hr .radar-hr-colocar { height: 36px; padding: 0 18px; border: 0 !important; border-radius: 18px;
+  background: var(--radar-hr-verde) !important; color: #fff !important; font-weight: 600 !important; }
+.radar-hr .radar-hr-colocar:hover { background: var(--radar-hr-verde-escuro) !important; }
+.radar-hr-aviso { margin: 0; padding: 8px 10px; border-radius: 8px; background: rgba(245,179,1,.12); color: #f5b301; font-size: 12px; }
 .radar-hr-aviso[hidden] { display: none; }
-.radar-hr-canal { display: grid; gap: 6px; padding-top: 8px; border-top: 1px solid rgba(127,127,127,.25); }
-.radar-hr-canal p { margin: 0; opacity: .75; font-size: 12px; }
+.radar-hr-canal { display: grid; gap: 8px; padding-top: 10px; border-top: 1px solid rgba(127,127,127,.25); }
+.radar-hr-canal p { margin: 0; opacity: .7; font-size: 12px; }
 .radar-hr-horas { display: flex; flex-wrap: wrap; gap: 6px; }
+.radar-hr-horas button { border-radius: 16px; }
+.radar-hr-horas button:first-child { border-color: var(--radar-hr-verde); }
+.radar-hr-horas button b { color: var(--radar-hr-verde); }
