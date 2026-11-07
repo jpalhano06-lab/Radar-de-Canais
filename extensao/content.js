@@ -2175,14 +2175,18 @@
         const linguas = N.teste.linguas.map((l) => l.lingua);
         return escolherLingua(linguas.includes(npLinguaTeste) ? npLinguaTeste : linguas.includes("português") ? "português" : linguas[0] || "português");
       }
+      // o erro daqui era calado e o pedido saía com o padrão (12 min a 150 ppm): o pedido 81 saiu com 8,5 min
+      N.avisoTamanho = "";
       const r = await api(`/api/producao/${encodeURIComponent(id)}`);
       N.cfg = r.erro ? null : r.dados;
+      if (!N.cfg) N.avisoTamanho = `Não consegui ler o canal (${erroDoRadar(r)}). Escolha o canal de novo antes de enviar.`;
       if (N.cfg) {
         N.lingua = N.cfg.lingua || N.lingua;
         N.padrao = N.cfg.projeto_roteiro_id ? String(N.cfg.projeto_roteiro_id) : "padrao";
         N.agente = N.padrao;
         const ritmo = await api(`/api/roteiros/ritmo?perfil=${encodeURIComponent(N.cfg.perfil || "")}&lingua=${encodeURIComponent(N.lingua)}`);
         N.ppm = (!ritmo.erro && ritmo.dados.ppm) || 150;
+        if (ritmo.erro) N.avisoTamanho = "Não li a velocidade da voz deste canal: a conta usa 150 palavras por minuto e o vídeo pode sair com outro tempo.";
         N.caracteres = Math.round((N.cfg.minutos || 12) * N.ppm * POR_PALAVRA / 10) * 10;
       }
       desenhar(); custo();
@@ -2245,6 +2249,7 @@
             chip("O Claude escreve", N.modo === "claude", () => { N.modo = "claude"; desenhar(); }), chip("Já tenho o roteiro", N.modo === "manual", () => { N.modo = "manual"; desenhar(); }))),
           ...(N.modo === "manual" ? [(() => { const t = h("textarea", { rows: "7", placeholder: "Cole aqui o roteiro inteiro (só o que vai ser narrado)" }); t.value = N.roteiro; t.oninput = () => { N.roteiro = t.value; }; return t; })()] : [
             h("div", { class: "radar-np-campo" }, h("span", {}, `Tamanho do roteiro: ${N.caracteres.toLocaleString("pt-BR")} caracteres ≈ ${Math.round(minutos())} min`),
+              N.avisoTamanho ? h("div", { class: "radar-erro" }, N.avisoTamanho) : null,
               h("div", { class: "radar-np-chips" }, (eTeste() ? MINUTOS_TESTE : MINUTOS_NP).map((m) => chip(`${m} min`, Math.round(minutos()) === m, () => { N.caracteres = Math.round(m * N.ppm * POR_PALAVRA / 10) * 10; desenhar(); custo(); })))),
             h("div", { class: "radar-np-duas" },
               campo("Nicho (opcional)", entrada(N.nicho, { placeholder: "Ex.: grandes marcas" }, (v) => { N.nicho = v; })),
@@ -2280,6 +2285,7 @@
         erro.textContent = "";
         if (!N.titulo.trim()) { erro.textContent = "Escreva o título do vídeo."; N.passo = 1; desenhar(); return false; }
         if (!N.canal) { erro.textContent = "Escolha o canal."; N.passo = 2; desenhar(); return false; }
+        if (N.modo !== "manual" && !eTeste() && !N.cfg) { erro.textContent = N.avisoTamanho || "Não consegui ler o canal. Escolha o canal de novo."; N.passo = 2; desenhar(); return false; }
         if (N.modo !== "manual" && !N.agente) { erro.textContent = "Escolha o agente do roteiro."; N.passo = 1; desenhar(); return false; }
         if (eTeste() && !N.perfil) { erro.textContent = "Escolha uma língua que tenha voz na fábrica."; N.passo = 1; desenhar(); return false; }
         if (N.modo === "manual" && N.roteiro.split(/\s+/).filter(Boolean).length < 30) { erro.textContent = "Cole o roteiro inteiro."; N.passo = 2; desenhar(); return false; }

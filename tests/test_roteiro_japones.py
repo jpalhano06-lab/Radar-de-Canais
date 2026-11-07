@@ -68,6 +68,7 @@ def test_o_video_de_perguntas_nao_ensina_o_ritmo_da_voz(monkeypatch, tmp_path):
     """Os dois vídeos do cobre narraram perguntas em português e o ritmo do canal japonês saiu deles (116 por minuto)."""
     monkeypatch.setattr(roteiro_claude, "PASTA", tmp_path)
     monkeypatch.setattr(tempo, "_da_api", lambda: {})
+    monkeypatch.setattr(tempo, "MEDICOES_SEGUNDOS", 0)    # sem a conta guardada de outro teste
     for nome, texto in (("errado", "Preciso que você me diga algumas coisas. " * 40), ("certo", "あ" * 900)):
         pasta = tmp_path / nome
         pasta.mkdir()

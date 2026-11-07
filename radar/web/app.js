@@ -3287,19 +3287,35 @@ async function novaProducao(preset = {}) {
     N.iaPct = String(a?.ia_pct ?? guardado("np-ia", ""));
     N.footage = a?.footage_real ?? (Number(guardado("np-footage", "0")) || 0);
   };
-  const escolherCanal = async (id) => {
+  // O canal e a velocidade da voz dele dão o tamanho do roteiro. Antes um erro aqui era engolido calado e o pedido
+  // saía com o padrão do formulário (12 min a 150 palavras por minuto = 10.620 caracteres): o pedido 81 (Amazônia,
+  // João o Lobo, voz de 215 ppm, canal de 30 min) saiu com 8,5 min (2026-11-07). Agora o envio espera a leitura
+  // terminar, a falha aparece, e sem o canal lido o pedido não sai.
+  const escolherCanal = (id) => (N.lendoCanal = (async () => {
     N.canal = id;
+    N.avisoTamanho = "";
     guardar("np-canal", id);
     try {
       N.cfg = await api(`/api/producao/${encodeURIComponent(id)}`);
+    } catch (e) {
+      N.cfg = null;
+      N.avisoTamanho = `Não consegui ler o canal (${porque(e)}). Escolha o canal de novo antes de enviar.`;
+    }
+    if (N.cfg) {
       N.lingua = N.cfg.lingua || N.lingua;
       N.agente = N.cfg.projeto_roteiro_id || "";
       temaDoAgenteEscolhido();
-      N.ppm = (await api("/api/roteiros/ritmo?" + consulta({ perfil: N.cfg.perfil, lingua: N.lingua }))).ppm || 150;
+      try {
+        N.ppm = (await api("/api/roteiros/ritmo?" + consulta({ perfil: N.cfg.perfil, lingua: N.lingua }))).ppm || 150;
+      } catch (e) {
+        N.ppm = 150;
+        N.avisoTamanho = `Não li a velocidade da voz deste canal (${porque(e)}): a conta usa 150 palavras por minuto e o vídeo pode sair com outro tempo.`;
+      }
       N.caracteres = Math.round((N.cfg.minutos || 12) * N.ppm * CARACTERES_POR_PALAVRA / 10) * 10;
-    } catch { N.cfg = null; }
+    }
+    N.lendoCanal = null;
     desenhar(); atualizarCusto();
-  };
+  })());
 
   function desenhar() {
     const agente = agentes.find((a) => String(a.id) === String(N.agente));
@@ -3351,7 +3367,8 @@ async function novaProducao(preset = {}) {
         <div class="np-tamanho"><input id="np-caracteres" type="number" min="1000" max="80000" step="10" value="${N.caracteres}">
           <b>≈ ${Math.round(minutos())} min · ~${palavras().toLocaleString("pt-BR")} palavras</b></div>
         <div class="np-atalhos">${ATALHOS_MIN.map((m) => `<button type="button" class="chip ${Math.round(minutos()) === m ? "ativo" : ""}" data-min="${m}">${m} min</button>`).join("")}</div>
-        <small class="np-dica">De 1.000 a 80.000 caracteres. A conta usa a velocidade da voz do canal (${N.ppm} palavras por minuto).</small></div>
+        <small class="np-dica">De 1.000 a 80.000 caracteres. A conta usa a velocidade da voz do canal (${N.ppm} palavras por minuto).</small>
+        ${N.avisoTamanho ? `<small class="np-dica" style="color:var(--vermelho-claro)">${esc(N.avisoTamanho)}</small>` : ""}</div>
       <div class="np-duas">
         <label class="campo"><span>Nicho <small>(opcional)</small></span><input id="np-nicho" value="${esc(N.nicho)}" placeholder="Ex.: grandes marcas"></label>
         <label class="campo"><span>Observação para o roteiro <small>(opcional)</small></span><input id="np-obs" value="${esc(N.obs)}" placeholder="Ex.: sem gírias, fechar com pergunta"></label>
@@ -3397,6 +3414,8 @@ async function novaProducao(preset = {}) {
     erro.textContent = "";
     if (!N.titulo.trim()) { erro.textContent = "Escreva o título do vídeo."; return; }
     if (!N.canal) { erro.textContent = "Escolha o canal."; N.passo = 2; desenhar(); return; }
+    if (N.lendoCanal) await N.lendoCanal;      // o tamanho do canal ainda estava chegando
+    if (N.modo !== "manual" && !N.cfg) { erro.textContent = N.avisoTamanho || "Não consegui ler o canal. Escolha o canal de novo."; return; }
     const pedido = { titulo: N.titulo, link: N.link, canal_id: N.canal, agente_id: N.agente, lingua: N.lingua, revisar: N.revisar,
       ...(N.footage ? { footage_real: N.footage } : {}), escolhido_na_tela: true, ...(N.tema ? { tema: N.tema } : {}), ...(N.iaPct !== "" ? { ia_pct: Number(N.iaPct) } : {}), ...(N.destino ? { destino: N.destino } : {}),
       ...Object.fromEntries(Object.entries(N.opcoes).filter(([, v]) => v)),
