@@ -54,7 +54,7 @@ def fila() -> list:
 def qualidade() -> list:
     """O vídeo entregue nos últimos dias com muita cena errada. Nada para a entrega: quem decide publicar é você."""
     limite = (datetime.now(timezone.utc) - timedelta(days=DIAS_DA_QUALIDADE)).isoformat()
-    saida = []
+    ruins = []
     for r in banco.todos("SELECT id, projeto FROM producoes_fila WHERE estado='entregue' AND atualizado>=? ORDER BY id DESC LIMIT 20", limite):
         arquivo = config.FABRICA / "projetos" / str(r["projeto"]) / "qualidade.json"
         if not arquivo.exists():
@@ -62,9 +62,13 @@ def qualidade() -> list:
         q = json.loads(arquivo.read_text(encoding="utf-8")).get("atual") or {}
         cenas, erradas = q.get("cenas") or 0, len(q.get("erradas") or [])
         if cenas and (q.get("boas_pct", 100) < QUALIDADE_MINIMA or 100 * erradas / cenas > ERRADAS_MAXIMO or q.get("vazias")):
-            saida.append(_aviso(f"qualidade-{r['id']}", "atencao", f"Revise o pedido {r['id']} antes de publicar",
-                                f"{q.get('boas_pct')}% das cenas certas e {erradas} mostrando outra coisa.", "#/acompanhar"))
-    return saida
+            ruins.append((r["id"], q.get("boas_pct")))
+    if not ruins:
+        return []
+    # um aviso só: um por vídeo enchia a tela e empurrava o resto para baixo
+    pedidos = ", ".join(f"{i} ({pct}%)" for i, pct in ruins)
+    return [_aviso("qualidade-" + "-".join(str(i) for i, _ in ruins), "atencao", "Revise antes de publicar",
+                   f"Pedidos com muita cena errada (% de cenas certas): {pedidos}.", "#/acompanhar")]
 
 
 def fabrica() -> list:

@@ -138,6 +138,7 @@ def test_qualidade_so_avisa_video_ruim_de_verdade(tmp_path, monkeypatch):
         (tmp_path / "projetos" / nome).mkdir(parents=True)
         (tmp_path / "projetos" / nome / "qualidade.json").write_text(json.dumps({"atual": q}))
     assert [a["chave"] for a in avisos.qualidade()] == ["qualidade-1"]
+    assert "1 (40%)" in avisos.qualidade()[0]["texto"]
 
 
 def test_o_celular_recebe_pelo_ntfy(monkeypatch):
