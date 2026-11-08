@@ -37,3 +37,21 @@ def test_voz_acabando(monkeypatch):
     assert a["nivel"] == "atencao" and "671 créditos, uns 11 min" in a["texto"]
     monkeypatch.setattr(fabrica_api, "_pedir", lambda *a, **k: {"configurada": True, "creditos": 90000, "minutos_de_narracao": 70})
     assert avisos.voz() == []
+
+
+def test_fabrica_parada_esperando_alguem_avisa(monkeypatch, tmp_path):
+    projeto = tmp_path / "projetos" / "p1"
+    projeto.mkdir(parents=True)
+    (projeto / "criacao.json").write_text(json.dumps({"logs": [], "precisa_voce": True, "concluido": False,
+                                                      "mensagem": "Nem os bancos nem a imagem de IA entregaram a cena 5"}), encoding="utf-8")
+    monkeypatch.setattr(config, "FABRICA", tmp_path)
+    monkeypatch.setattr(banco, "todos", lambda sql, *a: [{"id": 9, "projeto": "p1"}])
+    [a] = avisos.travados()
+    assert a["chave"] == "parado-9" and "cena 5" in a["texto"]
+
+
+def test_problema_de_video_vai_ao_celular_mesmo_de_atencao():
+    assert avisos.vai_ao_celular(avisos._aviso("qualidade-80", "atencao", "t", "x"))
+    assert avisos.vai_ao_celular(avisos._aviso("genaipro-saldo", "atencao", "t", "x"))
+    assert avisos.vai_ao_celular(avisos._aviso("fila-lenta-3", "atencao", "t", "x"))
+    assert not avisos.vai_ao_celular(avisos._aviso("disco", "atencao", "t", "x"))

@@ -97,6 +97,11 @@ def travados() -> list:
             continue
         if d.get("concluido"):
             continue
+        if d.get("precisa_voce") or d.get("erro"):
+            # a fábrica parou e espera alguém (ParadaPrecisaDeVoce) ou deu erro: o motivo é a mensagem dela
+            motivo = " ".join(str(d.get("erro") or d.get("mensagem") or "a fábrica parou").split())[:220]
+            saida.append(_aviso(f"parado-{r['id']}", "erro", f"O pedido {r['id']} parou na fábrica", motivo, "#/acompanhar"))
+            continue
         logs = [str(l) for l in (d.get("logs") or [])[-30:]] + [str(d.get("mensagem") or "")]
         tentativas = max([int(n) for n in re.findall(r"tentativa (\d+)", " ".join(logs))] or [0])
         sem_saldo = next((l for l in reversed(logs) if SEM_SALDO.search(l)), "")
@@ -215,6 +220,15 @@ def _no_celular(aviso: dict) -> None:
         print("o aviso não chegou no celular:", type(erro).__name__)
 
 
+# qualquer problema de vídeo vai ao celular, até o de atenção (pedido do usuário em 2026-11-07: "qualquer problema no
+# vídeo deve ser avisado por notificação"). O resto (conexões, disco, cópia, OpenRouter) só quando é erro
+DE_VIDEO = ("fila-", "travado", "qualidade-", "genaipro", "fabrica", "parado-")
+
+
+def vai_ao_celular(aviso: dict) -> bool:
+    return aviso["nivel"] == "erro" or aviso["chave"].startswith(DE_VIDEO)
+
+
 def _uma_volta(usuario_id: int) -> None:
     global _atuais
     if backup.na_hora():
@@ -224,7 +238,7 @@ def _uma_volta(usuario_id: int) -> None:
         _atuais = novos
     agora = time.time()
     for a in novos:  # o mesmo problema só volta ao celular depois de 12 horas
-        if a["nivel"] == "erro" and agora - _enviados.get(a["chave"], 0) > 12 * 3600:
+        if vai_ao_celular(a) and agora - _enviados.get(a["chave"], 0) > 12 * 3600:
             _enviados[a["chave"]] = agora
             _no_celular(a)
 
