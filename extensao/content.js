@@ -1317,7 +1317,7 @@
       if (x) {
         ctx.font = "700 30px Roboto, Arial, sans-serif";
         const w = ctx.measureText(x).width + 28;
-        ctx.fillStyle = n.nota >= 6 ? "#0b8a4c" : "rgba(0,0,0,.78)";
+        ctx.fillStyle = n.nota >= 6 ? "#2e9e4f" : "rgba(0,0,0,.78)";
         caixaArredondada(ctx, M, M, w, 50, 12);
         ctx.fillStyle = n.nota >= 6 ? "#fff" : "#fff";
         ctx.textBaseline = "middle";
@@ -1337,7 +1337,7 @@
         c && c.inscritos != null ? `${num(c.inscritos)} inscritos` : ""].filter(Boolean);
       ctx.fillText(partes.join("  ·  "), M, y + 44);
       // a assinatura, para o print se explicar sozinho quando for parar num grupo
-      ctx.fillStyle = "#0b8a4c";
+      ctx.fillStyle = "#ff0000";
       ctx.font = "700 18px Roboto, Arial, sans-serif";
       const marca = "Radar de Canais";
       ctx.fillText(marca, L - M - ctx.measureText(marca).width, y + 44);

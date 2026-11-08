@@ -733,7 +733,7 @@
     .acima { display: grid; gap: 8px; justify-items: end; }
     .acima:empty { display: none; }
     .botoes { display: flex; gap: 1px; }
-    .botoes button { border: 0; cursor: pointer; font: 700 13px Roboto, Arial, sans-serif; background: #0b8a4c; color: #fff;
+    .botoes button { border: 0; cursor: pointer; font: 700 13px Roboto, Arial, sans-serif; background: #ff0000; color: #fff;
       padding: 10px 16px; display: flex; align-items: center; gap: 8px; box-shadow: 0 4px 14px rgba(0,0,0,.4); }
     .botoes button:disabled { opacity: .6; cursor: default; }
     .botoes .acao { border-radius: 4px; }
@@ -742,15 +742,15 @@
     .cartao { max-width: 420px; background: #0d0f14; border: 1px solid #262b36; border-radius: 10px; padding: 10px 12px;
       box-shadow: 0 12px 40px rgba(0,0,0,.45); }
     .erro { color: #ff5263; font-size: 12px; }
-    .ok { color: #0b8a4c; font-size: 12px; }
+    .ok { color: #ff0000; font-size: 12px; }
     /* o cartão da capa grande tem botão dentro dele, fora da fileira de botões do rodapé */
     .cartao b { font-size: 13px; }
     .cartao small { display: block; color: #8b93a7; font-size: 11px; margin: 2px 0 8px; }
-    .cartao .acao { border: 0; cursor: pointer; font: 700 13px Roboto, Arial, sans-serif; background: #0b8a4c;
+    .cartao .acao { border: 0; cursor: pointer; font: 700 13px Roboto, Arial, sans-serif; background: #ff0000;
       color: #fff; padding: 8px 14px; border-radius: 4px; display: flex; align-items: center; gap: 8px; }
     .cartao .acao:disabled { opacity: .6; cursor: default; }
     .cartao .dupla { display: flex; gap: 6px; flex-wrap: wrap; }
-    .cartao.traducao { display: grid; gap: 6px; border-color: rgba(11,138,76,.45); }
+    .cartao.traducao { display: grid; gap: 6px; border-color: rgba(255,0,0,.45); }
     .cartao.traducao small { margin: 0; }
     .cartao.traducao .tr-titulo { font-size: 14px; font-weight: 600; color: #fff; }
     .cartao.traducao .tr-texto { font-size: 12px; line-height: 1.45; color: #c9cfdb; max-height: 160px; overflow: auto; white-space: pre-wrap; }
@@ -761,7 +761,7 @@
     .hr-c { display: grid; grid-template-rows: 1fr auto; gap: 3px; height: 100%; justify-items: center; }
     .hr-c u { display: block; width: 100%; height: 100%; display: flex; align-items: flex-end; background: #1b1f29; border-radius: 4px; overflow: hidden; }
     .hr-c u i { display: block; width: 100%; background: #39404f; border-radius: 4px; }
-    .hr-c.pico u i { background: #0b8a4c; }
+    .hr-c.pico u i { background: #ff0000; }
     .hr-c span { color: #8b93a7; font-size: 10px; } .hr-c.pico span { color: #eef1f7; font-weight: 700; }
   </style><div class="barra" hidden></div>`;
   const barra = raiz.querySelector(".barra");

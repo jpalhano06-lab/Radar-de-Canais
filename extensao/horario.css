@@ -1,12 +1,13 @@
-/* O horário de postar na tela de agendar do Studio (horario.js). Verde escuro do Radar (pedido do usuário em
-   2026-11-07: "o nosso verde tem que ser mais forte" e depois "verde escuro"): o #0b8a4c cheio, com texto branco */
-.radar-hr { --radar-hr-verde: #0b8a4c; --radar-hr-verde-escuro: #08713d;
+/* O horário de postar na tela de agendar do Studio (horario.js). A cor da extensão é o vermelho do YouTube, #ff0000
+   com texto branco (pedido do usuário em 2026-11-08, depois de comparar verdes e outras cores). O verde que sobra na
+   extensão é só o de nota boa (#2e9e4f, #39d98a) */
+.radar-hr { --radar-hr-cor: #ff0000; --radar-hr-cor-escuro: #cc0000;
   display: grid; gap: 10px; margin: 12px 0; padding: 14px; border: 1px solid rgba(127,127,127,.28); border-radius: 12px;
   background: rgba(127,127,127,.08); font: 13px/1.4 Roboto, Arial, sans-serif; }
 .radar-hr-cab { display: flex; align-items: center; gap: 8px; }
 .radar-hr-cab b { font-size: 14px; }
-.radar-hr-ic { width: 10px; height: 10px; flex: none; border-radius: 50%; background: var(--radar-hr-verde);
-  box-shadow: 0 0 0 3px rgba(11,138,76,.25); }
+.radar-hr-ic { width: 10px; height: 10px; flex: none; border-radius: 50%; background: var(--radar-hr-cor);
+  box-shadow: 0 0 0 3px rgba(255,0,0,.25); }
 .radar-hr-agora { margin-left: auto; opacity: .65; font-size: 12px; }
 .radar-hr-linha { display: flex; gap: 8px; align-items: center; }
 .radar-hr select, .radar-hr input { min-width: 0; height: 34px; padding: 0 10px; border: 1px solid rgba(127,127,127,.45);
@@ -21,15 +22,15 @@
 .radar-hr-resposta small { opacity: .65; font-size: 11px; margin-top: 2px; }
 .radar-hr button { padding: 6px 12px; border: 1px solid rgba(127,127,127,.45); border-radius: 8px; background: none;
   color: inherit; font: inherit; cursor: pointer; }
-.radar-hr button:hover { border-color: var(--radar-hr-verde); }
+.radar-hr button:hover { border-color: var(--radar-hr-cor); }
 .radar-hr .radar-hr-colocar { height: 36px; padding: 0 18px; border: 0 !important; border-radius: 18px;
-  background: var(--radar-hr-verde) !important; color: #fff !important; font-weight: 600 !important; }
-.radar-hr .radar-hr-colocar:hover { background: var(--radar-hr-verde-escuro) !important; }
+  background: var(--radar-hr-cor) !important; color: #fff !important; font-weight: 600 !important; }
+.radar-hr .radar-hr-colocar:hover { background: var(--radar-hr-cor-escuro) !important; }
 .radar-hr-aviso { margin: 0; padding: 8px 10px; border-radius: 8px; background: rgba(245,179,1,.12); color: #f5b301; font-size: 12px; }
 .radar-hr-aviso[hidden] { display: none; }
 .radar-hr-canal { display: grid; gap: 8px; padding-top: 10px; border-top: 1px solid rgba(127,127,127,.25); }
 .radar-hr-canal p { margin: 0; opacity: .7; font-size: 12px; }
 .radar-hr-horas { display: flex; flex-wrap: wrap; gap: 6px; }
 .radar-hr-horas button { border-radius: 16px; }
-.radar-hr-horas button:first-child { border-color: var(--radar-hr-verde); }
-.radar-hr-horas button b { color: var(--radar-hr-verde); }
+.radar-hr-horas button:first-child { border-color: var(--radar-hr-cor); }
+.radar-hr-horas button b { color: var(--radar-hr-cor); }
