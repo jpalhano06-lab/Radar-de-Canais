@@ -97,3 +97,19 @@ test("vídeo colado: pega o mais perto, ignora o próprio e o distante", () => {
   assert.equal(c.videoColado(videos, base, "b").id, "a");
   assert.equal(c.videoColado([{ id: "c", quando: base + 30 * h }], base), null);
 });
+
+test("aviso de vídeo colado diz se já saiu ou está agendado, e quando (pedido de 2026-11-08)", () => {
+  const h = 36e5, z = "America/Sao_Paulo";
+  const agora = Date.UTC(2026, 10, 8, 23, 0);                   // 8/11, 20:00 em São Paulo
+  const escolhido = Date.UTC(2026, 10, 8, 6, 0);                // 8/11, 03:00
+  const postado = { titulo: "30 Fake Foods", quando: escolhido - 8 * h, agendado: false };  // 7/11, 19:00
+  assert.equal(c.textoColado(postado, escolhido, z, agora),
+    "Você postou “30 Fake Foods” ontem às 19:00, 8 h antes desta hora: vídeos colados tiram público um do outro.");
+  const agendado = { titulo: "Outro", quando: agora + 5 * h, agendado: true };            // 9/11, 01:00
+  assert.match(c.textoColado(agendado, agora + 10 * h, z, agora), /^“Outro” já está agendado para amanhã às 01:00, 5 h antes desta hora/);
+});
+
+test("horário que já passou no Studio", () => {
+  assert.equal(c.jaPassou(1000, 2000), true);
+  assert.equal(c.jaPassou(3000, 2000), false);
+});

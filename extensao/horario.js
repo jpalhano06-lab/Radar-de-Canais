@@ -172,8 +172,30 @@
       .sort((a, b) => Math.abs(a.quando - instante) - Math.abs(b.quando - instante))[0] || null;
   }
 
+  // "hoje às 19:00", "ontem às 19:00", "sex., 6/11 às 19:00", no relógio do Studio
+  function diaEHora(ms, zona, agora) {
+    const p = partesEm(ms, zona), h = partesEm(agora, zona);
+    const dias = Math.round((Date.UTC(p.a, p.m - 1, p.d) - Date.UTC(h.a, h.m - 1, h.d)) / 864e5);
+    const nome = { "-1": "ontem", 0: "hoje", 1: "amanhã" }[dias] ?? `${p.d}/${p.m}`;
+    return `${nome} às ${hhmm(p.min)}`;
+  }
+
+  // O aviso de vídeo colado diz se o outro vídeo já saiu ou está agendado, quando e a distância. Pedido do usuário em
+  // 2026-11-08: "Já tem ... a 8 h desta hora" fazia um vídeo postado ontem parecer agendado
+  function textoColado(perto, instante, zona, agora) {
+    const horas = Math.max(1, Math.round(Math.abs(perto.quando - instante) / 36e5));
+    const lado = perto.quando < instante ? "antes" : "depois";
+    const titulo = `“${perto.titulo.slice(0, 50)}”`;
+    const fato = perto.agendado && perto.quando > agora ? `${titulo} já está agendado para ${diaEHora(perto.quando, zona, agora)}`
+      : `Você postou ${titulo} ${diaEHora(perto.quando, zona, agora)}`;
+    return `${fato}, ${horas} h ${lado} desta hora: vídeos colados tiram público um do outro.`;
+  }
+
+  // o horário escolhido já passou no Studio (a data do campo ainda é hoje e a hora ficou para trás)
+  const jaPassou = (instante, agora) => instante <= agora;
+
   globalThis.RadarHorario = { contas: { PAISES, partesEm, instanteDe, converter, minutosDe, fusoEscrito, dataEscrita, juntarHoras, melhoresHoras, hhmm,
-    antesDoPico, paisDaSigla, paisDoNome, instanteAgendado, videoColado } };
+    antesDoPico, paisDaSigla, paisDoNome, instanteAgendado, videoColado, textoColado, jaPassou } };
   if (typeof document === "undefined" || typeof chrome === "undefined" || !chrome.runtime || window.__radarHorario) return;
   window.__radarHorario = true;
 
@@ -271,7 +293,10 @@
     const ouvir = (e) => {
       if (e.source !== window || !e.data?.radarVideosResposta || e.data.pedido !== pedido) return;
       removeEventListener("message", ouvir);
-      ok((e.data.videos || []).map((x) => ({ ...x, quando: instanteAgendado(x.agendamento, Date.now()) || x.publicado })).filter((x) => x.quando > 0));
+      ok((e.data.videos || []).map((x) => {
+        const agendado = instanteAgendado(x.agendamento, Date.now());
+        return { ...x, agendado: !!agendado, quando: agendado || x.publicado };
+      }).filter((x) => x.quando > 0));
     };
     addEventListener("message", ouvir);
     setTimeout(() => { removeEventListener("message", ouvir); ok([]); }, 8000);
@@ -320,11 +345,12 @@
       ultima = converter(dia, quero, pais.zona, relogio.zona);
       respostaHora.textContent = hhmm(ultima.min);
       respostaHora.parentElement.title = `${hhmm(quero)} em ${pais.nome} = ${hhmm(ultima.min)} (${relogio.nome})${lido ? "" : ", usando a data de hoje"}. Já conta o horário de verão.`;
-      aviso.textContent = erro || (ultima.dias < 0 ? "No Studio ainda é o dia anterior: mude a data." : ultima.dias > 0 ? "No Studio já é o dia seguinte: mude a data." : "");
+      const instante = instanteDe(ultima.dia, ultima.min, relogio.zona), agora = Date.now();
+      aviso.textContent = erro || (ultima.dias < 0 ? "No Studio ainda é o dia anterior: mude a data." : ultima.dias > 0 ? "No Studio já é o dia seguinte: mude a data."
+        : jaPassou(instante, agora) ? `Esse horário já passou no Studio (${hhmm(ultima.min)} de ${ultima.dia.d}/${ultima.dia.m}): mude a data para um dia à frente.` : "");
       aviso.hidden = !aviso.textContent;
-      const instante = instanteDe(ultima.dia, ultima.min, relogio.zona), perto = videoColado(videos, instante, idDesteVideo());
-      colado.textContent = perto ? `Já tem “${perto.titulo.slice(0, 50)}” a ${Math.max(1, Math.round(Math.abs(perto.quando - instante) / 36e5))} h desta hora: `
-        + "vídeos colados tiram público um do outro." : "";
+      const perto = videoColado(videos, instante, idDesteVideo());
+      colado.textContent = perto ? textoColado(perto, instante, relogio.zona, agora) : "";
       colado.hidden = !perto;
     }
     raiz.pintar = pintar;
