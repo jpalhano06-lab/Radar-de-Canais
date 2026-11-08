@@ -9,6 +9,7 @@ Cada aviso é {chave, nivel, titulo, texto, link}. A chave é o que impede repet
 Nivel: "erro" é parado agora, "atencao" é vai parar. Cada verificação falha sozinha: uma que quebre não cala as outras.
 """
 import json
+import re
 import shutil
 import threading
 import time
@@ -16,7 +17,7 @@ from datetime import datetime, timedelta, timezone
 
 import httpx
 
-from . import backup, banco, config, integracoes, studio
+from . import backup, banco, config, fabrica_api, integracoes, studio
 
 VOLTA = 600
 FABRICA_URL = "http://127.0.0.1:8080/api/saude"
@@ -28,6 +29,11 @@ HORAS_DEMORANDO = 6
 QUALIDADE_MINIMA = 50          # % das cenas certas. A média de hoje é uns 54%: abaixo disso o vídeo foi mal de verdade
 ERRADAS_MAXIMO = 15            # % das cenas mostrando outra coisa
 DIAS_DA_QUALIDADE = 3
+MINUTOS_DE_VOZ = 35           # um vídeo de 30 min, com folga: abaixo disso a narração do próximo não termina
+TENTATIVAS_TRAVADO = 3         # a fábrica tenta de novo sozinha; a partir da 3ª é problema que não passa sozinho
+# o pedido 83 ficou 3 h tentando narrar com "Not enough credit" da GenAIPro, 46 vezes, e ninguém soube (2026-11-07)
+SEM_SALDO = re.compile(r"not enough credit|insufficient (credit|balance|funds)|out of credit|sem saldo|saldo insuficiente"
+                       r"|cr[eé]ditos? insuficientes?|payment required|\b402\b", re.I)
 HORAS_SEM_BACKUP = 8 * 24     # a cópia sai de 7 em 7 dias: um dia de folga antes de avisar
 
 _atuais: list = []
@@ -79,6 +85,53 @@ def fabrica() -> list:
     except httpx.HTTPError:
         return [_aviso("fabrica-fora", "erro", "A fábrica não responde", "Tem pedido na fila e a fábrica da porta 8080 está fora.", "#/acompanhar")]
     return []
+
+
+def travados() -> list:
+    """O pedido que a fábrica está tentando de novo sem sair do lugar: sem saldo num serviço, ou a mesma falha que volta."""
+    saida = []
+    for r in banco.todos("SELECT id, projeto FROM producoes_fila WHERE estado='produzindo' AND projeto<>''"):
+        try:
+            d = json.loads((config.FABRICA / "projetos" / r["projeto"] / "criacao.json").read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            continue
+        if d.get("concluido"):
+            continue
+        logs = [str(l) for l in (d.get("logs") or [])[-30:]] + [str(d.get("mensagem") or "")]
+        tentativas = max([int(n) for n in re.findall(r"tentativa (\d+)", " ".join(logs))] or [0])
+        sem_saldo = next((l for l in reversed(logs) if SEM_SALDO.search(l)), "")
+        if not sem_saldo and tentativas < TENTATIVAS_TRAVADO:
+            continue
+        motivo = sem_saldo or next((l for l in reversed(logs) if re.search(r"falhou|recusou|erro", l, re.I)), d.get("mensagem") or "")
+        motivo = " ".join(motivo.split())[:180]
+        if sem_saldo:
+            servico = next((s for s in ("GenAIPro", "OpenRouter", "Kie", "Gemini", "Groq") if s.lower() in sem_saldo.lower()), "um serviço")
+            saida.append(_aviso(f"travado-saldo-{r['id']}", "erro", f"O pedido {r['id']} parou: acabou o saldo da {servico}",
+                                f"{motivo}{f' (tentativa {tentativas})' if tentativas else ''}. Recarregue e ele segue sozinho de onde parou.",
+                                "#/integracoes"))
+        else:
+            saida.append(_aviso(f"travado-{r['id']}", "erro", f"O pedido {r['id']} está tentando de novo sem sair do lugar",
+                                f"{motivo} (tentativa {tentativas}).", "#/acompanhar"))
+    return saida
+
+
+def voz() -> list:
+    """O saldo da GenAIPro, que narra os vídeos: avisa antes de um vídeo parar no meio da narração."""
+    if not banco.um("SELECT 1 FROM producoes_fila WHERE estado IN ('na_fila','escrevendo','enviando','produzindo') LIMIT 1")             and not banco.um("SELECT 1 FROM producoes_fila WHERE atualizado>=? LIMIT 1",
+                             (datetime.now(timezone.utc) - timedelta(days=2)).isoformat()):
+        return []
+    try:
+        d = fabrica_api._pedir("GET", "/api/genaipro/creditos", tempo=20)
+    except Exception:  # fábrica desligada: o aviso da fábrica fora já cobre
+        return []
+    if not d.get("configurada") or d.get("minutos_de_narracao") is None:
+        return []
+    minutos = d.get("minutos_de_narracao") or 0
+    if minutos >= MINUTOS_DE_VOZ:
+        return []
+    return [_aviso("genaipro-saldo", "erro" if minutos < 10 else "atencao", "Saldo da GenAIPro acabando",
+                   f"Restam {d.get('creditos', 0):,.0f} créditos".replace(",", ".") + f", uns {minutos} min de narração. Um vídeo de 30 min precisa de uns 36 mil. "
+                   "Recarregue em genaipro.vn.", "#/integracoes")]
 
 
 def openrouter() -> list:
@@ -137,7 +190,7 @@ def disco() -> list:
 
 def verificar(usuario_id: int) -> list:
     saida = []
-    for olhar in (fila, qualidade, fabrica, openrouter, assinatura, lambda: conexoes(usuario_id), copia, disco):
+    for olhar in (fila, travados, qualidade, fabrica, voz, openrouter, assinatura, lambda: conexoes(usuario_id), copia, disco):
         try:
             saida += olhar()
         except Exception as erro:  # noqa: BLE001

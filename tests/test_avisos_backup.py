@@ -104,6 +104,8 @@ def test_uma_verificacao_quebrada_nao_cala_as_outras(monkeypatch):
     monkeypatch.setattr(avisos, "fila", quebra)
     monkeypatch.setattr(avisos, "qualidade", lambda: [])
     monkeypatch.setattr(avisos, "fabrica", lambda: [])
+    monkeypatch.setattr(avisos, "travados", lambda: [])
+    monkeypatch.setattr(avisos, "voz", lambda: [])
     monkeypatch.setattr(avisos, "openrouter", lambda: [])
     monkeypatch.setattr(avisos, "assinatura", lambda: [])
     monkeypatch.setattr(avisos, "conexoes", lambda _u: [])
@@ -113,7 +115,7 @@ def test_uma_verificacao_quebrada_nao_cala_as_outras(monkeypatch):
 
 
 def test_erro_vem_antes_da_atencao(monkeypatch):
-    for nome in ("fila", "qualidade", "fabrica", "openrouter", "assinatura", "disco"):
+    for nome in ("fila", "travados", "qualidade", "fabrica", "voz", "openrouter", "assinatura", "disco"):
         monkeypatch.setattr(avisos, nome, lambda: [])
     monkeypatch.setattr(avisos, "conexoes", lambda _u: [avisos._aviso("a", "atencao", "t", "x")])
     monkeypatch.setattr(avisos, "copia", lambda: [avisos._aviso("b", "erro", "t", "x")])
