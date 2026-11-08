@@ -1,12 +1,12 @@
-/* O horário de postar na tela de agendar do Studio (horario.js). Verde forte do Radar (pedido do usuário em
-   2026-11-07: "o nosso verde tem que ser mais forte"): o #12b76a cheio, com texto branco */
-.radar-hr { --radar-hr-verde: #12b76a; --radar-hr-verde-escuro: #0e9a59;
+/* O horário de postar na tela de agendar do Studio (horario.js). Verde escuro do Radar (pedido do usuário em
+   2026-11-07: "o nosso verde tem que ser mais forte" e depois "verde escuro"): o #0b8a4c cheio, com texto branco */
+.radar-hr { --radar-hr-verde: #0b8a4c; --radar-hr-verde-escuro: #08713d;
   display: grid; gap: 10px; margin: 12px 0; padding: 14px; border: 1px solid rgba(127,127,127,.28); border-radius: 12px;
   background: rgba(127,127,127,.08); font: 13px/1.4 Roboto, Arial, sans-serif; }
 .radar-hr-cab { display: flex; align-items: center; gap: 8px; }
 .radar-hr-cab b { font-size: 14px; }
 .radar-hr-ic { width: 10px; height: 10px; flex: none; border-radius: 50%; background: var(--radar-hr-verde);
-  box-shadow: 0 0 0 3px rgba(18,183,106,.25); }
+  box-shadow: 0 0 0 3px rgba(11,138,76,.25); }
 .radar-hr-agora { margin-left: auto; opacity: .65; font-size: 12px; }
 .radar-hr-linha { display: flex; gap: 8px; align-items: center; }
 .radar-hr select, .radar-hr input { min-width: 0; height: 34px; padding: 0 10px; border: 1px solid rgba(127,127,127,.45);

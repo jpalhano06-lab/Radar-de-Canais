@@ -511,8 +511,40 @@
       const id = idDoLink(link && link.getAttribute("href"));
       if (!id) return;
       selarCartao(caixa, id);
+      if (ligada("traduzir")) botaoTraduzir(caixa, id);
       if (treino && caixa.dataset.alvo !== id) marcarAlvo(caixa, id);
     });
+  }
+
+  // ------------------------------------------------------------ traduzir o título (pedido do usuário em 2026-11-07)
+  // Um botãozinho ao lado do título de cada vídeo (e do vídeo aberto) mostra o título em português logo embaixo. A
+  // tradução é do Radar e fica guardada lá: o mesmo título nunca é traduzido duas vezes.
+  async function traduzirTitulo(botao, titulo, ondePor) {
+    const ja = ondePor.querySelector(":scope > .radar-traducao");
+    if (ja) { ja.remove(); botao.classList.remove("ligado"); return; }
+    if (!titulo) return;
+    botao.disabled = true; botao.textContent = "…";
+    const r = await api("/api/ext/traduzir", "POST", { textos: [titulo] });
+    botao.disabled = false; botao.textContent = "PT";
+    const texto = r.erro ? `Radar: ${r.erro}` : (r.dados.traducoes || [])[0];
+    if (!texto) return avisoRapido("Radar: não consegui traduzir agora.");
+    ondePor.append(h("div", { class: "radar-traducao" }, h("b", {}, "🇧🇷 "), texto));
+    botao.classList.add("ligado");
+  }
+
+  function botaoTraduzir(caixa, id) {
+    if (caixa.dataset.traduzir === id) return;
+    const tituloEl = caixa.querySelector("#video-title, .yt-lockup-metadata-view-model__title");
+    const lugar = tituloEl && (tituloEl.closest("h3") || tituloEl.parentElement);
+    if (!lugar) return;
+    caixa.dataset.traduzir = id;
+    lugar.querySelectorAll(".radar-traduzir, .radar-traducao").forEach((x) => x.remove());
+    const botao = h("button", { class: "radar-traduzir", type: "button", title: "Radar: ver o título em português" }, "PT");
+    botao.addEventListener("click", (e) => {
+      e.preventDefault(); e.stopPropagation();
+      traduzirTitulo(botao, (tituloEl.getAttribute("title") || tituloEl.textContent || "").trim(), lugar);
+    });
+    lugar.append(botao);
   }
 
   // ------------------------------------------------------------ o selo em cima da miniatura
@@ -1285,7 +1317,7 @@
       if (x) {
         ctx.font = "700 30px Roboto, Arial, sans-serif";
         const w = ctx.measureText(x).width + 28;
-        ctx.fillStyle = n.nota >= 6 ? "#12b76a" : "rgba(0,0,0,.78)";
+        ctx.fillStyle = n.nota >= 6 ? "#0b8a4c" : "rgba(0,0,0,.78)";
         caixaArredondada(ctx, M, M, w, 50, 12);
         ctx.fillStyle = n.nota >= 6 ? "#fff" : "#fff";
         ctx.textBaseline = "middle";
@@ -1305,7 +1337,7 @@
         c && c.inscritos != null ? `${num(c.inscritos)} inscritos` : ""].filter(Boolean);
       ctx.fillText(partes.join("  ·  "), M, y + 44);
       // a assinatura, para o print se explicar sozinho quando for parar num grupo
-      ctx.fillStyle = "#12b76a";
+      ctx.fillStyle = "#0b8a4c";
       ctx.font = "700 18px Roboto, Arial, sans-serif";
       const marca = "Radar de Canais";
       ctx.fillText(marca, L - M - ctx.measureText(marca).width, y + 44);
@@ -1970,7 +2002,15 @@
       }));
     janela.addEventListener("click", (e) => e.stopPropagation());
     document.addEventListener("click", () => { janela.hidden = true; });
-    const juntos = h("div", { class: "radar-titulo-botoes" }, caixa, caixaFantasma);
+    // o Traduzir do vídeo aberto: o título em português logo embaixo do título do YouTube
+    const tituloDoVideo = document.querySelector("ytd-watch-metadata #title");
+    const traduzirVideo = ligada("traduzir") && tituloDoVideo ? h("button", { class: "radar-traduzir radar-traduzir-grande", type: "button",
+      title: "Radar: ver o título em português", onclick: (e) => {
+        e.stopPropagation();
+        traduzirTitulo(e.currentTarget, (tituloDoVideo.querySelector("h1")?.textContent || "").trim(), tituloDoVideo);
+      } }, "PT") : null;
+    if (tituloDoVideo) tituloDoVideo.querySelectorAll(":scope > .radar-traducao").forEach((x) => x.remove());
+    const juntos = h("div", { class: "radar-titulo-botoes" }, caixa, caixaFantasma, traduzirVideo);
     if (lugar.id === "top-row") { const dono = lugar.querySelector(":scope > #owner"); juntos.classList.add("radar-grandes"); if (dono) dono.after(juntos); else lugar.prepend(juntos); }
     else if (lugar.id === "title") { lugar.classList.add("radar-com-barra"); lugar.append(juntos); }
     else lugar.prepend(caixa, caixaFantasma);

@@ -30,6 +30,8 @@ FUNCOES: list[dict] = [
      "desc": "Um som curto ao salvar, ao desfazer e ao achar um canal raro. Fica em silêncio enquanto houver vídeo tocando."},
     {"chave": "ler", "nome": "Ler os vídeos sem gastar cota", "onde": "video", "recurso": "extensao",
      "desc": "Enquanto você navega, a extensão lê os números que a página já mostra e guarda no Radar os que estouraram."},
+    {"chave": "traduzir", "nome": "Traduzir o título", "onde": "video", "recurso": "extensao",
+     "desc": "Um botão ao lado do título de cada vídeo (na página do vídeo e nas listas) mostra o título em português."},
     {"chave": "treino", "nome": "Selo do treino", "onde": "video", "recurso": "extensao",
      "desc": "Os vídeos que combinam com o canal seu já treinado no site ganham o selo, com o botão de salvar a ideia."},
 

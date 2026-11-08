@@ -765,6 +765,15 @@ async def ext_radar_preparar(request: Request, u: dict = Depends(usuario)):
     return radar_paises.preparar(titulo, str(d.get("modo", "raiz")))
 
 
+@app.post("/api/ext/traduzir")
+async def ext_traduzir(request: Request, u: dict = Depends(exigir("extensao"))):
+    """Os títulos de vídeo em português, para o botão Traduzir ao lado de cada título no YouTube."""
+    textos = (await request.json()).get("textos") or []
+    if not isinstance(textos, list) or not textos:
+        raise HTTPException(400, "Mande os títulos em textos.")
+    return {"traducoes": ia.para_portugues([str(x) for x in textos[:50]])}
+
+
 @app.post("/api/ext/radar/julgar")
 async def ext_radar_julgar(request: Request, u: dict = Depends(usuario)):
     d = await request.json()
