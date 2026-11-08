@@ -3165,7 +3165,7 @@ const DICAS_DO_TEMA = {
 // quanto do vídeo sai de cada lugar: o resto é foto e vídeo de banco
 const PARTES_DE_IA = [["", "Padrão do canal"], ["0", "Sem IA"], ["10", "10% das cenas"], ["25", "25% das cenas"], ["50", "50% das cenas"],
   ["75", "75% das cenas"], ["100", "100% das cenas"]];
-const PARTES_DE_YOUTUBE = [["0", "Não usar"], ["15", "15% das cenas"], ["25", "25% das cenas"], ["40", "40% das cenas"]];
+const PARTES_DE_YOUTUBE = [["0", "Padrão do canal (15%, só Creative Commons)"], ["15", "15% das cenas"], ["25", "25% das cenas"], ["40", "40% das cenas"]];
 const opcoesDe = (lista, valor) => lista.map(([v, r]) => `<option value="${v}" ${v === String(valor ?? "") ? "selected" : ""}>${r}</option>`).join("");
 // os botões do tema, usados na Nova produção e no formulário do agente
 function seletorDeTema(id, valor, rotulo, nota = "") {
@@ -3269,7 +3269,7 @@ async function novaProducao(preset = {}) {
         <dt>Estilo</dt><dd>${N.modo === "manual" ? "roteiro colado" : esc(agente?.nome || "padrão do Claude")}</dd>
         <dt>Tamanho</dt><dd>${N.modo === "manual" ? `${(N.roteiro.split(/\s+/).filter(Boolean).length).toLocaleString("pt-BR")} palavras` : `≈ ${Math.round(minutos())} min · ~${palavras().toLocaleString("pt-BR")} palavras`}</dd>
         <dt>Revisão</dt><dd>${N.revisar ? "Para para eu revisar" : "Segue direto"}</dd>
-        <dt>Footage real</dt><dd>${N.footage ? `${N.footage}% das cenas` : "Não usar"}</dd>
+        <dt>Footage real</dt><dd>${N.footage ? `${N.footage}% das cenas` : "Padrão do canal (15%)"}</dd>
         <dt>Imagem de IA</dt><dd>${N.iaPct === "" ? "Padrão do canal" : N.iaPct === "0" ? "Sem IA" : `${N.iaPct}% das cenas`}</dd>
         <dt>Animações</dt><dd>${esc(TEMAS_ANIMACAO.find(([v]) => v === N.tema)?.[1] || "Padrão do canal")}</dd>
         ${N.maquinas.length ? `<dt>Onde</dt><dd>${N.destino ? "Outra máquina" : "Esta máquina"}</dd>` : ""}
