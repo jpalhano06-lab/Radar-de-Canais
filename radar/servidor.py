@@ -2483,7 +2483,27 @@ async def acompanhar_video(nome: str, u: dict = Depends(usuario)):
         st = {}
     return {"nome": nome, "titulo": fabrica_api._titulo(nome), "status": st, "etapas": diagnostico.etapas(pasta, st),
             "tem_final": (pasta / "final.mp4").exists(), "pago_pendente": st.get("pago_pendente"),
-            "legenda": next((f for f in ("legendas_final.srt", "legendas.srt") if (pasta / f).exists()), "")}
+            "legenda": next((f for f in ("legendas_final.srt", "legendas.srt") if (pasta / f).exists()), ""),
+            "parada": _parada(pasta)}
+
+
+def _parada(pasta):
+    """Por que a criação está parada (avisos.parada), para o Acompanhar mostrar o botão Retomar."""
+    try:
+        return avisos.parada(json.loads((pasta / "criacao.json").read_text(encoding="utf-8")))
+    except (OSError, ValueError):
+        return None
+
+
+@app.post("/api/acompanhar/{nome}/retomar")
+async def acompanhar_retomar(nome: str, u: dict = Depends(dono_da_fabrica)):
+    """O botão Retomar (pedido do usuário em 2026-11-08): a criação que espera a próxima tentativa tenta já, e a que
+    parou volta a andar de onde parou. É a rota /retomar da fábrica, já confirmada."""
+    _projeto_fabrica(nome)
+    try:
+        return await run_in_threadpool(fabrica_api.produzir, nome, True)
+    except fabrica_api.SemFabrica as erro:
+        raise HTTPException(503, str(erro))
 
 
 @app.get("/api/acompanhar/{nome}/diagnostico")

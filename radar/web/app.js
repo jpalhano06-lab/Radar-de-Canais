@@ -1879,6 +1879,15 @@ async function acompanhar() {
 
   const acao = (texto, classe, attr) => EU.admin ? `<button class="botao ${classe}" ${attr}>${texto}</button>` : "";
 
+  // o vídeo parado na fábrica (avisos.parada): o motivo e o botão Retomar
+  const paradaHtml = (p) => {
+    if (!p) return "";
+    const titulo = p.tipo === "saldo" ? `Parado: acabou o saldo da ${esc(p.servico)}` : p.tipo === "parou" ? "Parado na fábrica" : "Tentando de novo sem sair do lugar";
+    const dica = p.tipo === "saldo" ? "Recarregue e clique em Retomar: ele segue de onde parou, sem esperar a próxima tentativa." : "Resolva o motivo, se for o caso, e clique em Retomar: ele segue de onde parou.";
+    return `<div class="chamada aviso acn-parada"><div><b>⏸ ${titulo}</b>${p.tentativas ? ` · tentativa ${p.tentativas}` : ""}
+        <small>${esc(p.motivo)}</small><small>${dica}</small></div>${acao("↻ Retomar", "", 'id="acn-retomar"')}</div>`;
+  };
+
   async function desenharVideo() {
     const caixa = raiz.querySelector(".acn-video");
     const x = achar(A.escolhido);
@@ -1928,6 +1937,7 @@ async function acompanhar() {
         <small class="acn-msg">› ${esc(et.mensagem || x.mensagem || "")}</small></div></header>
       ${v.pago_pendente ? `<div class="chamada aviso">Os modelos grátis acabaram: a fábrica espera você liberar o modelo pago. ${acao("Liberar o pago hoje", "", 'id="acn-pago"')}</div>` : ""}
       ${x.erro ? `<div class="chamada aviso">⚠ ${esc(x.erro)}</div>` : ""}
+      ${paradaHtml(v.parada)}
       <nav class="acn-abas">${[["acompanhamento", "Acompanhamento"], ["diagnostico", "Diagnóstico"], ["arquivos", "Arquivos"], ["tags", "Tags e descrição"]]
         .map(([id, n]) => `<button data-aba="${id}" class="${A.aba === id ? "ativa" : ""}">${n}</button>`).join("")}</nav>
       <div class="acn-aba"></div>
@@ -1935,6 +1945,12 @@ async function acompanhar() {
         ${x.tipo === "fabrica" && x.estado !== "produzindo" ? acao(x.progresso ? "↻ Continuar" : "▶ Produzir", "", 'id="acn-produzir"') : ""}
         ${acao("Parar e apagar", "contorno perigo", 'id="acn-apagar"')}</div>`;
     caixa.querySelectorAll(".acn-abas button").forEach((b) => (b.onclick = () => { A.aba = b.dataset.aba; caixa.querySelectorAll(".acn-abas button").forEach((o) => o.classList.toggle("ativa", o === b)); desenharAba(v, x); }));
+    // o Retomar (pedido do usuário em 2026-11-08): a fábrica tenta já, sem esperar a próxima volta de 5 min
+    caixa.querySelector("#acn-retomar")?.addEventListener("click", (e) => carregando(e.currentTarget, "Retomando…", async () => {
+      const r = await api(`/api/acompanhar/${encodeURIComponent(x.projeto)}/retomar`, { method: "POST" });
+      aviso(r.mensagem || "A fábrica retomou o vídeo de onde parou.");
+      setTimeout(desenharVideo, 4000);
+    }));
     caixa.querySelector("#acn-pago")?.addEventListener("click", (e) => carregando(e.currentTarget, "Liberando…", async () => { await api(`/api/acompanhar/${encodeURIComponent(x.projeto)}/pago`, { method: "POST" }); desenharVideo(); }));
     caixa.querySelector("[data-a=tentar]")?.addEventListener("click", (e) => carregando(e.currentTarget, "…", async () => { await api(`/api/fila/${x.id}/tentar`, { method: "POST" }); await carregarLista(); }));
     caixa.querySelector("#acn-produzir")?.addEventListener("click", (e) => carregando(e.currentTarget, "Consultando a fábrica…", async () => { if (await produzirNaFabrica(x.projeto, x.titulo)) await carregarLista(); }));

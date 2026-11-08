@@ -2132,3 +2132,7 @@ input, select, textarea, .selects select, .selects .limpar { border-radius: 8px;
 .tag.origem { opacity: .75; font-weight: 400; }
 .tag.repescado { border-color: var(--verde, #12b76a); color: var(--verde, #12b76a); }
 .espaco-nichos { margin-bottom: 14px; }
+/* o vídeo parado na fábrica, com o botão Retomar (Acompanhar) */
+.acn-parada { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.acn-parada small { display: block; margin-top: 3px; opacity: .85; }
+.acn-parada .botao { flex: none; }

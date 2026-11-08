@@ -87,6 +87,28 @@ def fabrica() -> list:
     return []
 
 
+def parada(d: dict | None) -> dict | None:
+    """Se a criação (o criacao.json da fábrica) está parada, e por quê. None quando ela anda ou terminou.
+
+    tipo "parou": a fábrica parou e espera alguém (ParadaPrecisaDeVoce) ou deu erro. "saldo": um serviço sem saldo,
+    tentando de novo. "repetindo": a mesma falha voltando, TENTATIVAS_TRAVADO vezes ou mais. É daqui que saem o aviso
+    no celular e o botão Retomar do Acompanhar."""
+    if not d or d.get("concluido"):
+        return None
+    if d.get("precisa_voce") or d.get("erro"):
+        motivo = " ".join(str(d.get("erro") or d.get("mensagem") or "a fábrica parou").split())[:220]
+        return {"tipo": "parou", "motivo": motivo, "tentativas": 0, "servico": ""}
+    logs = [str(l) for l in (d.get("logs") or [])[-30:]] + [str(d.get("mensagem") or "")]
+    tentativas = max([int(n) for n in re.findall(r"tentativa (\d+)", " ".join(logs))] or [0])
+    sem_saldo = next((l for l in reversed(logs) if SEM_SALDO.search(l)), "")
+    if not sem_saldo and tentativas < TENTATIVAS_TRAVADO:
+        return None
+    motivo = sem_saldo or next((l for l in reversed(logs) if re.search(r"falhou|recusou|erro", l, re.I)), d.get("mensagem") or "")
+    servico = next((s for s in ("GenAIPro", "OpenRouter", "Kie", "Gemini", "Groq") if s.lower() in sem_saldo.lower()), "um serviço") if sem_saldo else ""
+    return {"tipo": "saldo" if sem_saldo else "repetindo", "motivo": " ".join(motivo.split())[:180],
+            "tentativas": tentativas, "servico": servico}
+
+
 def travados() -> list:
     """O pedido que a fábrica está tentando de novo sem sair do lugar: sem saldo num serviço, ou a mesma falha que volta."""
     saida = []
@@ -95,25 +117,16 @@ def travados() -> list:
             d = json.loads((config.FABRICA / "projetos" / r["projeto"] / "criacao.json").read_text(encoding="utf-8"))
         except (OSError, ValueError):
             continue
-        if d.get("concluido"):
+        p = parada(d)
+        if not p:
             continue
-        if d.get("precisa_voce") or d.get("erro"):
-            # a fábrica parou e espera alguém (ParadaPrecisaDeVoce) ou deu erro: o motivo é a mensagem dela
-            motivo = " ".join(str(d.get("erro") or d.get("mensagem") or "a fábrica parou").split())[:220]
+        motivo, tentativas = p["motivo"], p["tentativas"]
+        if p["tipo"] == "parou":
             saida.append(_aviso(f"parado-{r['id']}", "erro", f"O pedido {r['id']} parou na fábrica", motivo, "#/acompanhar"))
-            continue
-        logs = [str(l) for l in (d.get("logs") or [])[-30:]] + [str(d.get("mensagem") or "")]
-        tentativas = max([int(n) for n in re.findall(r"tentativa (\d+)", " ".join(logs))] or [0])
-        sem_saldo = next((l for l in reversed(logs) if SEM_SALDO.search(l)), "")
-        if not sem_saldo and tentativas < TENTATIVAS_TRAVADO:
-            continue
-        motivo = sem_saldo or next((l for l in reversed(logs) if re.search(r"falhou|recusou|erro", l, re.I)), d.get("mensagem") or "")
-        motivo = " ".join(motivo.split())[:180]
-        if sem_saldo:
-            servico = next((s for s in ("GenAIPro", "OpenRouter", "Kie", "Gemini", "Groq") if s.lower() in sem_saldo.lower()), "um serviço")
-            saida.append(_aviso(f"travado-saldo-{r['id']}", "erro", f"O pedido {r['id']} parou: acabou o saldo da {servico}",
-                                f"{motivo}{f' (tentativa {tentativas})' if tentativas else ''}. Recarregue e ele segue sozinho de onde parou.",
-                                "#/integracoes"))
+        elif p["tipo"] == "saldo":
+            saida.append(_aviso(f"travado-saldo-{r['id']}", "erro", f"O pedido {r['id']} parou: acabou o saldo da {p['servico']}",
+                                f"{motivo}{f' (tentativa {tentativas})' if tentativas else ''}. Recarregue e clique em Retomar no "
+                                "Acompanhar (ou espere: ele segue sozinho de onde parou).", "#/acompanhar"))
         else:
             saida.append(_aviso(f"travado-{r['id']}", "erro", f"O pedido {r['id']} está tentando de novo sem sair do lugar",
                                 f"{motivo} (tentativa {tentativas}).", "#/acompanhar"))
