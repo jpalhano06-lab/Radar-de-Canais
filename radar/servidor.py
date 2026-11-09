@@ -19,7 +19,10 @@ from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 
-from . import alvos, banco, canal_painel, chatgpt_conta, claude_projetos, custos, descricao, diagnostico, estilos_animacao, fabrica_api, fila, funcoes, garimpo, gosto, horarios, ia, integracoes, medir, mercado, metricas, nichos, pagina, perfil, producao, publicar, radar_paises, roteiro_claude, studio, tempo, thumb, trabalho, treinamento, trello, youtube
+from starlette.background import BackgroundTask
+
+from . import avisos, backup, descoberta, maquinas
+from . import alvos, banco, canal_painel, capas, lente_ia, molde, pedidos, ponte, chatgpt_conta, claude_projetos, custos, descricao, diagnostico, estilos_animacao, fabrica_api, fila, funcoes, garimpo, gosto, horarios, ia, integracoes, medir, mercado, metricas, nichos, pagina, perfil, producao, publicar, radar_paises, roteiro_claude, studio, tempo, thumb, trabalho, treinamento, trello, youtube
 from .config import DADOS, NOME, PLANOS, RAIZ, pode
 
 WEB = RAIZ / "radar" / "web"
@@ -209,6 +212,28 @@ def _conferir_senha(request: Request, d: dict) -> dict:
 async def entrar(request: Request):
     u = _conferir_senha(request, await request.json())
     return _com_cookie(request, {"ok": True}, u["id"])
+
+
+def _so_neste_computador(request: Request, u: dict = Depends(usuario)) -> dict:
+    """Criar senha é coisa do computador do Radar: de fora, quem entrou não troca a senha de ninguém."""
+    if _de_fora(request):
+        raise HTTPException(403, "A senha só muda no computador onde o Radar está ligado.")
+    return u
+
+
+@app.get("/api/senha")
+def ver_conta(u: dict = Depends(_so_neste_computador)):
+    return {"email": u["email"]}
+
+
+@app.post("/api/senha")
+async def criar_senha(request: Request, u: dict = Depends(_so_neste_computador)):
+    """Quem sempre entrou pelo acesso livre nunca teve senha para usar: é com ela que o celular entra (2026-11-06)."""
+    senha = str((await request.json()).get("senha", ""))
+    if len(senha) < 8:
+        raise HTTPException(400, "A senha precisa de pelo menos 8 caracteres.")
+    banco.executar("UPDATE usuarios SET senha_hash=? WHERE id=?", banco.hash_senha(senha), u["id"])
+    return {"ok": True}
 
 
 @app.post("/api/sair")
@@ -406,6 +431,23 @@ def ext_painel(video_id: str, canal: str = "", u: dict = Depends(exigir("extensa
     return {**pagina.painel(video_id, canal, u["id"]), "plano": _plano(u)}
 
 
+@app.get("/api/avisos")
+def ver_avisos(u: dict = Depends(usuario)):
+    """O que precisa de você agora, e como anda a cópia de segurança (avisos.py, backup.py)."""
+    return {"avisos": avisos.atuais(), "backup": backup.ultimo()}
+
+
+@app.get("/api/ext/avisos")
+def ext_avisos(u: dict = Depends(exigir("extensao"))):
+    return {"avisos": avisos.atuais()}
+
+
+@app.get("/api/ext/publico/{canal_id}")
+def ext_publico(canal_id: str, u: dict = Depends(exigir("extensao"))):
+    """O país que mais assiste o canal, para o horário de postar abrir nele. Só o banco: nenhuma leitura nova."""
+    return {"pais": studio.pais_do_publico(u["id"], canal_id)}
+
+
 @app.get("/api/ext/canal-dados/{canal_id}")
 def ext_canal_dados(canal_id: str, u: dict = Depends(exigir("extensao"))):
     """A página do canal no YouTube: o que o banco já tem (sem cota). 404 = a extensão lê a página do canal antes."""
@@ -544,13 +586,16 @@ def esteira(u: dict = Depends(exigir("outliers"))):
 @app.post("/api/modelar/{video_id}")
 async def marcar_modelar(video_id: str, request: Request, u: dict = Depends(exigir("outliers"))):
     """`fila` = vou modelar, `feito` = já modelei, vazio = tira o marcador."""
-    estado = str((await request.json()).get("estado", ""))
+    d = await request.json()
+    estado, canal = str(d.get("estado", "")), str(d.get("canal_id") or "")[:40]
     if estado and estado not in ESTEIRA:
         raise HTTPException(400, "Estado desconhecido para a esteira.")
     if estado:
-        banco.executar("INSERT INTO modelar (usuario_id, video_id, estado, quando) VALUES (?,?,?,?) "
-                       "ON CONFLICT(usuario_id, video_id) DO UPDATE SET estado=excluded.estado, quando=excluded.quando",
-                       u["id"], video_id, estado, banco.agora())
+        # a tela do site só muda o estado: sem canal no pedido, o que a extensão escolheu continua valendo
+        banco.executar("INSERT INTO modelar (usuario_id, video_id, estado, quando, canal_id) VALUES (?,?,?,?,?) "
+                       "ON CONFLICT(usuario_id, video_id) DO UPDATE SET estado=excluded.estado, quando=excluded.quando, "
+                       "canal_id=CASE WHEN excluded.canal_id<>'' THEN excluded.canal_id ELSE modelar.canal_id END",
+                       u["id"], video_id, estado, banco.agora(), canal)
     else:
         banco.executar("DELETE FROM modelar WHERE usuario_id=? AND video_id=?", u["id"], video_id)
     return {"ok": True, "estado": estado}
@@ -574,6 +619,133 @@ def ext_concorrentes(canal_id: str, medir: int = 0, u: dict = Depends(exigir("pa
         _sem_cota(erro)
 
 
+@app.get("/api/ext/molde/{video_id}")
+def ext_molde(video_id: str, titulo: str = "", u: dict = Depends(exigir("extensao"))):
+    """Quem escreve no mesmo molde deste título, e quanto rende."""
+    return molde.parecidos(titulo, video_id)
+
+
+@app.get("/api/ext/capas-parecidas/{video_id}")
+def ext_capas_parecidas(video_id: str, u: dict = Depends(exigir("extensao"))):
+    """As capas que estouraram mais parecidas com a deste vídeo."""
+    return capas.parecidas(video_id)
+
+
+@app.post("/api/ext/ia/{acao}")
+async def ext_ia(acao: str, request: Request, u: dict = Depends(exigir("extensao"))):
+    """As leituras de IA do painel do vídeo. Só rodam pelo botão, e o que já foi lido volta do banco."""
+    d = await request.json()
+    video, titulo = str(d.get("video_id") or ""), " ".join(str(d.get("titulo") or "").split())[:300]
+    if not re.fullmatch(r"[\w-]{11}", video) or not titulo:
+        raise HTTPException(400, "Abra um vídeo primeiro.")
+    tarefas = {
+        "por-que": lambda: lente_ia.por_que(video, titulo, str(d.get("fala") or ""), d.get("nota"), bool(d.get("novo"))),
+        "titulos": lambda: lente_ia.titulos(titulo, str(d.get("assunto") or "").strip()[:200]),
+        "adaptar": lambda: lente_ia.adaptar(video, titulo, str(d.get("lingua") or "").strip()[:40]),
+        "capa": lambda: lente_ia.receita_da_capa(video, titulo),
+        "capitulos": lambda: lente_ia.capitulos(video, titulo),
+    }
+    if acao not in tarefas:
+        raise HTTPException(404, "Essa leitura não existe.")
+    if acao == "titulos" and not str(d.get("assunto") or "").strip():
+        raise HTTPException(400, "Escreva o seu assunto.")
+    try:
+        return await run_in_threadpool(tarefas[acao])
+    except RuntimeError as erro:
+        raise HTTPException(502, str(erro))
+
+
+@app.get("/api/ext/salvos-estouraram")
+def ext_salvos_estouraram(u: dict = Depends(exigir("salvar"))):
+    """O aviso do dia: o que passou de 5 vezes o normal nos canais salvos."""
+    return {"videos": pagina.salvos_estouraram(u["id"])}
+
+
+@app.get("/api/ext/estilo/{canal_id}")
+def ext_estilo(canal_id: str, lingua: str = "en", u: dict = Depends(exigir("parecidos"))):
+    """A busca de canais deste estilo em outra língua, para abrir no YouTube."""
+    achado = pagina.estilo_em_lingua(canal_id, lingua)
+    if not achado:
+        raise HTTPException(404, "Ainda não sei o assunto deste canal.")
+    return achado
+
+
+@app.get("/api/ext/nota-titulo")
+def ext_nota_titulo(titulo: str = "", u: dict = Depends(exigir("extensao"))):
+    """A nota do título que está sendo escrito no Studio."""
+    return molde.nota(titulo[:300])
+
+
+@app.get("/api/ext/fala/{video_id}")
+def ext_fala(video_id: str, u: dict = Depends(exigir("extensao"))):
+    """A fala do vídeo com os tempos, para dizer o que era falado onde o vídeo perde gente."""
+    try:
+        return {"trechos": roteiro_claude.fala_com_tempos(video_id)}
+    except RuntimeError as erro:
+        raise HTTPException(404, str(erro))
+
+
+@app.get("/api/ext/patente")
+def ext_patente(u: dict = Depends(exigir("extensao"))):
+    return pagina.patente(u["id"])
+
+
+@app.get("/api/ext/ponte")
+def ext_ponte(u: dict = Depends(exigir("extensao"))):
+    """A extensão pergunta se o Claude pediu alguma leitura do YouTube."""
+    return {"pedido": ponte.proximo()}
+
+
+@app.post("/api/ext/ponte/{pedido_id}")
+async def ext_ponte_resposta(pedido_id: int, request: Request, u: dict = Depends(exigir("extensao"))):
+    ponte.responder(pedido_id, await request.json())
+    return {"ok": True}
+
+
+@app.get("/api/ponte/{tipo}")
+def api_ponte(tipo: str, alvo: str = "", u: dict = Depends(usuario)):
+    """O MCP do Radar lendo o YouTube pela aba aberta da pessoa, sem gastar a cota."""
+    if not alvo.strip():
+        raise HTTPException(400, "Falta dizer o que ler.")
+    try:
+        return ponte.pedir(tipo, alvo.strip())
+    except ponte.SemAba as erro:
+        raise HTTPException(409, str(erro))
+    except ValueError as erro:
+        raise HTTPException(404, str(erro))
+
+
+@app.get("/api/ponte-fala")
+def api_ponte_fala(video_id: str = "", u: dict = Depends(usuario)):
+    """A fala do vídeo com os tempos, para o MCP."""
+    try:
+        return {"trechos": roteiro_claude.fala_com_tempos(video_id)}
+    except RuntimeError as erro:
+        raise HTTPException(404, str(erro))
+
+
+@app.get("/api/ponte-comentarios")
+def api_ponte_comentarios(video_id: str = "", u: dict = Depends(usuario)):
+    """Os comentários do vídeo, para o MCP. Gasta 1 unidade de cota."""
+    comentarios = youtube.comentarios(video_id)
+    return {"comentarios": [{"texto": c["texto"], "curtidas": c["curtidas"]} for c in comentarios or []], "desligados": comentarios is None}
+
+
+@app.get("/api/ext/pedidos/{canal_id}")
+def ext_pedidos(canal_id: str, u: dict = Depends(exigir("extensao"))):
+    """O que o público pede nos comentários dos vídeos mais vistos do canal."""
+    try:
+        return pedidos.do_canal(canal_id)
+    except youtube.SemCota as erro:
+        raise HTTPException(429, str(erro))
+
+
+@app.get("/api/ext/mais-vistos/{canal_id}")
+def ext_mais_vistos(canal_id: str, u: dict = Depends(exigir("linguas"))):
+    """Os 20 vídeos mais vistos do canal: o Método Fantasma do canal procura cada um nas línguas escolhidas."""
+    return {"videos": pedidos.mais_vistos(canal_id)}
+
+
 @app.get("/api/ext/nicho-videos/{canal_id}")
 def ext_nicho_videos(canal_id: str, u: dict = Depends(exigir("parecidos"))):
     """A aba Vídeos do Nicho da página do canal: o que estourou nos canais parecidos (do banco)."""
@@ -591,6 +763,15 @@ async def ext_radar_preparar(request: Request, u: dict = Depends(usuario)):
     if not titulo:
         raise HTTPException(400, "Falta o título do vídeo.")
     return radar_paises.preparar(titulo, str(d.get("modo", "raiz")))
+
+
+@app.post("/api/ext/traduzir")
+async def ext_traduzir(request: Request, u: dict = Depends(exigir("extensao"))):
+    """Os títulos de vídeo em português, para o botão Traduzir ao lado de cada título no YouTube."""
+    textos = (await request.json()).get("textos") or []
+    if not isinstance(textos, list) or not textos:
+        raise HTTPException(400, "Mande os títulos em textos.")
+    return {"traducoes": ia.para_portugues([str(x) for x in textos[:50]])}
 
 
 @app.post("/api/ext/radar/julgar")
@@ -612,6 +793,18 @@ def _kit_com_modelo(usuario_id: int, pasta) -> dict:
     cfg = producao.config(usuario_id, canal_id) if canal_id else {}
     k["canal"] = canal
     k["modelo"] = "rodape" if producao.rodape_do_perfil(perfil) else "fabrica"
+    lingua = cfg.get("lingua") or ""
+    # canal sem rodapé na fábrica: a descrição do Radar ganha o texto fixo pronto na língua do canal. Os coreanos
+    # saíam só com a sinopse e as hashtags (2026-11-07, "muito curta e bem ruim")
+    if k["modelo"] == "fabrica" and k.get("origem") == "radar" and lingua in publicar.MODELOS:
+        rodape = publicar.rodape_padrao(lingua, cfg.get("modelo_tipo") or "geral", canal or "", cfg.get("marcas") or "")
+        k["descricao"] = descricao.montar({"sinopse": k.get("sinopse"), "hashtags": k.get("hashtags")}, rodape)
+        k["modelo"] = "padrao"
+    if lingua and "portug" not in lingua:
+        try:
+            k["traducao"] = publicar.traduzir(pasta, k)
+        except Exception:      # a tradução ajuda, nunca segura o painel
+            k["traducao"] = k.get("traducao") or {}
     # o padrão de publicação do canal: a extensão não precisa perguntar nada no Studio, já vem decidido daqui
     k["padrao"] = {"anuncio_cada": cfg.get("anuncio_cada") or 1,
                    "tela_final": cfg.get("tela_final") or "melhor",
@@ -998,6 +1191,8 @@ def radar(request: Request, u: dict = Depends(exigir("radar"))):
         onde.append("c.id IN (SELECT canal_id FROM salvos WHERE usuario_id=?)"); args.append(u["id"])
     if q.get("acharam") == "1":
         onde.append("c.id IN (SELECT canal_id FROM achados WHERE usuario_id=?)"); args.append(u["id"])
+    if q.get("origem") in descoberta.ORIGENS:      # por onde o canal entrou (a repescagem, por exemplo)
+        onde.append("c.origem=?"); args.append(q["origem"])
     if q.get("pasta"):      # `sem_pasta` é o nome reservado para os salvos que ainda não foram guardados em nenhuma
         pedida = "" if q["pasta"] == "sem_pasta" else q["pasta"]
         onde.append("c.id IN (SELECT canal_id FROM salvos WHERE usuario_id=? AND pasta=?)")
@@ -1082,6 +1277,24 @@ def grupos(nicho: str = "", u: dict = Depends(exigir("radar"))):
 def nichos_vida(nicho: str = "", idioma: str = "", u: dict = Depends(exigir("radar"))):
     """A faixa das cinco etapas da vida de um canal, somando os canais da mesma lista que a tela Canais mostra."""
     return nichos.linha_da_vida(nicho, idioma, garimpo.MINIMO_POR_VIDEO)
+
+
+@app.get("/api/nichos/espaco")
+def nichos_espaco(u: dict = Depends(exigir("radar"))):
+    """Subnichos em que vídeos estouraram há pouco e quase ninguém do Radar faz (descoberta.com_espaco)."""
+    return {"nichos": descoberta.com_espaco(), "dias": descoberta.ESPACO_DIAS, "max_canais": descoberta.ESPACO_MAX_CANAIS}
+
+
+@app.get("/api/repescagem")
+def repescagem(u: dict = Depends(exigir("radar"))):
+    """Os canais que ficaram de fora, voltaram a crescer e entraram de novo no Radar."""
+    return {"canais": [_vitrine(c, u["id"]) for c in descoberta.repescados()]}
+
+
+@app.get("/api/canal/{canal_id}/subtemas")
+def subtemas_do_canal(canal_id: str, u: dict = Depends(usuario)):
+    """Os subtemas dos vídeos que estouraram no canal (o modelo de texto escreve uma vez; depois fica guardado)."""
+    return descoberta.subtemas(canal_id)
 
 
 @app.get("/api/nichos/tabela")
@@ -1203,9 +1416,10 @@ def outliers(request: Request, u: dict = Depends(exigir("outliers"))):
     # o marcador da esteira vem junto com o vídeo: o cartão precisa saber se já está na fila ou já foi modelado
     linhas = banco.todos(
         f"SELECT ROUND({_NOTA_VIVA}, 1) AS nota, (SELECT estado FROM modelar m WHERE m.usuario_id=? AND m.video_id=v.id) "
-        f"AS modelar, v.id, v.titulo, v.views, v.publicado, v.duracao_s, c.id AS canal_id, c.titulo AS canal, "
+        f"AS modelar, (SELECT d.titulo FROM modelar m JOIN canais d ON d.id=m.canal_id WHERE m.usuario_id=? AND m.video_id=v.id) "
+        f"AS modelar_canal, v.id, v.titulo, v.views, v.publicado, v.duracao_s, c.id AS canal_id, c.titulo AS canal, "
         f"c.foto, c.handle, c.inscritos, c.nicho, c.subnicho, c.sem_rosto, c.fase, c.base_longos AS normal {base} "
-        f"ORDER BY {_ordem_videos(q.get('ordem', ''), q.get('sentido', ''))}", u["id"], *args)
+        f"ORDER BY {_ordem_videos(q.get('ordem', ''), q.get('sentido', ''))}", u["id"], u["id"], *args)
     for l in linhas:
         l["por_hora"] = metricas.views_por_hora(l["views"], l["publicado"])
     # os bloqueios e as respostas da primeira vez (língua, rosto, o que nunca mostrar) valem aqui também
@@ -1295,6 +1509,7 @@ async def conectar_canal(request: Request, u: dict = Depends(usuario)):
 @app.delete("/api/perfil/canais/{canal_id}")
 def desconectar_canal(canal_id: str, u: dict = Depends(usuario)):
     banco.executar("DELETE FROM meus_canais WHERE usuario_id=? AND canal_id=?", u["id"], canal_id)
+    studio.desconectar(u["id"], canal_id)
     return {"ok": True}
 
 
@@ -2118,6 +2333,112 @@ def _na_fila(funcao, *args):
         raise HTTPException(400, str(erro))
 
 
+def maquina_da_chave(request: Request) -> dict:
+    """A máquina de fora que está falando: entra pela chave dela, não por sessão de pessoa."""
+    maquina = maquinas.autenticar(request.headers.get("x-robo-chave", ""))
+    if not maquina:
+        raise HTTPException(401, "Chave de máquina inválida.")
+    return maquina
+
+
+def _do_lease(funcao, *args):
+    try:
+        return funcao(*args)
+    except maquinas.LeaseVelha:
+        raise HTTPException(409, "lease_velha")
+    except ValueError as erro:
+        raise HTTPException(400, str(erro))
+
+
+@app.get("/api/robo/pacote")
+def robo_pacote(m: dict = Depends(maquina_da_chave)):
+    """A fábrica para o instalador de outra máquina. Só com a chave de uma máquina cadastrada."""
+    arquivo = maquinas.pacote(roteiro_claude.FABRICA)
+    return FileResponse(arquivo, media_type="application/zip", filename="fabrica-robo.zip",
+                        background=BackgroundTask(arquivo.unlink, missing_ok=True))
+
+
+@app.post("/api/robo/reivindicar")
+def robo_reivindicar(corpo: dict, m: dict = Depends(maquina_da_chave)):
+    return {"trabalho": maquinas.reivindicar(m, corpo.get("capacidades") or {})}
+
+
+@app.post("/api/robo/bater")
+def robo_bater(corpo: dict, m: dict = Depends(maquina_da_chave)):
+    return _do_lease(maquinas.bater, m, int(corpo.get("id") or 0), corpo.get("lease") or "", corpo.get("passo") or "",
+                     corpo.get("eventos") or [])
+
+
+@app.post("/api/robo/concluir")
+def robo_concluir(corpo: dict, m: dict = Depends(maquina_da_chave)):
+    return {"ok": _do_lease(maquinas.concluir, m, int(corpo.get("id") or 0), corpo.get("lease") or "", corpo.get("prova") or {})}
+
+
+@app.post("/api/robo/falhar")
+def robo_falhar(corpo: dict, m: dict = Depends(maquina_da_chave)):
+    return {"ok": _do_lease(maquinas.falhar, m, int(corpo.get("id") or 0), corpo.get("lease") or "", corpo.get("erro") or "")}
+
+
+def _da_fabrica(funcao, *args):
+    try:
+        return funcao(*args)
+    except fabrica_api.SemFabrica as erro:
+        raise HTTPException(400, str(erro))
+
+
+@app.get("/api/drive")
+def drive_estado(u: dict = Depends(dono_da_fabrica)):
+    return _da_fabrica(fabrica_api.drive_status)
+
+
+@app.post("/api/drive/conectar")
+def drive_conectar(u: dict = Depends(dono_da_fabrica)):
+    return _da_fabrica(fabrica_api.drive_conectar)
+
+
+@app.post("/api/drive/desconectar")
+def drive_desconectar(u: dict = Depends(dono_da_fabrica)):
+    return _da_fabrica(fabrica_api.drive_desconectar)
+
+
+@app.get("/api/contas-youtube")
+def contas_youtube_lista(u: dict = Depends(dono_da_fabrica)):
+    return _da_fabrica(fabrica_api.contas_youtube)
+
+
+@app.post("/api/contas-youtube")
+def contas_youtube_nova(corpo: dict, u: dict = Depends(dono_da_fabrica)):
+    return _da_fabrica(fabrica_api.conta_youtube_nova, corpo.get("nome") or "", corpo.get("cookies") or "")
+
+
+@app.post("/api/contas-youtube/{nome}/testar")
+def contas_youtube_testar(nome: str, u: dict = Depends(dono_da_fabrica)):
+    return _da_fabrica(fabrica_api.conta_youtube_testar, nome)
+
+
+@app.delete("/api/contas-youtube/{nome}")
+def contas_youtube_apagar(nome: str, u: dict = Depends(dono_da_fabrica)):
+    return _da_fabrica(fabrica_api.conta_youtube_apagar, nome)
+
+
+@app.get("/api/maquinas")
+def maquinas_lista(u: dict = Depends(dono_da_fabrica)):
+    return {"maquinas": maquinas.listar()}
+
+
+@app.post("/api/maquinas")
+def maquinas_nova(corpo: dict, u: dict = Depends(dono_da_fabrica)):
+    try:
+        return maquinas.criar(corpo.get("nome") or "")
+    except ValueError as erro:
+        raise HTTPException(400, str(erro))
+
+
+@app.delete("/api/maquinas/{mid}")
+def maquinas_tirar(mid: int, u: dict = Depends(dono_da_fabrica)):
+    return {"ok": maquinas.revogar(mid)}
+
+
 @app.get("/api/fila")
 def fila_lista(u: dict = Depends(usuario)):
     return {"itens": fila.listar(u["id"]), "limite": fila.limite()}
@@ -2138,10 +2459,10 @@ def fila_ajustes(corpo: dict, u: dict = Depends(dono_da_fabrica)):
 
 
 @app.get("/api/fila/estimativa")
-def fila_estimativa(canal: str = "", minutos: float = 0, u: dict = Depends(usuario)):
+def fila_estimativa(canal: str = "", minutos: float = 0, ia_pct: int | None = None, u: dict = Depends(usuario)):
     """O custo provável do vídeo na prévia da Nova produção (canal = o perfil da fábrica do canal)."""
     try:
-        return fila.estimativa(fila.entregues(), canal, minutos)
+        return fila.estimativa(fila.entregues(), canal, minutos, ia_pct)
     except fabrica_api.SemFabrica:
         return {"usd": None, "base": None}
 
@@ -2224,6 +2545,54 @@ async def acompanhar_lista(u: dict = Depends(usuario)):
         1 for p in prod["prontos"] if (p.get("criado") or "")[:10] == datetime.now(banco.BRASILIA).date().isoformat())}
 
 
+def _progresso(usuario_id: int) -> dict:
+    """Os vídeos em andamento, curtos: o título, o canal, a porcentagem e a etapa. É o que a barra do canto do Radar,
+    o ícone da extensão e o aviso de progresso no celular mostram (pedido do usuário em 2026-11-09).
+
+    Só os pedidos da fila em produção, cada um pelo /status da fábrica (centésimos de segundo). A lista inteira da
+    fábrica (/api/projetos, a do Acompanhar) levou 34 s medidos em 2026-11-09: a barra não pode esperar isso."""
+    # o erro entra só se for recente: um pedido parado há dias ficaria para sempre na barra como "parou"
+    recente = (datetime.now(timezone.utc) - timedelta(days=2)).isoformat()
+    linhas = banco.todos("SELECT id, estado, projeto, pedido FROM producoes_fila WHERE usuario_id=? AND (estado='produzindo' "
+                         "OR (estado='erro' AND atualizado>=?)) AND projeto IS NOT NULL AND projeto != '' ORDER BY ordem",
+                         usuario_id, recente)
+    na_fila = banco.um("SELECT COUNT(*) AS n FROM producoes_fila WHERE usuario_id=? AND estado IN ('na_fila', 'escrevendo', "
+                       "'enviando')", usuario_id)["n"]
+    videos, ligada = [], True
+    for linha in linhas:
+        try:
+            st = fabrica_api.status(linha["projeto"])
+        except fabrica_api.SemFabrica:
+            ligada = False
+            break
+        except Exception:  # noqa: BLE001 (um projeto que a fábrica não acha não derruba a barra dos outros)
+            continue
+        parado = bool(st.get("precisa_voce") or st.get("erro") or st.get("status") == "erro" or linha["estado"] == "erro")
+        try:
+            pedido = json.loads(linha["pedido"] or "{}")
+        except ValueError:
+            pedido = {}
+        canal = ""
+        if pedido.get("canal_id"):
+            c = banco.um("SELECT titulo FROM canais WHERE id=?", pedido["canal_id"])
+            canal = (c["titulo"] if c else "") or ""
+        videos.append({"id": linha["id"], "projeto": linha["projeto"], "titulo": pedido.get("titulo") or linha["projeto"],
+                       "canal": canal, "estado": "precisa_voce" if parado else "produzindo",
+                       "pct": max(0, min(100, int(round(float(st.get("progresso_pct") or 0))))),
+                       "mensagem": " ".join(str(st.get("erro") or st.get("mensagem") or "").split())[:160]})
+    return {"videos": videos, "na_fila": na_fila, "fabrica_ligada": ligada}
+
+
+@app.get("/api/progresso")
+async def progresso(u: dict = Depends(usuario)):
+    return await run_in_threadpool(_progresso, u["id"])
+
+
+@app.get("/api/ext/progresso")
+async def ext_progresso(u: dict = Depends(exigir("extensao"))):
+    return await run_in_threadpool(_progresso, u["id"])
+
+
 @app.get("/api/acompanhar/{nome}")
 async def acompanhar_video(nome: str, u: dict = Depends(usuario)):
     """O vídeo escolhido: o andamento ao vivo e as etapas com o tempo de cada uma."""
@@ -2234,7 +2603,27 @@ async def acompanhar_video(nome: str, u: dict = Depends(usuario)):
         st = {}
     return {"nome": nome, "titulo": fabrica_api._titulo(nome), "status": st, "etapas": diagnostico.etapas(pasta, st),
             "tem_final": (pasta / "final.mp4").exists(), "pago_pendente": st.get("pago_pendente"),
-            "legenda": next((f for f in ("legendas_final.srt", "legendas.srt") if (pasta / f).exists()), "")}
+            "legenda": next((f for f in ("legendas_final.srt", "legendas.srt") if (pasta / f).exists()), ""),
+            "parada": _parada(pasta)}
+
+
+def _parada(pasta):
+    """Por que a criação está parada (avisos.parada), para o Acompanhar mostrar o botão Retomar."""
+    try:
+        return avisos.parada(json.loads((pasta / "criacao.json").read_text(encoding="utf-8")))
+    except (OSError, ValueError):
+        return None
+
+
+@app.post("/api/acompanhar/{nome}/retomar")
+async def acompanhar_retomar(nome: str, u: dict = Depends(dono_da_fabrica)):
+    """O botão Retomar (pedido do usuário em 2026-11-08): a criação que espera a próxima tentativa tenta já, e a que
+    parou volta a andar de onde parou. É a rota /retomar da fábrica, já confirmada."""
+    _projeto_fabrica(nome)
+    try:
+        return await run_in_threadpool(fabrica_api.produzir, nome, True)
+    except fabrica_api.SemFabrica as erro:
+        raise HTTPException(503, str(erro))
 
 
 @app.get("/api/acompanhar/{nome}/diagnostico")
@@ -2527,6 +2916,11 @@ def studio_metricas(canal_id: str, dias: int = 28, u: dict = Depends(usuario)):
         raise HTTPException(502, str(erro))
 
 
+@app.get("/api/youtube/contas")
+def studio_contas(u: dict = Depends(usuario)):
+    return {"configurado": studio.configurado(), "contas": studio.contas(u["id"])}
+
+
 @app.delete("/api/youtube/{canal_id}")
 def studio_desconectar(canal_id: str, u: dict = Depends(usuario)):
     studio.desconectar(u["id"], canal_id)
@@ -2632,7 +3026,7 @@ async def roteiro_descricao(nome: str, request: Request, u: dict = Depends(usuar
 
 @app.get("/api/projetos")
 def projetos(u: dict = Depends(usuario)):
-    lista = banco.todos("""SELECT id, nome, instrucoes, ideal_para, tipo, claude_uuid, claude_nome, sincronizado, arquivos
+    lista = banco.todos("""SELECT id, nome, instrucoes, ideal_para, tipo, tema, ia_pct, footage_real, claude_uuid, claude_nome, sincronizado, arquivos
                            FROM projetos_roteiro WHERE usuario_id=? ORDER BY tipo, nome""", u["id"])
     for p in lista:     # os arquivos do projeto do claude.ai são grandes: a tela só mostra quantos são
         try:
@@ -2670,12 +3064,28 @@ async def salvar_projeto(request: Request, u: dict = Depends(usuario)):
     tipo = str(d.get("tipo") or "roteiro")
     if tipo not in ("roteiro", "descricao"):
         raise HTTPException(400, "O agente é de roteiro ou de descrição.")
+    # o tema dos vídeos deste agente; vazio é o padrão do canal, e sem o campo no pedido fica o que já estava
+    tema = str(d["tema"] or "") if "tema" in d else None
+    if tema and tema not in fila.ESCOLHAS["tema"]:
+        raise HTTPException(400, "Esse tema não existe.")
+    # a parte de IA e de YouTube dos vídeos deste agente; vazio é o padrão do canal, sem o campo fica o que já estava
+    partes = {c: (None if d[c] in (None, "") else int(d[c])) for c in ("ia_pct", "footage_real") if c in d}
+    if partes.get("ia_pct") not in (None, *fila.IA_PCT) or partes.get("footage_real") not in (None, *fila.FOOTAGE_REAL):
+        raise HTTPException(400, "Essa porcentagem não existe.")
+    if (partes.get("ia_pct") or 0) + (partes.get("footage_real") or 0) > 100:
+        raise HTTPException(400, "IA e YouTube juntos passam de 100% das cenas.")
     if d.get("id"):
-        banco.executar("""UPDATE projetos_roteiro SET nome=?, instrucoes=?, ideal_para=COALESCE(?, ideal_para), tipo=?
-                           WHERE id=? AND usuario_id=?""", nome, instrucoes, ideal, tipo, int(d["id"]), u["id"])
-        return {"id": int(d["id"])}
-    return {"id": banco.executar("""INSERT INTO projetos_roteiro (usuario_id, nome, instrucoes, ideal_para, tipo, criado)
-                                    VALUES (?,?,?,?,?,?)""", u["id"], nome, instrucoes, ideal or "", tipo, banco.agora())}
+        banco.executar("""UPDATE projetos_roteiro SET nome=?, instrucoes=?, ideal_para=COALESCE(?, ideal_para), tipo=?,
+                                 tema=COALESCE(?, tema) WHERE id=? AND usuario_id=?""",
+                       nome, instrucoes, ideal, tipo, tema, int(d["id"]), u["id"])
+        novo = int(d["id"])
+    else:
+        novo = banco.executar("""INSERT INTO projetos_roteiro (usuario_id, nome, instrucoes, ideal_para, tipo, tema, criado)
+                                 VALUES (?,?,?,?,?,?,?)""", u["id"], nome, instrucoes, ideal or "", tipo, tema or "",
+                              banco.agora())
+    for campo, valor in partes.items():
+        banco.executar(f"UPDATE projetos_roteiro SET {campo}=? WHERE id=? AND usuario_id=?", valor, novo, u["id"])
+    return {"id": novo}
 
 
 @app.delete("/api/projetos/{pid}")
@@ -2715,7 +3125,7 @@ async def medir_canal(request: Request, u: dict = Depends(exigir("extensao"))):
             ref = achado["id"] if achado else None
         if not ref:
             raise HTTPException(404, "Não achei esse canal. Cole o @ do canal, o link dele ou o link de um vídeo.")
-        medir.medir_canais([ref])
+        medir.medir_canais([ref], origem="manual")
     except youtube.SemCota as erro:
         _sem_cota(erro)
     c = banco.um("SELECT * FROM canais WHERE id=?", ref)
@@ -3027,6 +3437,9 @@ def _ligar():
     threading.Thread(target=_relogio, daemon=True).start()
     threading.Thread(target=_acordado, daemon=True, name="acordado").start()
     fila.iniciar_vigia()
+    molde.iniciar()
+    capas.iniciar()
+    avisos.iniciar()
 
 
 # ---------------------------------------------------------------- site

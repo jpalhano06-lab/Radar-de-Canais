@@ -85,6 +85,8 @@ def test_os_arquivos_vao_no_roteiro_os_mais_novos_primeiro(agentes, monkeypatch,
     roteiro_claude.gerar(usuario_id=1, titulo="Dieren", link="", minutos=3, lingua="holandês",
                          projeto_id=agentes["jan"], observacoes="")
     assert "Regra do canal." in visto["sistema"]
+    # a abertura vem depois das instruções do canal, que mandam o apresentador se apresentar no começo
+    assert visto["sistema"].index("Regra do canal.") < visto["sistema"].index("Sobre o primeiro minuto do vídeo")
     assert "=== roteiros/novo.txt ===" in visto["sistema"]
 
 

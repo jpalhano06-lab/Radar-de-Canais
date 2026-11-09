@@ -37,15 +37,91 @@ async function mostrar() {
   $("sair").hidden = !!resposta.livre;
   carregarCanais(servidor, token);
   carregarHoje(servidor, token);
+  carregarProgresso(servidor, token);
+  carregarFuncoes(servidor, token);
+}
+
+// `ler` fica de fora: sem ele não há nota nenhuma para mostrar. As do Studio não passam pelo content.js.
+const SEM_INTERRUPTOR = new Set(["ler", "publicar", "sem-shorts", "treino", "capa-2mb", "horario-postar", "escrever-publicacao",
+  "numeros-meu-canal", "foto-studio"]);
+
+async function carregarFuncoes(servidor, token) {
+  const caixa = $("funcoes");
+  try {
+    const r = await fetch(servidor + "/api/ext/funcoes", { headers: token ? { Authorization: `Bearer ${token}` } : {} });
+    const { funcoes, onde } = await r.json();
+    const { funcoesDesligadas } = await chrome.storage.local.get("funcoesDesligadas");
+    const desligadas = new Set(funcoesDesligadas || []);
+    caixa.replaceChildren();
+    for (const [chave, titulo] of Object.entries(onde)) {
+      const grupo = funcoes.filter((f) => f.onde === chave && f.liberada !== false && !SEM_INTERRUPTOR.has(f.chave));
+      if (!grupo.length) continue;
+      const cabeca = document.createElement("b");
+      cabeca.textContent = titulo;
+      caixa.append(cabeca);
+      for (const f of grupo) {
+        const rotulo = document.createElement("label"), marca = document.createElement("input");
+        rotulo.className = "linha-check";
+        rotulo.title = f.desc;
+        marca.type = "checkbox";
+        marca.checked = !desligadas.has(f.chave);
+        marca.onchange = () => {
+          if (marca.checked) desligadas.delete(f.chave); else desligadas.add(f.chave);
+          chrome.storage.local.set({ funcoesDesligadas: [...desligadas] });
+        };
+        rotulo.append(marca, " " + f.nome);
+        caixa.append(rotulo);
+      }
+    }
+    $("personalizar").hidden = !caixa.children.length;
+  } catch { $("personalizar").hidden = true; }
 }
 
 // o que a extensão leu hoje nas páginas do YouTube (contado pelo servidor)
+// a barra de cada vídeo em produção (a mesma % do ícone): vem do Radar na hora em que a janelinha abre
+async function carregarProgresso(servidor, token) {
+  try {
+    const r = await fetch(servidor + "/api/ext/progresso", { headers: token ? { Authorization: `Bearer ${token}` } : {} });
+    const videos = r.ok ? (await r.json()).videos || [] : [];
+    $("progresso").hidden = !videos.length;
+    $("progresso-lista").replaceChildren(...videos.map((v) => {
+      const linha = document.createElement("div");
+      linha.className = `pv${v.estado === "precisa_voce" ? " parado" : ""}`;
+      linha.title = v.mensagem || "";
+      const titulo = document.createElement("span"), pct = document.createElement("span"), barra = document.createElement("i"), cheia = document.createElement("i");
+      titulo.textContent = v.titulo;
+      pct.textContent = v.estado === "precisa_voce" ? "parou" : `${v.pct}%`;
+      cheia.style.width = `${v.pct}%`;
+      barra.append(cheia);
+      linha.append(titulo, pct, barra);
+      return linha;
+    }));
+  } catch { /* sem o Radar, a caixa fica escondida */ }
+}
+
 async function carregarHoje(servidor, token) {
   try {
     const r = await fetch(servidor + "/api/ext/hoje", { headers: token ? { Authorization: `Bearer ${token}` } : {} });
     const h = await r.json();
     if (h.videos) $("hoje").textContent = `${h.videos.toLocaleString("pt-BR")} vídeos lidos · ${h.estouraram} estouraram · ${h.canais} canais novos no Radar`;
   } catch { /* fica o texto de sempre */ }
+  try {
+    const r = await fetch(servidor + "/api/ext/patente", { headers: token ? { Authorization: `Bearer ${token}` } : {} });
+    if (r.ok) {
+      const p = await r.json();
+      $("patente-nome").textContent = `${p.patente} · ${p.salvos} canais salvos`;
+      $("patente-falta").textContent = p.proxima ? `Faltam ${p.faltam} para ${p.proxima}` : "O último degrau.";
+      $("patente").hidden = false;
+    }
+  } catch { /* a patente é só um enfeite: sem ela, a janelinha segue */ }
+  try {
+    const [aba] = await chrome.tabs.query({ active: true, currentWindow: true });
+    const c = aba && /youtube\.com/.test(aba.url || "") ? await chrome.tabs.sendMessage(aba.id, { tipo: "contadores" }) : null;
+    if (c) {
+      $("aba-numeros").textContent = `${c.videos} vídeos · ${c.estouraram} acima de 5x · ${c.canais} canais`;
+      $("aba").hidden = false;
+    }
+  } catch { /* aba sem a extensão */ }
   const { semShorts } = await chrome.storage.local.get("semShorts");
   $("sem-shorts").checked = !!semShorts;
   $("sem-shorts").onchange = () => chrome.storage.local.set({ semShorts: $("sem-shorts").checked });

@@ -16,6 +16,7 @@ def _mundo(monkeypatch, tmp_path):
     monkeypatch.setattr(roteiro_claude, "PASTA", roteiros)
     monkeypatch.setattr(roteiro_claude, "FABRICA", fabrica)
     monkeypatch.setattr(tempo, "_da_api", lambda: {})
+    monkeypatch.setattr(tempo, "MEDICOES_SEGUNDOS", 0)    # cada teste mede de novo, sem a conta guardada do outro
     return roteiros, fabrica
 
 
@@ -78,3 +79,18 @@ def test_sem_video_entregue_usa_o_padrao(monkeypatch, tmp_path):
     _roteiro(roteiros, "2026-10-20-a", minutos=10, palavras=2000, ppm_usado=200, projeto="")
     r = tempo.ritmo(1, "canal-x", "inglês")
     assert (r["ppm"], r["ppm_alvo"], r["medidos"]) == (tempo.PADRAO, tempo.PADRAO, 0)
+
+
+def test_a_conta_fica_guardada_e_a_fabrica_nao_segura(monkeypatch, tmp_path):
+    """O formulário da Nova produção pede o ritmo a cada canal: a segunda vez vem guardada, e a fábrica ocupada
+    nunca segura a resposta (a leitura dela roda em segundo plano)."""
+    roteiros, fabrica = _mundo(monkeypatch, tmp_path)
+    monkeypatch.setattr(tempo, "MEDICOES_SEGUNDOS", 120)
+    tempo._MEDICOES.clear()
+    lidas = []
+    original = tempo._do_disco
+    monkeypatch.setattr(tempo, "_do_disco", lambda nome: lidas.append(nome) or original(nome))
+    tempo.medicoes(1)
+    tempo.medicoes(1)
+    assert len(lidas) <= 1          # a segunda vez não relê o disco
+    tempo._MEDICOES.clear()

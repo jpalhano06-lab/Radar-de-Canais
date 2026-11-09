@@ -119,7 +119,7 @@ def concluir(usuario: dict, canal_id: str, positivos: list[str], negativos: list
     aviso("Medindo os canais achados…")
     ids_canais = [c for c in dict.fromkeys(a["canal_id"] for a in achados) if c != canal_id][:25]
     try:
-        canais = medir.medir_canais(ids_canais)
+        canais = medir.medir_canais(ids_canais, origem="treino")
         for v in youtube.videos([a["video_id"] for a in achados if a["canal_id"] in canais]):
             c = canais[v["canal_id"]]
             nota = metricas.nota_outlier(v["views"], c["base_curtos"] if metricas.curto(v["duracao_s"]) else c["base_longos"])

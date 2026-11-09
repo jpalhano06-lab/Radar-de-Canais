@@ -40,6 +40,7 @@ O que faltava:
 """
 import json
 import statistics
+import threading
 import time
 
 from . import fabrica_api, roteiro_claude
@@ -48,6 +49,11 @@ PADRAO = roteiro_claude.PALAVRAS_POR_MINUTO
 ULTIMOS = 7
 MARGEM_MIN = 1.0        # o erro que o usuário aceita: um minuto para cima ou para baixo
 _CACHE: dict = {"quando": 0.0, "duracoes": {}}
+# as medições de cada pessoa, por MEDICOES_SEGUNDOS: o formulário da Nova produção pede o ritmo a cada canal escolhido,
+# e cada pedido levava 7 s (2026-11-07: 9 s perguntando à fábrica ocupada a lista de projetos e 2 s relendo os
+# alinhamentos). Enquanto isso o formulário mostrava o padrão de 12 min, e o pedido 81 saiu assim, com 8,5 min
+MEDICOES_SEGUNDOS = 120
+_MEDICOES: dict = {}
 
 
 def _do_disco(nome: str) -> float | None:
@@ -66,16 +72,25 @@ def _do_disco(nome: str) -> float | None:
     return segundos
 
 
+def _ler_da_fabrica() -> None:
+    try:
+        projetos = fabrica_api._pedir("GET", "/api/projetos")["projetos"]
+        _CACHE["duracoes"] = {p["nome"]: float(p["duracao"]) for p in projetos
+                              if p.get("tem_narracao") and (p.get("duracao") or 0) > 30}
+    except Exception:
+        pass                    # fábrica desligada: fica com o que já sabia
+    finally:
+        _CACHE["lendo"] = False
+
+
 def _da_api() -> dict[str, float]:
-    """O que a fábrica ligada sabe (reserva para os projetos que não estão mais neste computador), por um minuto."""
-    if time.time() - _CACHE["quando"] > 60:
-        try:
-            projetos = fabrica_api._pedir("GET", "/api/projetos")["projetos"]
-            _CACHE["duracoes"] = {p["nome"]: float(p["duracao"]) for p in projetos
-                                  if p.get("tem_narracao") and (p.get("duracao") or 0) > 30}
-        except Exception:
-            pass                    # fábrica desligada: fica com o que já sabia
-        _CACHE["quando"] = time.time()
+    """O que a fábrica ligada sabe (reserva para os projetos que não estão mais neste computador), por um minuto.
+
+    A leitura roda em segundo plano e quem pede leva o que já se sabe: com a fábrica ocupada ela levava de 9 a 20 s,
+    e segurava o formulário da Nova produção (2026-11-07)."""
+    if time.time() - _CACHE["quando"] > 60 and not _CACHE.get("lendo"):
+        _CACHE["quando"], _CACHE["lendo"] = time.time(), True
+        threading.Thread(target=_ler_da_fabrica, daemon=True, name="tempo-da-fabrica").start()
     return _CACHE["duracoes"]
 
 
@@ -132,7 +147,9 @@ def medicoes(usuario_id: int) -> list[dict]:
     """Os vídeos do Radar que já ficaram prontos: o pedido, o entregue, o erro e o ritmo real da voz.
 
     Os mais novos primeiro. Um roteiro que ainda não virou vídeo não entra."""
-    da_api = _da_api()
+    guardada = _MEDICOES.get(usuario_id)
+    if guardada and time.time() - guardada[0] < MEDICOES_SEGUNDOS:
+        return guardada[1]
     saida = []
     for arquivo in sorted(roteiro_claude.PASTA.glob("*/roteiro.json"), reverse=True):
         try:
@@ -144,7 +161,9 @@ def medicoes(usuario_id: int) -> list[dict]:
         f = m.get("fabrica") or {}
         projeto = f.get("projeto", "")
         guardado = m.get("medido") or {}
-        segundos = (_do_disco(projeto) if projeto else None) or da_api.get(projeto) or guardado.get("segundos")
+        # a fábrica só é perguntada pelo que não está no disco nem guardado: ela ocupada levava 9 s para responder
+        segundos = ((_do_disco(projeto) if projeto else None) or guardado.get("segundos")
+                    or (_da_api().get(projeto) if projeto else None))
         palavras = f.get("palavras") or m.get("palavras") or 0
         pedido = m.get("minutos") or 0
         if not segundos or palavras < 100:
@@ -168,6 +187,7 @@ def medicoes(usuario_id: int) -> list[dict]:
                       "dentro": medida["erro_min"] is not None and abs(medida["erro_min"]) <= MARGEM_MIN,
                       "ppm": round(palavras / (segundos / 60)),
                       "ppm_alvo": round(pedidas / (segundos / 60))})
+    _MEDICOES[usuario_id] = (time.time(), saida)
     return saida
 
 

@@ -6,7 +6,7 @@ import json
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta, timezone
 
-from . import banco, metricas, youtube
+from . import banco, descoberta, metricas, youtube
 
 NOTA_OUTLIER = 3.0   # a mesma do garimpo: 3 vezes o normal do canal
 
@@ -92,6 +92,9 @@ def medir_canais(ids: list[str], forcar: bool = False, origem: str = "") -> dict
                 "raridade": metricas.raridade(b["base_longos"], meses), "medido": banco.agora(), **b,
                 "velocidade": metricas.velocidade(lista),
             }
+            if canal.get("keywords") is not None and "keywords" in canal:
+                dados["keywords"] = str(canal["keywords"])[:2000]
+                dados["topicos"] = json.dumps(canal.get("topicos") or [])
             # uma foto por dia dos números do canal: é dela que sai o ganho de inscritos da semana
             dia = banco.agora()[:10]
             banco.executar("INSERT OR REPLACE INTO historico (canal_id, dia, inscritos, views_total, videos_total) "
@@ -103,6 +106,9 @@ def medir_canais(ids: list[str], forcar: bool = False, origem: str = "") -> dict
             if origem and canal["id"] not in guardados:
                 dados["descoberto"] = banco.agora()
             banco.gravar("canais", "id", dados)
+        if origem:
+            from . import descoberta
+            descoberta.marcar_origem(faltam, origem)
         guardados = {c["id"]: c for c in _canais_do_banco(ids)}
     return guardados
 
@@ -148,6 +154,31 @@ def _videos_do_banco(ids: list[str]) -> list[dict]:
     return banco.todos(f"SELECT * FROM videos WHERE id IN ({','.join('?' * len(ids))})", *ids)
 
 
+def velocidades(ids: list[str]) -> dict[str, dict]:
+    """A velocidade de agora, medida entre a última leitura e a mais recente com pelo menos 1 hora antes dela. Mais de
+    4 dias entre as duas já não é "agora". Sem as duas o vídeo fica de fora: quem pergunta usa a média desde a publicação,
+    e diz que é estimativa."""
+    if not ids:
+        return {}
+    marcas = ",".join("?" * len(ids))
+    leituras: dict[str, list[dict]] = {}
+    for l in banco.todos(f"SELECT video_id, quando, views FROM (SELECT video_id, quando, views, ROW_NUMBER() OVER "
+                         f"(PARTITION BY video_id ORDER BY quando DESC) AS n FROM leituras WHERE video_id IN ({marcas})) "
+                         f"WHERE n<=12", *ids):
+        leituras.setdefault(l["video_id"], []).append(l)
+    saida = {}
+    for vid, lista in leituras.items():
+        ultima = lista[0]
+        fim = datetime.fromisoformat(ultima["quando"])
+        for antes in lista[1:]:
+            horas = (fim - datetime.fromisoformat(antes["quando"])).total_seconds() / 3600
+            if horas >= 1:
+                if horas <= 96:
+                    saida[vid] = {"vph": round(max(0, ultima["views"] - antes["views"]) / horas, 1), "horas": round(horas, 1)}
+                break
+    return saida
+
+
 def _canal_publico(c: dict) -> dict:
     meses = metricas.meses_postando(c.get("primeiro_video", ""))
     return {
@@ -160,6 +191,8 @@ def _canal_publico(c: dict) -> dict:
         "velocidade": c.get("velocidade"), "ganho_7d": c.get("ganho_7d"), "no_radar": bool(c.get("no_radar")),
         "sem_rosto": None if c["sem_rosto"] is None else bool(c["sem_rosto"]),
         "anuncios": c.get("anuncios"), "membros": c.get("membros"),
+        "origem": c.get("origem") or "", "palavras": descoberta.palavras(c.get("keywords") or ""),
+        "topicos": descoberta.topicos(c.get("topicos") or "[]"),
     }
 
 

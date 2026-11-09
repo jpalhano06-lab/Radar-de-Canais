@@ -36,12 +36,13 @@ def main():
 
     if a.comando == "servidor":
         import uvicorn
-        from .config import PORTA
+        from .config import AMBIENTE, PORTA
         _sem_selecao_rapida()
-        if a.publico:
+        publico = a.publico or AMBIENTE.get("RADAR_PUBLICO") == "1"
+        if publico:
             import os
             os.environ["RADAR_ABERTO"] = "0"     # aberto para a rede: a senha volta
-        uvicorn.run("radar.servidor:app", host="0.0.0.0" if a.publico else "127.0.0.1", port=a.porta or PORTA)
+        uvicorn.run("radar.servidor:app", host="0.0.0.0" if publico else "127.0.0.1", port=a.porta or PORTA)
     elif a.comando == "garimpar":
         from . import garimpo
         print(json.dumps(garimpo.rodar(unidades=a.unidades), ensure_ascii=False))

@@ -374,3 +374,34 @@ def regionalizar(titulo: str, alvos: dict[str, tuple[str, str]], acrescentar: bo
             "marcas": {c: [str(m).strip()[:40] for m in ms
                            if isinstance(m, str) and (len(m.strip()) > 2 or m.strip() in ("UK", "US", "NZ"))][:8]
                        for c, ms in marcas.items() if c in titulos and isinstance(ms, list)}}
+
+
+def para_portugues(textos: list[str]) -> list[str]:
+    """Os títulos traduzidos para o português do Brasil, fiéis, na mesma ordem (o botão Traduzir da extensão, pedido do
+    usuário em 2026-11-07). Cada um fica guardado: o mesmo título nunca é pedido duas vezes ao modelo."""
+    import hashlib
+
+    from . import banco
+    limpos = [" ".join(str(t or "").split())[:300] for t in textos][:50]
+    chave = lambda t: "pt:" + hashlib.sha1(t.encode("utf-8")).hexdigest()
+    saida = {}
+    for t in limpos:
+        guardado = banco.um("SELECT dados FROM traducoes WHERE chave=?", chave(t))
+        if guardado:
+            saida[t] = guardado["dados"]
+    faltam = [t for t in dict.fromkeys(limpos) if t and t not in saida]
+    if faltam:
+        resposta = _perguntar(
+            MODELO_TEXTO,
+            "Traduza cada título de vídeo do YouTube para o português do Brasil, fiel ao sentido, sem resumir e sem "
+            "acrescentar nada. Nomes próprios ficam como estão. Responda só JSON: {\"traducoes\": [\"...\"]}, na mesma "
+            "ordem e com a mesma quantidade.",
+            "\n".join(f"{i + 1}. {t}" for i, t in enumerate(faltam)), esperar=20) or {}
+        lista = resposta.get("traducoes") if isinstance(resposta.get("traducoes"), list) else []
+        for t, traduzido in zip(faltam, lista):
+            traduzido = " ".join(str(traduzido or "").split())[:300]
+            if traduzido:
+                saida[t] = traduzido
+                banco.executar("INSERT OR REPLACE INTO traducoes (chave, dados, criado) VALUES (?,?,?)",
+                               chave(t), traduzido, banco.agora())
+    return [saida.get(t, "") for t in limpos]

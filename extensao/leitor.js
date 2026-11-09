@@ -38,6 +38,46 @@
     return resposta;
   };
 
+  // ------------------------------------------------------------ os números do seu canal, sem o Studio aberto
+  // Os mesmos pedidos que o studio.js faz, daqui do youtube.com e com o mesmo login. Só para quando o Studio está fechado:
+  // o content.js manda o pedido quando os números guardados passaram de 15 minutos.
+  const cfg = (k) => window.ytcfg && window.ytcfg.get ? window.ytcfg.get(k) : null;
+  async function cabecalhoDoLogin() {
+    const c = (document.cookie.match(/(?:^|; )(?:__Secure-3PAPISID|SAPISID)=([^;]+)/) || [])[1];
+    if (!c) return null;
+    const ts = Math.floor(Date.now() / 1000);
+    const buf = await crypto.subtle.digest("SHA-1", new TextEncoder().encode(`${ts} ${c} ${location.origin}`));
+    const cab = { "content-type": "application/json", "x-origin": location.origin, "x-goog-authuser": String(cfg("SESSION_INDEX") || 0),
+      authorization: `SAPISIDHASH ${ts}_${[...new Uint8Array(buf)].map((b) => b.toString(16).padStart(2, "0")).join("")}` };
+    if (cfg("DELEGATED_SESSION_ID")) cab["x-goog-pageid"] = cfg("DELEGATED_SESSION_ID");
+    return cab;
+  }
+  async function pedirAoYoutube(caminho, corpo) {
+    const headers = await cabecalhoDoLogin();
+    if (!headers) return null;
+    const r = await fetchOriginal.call(window, `/youtubei/v1/${caminho}?alt=json&key=${cfg("INNERTUBE_API_KEY")}`,
+      { method: "POST", credentials: "include", headers, body: JSON.stringify({ context: cfg("INNERTUBE_CONTEXT"), ...corpo }) });
+    return r.ok ? r.json() : null;
+  }
+  async function numerosSemStudio() {
+    const menu = await pedirAoYoutube("account/account_menu", {});
+    const canal = (JSON.stringify(menu || {}).match(/"browseId":"(UC[\w-]{22})"/) || [])[1];
+    if (!canal) return null;
+    const j = await pedirAoYoutube("yta_web/get_cards", { cardConfigs: [{ latestActivityCardConfig: { tableLimit: 3, includeSubsData: true }, failureMode: "ANALYTICS_CARD_FAILURE_MODE_HIDE" }],
+      screenConfig: { entity: { channelId: canal }, timePeriod: { timePeriodType: "ANALYTICS_TIME_PERIOD_TYPE_FOUR_WEEKS" }, currency: "USD", timeZoneOffsetSecs: -new Date().getTimezoneOffset() * 60 } });
+    const cartao = ((j && j.cards) || []).find((c) => !c.isFailed);
+    const d = cartao && cartao.latestActivityCardData && cartao.latestActivityCardData.datas && cartao.latestActivityCardData.datas[0];
+    if (!d) return null;
+    const views = d.mainChartData.metricColumns[0].counts.values.map(Number);
+    return { canal, quando: Date.now(), horas: d.mainChartData.dimensionColumns[0].timestamps.values.map((t, i) => [Number(t), views[i] || 0]) };
+  }
+  window.addEventListener("message", async (e) => {
+    if (e.source !== window || !e.data || e.data.radarNumerosPedido !== 1) return;
+    let numeros = null;
+    try { numeros = await numerosSemStudio(); } catch { /* sem canal nesta conta, ou o YouTube mudou */ }
+    if (numeros) window.postMessage({ radarNumerosResposta: 1, numeros }, location.origin);
+  });
+
   // ------------------------------------------------------------ pedidos do content.js (o vídeo aberto e a transcrição)
   // O content.js não enxerga o player nem a configuração do YouTube; pede aqui por postMessage e recebe a resposta.
 
@@ -52,6 +92,8 @@
     if (!d) return null;
     return { id: d.videoId, titulo: d.title, canal_id: d.channelId, canal: d.author, views: +d.viewCount || null,
       duracao_s: +d.lengthSeconds || null, tags: d.keywords || [], descricao: d.shortDescription || "",
+      // as faixas de áudio dubladas: o id vem como "en.4"
+      audios: [...new Set(((r.streamingData && r.streamingData.adaptiveFormats) || []).map((f) => f.audioTrack && String(f.audioTrack.id || "").split(".")[0]).filter(Boolean))],
       publicado: (mf && (mf.publishDate || mf.uploadDate)) || "", ao_vivo: !!d.isLive,
       // anúncio no player = canal monetizado (quem tem YouTube Premium não recebe anúncio: aí não dá para saber)
       anuncios: !!((r.adPlacements && r.adPlacements.length) || (r.playerAds && r.playerAds.length)) };
@@ -88,25 +130,31 @@
     if (/\/api\/timedtext/.test(String(url))) this.addEventListener("load", () => guardarLegenda(String(url), this.responseText));
     return abrirXhr.apply(this, arguments);
   };
-  const guardada = (id, t) => {
+  // `exata`: a língua foi escolhida no seletor, e outra legenda já baixada não serve no lugar dela
+  const guardada = (id, t, exata = false) => {
     const lista = legendas.get(id) || [];
-    return (lista.find((l) => l.lingua === t.languageCode && l.kind === (t.kind || "")) || lista[0] || {}).dados || null;
+    return (lista.find((l) => l.lingua === t.languageCode && l.kind === (t.kind || "")) || (exata ? null : lista[0]) || {}).dados || null;
   };
 
   // a legenda feita à mão na língua do vídeo; senão a automática; senão a primeira que houver
-  function trilha(r) {
-    const trilhas = (r && r.captions && r.captions.playerCaptionsTracklistRenderer
-      && r.captions.playerCaptionsTracklistRenderer.captionTracks) || [];
+  const trilhasDe = (r) => (r && r.captions && r.captions.playerCaptionsTracklistRenderer
+    && r.captions.playerCaptionsTracklistRenderer.captionTracks) || [];
+  const chaveDa = (t) => `${t.languageCode}|${t.kind || ""}`;
+
+  function trilha(r, pedida) {
+    const trilhas = trilhasDe(r);
+    const escolhida = pedida && trilhas.find((t) => chaveDa(t) === pedida);
+    if (escolhida) return escolhida;
     const auto = trilhas.find((t) => t.kind === "asr");
     return (auto && trilhas.find((t) => t.kind !== "asr" && t.languageCode.split("-")[0] === auto.languageCode.split("-")[0]))
       || auto || trilhas[0] || null;
   }
 
-  async function legendaDoPlayer(id) {
+  async function legendaDoPlayer(id, pedida) {
     const p = document.getElementById("movie_player"), r = resposta();
-    const t = trilha(r);
+    const t = trilha(r, pedida);
     if (!p || !p.setOption || !t || !r.videoDetails || r.videoDetails.videoId !== id) return [];
-    let j = guardada(id, t);
+    let j = guardada(id, t, !!pedida);
     if (!j) {
       const antes = p.getOption && p.getOption("captions", "track");
       let pronto = () => {};
@@ -121,7 +169,7 @@
       esperandoLegenda.delete(avisar);
       if (antes && antes.languageCode) p.setOption("captions", "track", antes);
       else { p.setOption("captions", "track", {}); if (p.unloadModule) p.unloadModule("captions"); }
-      j = guardada(id, t);
+      j = guardada(id, t, !!pedida);
     }
     const linhas = [];
     for (const ev of (j && j.events) || []) {
@@ -146,31 +194,40 @@
   // pedidos juntos ligavam e desligavam a legenda do player ao mesmo tempo (era um dos jeitos de bugar).
   const emAndamento = new Map();
 
-  async function transcricao(id) {
-    if (emAndamento.has(id)) return emAndamento.get(id);
+  // as legendas que o YouTube já tem: o seletor da aba Transcrição mostra estas, nada é traduzido aqui. A trilha
+  // automática é a língua falada: o YouTube só gera a automática da fala, as outras são escritas ou traduzidas.
+  const faixasDe = (r) => {
+    const trilhas = trilhasDe(r), auto = trilhas.find((t) => t.kind === "asr");
+    return { falada: auto ? auto.languageCode : "", faixas: trilhas.map((t) => ({ chave: chaveDa(t), codigo: t.languageCode,
+      nome: L.texto(t.name) || t.languageCode, auto: t.kind === "asr" })) };
+  };
+
+  async function transcricao(id, pedida = "") {
+    const chave = `${id}|${pedida}`;
+    if (emAndamento.has(chave)) return emAndamento.get(chave);
     const tarefa = (async () => {
       let linhas = [];
-      try { linhas = await legendaDoPlayer(id); } catch { /* tenta o outro jeito */ }
-      if (!linhas.length) {
+      try { linhas = await legendaDoPlayer(id, pedida); } catch { /* tenta o outro jeito */ }
+      if (!linhas.length && !pedida) {
         try { linhas = await painelDoYoutube(id); } catch { linhas = []; }
       }
-      if (linhas.length) return { linhas };
+      const r = resposta(), t = trilha(r, pedida), lista = faixasDe(r);
+      if (linhas.length) return { linhas, ...lista, atual: t ? chaveDa(t) : "" };
       // sem nenhuma trilha de legenda o vídeo não tem transcrição mesmo; com trilha, foi o YouTube que não entregou
-      const r = resposta();
-      return { linhas: [], motivo: r && !trilha(r) ? "sem-legenda" : "nao-deu" };
+      return { linhas: [], ...lista, atual: t ? chaveDa(t) : "", motivo: r && !t ? "sem-legenda" : "nao-deu" };
     })();
-    emAndamento.set(id, tarefa);
+    emAndamento.set(chave, tarefa);
     // só o acerto fica guardado: o que falhou tem de poder ser tentado de novo
-    tarefa.then((t) => { if (!t.linhas.length) emAndamento.delete(id); }, () => emAndamento.delete(id));
+    tarefa.then((t) => { if (!t.linhas.length) emAndamento.delete(chave); }, () => emAndamento.delete(chave));
     return tarefa;
   }
 
   window.addEventListener("message", async (e) => {
     if (e.source !== window || !e.data || !e.data.radarPedido) return;
-    const { radarPedido: n, tipo, id } = e.data;
+    const { radarPedido: n, tipo, id, lingua } = e.data;
     let dados = null;
     try {
-      dados = tipo === "video" ? dadosDoVideo() : tipo === "transcricao" ? await transcricao(id)
+      dados = tipo === "video" ? dadosDoVideo() : tipo === "transcricao" ? await transcricao(id, lingua)
         : tipo === "canal" ? (ultimoCanal || L.canal(window.ytInitialData)) : null;
     } catch { dados = null; }
     window.postMessage({ radarResposta: n, dados }, location.origin);

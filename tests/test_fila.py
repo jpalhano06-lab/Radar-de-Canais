@@ -13,6 +13,7 @@ from radar import banco, fila  # noqa: E402
 def db(tmp_path, monkeypatch):
     monkeypatch.setattr(banco, "ARQUIVO", tmp_path / "t.db")
     monkeypatch.setattr(banco, "_CON", None)
+    fila._PARADOS.clear()                     # a conta de voltas paradas do vigia não passa de um teste para o outro
     yield
     banco._CON.close()
     banco._CON = None
@@ -53,13 +54,16 @@ def test_outro_usuario_nao_mexe(db):
 
 class Fabrica:
     """A fábrica de mentira: andamento (rodando), prontos e o que mandaram produzir."""
-    def __init__(self, andamento=(), prontos=(), desligada=False):
+    def __init__(self, andamento=(), prontos=(), desligada=False, parados=()):
         self.a, self.p, self.desligada, self.produzidos = list(andamento), list(prontos), desligada, []
+        self.parados = list(parados)          # projetos que a fábrica mostra parados (não rodando, sem erro)
 
     def producoes(self):
         if self.desligada:
             raise fila.fabrica_api.SemFabrica("desligada")
-        return {"andamento": [{"nome": n, "rodando": True} for n in self.a], "prontos": [{"nome": n} for n in self.p]}
+        return {"andamento": [{"nome": n, "rodando": n not in self.parados,
+                               "status": "parado" if n in self.parados else "processando"} for n in self.a],
+                "prontos": [{"nome": n} for n in self.p]}
 
     def produzir(self, nome, confirmar):
         assert confirmar is True
@@ -172,11 +176,52 @@ def test_erro_sem_projeto_ou_parado_na_fabrica_fica_em_erro(db):
     assert fila.item(1, a["id"])["estado"] == "erro"
 
 
+def test_fabrica_morta_no_meio_vira_erro_e_libera_a_vaga(db):
+    """João o Lobo (2026-11-04): a fábrica foi morta no meio e religou sem o andamento (ele mora na memória dela).
+    O projeto voltou parado, sem erro, e o pedido ficava "produzindo" para sempre, segurando uma vaga."""
+    fila.definir_limite(1)
+    a = fila.criar(1, {"titulo": "T", "roteiro_manual": "x"}, True)
+    fab = Fabrica()
+    _volta(fab)
+    assert fila.item(1, a["id"])["estado"] == "produzindo"
+    fab.parados.append("p-m-T")                         # a fábrica religou: o projeto está lá, parado
+    _volta(fab)
+    assert fila.item(1, a["id"])["estado"] == "produzindo", "uma volta parada só não é erro"
+    b = fila.criar(1, {"titulo": "U", "roteiro_manual": "x"}, True)
+    _volta(fab)
+    atual = fila.item(1, a["id"])
+    assert atual["estado"] == "erro" and "parou no meio" in atual["erro"]
+    assert fila.item(1, b["id"])["estado"] == "produzindo", "a vaga do pedido morto foi liberada"
+
+
+def test_parada_de_um_instante_nao_vira_erro(db):
+    """O instante entre o "produzir" e a fábrica começar de verdade não pode virar erro."""
+    a = fila.criar(1, {"titulo": "T", "roteiro_manual": "x"}, True)
+    fab = Fabrica()
+    _volta(fab)
+    fab.parados.append("p-m-T")
+    _volta(fab)
+    fab.parados.clear()                                 # a fábrica começou
+    _volta(fab)
+    fab.parados.append("p-m-T")                         # e parou nesta volta: a conta recomeçou do zero
+    _volta(fab)
+    assert fila.item(1, a["id"])["estado"] == "produzindo"
+
+
 def test_reparar_depois_de_reiniciar(db):
     a = fila.criar(1, {"titulo": "T", "caracteres": 5000}, True)
     fila.mudar(a["id"], "enviando")
     fila.reparar()
     assert fila.item(1, a["id"])["estado"] == "na_fila"
+
+
+def test_estimativa_pela_parte_de_ia():
+    entregues = [{"canal": "A", "minutos": 10, "usd": 1.0, "imagem": 0.2, "conferencia": 0.3}]
+    sem_ia = fila.estimativa(entregues, "A", 10, 0)
+    assert sem_ia == {"usd": 0.9, "base": "canal", "imagens": 0, "usd_limite": 0.9}
+    muita = fila.estimativa(entregues, "A", 10, 75)
+    assert muita["usd"] == 0.6 and muita["imagens"] == 128 and muita["usd_limite"] == 1.24
+    assert fila.estimativa(entregues, "A", 10) == {"usd": 1.0, "base": "canal"}
 
 
 def test_estimativa_pela_media_do_canal():
@@ -375,3 +420,128 @@ def test_sem_estilo_escolhido_a_fabrica_nao_recebe_nada(db):
     fab = Fabrica()              # esta fábrica de mentira nem tem definir_animacoes
     _volta(fab)
     assert fab.produzidos == ["p-m-T"]
+
+
+def _enviados_com_footage(pedido):
+    """Roda a fila de verdade até o envio e devolve o que o roteirista recebeu."""
+    enviados = []
+
+    class R(Roteirista):
+        def enviar(self, usuario_id, nome, perfil, opcoes=None):
+            enviados.append(opcoes)
+            return super().enviar(usuario_id, nome, perfil)
+
+    rot = R()
+    fila.criar(1, {"titulo": "Mercados do Canadá", "caracteres": 2650, "agente_id": "8", "lingua": "inglês",
+                   "perfil": "canal-jan-de-wolf", "canal_id": "", **pedido}, True)
+    for _ in range(3):
+        fila.passo(fabrica=Fabrica(), roteirista=rot, em_thread=False, config_canal=lambda uid, cid: {},
+                   ritmo=lambda uid, perfil, lingua: {"ppm": 150})
+    return enviados
+
+
+def test_footage_real_chega_ao_envio_para_a_fabrica(db):
+    assert _enviados_com_footage({"footage_real": 25}) == [{"footage_real": 25}]
+
+
+def test_opcoes_do_video_viram_ajustes_do_projeto():
+    from radar import roteiro_claude
+
+    config, perfil = roteiro_claude.ajustes_do_video(
+        {"footage_real": 15, "tema": "hacker", "ritmo": "5-8", "ia": "sem", "acervo": "sempre", "musica": "sem", "avatar": "sem",
+         "edicao": "cinema", "transicao": "preto", "camada": "poeira", "som_textos": "sim"})
+    assert config["garimpo"]["alvo"] == 0.15 and config["cenas"] == {"segundos_minimo": 5.0, "segundos_maximo": 8.0}
+    assert config["ia"] == {"ativa": False} and config["midia"] == {"acervo": "sempre"} and config["trilha"] == {"ativo": False}
+    assert config["animacoes"] == {"estilo": {"tema": "hacker"}, "som": True} and config["animation_ai"] == {"tema": "neon"}
+    assert perfil == {"musica": None, "avatar": {"ativo": False}, "visual": "cinema", "transicao": "preto", "camada": "poeira"}
+
+
+def _agente(tema):
+    return banco.executar("INSERT INTO projetos_roteiro (usuario_id, nome, instrucoes, tema, criado) VALUES (1,'A','',?,'')", tema)
+
+
+def test_o_tema_do_agente_vale_quando_o_pedido_nao_escolhe(db):
+    banco.um("SELECT 1")
+    agente = _agente("hacker")
+    assert fila.opcoes_do(1, {"agente_id": str(agente)}) == {"tema": "hacker"}
+    assert fila.opcoes_do(1, {}, {"projeto_roteiro_id": str(agente)}) == {"tema": "hacker"}     # o agente do canal
+    assert fila.opcoes_do(2, {"agente_id": str(agente)}) == {}                                   # agente de outra pessoa
+
+
+def test_a_escolha_do_video_vale_por_cima_do_agente(db):
+    banco.um("SELECT 1")
+    agente = _agente("hacker")
+    assert fila.opcoes_do(1, {"agente_id": agente, "tema": "terror"}) == {"tema": "terror"}
+    assert fila.opcoes_do(1, {"agente_id": agente, "escolhido_na_tela": True}) == {}
+
+
+def test_agente_sem_tema_nao_muda_nada(db):
+    banco.um("SELECT 1")
+    assert fila.opcoes_do(1, {"agente_id": _agente(""), "footage_real": 15}) == {"footage_real": 15}
+
+
+def test_o_que_foi_escolhido_na_tela_fica_guardado_no_pedido(db):
+    linha = fila.criar(1, {"titulo": "T", "caracteres": 10620, "escolhido_na_tela": True, "ia_pct": 0}, True)
+    pedido = fila.item(1, linha["id"])["pedido"]
+    assert pedido["escolhido_na_tela"] is True and pedido["ia_pct"] == 0
+
+
+def test_as_partes_de_ia_e_youtube_vem_do_agente(db):
+    agente = _agente("")
+    banco.executar("UPDATE projetos_roteiro SET ia_pct=75, footage_real=25 WHERE id=?", agente)
+    assert fila.opcoes_do(1, {"agente_id": agente}) == {"ia_pct": 75, "footage_real": 25}
+    assert fila.opcoes_do(1, {"agente_id": agente, "ia_pct": 10, "footage_real": 0}) == {"ia_pct": 10}
+    assert fila.opcoes_do(1, {"agente_id": agente, "escolhido_na_tela": True}) == {}
+
+
+def test_recusa_parte_de_ia_que_nao_existe_ou_que_passa_de_100(db):
+    banco.um("SELECT 1")
+    with pytest.raises(ValueError):
+        fila.criar(1, {"titulo": "T", "caracteres": 10620, "ia_pct": 33}, True)
+    with pytest.raises(ValueError):
+        fila.criar(1, {"titulo": "T", "caracteres": 10620, "ia_pct": 75, "footage_real": 40}, True)
+
+
+def test_parte_de_ia_vira_alvo_e_teto_na_fabrica():
+    from radar import roteiro_claude
+
+    assert roteiro_claude.ajustes_do_video({"ia_pct": 75})[0]["ia"] == {"fracao": 0.75, "teto": 0.75}
+    assert roteiro_claude.ajustes_do_video({"ia_pct": 0})[0]["ia"] == {"ativa": False}
+
+
+def test_sem_opcao_nada_e_gravado_no_projeto():
+    from radar import roteiro_claude
+
+    assert roteiro_claude.ajustes_do_video({}) == ({}, {}) and roteiro_claude.ajustes_do_video(None) == ({}, {})
+
+
+def test_todo_tema_tem_tema_de_cena_animada():
+    from radar import roteiro_claude
+
+    assert set(fila.ESCOLHAS["tema"]) == set(roteiro_claude.TEMA_DAS_CENAS_ANIMADAS)
+
+
+def test_sem_footage_real_o_envio_fica_como_sempre_foi(db):
+    assert _enviados_com_footage({}) == [None]
+
+
+def test_footage_real_fora_da_lista_e_recusado(db):
+    fila.criar(1, {"titulo": "ok", "caracteres": 2000, "footage_real": 25}, False)
+    with pytest.raises(ValueError, match="footage"):
+        fila.criar(1, {"titulo": "x", "caracteres": 2000, "footage_real": 90}, False)
+
+
+def test_tema_chega_ao_envio_para_a_fabrica(db):
+    assert _enviados_com_footage({"tema": "dossie", "footage_real": 15}) == [{"footage_real": 15, "tema": "dossie"}]
+
+
+def test_escolha_que_nao_existe_e_recusada(db):
+    fila.criar(1, {"titulo": "ok", "caracteres": 2000, "edicao": "cinema"}, False)
+    with pytest.raises(ValueError, match="transicao"):
+        fila.criar(1, {"titulo": "x", "caracteres": 2000, "transicao": "inventada"}, False)
+
+
+def test_tema_que_nao_existe_e_recusado(db):
+    fila.criar(1, {"titulo": "ok", "caracteres": 2000, "tema": "cinema"}, False)
+    with pytest.raises(ValueError, match="tema"):
+        fila.criar(1, {"titulo": "x", "caracteres": 2000, "tema": "inventado"}, False)

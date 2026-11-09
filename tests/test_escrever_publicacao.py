@@ -49,17 +49,30 @@ def test_sem_tag_nenhuma_o_radar_diz_que_nao_deu(claude):
         publicar.escrever("tags", "Um título qualquer")
 
 
-def test_a_descricao_vem_sem_aspas_em_volta_e_cabe_no_campo(claude):
-    claude.resposta = '"O vídeo mostra o preço do pão."'
-    assert publicar.escrever("descricao", "O pão subiu")["descricao"] == "O vídeo mostra o preço do pão."
-    claude.resposta = "palavra " * 1000
-    assert len(publicar.escrever("descricao", "O pão subiu")["descricao"]) == 1500
+def _json(sinopse):
+    import json
+    return json.dumps({"sinopse": sinopse, "tags": ["pão"], "hashtags": ["#pao"]}, ensure_ascii=False)
+
+
+def test_a_descricao_sai_do_escritor_completo_e_cabe_no_campo(claude):
+    # 2026-11-08: o rascunho usa o mesmo escritor da descrição completa (descricao.escrever), com o mínimo da escrita
+    claude.resposta = _json("O vídeo mostra o preço do pão. " * 30)
+    assert publicar.escrever("descricao", "O pão subiu")["descricao"].startswith("O vídeo mostra o preço do pão.")
+    assert "pelo menos 800" in claude.chamadas[0]["pedido"]
+    claude.resposta = _json("palavra " * 1000)
+    assert len(publicar.escrever("descricao", "O pão subiu")["descricao"]) <= 4000
+
+
+def test_coreano_pede_o_minimo_do_coreano(claude):
+    claude.resposta = _json("가" * 700)
+    publicar.escrever("descricao", "한국 자동차는 경쟁국보다 몇 년이나 앞서 있다")
+    assert "pelo menos 650" in claude.chamadas[0]["pedido"]
 
 
 def test_a_fala_do_video_entra_no_pedido_quando_existe(claude):
-    claude.resposta = "Uma descrição."
+    claude.resposta = _json("Uma descrição. " * 60)
     publicar.escrever("descricao", "O pão subiu", fala="hoje o pão de forma passou de dois reais")
     assert "hoje o pão de forma passou de dois reais" in claude.chamadas[0]["pedido"]
     claude.chamadas.clear()
     publicar.escrever("descricao", "O pão subiu")
-    assert "transcrição" not in claude.chamadas[0]["pedido"]   # sem legenda, nada de fala inventada no pedido
+    assert "dois reais" not in claude.chamadas[0]["pedido"]   # sem legenda, nada de fala inventada no pedido

@@ -9,8 +9,9 @@ import time
 from collections import Counter
 from datetime import datetime, timedelta, timezone
 from statistics import median
+from urllib.parse import quote
 
-from . import banco, garimpo, gosto, medir, metricas, risco, youtube
+from . import banco, cracha, garimpo, gosto, medir, metricas, radar_paises, risco, youtube
 
 RX_VIDEO = re.compile(r"^[\w-]{11}$")
 RX_CANAL = re.compile(r"^UC[\w-]{22}$")
@@ -46,6 +47,18 @@ def normal_do_nicho() -> dict[str, float]:
     _NORMAL_NICHO.update({n: median(t) for n, t in por.items() if len(t) >= REACAO_MINIMO})
     _NORMAL_QUANDO = agora
     return _NORMAL_NICHO
+
+
+PATENTES = [(0, "Olheiro"), (5, "Batedor"), (20, "Caçador"), (50, "Rastreador"), (100, "Estrategista"), (250, "Mestre do Nicho")]
+
+
+def patente(usuario_id: int) -> dict:
+    """O degrau da pessoa pelos canais salvos, e quantos faltam para o próximo."""
+    salvos = banco.um("SELECT COUNT(*) AS n FROM salvos WHERE usuario_id=?", usuario_id)["n"]
+    atual = [nome for minimo, nome in PATENTES if salvos >= minimo][-1]
+    proximos = [(minimo, nome) for minimo, nome in PATENTES if salvos < minimo]
+    return {"patente": atual, "salvos": salvos, "proxima": proximos[0][1] if proximos else "",
+            "faltam": proximos[0][0] - salvos if proximos else 0}
 
 
 def _contar(campo: str, n: int = 1) -> None:
@@ -162,6 +175,7 @@ def vistos(videos: list, canal: dict | None = None) -> dict:
     ler = [i for i in ids if i not in canais or (canais[i]["base_longos"] is None and (canais[i]["medido"] or "") < corte)]
     # a reação sai das curtidas e dos comentários, que vêm da API e não da página: só tem para o que o Radar já mediu
     normais = normal_do_nicho()
+    velocidades = medir.velocidades([v["id"] for v in lista])
     def reacao_de(v):  # noqa: E306
         guardado, canal = medidos.get(v["id"]), canais.get(v["canal_id"])
         if not guardado or not canal:
@@ -173,7 +187,8 @@ def vistos(videos: list, canal: dict | None = None) -> dict:
                              "inscritos": (canais.get(v["canal_id"]) or {}).get("inscritos"),
                              "normal": (canais.get(v["canal_id"]) or {}).get("base_longos"),
                              "raridade": (canais.get(v["canal_id"]) or {}).get("raridade") or "",
-                             "reacao": reacao_de(v)} for v in lista},
+                             "reacao": reacao_de(v), "anuncios": (canais.get(v["canal_id"]) or {}).get("anuncios"),
+                             "medida": velocidades.get(v["id"])} for v in lista},
         "ler": ler[:LER_POR_VEZ],
         "reacao_alta": metricas.REACAO_ALTA,   # o corte de "reagiu muito" é do Radar, não da extensão
     }
@@ -206,6 +221,7 @@ def canal_lido(canal: dict, videos: list) -> dict:
              "raridade": metricas.raridade(b["base_longos"], meses) if exato else ""}
     if not antes:
         dados["descoberto"] = banco.agora()
+        dados["origem"] = "lente"
     _canal_basico(canal)
     banco.gravar("canais", "id", dados)
     if _int(canal.get("inscritos")) is not None:
@@ -240,13 +256,61 @@ def _passa(c: dict, lista: list[dict], exato: bool, meses: float | None) -> bool
     return not risco.avaliar(titulos)
 
 
+def _views_30d(canal_id: str) -> int | None:
+    """As views que o canal ganhou em 30 dias, pela conta do histórico. Sem leitura de 30 dias atrás, não dá para saber."""
+    dias = banco.todos("SELECT dia, views_total FROM historico WHERE canal_id=? AND views_total IS NOT NULL ORDER BY dia DESC "
+                       "LIMIT 40", canal_id)
+    if len(dias) < 2:
+        return None
+    corte = (datetime.fromisoformat(dias[0]["dia"]) - timedelta(days=30)).date().isoformat()
+    antes = next((d for d in dias if d["dia"] <= corte), None)
+    return max(0, dias[0]["views_total"] - antes["views_total"]) if antes else None
+
+
+def _cracha(c: dict) -> dict:
+    videos = banco.todos("SELECT views, publicado, duracao_s FROM videos WHERE canal_id=? AND publicado<>'' "
+                         "ORDER BY publicado DESC LIMIT 60", c["id"])
+    for v in videos:
+        v["nota"] = metricas.nota_outlier(v["views"], c["base_curtos"] if metricas.curto(v["duracao_s"]) else c["base_longos"])
+    return cracha.julgar(c, videos, views_30d_canal=_views_30d(c["id"]))
+
+
+def salvos_estouraram(usuario_id: int, corte: float = 5, horas: int = 24, quantos: int = 20) -> list[dict]:
+    """Os vídeos dos canais salvos que passaram de `corte` vezes o normal nas últimas `horas`: o aviso do dia no YouTube."""
+    desde = (datetime.now(timezone.utc) - timedelta(hours=horas)).isoformat()
+    return banco.todos("SELECT o.video_id AS id, o.nota, v.titulo, v.views, c.titulo AS canal FROM outliers o "
+                       "JOIN salvos s ON s.canal_id=o.canal_id AND s.usuario_id=? JOIN videos v ON v.id=o.video_id "
+                       "JOIN canais c ON c.id=o.canal_id WHERE o.nota>=? AND o.achado>=? ORDER BY o.nota DESC LIMIT ?",
+                       usuario_id, corte, desde, quantos)
+
+
+def estilo_em_lingua(canal_id: str, lingua: str) -> dict | None:
+    """A busca de canais deste estilo em outra língua: o assunto do canal traduzido, com o filtro de canais do YouTube."""
+    achados = medir._canais_do_banco([canal_id]) if RX_CANAL.match(canal_id or "") else []
+    if not achados or lingua not in radar_paises.LINGUAS:
+        return None
+    c = achados[0]
+    assunto = c.get("subnicho") or c.get("nicho") or ""
+    if not assunto:
+        titulos = banco.todos("SELECT titulo FROM videos WHERE canal_id=? ORDER BY views DESC LIMIT 20", canal_id)
+        contagem = Counter(p for t in titulos for p in radar_paises.palavras(t["titulo"]) if len(p) > 3)
+        assunto = " ".join(p for p, _ in contagem.most_common(3))
+    if not assunto:
+        return None
+    busca = radar_paises._traducoes(assunto, [lingua]).get(lingua) or assunto
+    return {"busca": busca, "url": f"https://www.youtube.com/results?search_query={quote(busca)}&sp=EgIQAg%253D%253D"}
+
+
 def painel(video_id: str, canal_id: str, usuario_id: int) -> dict:
     """O que o painel do vídeo aberto precisa e o banco já tem (não pede nada à API): o canal, a curva e se está salvo."""
     achados = medir._canais_do_banco([canal_id]) if RX_CANAL.match(canal_id or "") else []
     c = achados[0] if achados else None
     salvo = bool(c and banco.um("SELECT 1 AS x FROM salvos WHERE usuario_id=? AND canal_id=?", usuario_id, canal_id))
+    marcado = banco.um("SELECT estado FROM modelar WHERE usuario_id=? AND video_id=?", usuario_id, video_id)
     return {"canal": medir._canal_publico(c) if c and c.get("base_longos") is not None else None,
-            "curva": medir.curva(video_id) if RX_VIDEO.match(video_id or "") else [], "salvo": salvo}
+            "curva": medir.curva(video_id) if RX_VIDEO.match(video_id or "") else [], "salvo": salvo,
+            "modelar": marcado["estado"] if marcado else "", "rpm": garimpo.rpm(c.get("nicho") or "") if c else None,
+            "cracha": _cracha(c) if c and c.get("base_longos") is not None else None}
 
 
 def _primeiro_exato(c: dict) -> dict:
@@ -284,7 +348,7 @@ def canal_dados(canal_id: str, usuario_id: int) -> dict | None:
             "salvo": bool(banco.um("SELECT 1 AS x FROM salvos WHERE usuario_id=? AND canal_id=?", usuario_id, canal_id)),
             "inscritos_dias": banco.todos("SELECT dia, inscritos FROM historico WHERE canal_id=? AND inscritos IS NOT NULL "
                                           "ORDER BY dia DESC LIMIT 60", canal_id)[::-1],
-            "videos": videos[::-1]}
+            "videos": videos[::-1], "cracha": _cracha(c)}
 
 
 def em_alta(dias: int = 90, quantos: int = 12) -> list[dict]:

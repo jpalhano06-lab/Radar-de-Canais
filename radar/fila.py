@@ -17,7 +17,47 @@ MIN_CARACTERES, MAX_CARACTERES = 1000, 80000
 LIMITES = (1, 2, 3, 4, 6, 8)
 ESCRITAS_AO_MESMO_TEMPO = 2       # roteiros pelo Claude ao mesmo tempo (20 pedidos de uma vez eram 20 chamadas juntas)
 CAMPOS = ("titulo", "link", "canal_id", "agente_id", "lingua", "caracteres", "roteiro_manual", "nicho", "observacao",
-          "revisar", "perfil", "animacoes")
+          "revisar", "perfil", "footage_real", "ia_pct", "tema", "escolhido_na_tela", "destino", "ritmo", "edicao", "transicao", "camada", "ia", "acervo",
+          "avatar", "musica", "som_textos", "video_ia", "animacoes")
+FOOTAGE_REAL = (0, 15, 25, 40)    # % das cenas com trecho de vídeo real do YouTube (o garimpo da fábrica)
+IA_PCT = (0, 10, 25, 50, 75, 100)  # % das cenas com imagem de IA. Sem escolha, quem decide é o agente de cenas, até ia.teto
+# o que a Nova produção deixa escolher por vídeo. Vazio é o padrão do canal, e aí nada é gravado no projeto
+ESCOLHAS = {
+    "tema": ("noticiario", "dossie", "cinema", "jornal", "caderno", "planilha", "hacker", "terror", "colagem", "cinetico",
+             "arquivo", "reaberto"),  # animacoes.TEMAS
+    "ritmo": ("4-6", "5-8"),
+    "edicao": ("documentario", "investigacao", "noticiario", "energia", "cinema"),  # render.VISUAIS
+    "transicao": ("preto", "branco", "brasa", "flash"),  # render.TRANSICOES
+    "camada": ("brasas", "poeira"),  # render.CAMADAS
+    "ia": ("sem",),
+    "acervo": ("sem", "sempre"),
+    "avatar": ("sem",),
+    "musica": ("sem",),
+    "som_textos": ("sim",),
+    "video_ia": ("10", "25"),  # % das cenas de imagem de IA que ganham movimento; cada clipe é pago à parte
+}
+
+
+def opcoes_do(usuario_id: int, pedido: dict, cfg: dict | None = None) -> dict:
+    """O que vai para o projeto. O que o pedido não disse vem do agente; a Nova produção já mostrou o do agente e a
+    pessoa pode ter mudado, então o que vem dela (escolhido_na_tela) fica como está."""
+    opcoes = {k: pedido[k] for k in ("footage_real", *ESCOLHAS) if pedido.get(k)}
+    if pedido.get("ia_pct") is not None:
+        opcoes["ia_pct"] = int(pedido["ia_pct"])
+    agente = pedido.get("agente_id") or (cfg or {}).get("projeto_roteiro_id")
+    if pedido.get("escolhido_na_tela") or not agente:
+        return opcoes
+    linha = banco.um("SELECT tema, ia_pct, footage_real FROM projetos_roteiro WHERE id=? AND usuario_id=?",
+                     int(agente), usuario_id)
+    if not linha:
+        return opcoes
+    if "tema" not in opcoes and linha["tema"] in ESCOLHAS["tema"]:
+        opcoes["tema"] = linha["tema"]
+    if "ia_pct" not in opcoes and linha["ia_pct"] is not None:
+        opcoes["ia_pct"] = linha["ia_pct"]
+    if "footage_real" not in pedido and linha["footage_real"]:
+        opcoes["footage_real"] = linha["footage_real"]
+    return opcoes
 
 
 def minutos_de(caracteres: int, ppm: int) -> float:
@@ -31,7 +71,7 @@ def caracteres_de(minutos: float, ppm: int) -> int:
 def _publico(linha: dict | None) -> dict | None:
     if not linha:
         return None
-    return {k: v for k, v in linha.items() if k != "pedido"} | {"pedido": json.loads(linha["pedido"] or "{}")}
+    return {k: v for k, v in linha.items() if k not in ("pedido", "lease")} | {"pedido": json.loads(linha["pedido"] or "{}")}
 
 
 def criar(usuario_id: int, pedido: dict, comecar: bool) -> dict:
@@ -40,6 +80,18 @@ def criar(usuario_id: int, pedido: dict, comecar: bool) -> dict:
     if not limpo["titulo"]:
         raise ValueError("Escreva o título do vídeo.")
     limpo["revisar"] = bool(pedido.get("revisar"))
+    if int(limpo.get("footage_real") or 0) not in FOOTAGE_REAL:
+        raise ValueError("A parte de footage real vai de 0 a 40%.")
+    if limpo.get("ia_pct") is not None:
+        if int(limpo["ia_pct"]) not in IA_PCT:
+            raise ValueError("Essa parte de IA não existe.")
+        if int(limpo["ia_pct"]) + int(limpo.get("footage_real") or 0) > 100:
+            raise ValueError("IA e YouTube juntos passam de 100% das cenas.")
+    if limpo.get("destino") not in (None, "robo"):
+        raise ValueError("Esse destino não existe.")
+    for campo, validos in ESCOLHAS.items():
+        if limpo.get(campo) and limpo[campo] not in validos:
+            raise ValueError(f"A escolha de {campo} ({limpo[campo]}) não existe.")
     if not str(limpo.get("roteiro_manual") or "").strip():
         limpo.pop("roteiro_manual", None)
         caracteres = int(pedido.get("caracteres") or 0)
@@ -78,7 +130,12 @@ def mudar(fid: int, estado: str, de: tuple[str, ...] | None = None, **campos) ->
         c = banco.con()
         cur = c.execute(sql, args)
         c.commit()
-        return cur.rowcount > 0
+        mudou = cur.rowcount > 0
+    if mudou and estado == "entregue":
+        # o aviso de vídeo pronto no celular (pedido do usuário em 2026-11-08), desta máquina ou de outra (maquinas.py)
+        from . import avisos
+        avisos.video_pronto(fid)
+    return mudou
 
 
 def _de(usuario_id: int, fid: int, *estados: str) -> dict:
@@ -130,6 +187,8 @@ def definir_limite(n: int) -> int:
 # ---------------------------------------------------------------- o vigia: puxa a fila para a fábrica
 
 _TRAVA = threading.Lock()
+VOLTAS_PARADO = 2                 # voltas seguidas com o projeto parado na fábrica antes do pedido virar erro
+_PARADOS: dict[int, int] = {}     # id do pedido -> essas voltas, só na memória do vigia
 
 
 def reparar() -> None:
@@ -206,14 +265,19 @@ def passo(fabrica=None, roteirista=None, em_thread: bool = True, config_canal=No
         return []
     mudaram = []
     try:
+        # antes da fábrica: uma máquina de fora que sumiu não depende de a fábrica daqui estar ligada
+        from . import maquinas
+
+        mudaram += maquinas.expirar()
         try:
             prod = fabrica.producoes()
         except fabrica_api.SemFabrica:
             return []
         prontos = {p["nome"] for p in prod["prontos"]}
         andamento = {p["nome"]: p for p in prod["andamento"]}
-        # 1. o que estava produzindo: ficou pronto, deu erro ou sumiu da fábrica
-        for linha in banco.todos("SELECT * FROM producoes_fila WHERE estado='produzindo'"):
+        # 1. o que estava produzindo: ficou pronto, deu erro, parou no meio ou sumiu da fábrica
+        # o que está em outra máquina não passa por aqui: a fábrica daqui não conhece esse projeto
+        for linha in banco.todos("SELECT * FROM producoes_fila WHERE estado='produzindo' AND maquina_id IS NULL"):
             p = andamento.get(linha["projeto"])
             if linha["projeto"] in prontos:
                 mudou = mudar(linha["id"], "entregue", de=("produzindo",))
@@ -221,8 +285,21 @@ def passo(fabrica=None, roteirista=None, em_thread: bool = True, config_canal=No
                 mudou = mudar(linha["id"], "erro", de=("produzindo",), erro="O vídeo sumiu da fábrica.")
             elif p.get("status") == "erro":
                 mudou = mudar(linha["id"], "erro", de=("produzindo",), erro=(p.get("mensagem") or "A fábrica parou com erro.")[:500])
+            elif not p.get("rodando") and p.get("status") == "parado":
+                # a fábrica morta no meio religa sem o andamento (ele mora na memória dela): o projeto volta parado,
+                # sem erro nenhum, e o pedido ficava "produzindo" para sempre, segurando uma vaga (o vídeo do João o
+                # Lobo, 2026-11-04). Vira erro só depois de VOLTAS_PARADO voltas paradas, para não confundir com o
+                # instante entre o "produzir" e a fábrica começar de verdade.
+                _PARADOS[linha["id"]] = _PARADOS.get(linha["id"], 0) + 1
+                if _PARADOS[linha["id"]] < VOLTAS_PARADO:
+                    continue
+                mudou = mudar(linha["id"], "erro", de=("produzindo",), passo="",
+                              erro="A fábrica parou no meio deste vídeo (ela foi desligada ou caiu). "
+                                   "O \"Tentar de novo\" retoma de onde ela parou.")
             else:
+                _PARADOS.pop(linha["id"], None)
                 continue
+            _PARADOS.pop(linha["id"], None)
             if mudou:
                 mudaram.append(linha["id"])
         # 1b. o que parou com erro e foi retomado na fábrica por fora do Radar volta a produzindo (12-animais, 2026-10-27:
@@ -232,7 +309,8 @@ def passo(fabrica=None, roteirista=None, em_thread: bool = True, config_canal=No
             if p and p.get("rodando") and p.get("status") != "erro" and mudar(linha["id"], "produzindo", de=("erro",), erro=""):
                 mudaram.append(linha["id"])
         # 2. as vagas: o limite menos o que a fila mandou e os vídeos da fábrica feitos fora dela
-        da_fila = {l["projeto"] for l in banco.todos("SELECT projeto FROM producoes_fila WHERE estado IN ('enviando', 'produzindo')")}
+        da_fila = {l["projeto"] for l in banco.todos("SELECT projeto FROM producoes_fila WHERE estado IN ('enviando', 'produzindo') "
+                                                     "AND maquina_id IS NULL")}
         fora = [n for n, p in andamento.items() if p.get("rodando") and n not in da_fila]
         vagas = limite() - len(da_fila) - len(fora)
         # 3. a fila, na ordem: primeiro o roteiro (não ocupa vaga, até ESCRITAS_AO_MESMO_TEMPO), depois o envio (ocupa)
@@ -251,6 +329,8 @@ def passo(fabrica=None, roteirista=None, em_thread: bool = True, config_canal=No
                 linha = banco.um("SELECT * FROM producoes_fila WHERE id=?", linha["id"])
                 if linha["estado"] != "na_fila":
                     continue
+            if json.loads(linha["pedido"]).get("destino") == "robo":
+                continue  # com o roteiro pronto, espera uma máquina reivindicar (maquinas.py)
             if vagas <= 0:
                 continue
             # cada passo só segue se o pedido ainda estiver onde estava: excluído no meio, para ali e não gasta
@@ -262,7 +342,9 @@ def passo(fabrica=None, roteirista=None, em_thread: bool = True, config_canal=No
             try:
                 if not projeto:
                     # o projeto fica guardado assim que existe: "Tentar de novo" e um reinício reaproveitam, sem pagar outro
-                    projeto = roteirista.enviar(linha["usuario_id"], linha["roteiro"], perfil_do(pedido, cfg))["projeto"]
+                    opcoes = opcoes_do(linha["usuario_id"], pedido, cfg)
+                    projeto = roteirista.enviar(linha["usuario_id"], linha["roteiro"], perfil_do(pedido, cfg),
+                                                **({"opcoes": opcoes} if opcoes else {}))["projeto"]
                     banco.executar("UPDATE producoes_fila SET projeto=? WHERE id=?", projeto, linha["id"])
                 if not mudar(linha["id"], "enviando", de=("enviando",)):
                     continue
@@ -298,16 +380,29 @@ def iniciar_vigia(intervalo: int = 20) -> None:
 
 # ---------------------------------------------------------------- o custo provável, na prévia da Nova produção
 
-def estimativa(entregues: list[dict], canal: str, minutos: float) -> dict:
-    """Minutos × a média de US$ por minuto dos vídeos entregues do canal (sem nenhum, a de todos)."""
-    def por_minuto(lista):
-        total = sum(e["minutos"] for e in lista)
-        return sum(e["usd"] for e in lista) / total if total else None
-    do_canal = por_minuto([e for e in entregues if e["canal"] == canal])
-    if do_canal is not None:
-        return {"usd": round(do_canal * minutos, 2), "base": "canal"}
-    geral = por_minuto(entregues)
-    return {"usd": round(geral * minutos, 2), "base": "geral"} if geral is not None else {"usd": None, "base": None}
+CENAS_POR_MINUTO = 17         # medido: 518 cenas nos 30 min do os-10-leoes
+IMAGEM_NA_RESERVA = 0.005     # US$ por imagem pela chave de API, quando o limite da assinatura acaba (medido)
+IA_DOS_ENTREGUES = 0.25       # a parte de IA dos vídeos que servem de média: a conferência olha só o resto
+
+
+def estimativa(entregues: list[dict], canal: str, minutos: float, ia_pct: int | None = None) -> dict:
+    """Minutos × a média de US$ por minuto dos vídeos entregues do canal (sem nenhum, a de todos). Com a parte de IA
+    escolhida: tira da média o que foi pago em imagem, a conferência acompanha o que sobra de material real, e
+    usd_limite diz quanto fica se a assinatura do ChatGPT não der conta e todas as imagens saírem pela chave."""
+    do_canal = [e for e in entregues if e["canal"] == canal]
+    lista, base = (do_canal, "canal") if do_canal else (entregues, "geral")
+    total = sum(e["minutos"] for e in lista)
+    if not total:
+        return {"usd": None, "base": None}
+    media = sum(e["usd"] for e in lista) / total
+    if ia_pct is None:
+        return {"usd": round(media * minutos, 2), "base": base}
+    imagem = sum(e.get("imagem", 0) for e in lista) / total
+    conferencia = sum(e.get("conferencia", 0) for e in lista) / total
+    sobra_real = (1 - ia_pct / 100) / (1 - IA_DOS_ENTREGUES)
+    usd = (media - imagem - conferencia + conferencia * sobra_real) * minutos
+    imagens = round(CENAS_POR_MINUTO * minutos * ia_pct / 100)
+    return {"usd": round(usd, 2), "base": base, "imagens": imagens, "usd_limite": round(usd + imagens * IMAGEM_NA_RESERVA, 2)}
 
 
 _ENTREGUES: dict = {"t": 0, "lista": []}
@@ -325,9 +420,12 @@ def entregues() -> list[dict]:
             fabrica = fabrica_api.custo(p["nome"])
         except fabrica_api.SemFabrica:
             fabrica = None
-        usd = sum(l["usd"] for l in custos.combinar(fabrica, custos.linhas(FABRICA / "projetos" / p["nome"])))
+        gastos = custos.combinar(fabrica, custos.linhas(FABRICA / "projetos" / p["nome"]))
+        usd = sum(l["usd"] for l in gastos)
         if usd and p.get("duracao"):
             # "canal" aqui é o perfil da fábrica: é ele que a Nova produção conhece de cada canal
-            lista.append({"canal": p.get("perfil") or "", "minutos": p["duracao"] / 60, "usd": usd})
+            lista.append({"canal": p.get("perfil") or "", "minutos": p["duracao"] / 60, "usd": usd,
+                          "imagem": sum(l["usd"] for l in gastos if l["categoria"] == "imagem"),
+                          "conferencia": sum(l["usd"] for l in gastos if l["categoria"] in ("visao", "juiz"))})
     _ENTREGUES.update(t=time.time(), lista=lista)
     return lista

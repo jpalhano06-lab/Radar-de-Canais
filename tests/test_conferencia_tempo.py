@@ -20,6 +20,7 @@ def _mundo(monkeypatch, tmp_path):
     monkeypatch.setattr(roteiro_claude, "PASTA", roteiros)
     monkeypatch.setattr(roteiro_claude, "FABRICA", fabrica)
     monkeypatch.setattr(tempo, "_da_api", lambda: {})
+    monkeypatch.setattr(tempo, "MEDICOES_SEGUNDOS", 0)    # sem a conta guardada de outro teste
     return roteiros, fabrica
 
 

@@ -36,6 +36,7 @@ def _mundo(monkeypatch, tmp_path, respostas, projeto=None):
     monkeypatch.setattr(roteiro_claude, "copiar_thumbnail", lambda *a: False)
     monkeypatch.setattr(roteiro_claude, "_escrever_descricao", lambda *a, **k: None)
     monkeypatch.setattr(roteiro_claude.banco, "um", lambda *a: projeto)
+    monkeypatch.setattr(roteiro_claude, "por_que_estourou", lambda *a, **k: {})
     monkeypatch.setattr(roteiro_claude, "transcricao", lambda v: ("a fala do vídeo " * 50, "en"))
     vistos = []
 

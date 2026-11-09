@@ -108,3 +108,23 @@ def test_codigo_das_32_linguas_da_fabrica():
     assert roteiro_claude.codigo_da_lingua("Holandês") == "nl"
     assert roteiro_claude.codigo_da_lingua("ko") == "ko"
     assert roteiro_claude.codigo_da_lingua("klingon") == ""
+
+
+# 2026-11-04: nos canais japonês e coreano a pasta entregue só tinha o título traduzido, e na lista de Downloads
+# um vídeo não dava para distinguir do outro. O nome da entrega leva os dois.
+
+
+def test_o_nome_da_entrega_leva_a_traducao_e_o_titulo_original():
+    meta = {"titulo": JAPONES, "titulo_original": TITULO}
+    assert roteiro_claude.titulo_de_entrega(meta) == f"{JAPONES} ({TITULO})"
+
+
+def test_sem_traducao_o_nome_da_entrega_nao_repete_o_titulo():
+    assert roteiro_claude.titulo_de_entrega({"titulo": TITULO, "titulo_original": TITULO}) == TITULO
+    assert roteiro_claude.titulo_de_entrega({"titulo": TITULO}) == TITULO       # roteiro antigo, sem o original
+
+
+def test_o_nome_da_entrega_cabe_no_caminho_do_windows():
+    meta = {"titulo": "A" * 200, "titulo_original": "B" * 200}
+    nome = roteiro_claude.titulo_de_entrega(meta)
+    assert len(nome) <= roteiro_claude.LIMITE_DO_NOME and nome.endswith(")")

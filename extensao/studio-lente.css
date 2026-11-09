@@ -1,0 +1,20 @@
+/* O que a extensão acrescenta às telas do Studio (studio-lente.js) */
+.radar-eng { flex: 0 0 90px; width: 90px; padding: 0 8px; box-sizing: border-box; font: 13px Roboto, Arial, sans-serif; color: var(--ytcp-text-primary, inherit); text-align: right; }
+.radar-eng-cab { font-weight: 500; }
+.radar-foto-botao { position: absolute; top: 6px; right: 6px; z-index: 5; width: 28px; height: 28px; padding: 0; border: 0; border-radius: 50%; background: rgba(0,0,0,.55); color: #fff; font-size: 13px; cursor: pointer; opacity: 0; transition: opacity .15s; }
+*:hover > .radar-foto-botao { opacity: 1; }
+.radar-perde, .radar-nota-titulo, .radar-capitulos { margin: 8px 0; padding: 10px 12px; border-radius: 10px; background: rgba(127,127,127,.12); font: 13px/1.4 Roboto, Arial, sans-serif; color: var(--ytcp-text-primary, inherit); }
+.radar-perde-q { display: grid; grid-template-columns: auto auto 1fr; gap: 10px; align-items: baseline; margin-top: 6px; }
+.radar-perde-q p { margin: 0; opacity: .8; }
+.radar-nota-titulo { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.radar-nota-boa { color: #12b76a; } .radar-nota-media { color: #f5b301; } .radar-nota-fraca { color: #ff5263; }
+.radar-titulos { display: grid; gap: 4px; width: 100%; }
+.radar-titulos:empty { display: none; }
+.radar-titulos button { text-align: left; }
+.radar-titulos button.copiado { opacity: .5; }
+.radar-perde button, .radar-nota-titulo button, .radar-capitulos button { padding: 4px 10px; border: 1px solid rgba(127,127,127,.4); border-radius: 8px; background: none; color: inherit; font: inherit; cursor: pointer; }
+.radar-capitulos-lista { display: grid; gap: 2px; margin-top: 6px; }
+.radar-eng-linha { display: flex; justify-content: space-between; padding: 6px 0; font: 13px Roboto, Arial, sans-serif; color: var(--ytcp-text-primary, inherit); }
+/* a linha de engajadas no cartão do último vídeo do painel novo (hub_overview): do tamanho das linhas do Studio */
+.radar-eng-linha.radar-eng-hub { min-height: 48px; align-items: center; padding: 0; font: 16px/22px Roboto, Arial, sans-serif; }
+.radar-eng-linha.radar-eng-hub b { font-weight: 500; }

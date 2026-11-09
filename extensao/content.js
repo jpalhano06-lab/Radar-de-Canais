@@ -8,6 +8,17 @@
   const IMAGEM = "ytd-thumbnail, a#thumbnail, yt-thumbnail-view-model, .yt-lockup-view-model__content-image, .shortsLockupViewModelHostThumbnailContainer";
   let semConta = false;
 
+  // Personalizar: cada função liga e desliga no ícone da extensão e muda na hora. A classe no <html> esconde o que já
+  // está na tela (content.css); `ligada` é para o que trabalha, como o painel e os sons.
+  let desligadas = new Set();
+  const ligada = (chave) => !desligadas.has(chave);
+  function aplicarDesligadas(lista) {
+    const velhas = desligadas;
+    desligadas = new Set(lista || []);
+    for (const k of new Set([...velhas, ...desligadas])) document.documentElement.classList.toggle(`radar-sem-${k}`, desligadas.has(k));
+  }
+  chrome.storage.local.get("funcoesDesligadas").then(({ funcoesDesligadas: f }) => aplicarDesligadas(f));
+
   // A extensão "desligando" no meio da navegação era quase sempre uma destas três coisas, e nenhuma dizia o que
   // tinha acontecido: o Chrome desligou o service worker e a primeira mensagem se perdeu; o Radar estava
   // reiniciando; ou a extensão foi recarregada (chrome://extensions, atualização) e esta página ficou órfã. As duas
@@ -57,6 +68,8 @@
     roteiro: [["path", { d: "M4 20h4L19 9l-4-4L4 16v4z" }], ["path", { d: "M13.5 6.5l4 4" }]],
     ideia: [["path", { d: "M9 18h6M10 21h4" }], ["path", { d: "M12 3a6 6 0 0 0-3.6 10.8c.6.5.6 1.2.6 2.2h6c0-1 0-1.7.6-2.2A6 6 0 0 0 12 3z" }]],
     titulo: [["rect", { x: 9, y: 9, width: 11, height: 11, rx: 2 }], ["path", { d: "M5 15V6a2 2 0 0 1 2-2h9" }]],
+    fila: [["path", { d: "M4 6h11M4 12h8M4 18h8" }], ["path", { d: "M17 11v7M13.5 14.5h7" }]],
+    camera: [["path", { d: "M4 8h3l2-3h6l2 3h3v11H4z" }], ["circle", { cx: 12, cy: 13, r: 3.5 }]],
     capa: [["rect", { x: 3, y: 5, width: 18, height: 14, rx: 2 }], ["circle", { cx: 8.5, cy: 10, r: 1.5 }], ["path", { d: "M21 16l-5-5-9 8" }]],
     parecidos: [["circle", { cx: 9, cy: 8, r: 3.5 }], ["path", { d: "M3 20c0-3.3 2.7-6 6-6s6 2.7 6 6M16 4.6a3.5 3.5 0 0 1 0 6.8M18 14.3c1.8.8 3 3 3 5.7" }]],
     transcricao: [["path", { d: "M4 6h16M4 12h16M4 18h10" }]],
@@ -90,6 +103,7 @@
   const num =(n) => n == null ? "—" : n >= 1e9 ? (n / 1e9).toFixed(1).replace(".", ",") + " bi" : n >= 1e6 ? (n / 1e6).toFixed(1).replace(".", ",") + " mi"
     : n >= 1e3 ? (n >= 1e4 ? Math.round(n / 1e3) : (n / 1e3).toFixed(1).replace(".", ",")) + " mil" : String(Math.round(n));
   const nota = (x) => x == null ? "—" : (x >= 10 ? Math.round(x) : x.toFixed(1).replace(".", ",")) + "x";
+  const dolar = (x) => x.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   const nivel = (x) => x == null ? "n0" : x >= 10 ? "n4" : x >= 5 ? "n3" : x >= 2 ? "n2" : x >= 1 ? "n1" : "n0";
   const FASES = { nascendo: "nascendo", crescendo: "crescendo", estavel: "estável", caindo: "caindo", parado: "parado" };
   const SELOS = { lendario: "Lendário", epico: "Épico", raro: "Raro" };
@@ -134,7 +148,8 @@
     if (r.erro) { if (r.status === 401) semConta = true; return; }
     for (const [id, x] of Object.entries(r.dados.videos)) {
       const v = PAGINA.get(id);
-      if (v) Object.assign(v, { nota: x.nota, inscritos: x.inscritos, normal: x.normal, raridade: x.raridade, reacao: x.reacao });
+      if (v) Object.assign(v, { nota: x.nota, inscritos: x.inscritos, normal: x.normal, raridade: x.raridade, reacao: x.reacao,
+        anuncios: x.anuncios, medida: x.medida });
     }
     if (r.dados.reacao_alta) reacaoAlta = r.dados.reacao_alta;
     for (const id of r.dados.ler) if (!lidos.has(id)) { lidos.add(id); filaCanais.push(id); }
@@ -192,6 +207,11 @@
     const estourados = lista.filter((v) => v.nota >= 3);
     const pequenos = estourados.filter((v) => v.inscritos != null && v.inscritos < 10000);
     const comNota = lista.filter((v) => v.nota != null).length;
+    // quanto a busca é de um canal só, e a chance de um canal novo entrar. Os pesos são um chute: nada mediu isso ainda.
+    const porCanal = new Map();
+    lista.forEach((v) => porCanal.set(v.canal_id || v.canal, (porCanal.get(v.canal_id || v.canal) || 0) + 1));
+    const maior = Math.max(...porCanal.values()) / lista.length;
+    const chance = Math.round(100 * (0.4 * Math.min(1, pequenos.length / 3) + 0.3 * (recentes / lista.length) + 0.3 * (1 - maior)));
     const veredito = pequenos.length >= 2 ? ["boa", "🟢 Nicho aberto: canal pequeno está estourando com esse assunto."]
       : estourados.length >= 3 ? ["media", "🟡 O assunto estoura, mas mais em canais maiores."]
       : recentes / lista.length < 0.2 ? ["fraca", "⚪ Quase nada novo: o assunto está parado (ou ninguém achou ainda)."]
@@ -204,7 +224,10 @@
         h("div", {}, h("b", {}, num(mediana(views))), "views na mediana"),
         h("div", {}, h("b", {}, `${recentes}`), "dos últimos 30 dias"),
         h("div", {}, h("b", {}, `${estourados.length}`), "com 3x o normal ou mais"),
-        h("div", {}, h("b", {}, `${pequenos.length}`), "em canal pequeno (até 10 mil)")),
+        h("div", {}, h("b", {}, `${pequenos.length}`), "em canal pequeno (até 10 mil)"),
+        h("div", { title: "Vários canais: o tema puxa. Um só: pode ter sido sorte." }, h("b", {}, `${Math.round(maior * 100)}%`), `no maior de ${porCanal.size} canais`),
+        h("div", { title: "Estimativa de 0 a 100: canais pequenos estourando, vídeos recentes e muitos canais diferentes. Os pesos ainda não foram medidos." },
+          h("b", {}, `${chance}/100`), "chance para canal novo")),
       h("div", { class: "radar-fraco" }, comNota < lista.length
         ? `A nota de ${lista.length - comNota} vídeos ainda está chegando: o Radar está lendo os canais (sem gastar cota). Role a página para ler mais.`
         : "Role a página para ler mais vídeos. Para ordenar e filtrar, use o botão Vídeos desta página."));
@@ -240,7 +263,8 @@
   const doFormato = (v, f) => f === "tudo" || (f === "curto" ? !longo(v) : longo(v));
   const ORDENS = [["youtube", "YouTube", "play"], ["novos", "Mais novos", "calendario"], ["inscritos", "Inscritos", "usuario"], ["views", "Views", "olho"],
     ["vph", "Views/h", "tendencia"], ["nota", "Outlier", "fogo"]];
-  const vph = (v) => v.views != null && v.dias != null ? v.views / Math.max(1, v.dias * 24) : null;
+  // a medida entre duas leituras do Radar é a velocidade de agora; sem ela, a média desde que o vídeo saiu
+  const vph = (v) => v.medida ? v.medida.vph : v.views != null && v.dias != null ? v.views / Math.max(1, v.dias * 24) : null;
 
   function abrirFiltros() {
     document.querySelectorAll(".radar-janela-fundo").forEach((j) => j.remove());
@@ -274,7 +298,15 @@
           h("div", { class: "rf-meta" }, [`${num(v.views)} views`, idade(v.dias)].filter(Boolean).join(" · ")),
           h("div", { class: "rf-pilulas" },
             v.nota != null ? h("span", { class: `rf-nota ${corNota(v.nota)}` }, nota(v.nota)) : null,
-            vph(v) != null ? h("span", { class: "rf-vph" }, `${num(vph(v))} VPH`) : null))));
+            vph(v) != null ? h("span", { class: "rf-vph" }, `${num(vph(v))} VPH`) : null,
+            // tradução e Método Fantasma sem abrir o vídeo (pedido do usuário em 2026-11-09)
+            botaoDoCartao(`radar-traduzir rf-acao${TRADUZIDO.has(v.titulo) ? " ligado" : ""}`, "Radar: ver o título em português", "PT",
+              (b) => traduzirTitulo(b, v.titulo, b.closest(".rf-info > div"))),
+            botaoDoCartao(`radar-traduzir radar-fantasma-mini rf-acao${FANTASMA_FEITO.has(v.id) ? " ligado" : ""}`,
+              "Radar: Método Fantasma (em que língua ninguém fez este vídeo)", "👻",
+              (b) => fantasmaRapido(b, v, b.closest(".rf-info > div")))),
+          FANTASMA_FEITO.has(v.id) ? chipsDoFantasma(v.id, FANTASMA_FEITO.get(v.id)) : null,
+          TRADUZIDO.has(v.titulo) ? linhaTraducao(TRADUZIDO.get(v.titulo)) : null)));
 
     const pintar = () => {
       // a conta é sobre tudo que o Radar leu nesta página, a mesma do selo do botão: dizer "de 300" quando o
@@ -487,8 +519,95 @@
       const id = idDoLink(link && link.getAttribute("href"));
       if (!id) return;
       selarCartao(caixa, id);
+      if (ligada("traduzir")) botaoTraduzir(caixa, id);
       if (treino && caixa.dataset.alvo !== id) marcarAlvo(caixa, id);
     });
+  }
+
+  // ------------------------------------------------------------ traduzir o título (pedido do usuário em 2026-11-07)
+  // Um botãozinho ao lado do título de cada vídeo (e do vídeo aberto) mostra o título em português logo embaixo. A
+  // tradução é do Radar e fica guardada lá: o mesmo título nunca é traduzido duas vezes.
+  // o que já foi traduzido ou procurado fica aqui, por título e por vídeo: a grade dos filtros se redesenha quando
+  // chega vídeo novo, e sem isto a tradução e as bandeiras sumiam do cartão
+  const TRADUZIDO = new Map(), FANTASMA_FEITO = new Map();
+  const linhaTraducao = (texto) => h("div", { class: "radar-traducao" }, h("b", {}, "🇧🇷 "), texto);
+
+  async function traduzirTitulo(botao, titulo, ondePor) {
+    const ja = ondePor.querySelector(":scope > .radar-traducao");
+    if (ja) { ja.remove(); botao.classList.remove("ligado"); TRADUZIDO.delete(titulo); return; }
+    if (!titulo) return;
+    botao.disabled = true; botao.textContent = "…";
+    const r = await api("/api/ext/traduzir", "POST", { textos: [titulo] });
+    botao.disabled = false; botao.textContent = "PT";
+    const texto = r.erro ? `Radar: ${r.erro}` : (r.dados.traducoes || [])[0];
+    if (!texto) return avisoRapido("Radar: não consegui traduzir agora.");
+    if (!r.erro) TRADUZIDO.set(titulo, texto);
+    ondePor.append(linhaTraducao(texto));
+    botao.classList.add("ligado");
+  }
+
+  function botaoTraduzir(caixa, id) {
+    if (caixa.dataset.traduzir === id) return;
+    const tituloEl = caixa.querySelector("#video-title, .yt-lockup-metadata-view-model__title");
+    const lugar = tituloEl && (tituloEl.closest("h3") || tituloEl.parentElement);
+    if (!lugar) return;
+    caixa.dataset.traduzir = id;
+    lugar.querySelectorAll(".radar-traduzir, .radar-traducao").forEach((x) => x.remove());
+    const titulo = () => (tituloEl.getAttribute("title") || tituloEl.textContent || "").trim();
+    const botao = h("button", { class: "radar-traduzir", type: "button", title: "Radar: ver o título em português" }, "PT");
+    botao.addEventListener("click", (e) => {
+      e.preventDefault(); e.stopPropagation();
+      traduzirTitulo(botao, titulo(), lugar);
+    });
+    lugar.append(botao);
+    if (ligada("fantasma-cartao")) {
+      lugar.append(botaoDoCartao("radar-traduzir radar-fantasma-mini", "Radar: Método Fantasma (em que língua ninguém fez este vídeo)", "👻",
+        (b) => fantasmaRapido(b, { ...(PAGINA.get(id) || {}), id, titulo: titulo() }, lugar)));
+    }
+  }
+
+  // ------------------------------------------------------------ Método Fantasma direto no cartão (pedido de 2026-11-09)
+  // O botão 👻 ao lado do PT, em cada vídeo da grade dos filtros e das páginas do YouTube, procura sem abrir o vídeo
+  // em que língua ninguém fez aquele vídeo: a mesma busca da aba do canal (fantasmaDeUmVideo), nas línguas de
+  // LINGUAS_RAPIDAS. O resultado entra embaixo do título, com as bandeiras; clicar de novo esconde.
+  const LINGUAS_RAPIDAS = ["en", "es", "pt"];
+  async function fantasmaRapido(botao, v, ondePor) {
+    const ja = ondePor.querySelector(":scope > .radar-fantasma-rapido");
+    if (ja) { ja.remove(); botao.classList.remove("ligado"); FANTASMA_FEITO.delete(v.id); return; }
+    if (!v.titulo || FANTASMA_FEITO.get(v.id) === "procurando") return;
+    // "procurando" também fica guardado: a grade redesenhada no meio da busca mostra a espera, e o resultado entra
+    // em qualquer caixa deste vídeo que estiver na tela quando a busca terminar
+    FANTASMA_FEITO.set(v.id, "procurando");
+    ondePor.append(chipsDoFantasma(v.id, "procurando"));
+    botao.classList.add("ligado");
+    const achado = await fantasmaDeUmVideo(v, v.canal_id || "", "raiz", new Set(LINGUAS_RAPIDAS)).catch((e) => ({ erro: String(e) }));
+    if (FANTASMA_FEITO.get(v.id) !== "procurando") return;         // escondido no meio da busca
+    const valor = achado.erro ? { erro: achado.erro } : achado.paises;
+    FANTASMA_FEITO.set(v.id, valor);
+    document.querySelectorAll(".radar-fantasma-rapido").forEach((c) => { if (c.dataset.video === v.id) c.replaceWith(chipsDoFantasma(v.id, valor)); });
+  }
+
+  function chipsDoFantasma(id, valor) {
+    const caixa = h("div", { class: "radar-fantasma-rapido radar-fc-chips" });
+    caixa.dataset.video = id;
+    if (valor === "procurando") caixa.append(h("span", { class: "radar-fraco" }, "Procurando nas outras línguas…"));
+    else if (valor && valor.erro) caixa.append(h("span", { class: "radar-erro" }, `Radar: ${valor.erro}`));
+    else if (!valor || !valor.length) caixa.append(h("span", { class: "radar-fraco" }, "Nenhuma língua para procurar."));
+    else caixa.append(...valor.map((p) => {
+      const [cor, frase] = SITUACAO(p);
+      const chip = h("a", { class: `radar-fc-chip ${cor}`, href: p.link, target: "_blank", title: `${frase}: ${p.traduzido}` },
+        bandeira(p.codigo), NOME_LINGUA[p.lingua] || p.lingua);
+      chip.addEventListener("click", (e) => e.stopPropagation());
+      return chip;
+    }));
+    return caixa;
+  }
+
+  // os dois botões que não deixam o clique abrir o vídeo (o cartão inteiro é um link)
+  function botaoDoCartao(classe, titulo, texto, acao) {
+    const b = h("button", { class: classe, type: "button", title: titulo }, texto);
+    b.addEventListener("click", (e) => { e.preventDefault(); e.stopPropagation(); acao(b); });
+    return b;
   }
 
   // ------------------------------------------------------------ o selo em cima da miniatura
@@ -497,13 +616,36 @@
 
   let reacaoAlta = 2;            // o corte vem do Radar (vistos.reacao_alta); este é só o valor de partida
 
+  // sons sintetizados aqui, sem arquivo. Quieto com vídeo tocando, e nunca dois colados: a tela cheia de canais raros
+  // não pode virar uma sirene.
+  const NOTAS = { salvar: [660, 880], desfazer: [520, 390], raro: [660, 880, 1175] };
+  let audio = null, ultimoSom = 0;
+  function som(tipo) {
+    if (!ligada("som") || Date.now() - ultimoSom < 1500) return;
+    if ([...document.querySelectorAll("video")].some((x) => !x.paused && !x.muted)) return;
+    try {
+      audio = audio || new AudioContext();
+      if (audio.state !== "running") return;   // o navegador só libera som depois de um clique na página
+      ultimoSom = Date.now();
+      NOTAS[tipo].forEach((nota, i) => {
+        const osc = audio.createOscillator(), volume = audio.createGain(), t = audio.currentTime + i * 0.09;
+        osc.frequency.value = nota;
+        volume.gain.setValueAtTime(0.06, t);
+        volume.gain.exponentialRampToValueAtTime(0.0001, t + 0.16);
+        osc.connect(volume).connect(audio.destination);
+        osc.start(t); osc.stop(t + 0.17);
+      });
+    } catch { /* sem som não atrapalha nada */ }
+  }
+  const raridadesOuvidas = new Set();
+
   function selarCartao(caixa, id) {
     const v = PAGINA.get(id);
-    const nada = !v || (v.nota == null && !v.raridade && v.reacao == null);
-    const assinatura = nada ? "" : `${id}|${v.nota ?? ""}|${v.raridade || ""}|${v.reacao ?? ""}`;
+    const nada = !v || (v.nota == null && !v.raridade && v.reacao == null && v.inscritos == null);
+    const assinatura = nada ? "" : `${id}|${v.nota ?? ""}|${v.raridade || ""}|${v.reacao ?? ""}|${v.inscritos ?? ""}|${v.anuncios ?? ""}|${v.medida ? v.medida.vph : ""}`;
     if (caixa.dataset.selo === assinatura) return;
     caixa.dataset.selo = assinatura;
-    caixa.querySelectorAll(".radar-selo").forEach((s) => s.remove());
+    caixa.querySelectorAll(".radar-selo, .radar-selo-mais").forEach((s) => s.remove());
     if (nada) return;
     const lugar = caixa.querySelector(IMAGEM) || caixa;
     if (getComputedStyle(lugar).position === "static") lugar.style.position = "relative";
@@ -518,6 +660,18 @@
       partes.push(h("span", { class: "radar-selo-reacao", title: `O público reagiu ${nota(v.reacao)} mais que o normal do nicho (curtidas e comentários por view)` }, "♥", nota(v.reacao)));
     }
     if (partes.length) lugar.append(h("div", { class: "radar-selo" }, partes));
+    if (v.raridade && SELOS[v.raridade] && v.canal_id && !raridadesOuvidas.has(v.canal_id)) {
+      raridadesOuvidas.add(v.canal_id);
+      som("raro");
+    }
+    const porHora = vph(v), mais = [];
+    if (porHora != null) {
+      mais.push(h("span", { class: "radar-selo-vph", title: v.medida ? `Views por hora, medido entre duas leituras com ${v.medida.horas} h entre elas`
+        : "Views por hora: média desde que o vídeo saiu" }, `${num(porHora)}/h`));
+    }
+    if (v.inscritos != null) mais.push(h("span", { class: "radar-selo-insc", title: "Inscritos do canal" }, num(v.inscritos)));
+    if (v.anuncios) mais.push(h("span", { class: "radar-selo-din", title: "O canal está com anúncios ligados" }, "$"));
+    if (mais.length) lugar.append(h("div", { class: "radar-selo-mais" }, mais));
   }
 
   // ------------------------------------------------------------ treino do algoritmo: o selo 🎯 e o progresso
@@ -570,8 +724,29 @@
       const r = await api(`/api/ext/salvar/${canal.id}`, b.textContent.startsWith("Salvo") ? "DELETE" : "POST");
       if (r.erro) return mostrarErro(b, r.erro);
       b.textContent = r.dados.salvo ? "Salvo ✓" : "Salvar canal";
+      som(r.dados.salvo ? "salvar" : "desfazer");
+      document.querySelectorAll(".radar-pastas").forEach((p) => p.remove());
+      if (r.dados.salvo) escolherPasta(canal.id, b);
     });
     return b;
+  }
+
+  // logo depois de salvar: a pasta é opcional, e a caixa some sozinha com a escolha
+  async function escolherPasta(canalId, perto) {
+    const r = await api("/api/pastas");
+    if (r.erro) return;
+    const caixa = h("div", { class: "radar-pastas" }, h("div", { class: "radar-sub" }, "Guardar em qual pasta?"));
+    const guardar = async (nome) => {
+      const s = await api(`/api/salvos/${canalId}/pasta`, "POST", { pasta: nome });
+      if (s.erro) return mostrarErro(perto, s.erro);
+      caixa.remove();
+      avisoRapido(`Radar: guardado em ${nome} ✓`);
+    };
+    const nova = h("input", { class: "radar-pasta-nova", placeholder: "Nova pasta", maxlength: "60",
+      onkeydown: (e) => { e.stopPropagation(); if (e.key === "Enter" && nova.value.trim()) guardar(nova.value.trim()); } });
+    caixa.append(h("div", { class: "radar-tags-lista" }, r.dados.pastas.map((p) => h("button", { class: "radar-tag-chip", onclick: () => guardar(p.nome) }, p.nome)),
+      nova, h("button", { class: "radar-tag-chip", onclick: () => caixa.remove() }, "Sem pasta")));
+    perto.after(caixa);
   }
 
   function mostrarErro(perto, texto) {
@@ -645,10 +820,10 @@
   // o teto é por pedido: a transcrição liga a legenda do player e espera o YouTube baixar, o que leva mais que os
   // 15 s que valem para o resto (com 15 s para tudo, a transcrição estourava o tempo e a aba dizia que o vídeo não
   // tinha legenda — era só a espera curta)
-  const pedirPagina = (tipo, id, teto = 15000) => new Promise((ok) => {
+  const pedirPagina = (tipo, id, teto = 15000, extra = {}) => new Promise((ok) => {
     const n = ++pedidos;
     esperando.set(n, ok);
-    window.postMessage({ radarPedido: n, tipo, id }, location.origin);
+    window.postMessage({ radarPedido: n, tipo, id, ...extra }, location.origin);
     setTimeout(() => { if (esperando.delete(n)) ok(null); }, teto);
   });
   const espera = (ms) => new Promise((ok) => setTimeout(ok, ms));
@@ -657,8 +832,163 @@
 
   // ------------------------------------------------------------ painel do vídeo (sem cota: a página e o banco do Radar)
 
+  // as palavras que o dono escondeu: as do canal saem da página dele, a mesma que o Radar lê, sem gastar cota
+  const tagsLidas = new Map();
+  async function tagsDoCanal(id) {
+    if (!tagsLidas.has(id)) {
+      tagsLidas.set(id, fetch(`https://www.youtube.com/channel/${id}/videos`).then((r) => r.text())
+        .then((t) => (RadarLer.canal(RadarLer.jsonDoHtml(t)) || {}).tags || [])
+        .catch(() => { tagsLidas.delete(id); return null; }));
+    }
+    return tagsLidas.get(id);
+  }
+
+  function listaDeTags(onde, tags) {
+    if (tags === null) return [h("div", { class: "radar-fraco" }, "Não consegui ler as tags agora.")];
+    if (!tags.length) return [h("div", { class: "radar-fraco" }, `Sem tags ${onde}.`)];
+    const copiar = (texto, alvo, feito) => { navigator.clipboard.writeText(texto); alvo.textContent = feito; };
+    return [h("div", { class: "radar-tags-lista" }, tags.map((t) => h("button", { class: "radar-tag-chip", title: "Copiar só esta",
+      onclick: (e) => copiar(t, e.currentTarget, "Copiada ✓") }, t))),
+    botao("radar-botao", "titulo", `Copiar as ${tags.length} tags`, (e) => copiar(tags.join(", "), e.currentTarget.lastChild, "Copiadas ✓")),
+    tags.join(",").length > 500 ? h("div", { class: "radar-fraco" }, "Passa dos 500 caracteres do campo de tags do YouTube: as últimas seriam cortadas.") : null];
+  }
+
+  // a fila de modelagem do Radar (Outliers): com mais de um canal, o vídeo já entra dizendo para qual é
+  function botaoModelar(id, p, extra) {
+    let estado = p.modelar || "";
+    const texto = () => estado === "fila" ? "Na fila de modelagem ✓" : estado === "feito" ? "Já modelado ✓" : "Fila de modelagem";
+    const marcar = async (b, novo, canal_id = "") => {
+      const r = await api(`/api/modelar/${id}`, "POST", { estado: novo, canal_id });
+      if (r.erro) return mostrarErro(b, r.erro);
+      estado = novo;
+      b.lastChild.textContent = texto();
+      extra.replaceChildren();
+      som(novo ? "salvar" : "desfazer");
+    };
+    return botao("radar-botao", "fila", texto(), async (e) => {
+      const b = e.currentTarget;
+      if (estado) return marcar(b, "");
+      const r = await api("/api/meus-canais");
+      const canais = (!r.erro && r.dados.canais) || [];
+      if (canais.length < 2) return marcar(b, "fila", canais[0] ? canais[0].id : "");
+      extra.replaceChildren(h("div", { class: "radar-sub" }, "Para qual canal é este?"), h("div", { class: "radar-tags-lista" },
+        canais.map((c) => h("button", { class: "radar-tag-chip", onclick: () => marcar(b, "fila", c.id) }, c.titulo)),
+        h("button", { class: "radar-tag-chip", onclick: () => marcar(b, "fila") }, "Decidir depois")));
+    }, "modelar");
+  }
+
+  // o crachá: o tipo do canal na frente, os votos abertos embaixo para quem quiser discordar
+  function linhaDoCracha(x) {
+    if (!x) return null;
+    const fatos = [x.ritmo_dias ? `posta a cada ${x.ritmo_dias} ${x.ritmo_dias === 1 ? "dia" : "dias"}` : null,
+      x.projecao_30d ? `no ritmo de agora, ${num(x.projecao_30d)} views em 30 dias` : null,
+      x.views_30d ? `${num(x.views_30d)} views em 30 dias` : null].filter(Boolean);
+    return h("details", { class: `radar-cracha ${x.saude}` }, h("summary", {}, h("b", {}, x.rotulo), fatos.length ? h("span", {}, fatos[0]) : null),
+      h("ul", {}, x.motivos.map((m) => h("li", { class: m.voto ? "decidiu" : "" }, m.texto))),
+      fatos.length > 1 ? h("div", { class: "radar-fraco" }, fatos.slice(1).join(" · ")) : null);
+  }
+
+  // ------------------------------------------------------------ a aba IA do painel: molde, capas parecidas e leituras
+  function linhaDeVideo(v, direita) {
+    return h("a", { class: "radar-item", href: `https://www.youtube.com/watch?v=${v.id}` },
+      h("img", { class: "radar-ia-capa", src: `https://i.ytimg.com/vi/${v.id}/mqdefault.jpg`, alt: "", loading: "lazy" }),
+      h("span", {}, h("b", {}, v.titulo), h("small", {}, [v.canal, `${num(v.views)} views`, v.nota != null ? nota(v.nota) : null, direita].filter(Boolean).join(" · "))));
+  }
+
+  function campoDaLeitura(rotulo, texto) {
+    return texto ? h("div", { class: "radar-ia-campo" }, h("small", {}, rotulo), h("div", {}, texto)) : null;
+  }
+
+  // um botão que chama a IA e troca a si mesmo pelo resultado. A resposta do Claude leva até um minuto.
+  function leitura(titulo, dica, pedir, desenhar) {
+    const saida = h("div", { class: "radar-ia-saida" });
+    const b = botao("radar-botao", "ideia", titulo, async () => {
+      saida.replaceChildren(h("div", { class: "radar-fraco" }, "Lendo… pode levar até um minuto."));
+      b.disabled = true;
+      const r = await pedir();
+      b.disabled = false;
+      saida.replaceChildren(...(r.erro ? [h("div", { class: "radar-erro" }, r.erro)] : desenhar(r.dados).filter(Boolean)));
+    });
+    return h("div", { class: "radar-ia-bloco" }, b, dica ? h("div", { class: "radar-fraco" }, dica) : null, saida);
+  }
+
+  function abaIa(v, n) {
+    const base = { video_id: v.id, titulo: v.titulo };
+    const molde = h("div", { class: "radar-ia-molde" }, h("div", { class: "radar-fraco" }, "Procurando o mesmo molde…"));
+    api(`/api/ext/molde/${v.id}?titulo=${encodeURIComponent(v.titulo)}`).then((r) => {
+      const d = r.dados;
+      if (r.erro || !d.molde) return molde.replaceChildren(h("div", { class: "radar-fraco" }, r.erro || "Este título não tem um molde reconhecível."));
+      molde.replaceChildren(h("div", { class: "radar-sub" }, "Mesmo molde de título"), h("div", { class: "radar-ia-molde-texto" }, d.molde),
+        h("div", { class: "radar-fraco" }, d.total ? `${d.total} vídeos em ${d.canais} ${d.canais === 1 ? "canal" : "canais"}${d.lift != null ? ` · rende ${nota(d.lift)} o normal` : ""}`
+          : "Nenhum outro vídeo no Radar usa este molde ainda."),
+        d.videos.length ? h("div", { class: "radar-lista" }, d.videos.slice(0, 6).map((x) => linhaDeVideo(x))) : null);
+    });
+    const assunto = h("input", { class: "radar-pasta-nova radar-ia-entrada", placeholder: "Seu assunto", maxlength: "200", onkeydown: (e) => e.stopPropagation() });
+    const lingua = h("select", { class: "radar-lingua-legenda" }, [["inglês dos EUA", "en"], ["espanhol do México", "es"], ["português do Brasil", "pt"], ["alemão", "de"], ["francês", "fr"],
+      ["italiano", "it"], ["holandês", "nl"], ["japonês", "ja"], ["coreano", "ko"]].map(([t, c]) => h("option", { value: t, "data-codigo": c }, t)));
+    const copiarTudo = (texto) => botao("radar-botao", "titulo", "Copiar", (e) => { navigator.clipboard.writeText(texto); e.currentTarget.lastChild.textContent = "Copiado ✓"; });
+    const fala = async () => {
+      const t = await pedirPagina("transcricao", v.id, 25000);
+      return ((t && t.linhas) || []).filter((l) => l.ms < 90000).map((l) => l.texto).join(" ");
+    };
+    return [molde,
+      h("div", { class: "radar-ia-capas" }, leitura("Capas parecidas que estouraram", "", () => api(`/api/ext/capas-parecidas/${v.id}`), (d) =>
+        [d.videos.length ? h("div", { class: "radar-lista" }, d.videos.map((x) => linhaDeVideo(x, `${x.parecido}% parecida`)))
+          : h("div", { class: "radar-fraco" }, `Nenhuma capa bem parecida entre as ${num(d.indice)} já lidas. O índice cresce sozinho.`)])),
+      leitura("Por que este vídeo estourou", "", async () => api("/api/ext/ia/por-que", "POST", { ...base, nota: n.nota, fala: await fala() }), (d) => [
+        campoDaLeitura("Por que clicaram", d.resumo), campoDaLeitura("Quebra de padrão", d.quebra), campoDaLeitura("Prova específica", d.prova),
+        campoDaLeitura("Loop aberto", d.loop), campoDaLeitura("Os primeiros segundos", d.comeco)]),
+      h("div", { class: "radar-ia-bloco" }, assunto, leitura("Escrever 10 títulos neste molde", "Mesma estrutura e mesma sensação, assunto novo.",
+        () => assunto.value.trim() ? api("/api/ext/ia/titulos", "POST", { ...base, assunto: assunto.value.trim() }) : Promise.resolve({ erro: "Escreva o seu assunto." }), (d) => [
+          campoDaLeitura("A sensação que fica", d.sensacao), h("ol", { class: "radar-ia-titulos" }, d.titulos.map((t) => h("li", {}, t))), copiarTudo(d.titulos.join("\n"))])),
+      h("div", { class: "radar-ia-bloco" }, lingua, leitura("Levar o título para esta língua", "", () => {
+        const codigo = lingua.selectedOptions[0].dataset.codigo;
+        if ((v.audios || []).includes(codigo)) return Promise.resolve({ erro: "O vídeo já tem faixa dublada nesta língua: o espaço não está livre." });
+        return api("/api/ext/ia/adaptar", "POST", { ...base, lingua: lingua.value });
+      }, (d) => [campoDaLeitura("Título", d.titulo), campoDaLeitura("Em português", d.em_portugues), campoDaLeitura("O que mudou", d.mudou),
+        campoDaLeitura("O público de lá procura", d.procura), copiarTudo(d.titulo || "")])),
+      leitura("A receita da capa", "A IA olha a capa e escreve o que ela mostra e a instrução pronta para fazer a sua.", () => api("/api/ext/ia/capa", "POST", base), (d) => [
+        campoDaLeitura("O que mostra", d.mostra), campoDaLeitura("Composição", d.composicao), campoDaLeitura("Cores", d.cores), campoDaLeitura("Texto", d.texto),
+        campoDaLeitura("Emoção", d.emocao), campoDaLeitura("O que faz clicar", d.gancho), campoDaLeitura("A instrução para gerar (em inglês)", d.instrucao), copiarTudo(d.instrucao || "")])];
+  }
+
+  function abrirCapa(url, titulo) {
+    document.querySelectorAll(".radar-capa-janela").forEach((j) => j.remove());
+    const img = h("img", { src: url, alt: "" });
+    img.addEventListener("error", () => { if (!img.src.includes("hqdefault")) img.src = url.replace("maxresdefault", "hqdefault"); });
+    const fundo = h("div", { class: "radar-capa-janela", onclick: (e) => { if (e.target === fundo) fundo.remove(); } },
+      h("div", { class: "radar-capa-caixa" }, img, h("div", { class: "radar-acoes radar-acoes-2" },
+        botao("radar-botao", "titulo", "Copiar o título", (e) => { navigator.clipboard.writeText(titulo); e.currentTarget.lastChild.textContent = "Título copiado ✓"; }),
+        botao("radar-botao", "capa", "Copiar o endereço", (e) => { navigator.clipboard.writeText(img.src); e.currentTarget.lastChild.textContent = "Endereço copiado ✓"; }))));
+    document.body.append(fundo);
+  }
+
+  // o quadro que está na tela, na resolução do vídeo, para colar com Ctrl+V
+  async function printDoQuadro() {
+    const vid = document.querySelector("#movie_player video");
+    if (!vid || !vid.videoWidth) return avisoRapido("Radar: o vídeo ainda não carregou um quadro.");
+    try {
+      const tela = h("canvas", { width: vid.videoWidth, height: vid.videoHeight });
+      tela.getContext("2d").drawImage(vid, 0, 0);
+      const png = await new Promise((ok) => tela.toBlob(ok, "image/png"));
+      await navigator.clipboard.write([new ClipboardItem({ "image/png": png })]);
+      avisoRapido(`Radar: quadro de ${minSeg(Math.floor(vid.currentTime))} copiado ✓ cole com Ctrl+V`);
+    } catch { avisoRapido("Radar: o YouTube não deixou copiar este quadro."); }
+  }
+
+  function botoesDoPlayer(v, capaUrl, painel) {
+    document.querySelectorAll(".radar-ytp").forEach((b) => b.remove());
+    const barra = document.querySelector("#movie_player .ytp-right-controls");
+    if (!barra) return;
+    const item = (ic, titulo, classe, acao) => h("button", { class: `ytp-button radar-ytp ${classe}`, title: titulo, "aria-label": titulo, onclick: acao }, icone(ic));
+    barra.prepend(item("capa", "Radar: a capa em tamanho real", "radar-ytp-capa", () => abrirCapa(capaUrl, v.titulo)),
+      item("transcricao", "Radar: a transcrição deste vídeo", "radar-ytp-transcricao", (e) => janelaTranscricao(e.currentTarget, painel.radarTranscricao)),
+      item("camera", "Radar: copiar este quadro", "radar-ytp-print", printDoQuadro));
+  }
+
   async function painelDoVideo(id) {
     document.querySelectorAll(".radar-painel").forEach((p) => p.remove());
+    if (!ligada("painel")) return document.querySelectorAll(".radar-ytp").forEach((b) => b.remove());
     document.querySelectorAll(".radar-fantasma-janela").forEach((j) => { j.hidden = true; });
     if (FANTASMA.id !== id) zerarFantasma(id, "");
     const lugar = document.querySelector("#secondary-inner, #secondary");
@@ -696,11 +1026,11 @@
     const extra = h("div", { class: "radar-extra" });
     const corpo = h("div", { class: "radar-aba-corpo" });
     // a Capa é a aba principal: a capa com o "quantos x" em vermelho em cima
-    const abas = [["capa", "Capa"], ["transcricao", "Transcrição"], ["lingua", "Método Fantasma"]];
+    const abas = [["capa", "Capa"], ["transcricao", "Transcrição"], ["tags", "Tags"], ["ia", "IA"], ["lingua", "Método Fantasma"]];
     const botoesAba = abas.map(([k, t]) => h("button", { class: "radar-aba", "data-aba": k, onclick: () => abrir(k) }, t));
     const abrir = (k) => {
       botoesAba.forEach((b) => b.classList.toggle("ligada", b.dataset.aba === k));
-      corpo.replaceChildren(...({ capa: abaCapa, transcricao: abaTranscricao, lingua: abaLingua }[k])());
+      corpo.replaceChildren(...({ capa: abaCapa, transcricao: abaTranscricao, tags: abaTags, ia: () => abaIa(v, n), lingua: abaLingua }[k])().filter(Boolean));
     };
     const capaUrl = `https://i.ytimg.com/vi/${id}/maxresdefault.jpg`;
     const abaCapa = () => {
@@ -718,12 +1048,33 @@
       ];
       return [h("div", { class: "radar-capa-linha" }, img,
         h("div", { class: "radar-quadros" }, quadros.map(([ic, x, rotulo, classe]) =>
-          h("div", { class: `radar-quadro ${classe || ""}` }, h("div", {}, icone(ic), h("b", {}, x)), h("small", {}, rotulo)))))];
+          h("div", { class: `radar-quadro ${classe || ""}` }, h("div", {}, icone(ic), h("b", {}, x)), h("small", {}, rotulo))))),
+      p.rpm ? h("div", { class: "radar-rpm", title: `Faixa pública do nicho ${p.rpm.nicho}: é uma estimativa do nicho, não o ganho deste vídeo` },
+        icone("dinheiro"), `RPM estimado do nicho: US$ ${dolar(p.rpm.minimo)} a ${dolar(p.rpm.maximo)} por mil views`) : null];
+    };
+    const abaTags = () => {
+      const doCanal = h("div", {}, h("div", { class: "radar-fraco" }, "Lendo as tags do canal…"));
+      if (v.canal_id) tagsDoCanal(v.canal_id).then((t) => doCanal.replaceChildren(...listaDeTags("neste canal", t).filter(Boolean)));
+      else doCanal.replaceChildren();
+      return [h("div", { class: "radar-sub" }, "Deste vídeo"), ...listaDeTags("neste vídeo", v.tags || []), h("div", { class: "radar-sub" }, "Deste canal"), doCanal];
     };
     let transcrita = null;
     const abaTranscricao = () => {
       const lista = h("div", { class: "radar-transcricao" }, h("div", { class: "radar-fraco" }, "Lendo a fala do vídeo…"));
+      const seletor = h("select", { class: "radar-lingua-legenda", hidden: "", title: "As legendas que o YouTube já tem deste vídeo", onchange: (e) => pedir(e.target.value) });
+      const aviso = h("div", { class: "radar-fraco", hidden: "" });
+      const linguaDe = (codigo) => { try { return new Intl.DisplayNames(["pt-BR"], { type: "language" }).of(codigo) || codigo; } catch { return codigo; } };
+      const montarSeletor = (t) => {
+        const faixas = (t && t.faixas) || [], atual = faixas.find((f) => f.chave === (t && t.atual));
+        seletor.hidden = faixas.length < 2;
+        seletor.replaceChildren(...faixas.map((f) => h("option", { value: f.chave }, f.nome + (f.auto ? " · automática" : ""))));
+        if (atual) seletor.value = atual.chave;
+        const traduzida = t && t.falada && atual && atual.codigo.split("-")[0] !== t.falada.split("-")[0];
+        aviso.hidden = !traduzida;
+        aviso.textContent = traduzida ? `Esta legenda é uma tradução: o vídeo fala ${linguaDe(t.falada)}.` : "";
+      };
       const mostrar = (t) => {
+        montarSeletor(t);
         if (!t || !t.linhas || !t.linhas.length) {
           // sem trilha de legenda o vídeo não tem transcrição mesmo; qualquer outro caso é tentativa que não deu, e
           // chamar isso de "não tem transcrição" era mentira: agora dá para pedir de novo
@@ -736,9 +1087,9 @@
             minSeg(Math.floor(l.ms / 1000))), h("span", {}, l.texto))));
       };
       // só o que deu certo fica guardado: o que falhou tem de poder ser tentado de novo
-      const pedir = () => {
+      const pedir = (lingua = "") => {
         lista.replaceChildren(h("div", { class: "radar-fraco" }, "Lendo a fala do vídeo…"));
-        pedirPagina("transcricao", id, 25000).then((t) => { transcrita = t && t.linhas && t.linhas.length ? t : null; mostrar(t); });
+        pedirPagina("transcricao", id, 25000, { lingua }).then((t) => { transcrita = t && t.linhas && t.linhas.length ? t : null; mostrar(t); });
       };
       if (transcrita) mostrar(transcrita);
       else pedir();
@@ -750,7 +1101,7 @@
       };
       return [h("div", { class: "radar-acoes radar-acoes-2" },
         botao("radar-botao radar-botao-vermelho", "titulo", "Copiar sem tempos", copiar(false)),
-        botao("radar-botao", "relogio", "Copiar com tempos", copiar(true))), lista];
+        botao("radar-botao", "relogio", "Copiar com tempos", copiar(true))), seletor, aviso, lista];
     };
     // Método Fantasma: a busca fica guardada em FANTASMA; a aba e a janelinha do fantasminha mostram a mesma
     if (FANTASMA.id !== id) zerarFantasma(id, v.titulo); else FANTASMA.titulo = v.titulo;
@@ -759,7 +1110,7 @@
     const rodarFantasma = (e) => { metodoFantasma(e.currentTarget); abrir("lingua"); };
     const abaLingua = () => [vista];
     painel.radarTranscricao = abaTranscricao;   // a janelinha da Transcrição (menu Radar) usa a mesma aba
-    painel.replaceChildren(
+    painel.replaceChildren(...[linhaDoCracha(p.cracha),
       h("div", { class: "radar-abas" }, botoesAba), corpo,
       h("div", { class: "radar-acoes radar-acoes-2" },
         botao("radar-botao radar-botao-sombra", "fantasma", "Método Fantasma", rodarFantasma, "sombra", "Alt+G"),
@@ -770,12 +1121,14 @@
           const s = await api("/api/ideias-salvas", "POST", { video_id: id, titulo: v.titulo, canal_id: treino ? treino.id : "" });
           rot.textContent = s.erro ? s.erro : "Ideia salva ✓";
         }, "ideia"),
+        p.plano === "pro" ? botaoModelar(id, p, extra) : null,
         botao("radar-botao", "titulo", "Copiar título", (e) => { navigator.clipboard.writeText(v.titulo); e.currentTarget.lastChild.textContent = "Título copiado ✓"; }, "titulo"),
         botao("radar-botao", "capa", "Copiar a capa", (e) => copiarImagem(e.currentTarget.lastChild, capaUrl), "copiar-capa"),
         botao("radar-botao", "barras", "Print do cartão", (e) => copiarCartao(e.currentTarget.lastChild, capaUrl, v, c, n), "print-cartao"),
         lite && c.id ? botao("radar-botao", "parecidos", "Canais parecidos", () => parecidos(c.id, extra)) : null),
-      extra);
+      extra].filter(Boolean));
     abrir("capa");
+    botoesDoPlayer(v, capaUrl, painel);
   }
 
   // ------------------------------------------------------------ Método Fantasma: em que língua ninguém fez este vídeo
@@ -1027,9 +1380,9 @@
       if (x) {
         ctx.font = "700 30px Roboto, Arial, sans-serif";
         const w = ctx.measureText(x).width + 28;
-        ctx.fillStyle = n.nota >= 6 ? "#b6f23a" : "rgba(0,0,0,.78)";
+        ctx.fillStyle = n.nota >= 6 ? "#2e9e4f" : "rgba(0,0,0,.78)";
         caixaArredondada(ctx, M, M, w, 50, 12);
-        ctx.fillStyle = n.nota >= 6 ? "#10160a" : "#fff";
+        ctx.fillStyle = n.nota >= 6 ? "#fff" : "#fff";
         ctx.textBaseline = "middle";
         ctx.fillText(x, M + 14, M + 26);
       }
@@ -1047,7 +1400,7 @@
         c && c.inscritos != null ? `${num(c.inscritos)} inscritos` : ""].filter(Boolean);
       ctx.fillText(partes.join("  ·  "), M, y + 44);
       // a assinatura, para o print se explicar sozinho quando for parar num grupo
-      ctx.fillStyle = "#b6f23a";
+      ctx.fillStyle = "#ff0000";
       ctx.font = "700 18px Roboto, Arial, sans-serif";
       const marca = "Radar de Canais";
       ctx.fillText(marca, L - M - ctx.measureText(marca).width, y + 44);
@@ -1208,7 +1561,10 @@
       ["usuario", num(c.inscritos), "inscritos"], ["barras", num(c.normal_longos), "normal por vídeo"],
       ["play", c.videos_total ?? "—", "vídeos"], ["calendario", postando(c), "postando há"],
     ];
+    const tags = h("div", {}, h("div", { class: "radar-fraco" }, "Lendo as tags do canal…"));
+    tagsDoCanal(c.id).then((t) => tags.replaceChildren(...listaDeTags("neste canal", t).filter(Boolean)));
     return [
+      linhaDoCracha(c.cracha),
       h("div", { class: "radar-nicho-corpo" },
         h("div", { class: "radar-nicho-lado" },
           h("div", { class: "radar-nicho-veredito" },
@@ -1231,6 +1587,7 @@
         h("div", { class: "radar-quadros radar-quadros-4" }, quadros.map(([ic, x, rotulo]) =>
           h("div", { class: "radar-quadro" }, h("div", {}, icone(ic), h("b", {}, x)), h("small", {}, rotulo)))),
         h("div", { class: "radar-graficos" }, graficoVideos(c.videos), graficoInscritos(c.inscritos_dias)),
+        h("div", { class: "radar-sub" }, "Tags do canal"), tags,
         estouraram.length ? h("div", { class: "radar-lista" }, h("div", { class: "radar-sub" }, "Os que passaram do normal"),
           estouraram.map((v) => h("a", { class: "radar-item", href: `https://www.youtube.com/watch?v=${v.id}` },
             h("span", { class: `rf-nota ${corNota(v.nota)}` }, nota(v.nota)), h("span", {}, h("b", {}, v.titulo), h("small", {}, `${num(v.views)} views`)))))
@@ -1251,6 +1608,104 @@
   }
 
   // as abas do Radar junto das do YouTube: abrir uma esconde o conteúdo do YouTube; clicar numa aba dele volta
+  const LINGUAS_DO_ESTILO = [["en", "Inglês"], ["es", "Espanhol"], ["pt", "Português"], ["fr", "Francês"], ["de", "Alemão"], ["it", "Italiano"]];
+  const RECORTES_DO_NICHO = [["todos", "Todos os vídeos", ""], ["pequeno", "Viral em canal pequeno", "canais com menos de 100 mil inscritos, com 3x o normal ou mais"],
+    ["milhao", "Acima de 1 milhão", ""], ["mes", "Últimos 30 dias", ""], ["alto", "Outlier alto", "10x o normal ou mais"]];
+  const ORDENS_DO_NICHO = [["nota", "Maior outlier"], ["views", "Mais vistos"], ["vph", "Mais views por hora"], ["novos", "Mais recentes"]];
+  const idadeDoVideo = (v) => v.publicado ? (Date.now() - Date.parse(v.publicado)) / 864e5 : null;
+  function videosDoRecorte(todos, F) {
+    const passa = { todos: () => true, pequeno: (v) => v.inscritos != null && v.inscritos < 1e5 && v.nota >= 3, milhao: (v) => v.views >= 1e6,
+      mes: (v) => idadeDoVideo(v) != null && idadeDoVideo(v) <= 30, alto: (v) => v.nota >= 10 }[F.recorte];
+    const peso = { nota: (v) => v.nota || 0, views: (v) => v.views || 0, vph: (v) => (v.views || 0) / Math.max(1, (idadeDoVideo(v) ?? 1e4) * 24),
+      novos: (v) => -(idadeDoVideo(v) ?? 1e6) }[F.ordem];
+    return todos.filter(passa).sort((a, b) => peso(b) - peso(a));
+  }
+  function baixarPlanilha(nome, videos) {
+    const aspas = (x) => `"${String(x ?? "").replace(/"/g, '""')}"`;
+    const linhas = [["Título", "Canal", "Inscritos", "Views", "Outlier", "Publicado", "Link"].map(aspas).join(";"),
+      ...videos.map((v) => [v.titulo, v.canal, v.inscritos, v.views, v.nota, (v.publicado || "").slice(0, 10), `https://www.youtube.com/watch?v=${v.id}`].map(aspas).join(";"))];
+    const link = h("a", { href: URL.createObjectURL(new Blob(["\ufeff" + linhas.join("\n")], { type: "text/csv;charset=utf-8" })), download: nome });
+    link.click();
+    setTimeout(() => URL.revokeObjectURL(link.href), 5000);
+  }
+
+  // Método Fantasma do canal: a mesma busca do vídeo, um vídeo de cada vez, só nas línguas marcadas. Cada busca abre
+  // duas páginas do YouTube por língua, então são 10 vídeos por vez e um botão para parar.
+  const LINGUAS_DO_CANAL = ["en", "pt", "es", "fr", "de", "it", "pl", "tr", "nl", "ja", "ko"];
+  let fantasmaCanalVez = 0;
+  async function fantasmaDoCanal(c, secao) {
+    const vez = ++fantasmaCanalVez, vale = () => vez === fantasmaCanalVez && secao.isConnected && !secao.hidden;
+    secao.replaceChildren(h("div", { class: "radar-fraco" }, "Lendo os vídeos mais vistos do canal…"));
+    const r = await api(`/api/ext/mais-vistos/${c.id}`);
+    if (r.erro) return secao.replaceChildren(h("div", { class: "radar-erro" }, erroDoRadar(r)));
+    const videos = r.dados.videos, marcadas = new Set(["en", "es", "pt"]), livres = [];
+    if (!videos.length) return secao.replaceChildren(h("div", { class: "radar-fraco" }, "O Radar ainda não tem os vídeos deste canal."));
+    let feitos = 0, modo = "raiz", andando = false;
+    const linhas = h("div", { class: "radar-fc-linhas" }), conta = h("small", { class: "radar-fraco" });
+    const chips = LINGUAS_DO_CANAL.map((l) => h("button", { class: `radar-tag-chip${marcadas.has(l) ? " ligada" : ""}`, onclick: (e) => {
+      marcadas.has(l) ? marcadas.delete(l) : marcadas.add(l);
+      e.currentTarget.classList.toggle("ligada", marcadas.has(l));
+    } }, NOME_LINGUA[l]));
+    const seletor = h("select", { class: "radar-lingua-legenda", title: "Como levar o título para as outras línguas", onchange: (e) => { modo = e.target.value; } },
+      MODOS.filter(([m]) => m !== "premium").map(([m, nome]) => h("option", { value: m }, nome)));
+    const copiar = botao("radar-botao", "titulo", "Copiar títulos livres", (e) => {
+      navigator.clipboard.writeText(livres.join("\n"));
+      e.currentTarget.lastChild.textContent = `${livres.length} copiados ✓`;
+    });
+    const andar = botao("radar-botao radar-botao-sombra", "fantasma", "Procurar os próximos 10", async (e) => {
+      if (andando) { andando = false; return; }
+      if (!marcadas.size) return mostrarErro(e.currentTarget, "Marque pelo menos uma língua.");
+      const rotulo = andar.lastChild, parte = videos.slice(feitos, feitos + 10);
+      andando = true; rotulo.textContent = "Parar";
+      for (const v of parte) {
+        if (!andando || !vale()) break;
+        const linha = h("div", { class: "radar-fc-linha" }, h("img", { src: `https://i.ytimg.com/vi/${v.id}/default.jpg`, alt: "" }),
+          h("div", {}, h("a", { href: `https://www.youtube.com/watch?v=${v.id}` }, v.titulo), h("small", {}, `${num(v.views)} views`),
+            h("div", { class: "radar-fc-chips" }, h("span", { class: "radar-fraco" }, "Procurando…"))));
+        linhas.append(linha);
+        const achado = await fantasmaDeUmVideo(v, c.id, modo, marcadas);
+        feitos++;
+        const onde = linha.querySelector(".radar-fc-chips");
+        if (achado.erro) { onde.replaceChildren(h("span", { class: "radar-erro" }, achado.erro)); continue; }
+        onde.replaceChildren(...achado.paises.map((p) => {
+          const [cor, frase] = SITUACAO(p);
+          if (!p.feito) livres.push(p.traduzido);
+          return h("a", { class: `radar-fc-chip ${cor}`, href: p.link, target: "_blank", title: `${frase}: ${p.traduzido}` }, bandeira(p.codigo), NOME_LINGUA[p.lingua] || p.lingua);
+        }));
+        conta.textContent = `${feitos} de ${videos.length} vídeos · ${livres.length} títulos livres`;
+      }
+      andando = false;
+      rotulo.textContent = "Procurar os próximos 10";
+      andar.hidden = feitos >= videos.length;
+    });
+    secao.replaceChildren(h("div", { class: "radar-parecidos-topo" }, h("b", {}, "Em que língua ninguém fez estes vídeos ainda"), seletor, andar, copiar, conta),
+      h("div", { class: "radar-fc-marcas" }, chips), linhas);
+  }
+
+  async function fantasmaDeUmVideo(v, canalId, modo, linguas) {
+    const prep = await api("/api/ext/radar/preparar", "POST", { titulo: v.titulo, modo });
+    if (prep.erro) return { erro: prep.erro };
+    const preparo = { ...prep.dados, paises: prep.dados.paises.filter((p) => linguas.has(p.lingua)) }, resultados = {};
+    await Promise.all(preparo.paises.map(async (p) => {
+      const listas = await Promise.all([false, true].map((porViews) => buscarNoYoutube(p.busca, p.codigo, p.lingua, porViews).catch(() => [])));
+      resultados[p.codigo] = listas.flat();
+    }));
+    const r = await api("/api/ext/radar/julgar", "POST", { preparo, resultados, video_id: v.id, canal_id: canalId, views: v.views });
+    return r.erro ? { erro: r.erro } : { paises: r.dados.paises };
+  }
+
+  async function pedidosDoPublico(c, secao) {
+    secao.replaceChildren(h("div", { class: "radar-fraco" }, "Lendo os comentários dos 10 vídeos mais vistos…"));
+    const r = await api(`/api/ext/pedidos/${c.id}`);
+    if (r.erro) return secao.replaceChildren(h("div", { class: "radar-erro" }, erroDoRadar(r)));
+    const { pedidos: lista, videos } = r.dados;
+    secao.replaceChildren(h("div", { class: "radar-parecidos-topo" }, h("b", {}, "O que o público pede"),
+      h("small", { class: "radar-fraco" }, `dos comentários de ${videos} ${videos === 1 ? "vídeo" : "vídeos"}, dos mais curtidos para os menos`)),
+      lista.length ? h("div", { class: "radar-pedidos" }, lista.map((p) => h("div", { class: "radar-pedido" }, h("p", {}, p.texto),
+        h("small", {}, `♥ ${num(p.curtidas)} · `, h("a", { href: `https://www.youtube.com/watch?v=${p.video_id}` }, p.video_titulo)))))
+        : h("div", { class: "radar-fraco" }, "Nenhum pedido nos comentários destes vídeos."));
+  }
+
   function abasDoCanal(c, cab) {
     const lista = document.querySelector("ytd-tabbed-page-header [role=tablist], ytd-browse[page-subtype='channels'] [role=tablist], #tabsContent");
     if (!lista) return;
@@ -1269,27 +1724,53 @@
     };
     const parecidosAba = h("button", { class: "radar-do-canal radar-aba-yt", type: "button" }, icone("parecidos"), "Canais Parecidos");
     const nichoAba = h("button", { class: "radar-do-canal radar-aba-yt", type: "button" }, icone("fantasma"), "Vídeos do Nicho");
-    const abas = [parecidosAba, nichoAba];
-    parecidosAba.onclick = (e) => { e.stopPropagation(); abrir(parecidosAba, async () => {
+    const fantasmaAba = h("button", { class: "radar-do-canal radar-aba-yt", type: "button" }, icone("fantasma"), "Método Fantasma");
+    const pedidosAba = h("button", { class: "radar-do-canal radar-aba-yt", type: "button" }, icone("titulo"), "O que pedem");
+    const abas = [parecidosAba, nichoAba, ...(ligada("fantasma-canal") ? [fantasmaAba] : []), ...(ligada("pedidos") ? [pedidosAba] : [])];
+    fantasmaAba.onclick = (e) => { e.stopPropagation(); abrir(fantasmaAba, () => fantasmaDoCanal(c, secao)); };
+    pedidosAba.onclick = (e) => { e.stopPropagation(); abrir(pedidosAba, () => pedidosDoPublico(c, secao)); };
+    // descer pelos parecidos: cada parecido abre os parecidos dele, e o Voltar refaz o caminho
+    const caminho = [];
+    const topoDosParecidos = (alvo) => {
+      const lingua = h("select", { class: "radar-lingua-legenda radar-estilo-lingua", title: "Em que língua procurar este estilo de canal" },
+        LINGUAS_DO_ESTILO.map(([k, t]) => h("option", { value: k }, t)));
+      return h("div", { class: "radar-parecidos-topo" },
+        caminho.length > 1 ? h("button", { class: "radar-tag-chip", onclick: () => { caminho.pop(); parecidosDe(caminho.pop()); } }, "← Voltar") : null,
+        h("b", {}, `Parecidos de ${alvo.titulo}`), lingua,
+        botao("radar-botao", "parecidos", "Procurar este estilo", async (e) => {
+          const r = await api(`/api/ext/estilo/${alvo.id}?lingua=${lingua.value}`);
+          if (r.erro) return mostrarErro(e.target, r.erro);
+          window.open(r.dados.url, "_blank");
+        }));
+    };
+    const parecidosDe = async (alvo) => {
+      caminho.push(alvo);
       secao.replaceChildren(h("div", { class: "radar-fraco" }, "Procurando canais que fazem o mesmo tipo de vídeo…"));
-      const r = await api(`/api/ext/parecidos/${c.id}`);
+      const r = await api(`/api/ext/parecidos/${alvo.id}`);
       if (r.erro) return secao.replaceChildren(h("div", { class: "radar-erro" }, erroDoRadar(r)));
-      secao.replaceChildren(h("div", { class: "radar-parecidos-linhas" }, r.dados.canais.length ? r.dados.canais.map((x) =>
+      secao.replaceChildren(topoDosParecidos(alvo), h("div", { class: "radar-parecidos-linhas" }, r.dados.canais.length ? r.dados.canais.map((x) =>
         h("div", { class: "radar-parecido-linha" },
           h("a", { class: "radar-canal-cartao", href: `https://www.youtube.com/${x.handle || "channel/" + x.id}` },
             h("img", { src: x.foto, alt: "", referrerpolicy: "no-referrer" }), h("b", {}, x.titulo),
             h("small", {}, `${num(x.normal_longos)} por vídeo · ${num(x.inscritos)} inscritos`),
             x.fase ? h("span", { class: `radar-tag ${x.fase}` }, FASES[x.fase] || x.fase) : null),
+          h("div", { class: "radar-parecido-acoes" }, botaoSalvar(x, !!x.salvo),
+            h("button", { class: "radar-tag-chip", onclick: () => parecidosDe(x) }, "↳ Parecidos deste")),
           h("div", { class: "radar-parecido-videos" }, (x.videos || []).length ? x.videos.map(miniVideo)
             : h("div", { class: "radar-fraco" }, "O Radar ainda não tem os vídeos deste canal."))))
         : [h("div", { class: "radar-fraco" }, "Nenhum parecido achado.")]));
-    }); };
+    };
+    parecidosAba.onclick = (e) => { e.stopPropagation(); caminho.length = 0; abrir(parecidosAba, () => parecidosDe(c)); };
     nichoAba.onclick = (e) => { e.stopPropagation(); abrir(nichoAba, async () => {
       secao.replaceChildren(h("div", { class: "radar-fraco" }, "Juntando o que estourou nos canais parecidos…"));
       const r = await api(`/api/ext/nicho-videos/${c.id}`);
       if (r.erro) return secao.replaceChildren(h("div", { class: "radar-erro" }, erroDoRadar(r)));
-      const vs = r.dados.videos;
-      secao.replaceChildren(vs.length ? h("div", { class: "rf-grade radar-nicho-grade" }, vs.map((v) => {
+      const todos = r.dados.videos, F = { recorte: "todos", ordem: "nota" }, grade = h("div");
+      const chips = RECORTES_DO_NICHO.map(([k, t, dica]) => h("button", { class: "radar-tag-chip", title: dica, "data-recorte": k, onclick: () => { F.recorte = k; desenharNicho(); } }, t));
+      const desenharNicho = () => {
+      chips.forEach((b) => b.classList.toggle("ligada", b.dataset.recorte === F.recorte));
+      const vs = videosDoRecorte(todos, F);
+      grade.replaceChildren(vs.length ? h("div", { class: "rf-grade radar-nicho-grade" }, vs.map((v) => {
         const d = v.publicado ? (Date.now() - Date.parse(v.publicado)) / 864e5 : null;
         return h("a", { class: "rf-card", href: `https://www.youtube.com/watch?v=${v.id}` },
           h("div", { class: "rf-capa" }, h("img", { src: `https://i.ytimg.com/vi/${v.id}/mqdefault.jpg`, alt: "", loading: "lazy" }),
@@ -1299,7 +1780,13 @@
               h("div", { class: "rf-meta" }, [v.canal, v.inscritos != null ? `${num(v.inscritos)} inscritos` : null].filter(Boolean).join(" · ")),
               h("div", { class: "rf-meta" }, [`${num(v.views)} views`, idade(d)].filter(Boolean).join(" · ")),
               h("div", { class: "rf-pilulas" }, h("span", { class: `rf-nota ${corNota(v.nota)}` }, nota(v.nota))))));
-      })) : h("div", { class: "radar-fraco" }, "Os canais parecidos ainda não têm vídeos que passaram do normal no Radar."));
+      })) : h("div", { class: "radar-fraco" }, todos.length ? "Nenhum vídeo neste recorte." : "Os canais parecidos ainda não têm vídeos que passaram do normal no Radar."));
+      };
+      const ordem = h("select", { class: "radar-lingua-legenda radar-estilo-lingua", title: "Em que ordem mostrar", onchange: (e) => { F.ordem = e.target.value; desenharNicho(); } },
+        ORDENS_DO_NICHO.map(([k, t]) => h("option", { value: k }, t)));
+      secao.replaceChildren(h("div", { class: "radar-parecidos-topo" }, chips, ordem,
+        botao("radar-botao", "baixar", "Exportar planilha", () => baixarPlanilha(`videos-do-nicho-${c.id}.csv`, videosDoRecorte(todos, F)))), grade);
+      desenharNicho();
     }); };
     // uma aba do YouTube clicada: a seção do Radar some e o conteúdo dele volta
     lista.addEventListener("click", (e) => { if (!abas.some((a) => a.contains(e.target))) fechar(); });
@@ -1336,6 +1823,42 @@
     } catch { pintar(undefined); }
   }
 
+  // o feed público do canal aberto traz os vídeos recentes com as views: a curva dele fica em dia, sem gastar cota
+  const feedsLidos = new Set();
+  async function medirPeloFeed(id) {
+    if (!ligada("feed") || feedsLidos.has(id)) return;
+    feedsLidos.add(id);
+    try {
+      const xml = new DOMParser().parseFromString(await (await fetch(`https://www.youtube.com/feeds/videos.xml?channel_id=${id}`)).text(), "text/xml");
+      const videos = [...xml.getElementsByTagName("entry")].map((e) => {
+        const um = (nome) => e.getElementsByTagName(nome)[0];
+        return { id: (um("yt:videoId") || {}).textContent, titulo: (um("title") || {}).textContent || "", canal_id: id,
+          publicado: (um("published") || {}).textContent || "", views: +((um("media:statistics") || { getAttribute: () => 0 }).getAttribute("views")) || null };
+      }).filter((v) => v.id);
+      if (videos.length) await api("/api/ext/vistos", "POST", { videos });
+    } catch { /* o feed não abriu: a leitura da página continua valendo */ }
+  }
+
+  // o aviso do dia: só na primeira página do YouTube, e só se teve vídeo novo acima do corte
+  async function avisoDosSalvos() {
+    if (!ligada("salvos-estouraram") || semConta) return;
+    const hoje = new Date().toDateString();
+    const { salvosAvisoDia } = await chrome.storage.local.get("salvosAvisoDia");
+    if (salvosAvisoDia === hoje) return;
+    const r = await api("/api/ext/salvos-estouraram");
+    if (r.erro) return;
+    chrome.storage.local.set({ salvosAvisoDia: hoje });
+    const vs = r.dados.videos;
+    if (!vs.length) return;
+    const lista = h("div", { class: "radar-salvos-lista", hidden: "" }, vs.map((v) => h("a", { class: "radar-item", href: `https://www.youtube.com/watch?v=${v.id}` },
+      h("span", { class: `rf-nota ${corNota(v.nota)}` }, nota(v.nota)), h("span", {}, h("b", {}, v.titulo), h("small", {}, `${v.canal} · ${num(v.views)} views`)))));
+    const caixa = h("div", { class: "radar-salvos" },
+      h("button", { class: "radar-salvos-cab", onclick: () => { lista.hidden = !lista.hidden; } }, icone("fogo"),
+        vs.length === 1 ? "1 vídeo dos seus salvos passou de 5x o normal" : `${vs.length} vídeos dos seus salvos passaram de 5x o normal`),
+      h("button", { class: "radar-janela-x", title: "Fechar", onclick: () => caixa.remove() }, "×"), lista);
+    document.body.append(caixa);
+  }
+
   async function painelDoCanal(ref) {
     sairDoCanal();
     const cab = document.querySelector("ytd-browse[page-subtype='channels'] #page-header, ytd-browse #header, #page-header");
@@ -1363,7 +1886,8 @@
     if (!vivo()) return;
     if (r.erro) return aviso(`Radar: ${r.erro}`);
     const c = r.dados, ver = vereditoDoNicho(c);
-    analise.append(...analiseDoCanal(c, ver));
+    analise.append(...analiseDoCanal(c, ver).filter(Boolean));
+    medirPeloFeed(c.id);
     resumo.replaceChildren(h("b", {}, ver.titulo), h("small", {}, [ver.i != null ? FASES_NICHO[ver.i].nome : null, ver.dias != null ? `${ver.dias} dias` : null].filter(Boolean).join(" · ")));
     analisar.disabled = false;
     aviso("Analisar nicho");
@@ -1413,6 +1937,7 @@
       if (!id || !/^UC[\w-]{22}$/.test(id)) return avisoRapido("Radar: abra um vídeo ou a página de um canal para salvar.");
       const r = await api(`/api/ext/salvar/${id}`, "POST");
       avisoRapido(r.erro ? `Radar: ${r.erro}` : `Radar: canal salvo ✓ ${naPagina.canal || naPagina.titulo || ""}`);
+      if (!r.erro) som("salvar");
       document.querySelectorAll(".radar-painel .radar-botao, .radar-canal-analise .radar-botao").forEach((b) => { if (b.textContent === "Salvar canal") b.textContent = "Salvo ✓"; });
     })();
   }
@@ -1447,6 +1972,7 @@
   const ITENS_MENU = [
     ["capa", "capa", "Capa e números", "a capa com quantos x deu"],
     ["transcricao", "transcricao", "Transcrição", "a fala com os tempos"],
+    ["tags", "titulo", "Tags", "as palavras do vídeo e do canal"],
     ["sombra", "fantasma", "Método Fantasma", "em que língua ninguém fez", true, "Alt+G"],
     null,
     ["roteiro", "roteiro", "Levar ao Roteiro", "abre o Roteiro com este vídeo", false, "Alt+R"],
@@ -1539,7 +2065,15 @@
       }));
     janela.addEventListener("click", (e) => e.stopPropagation());
     document.addEventListener("click", () => { janela.hidden = true; });
-    const juntos = h("div", { class: "radar-titulo-botoes" }, caixa, caixaFantasma);
+    // o Traduzir do vídeo aberto: o título em português logo embaixo do título do YouTube
+    const tituloDoVideo = document.querySelector("ytd-watch-metadata #title");
+    const traduzirVideo = ligada("traduzir") && tituloDoVideo ? h("button", { class: "radar-traduzir radar-traduzir-grande", type: "button",
+      title: "Radar: ver o título em português", onclick: (e) => {
+        e.stopPropagation();
+        traduzirTitulo(e.currentTarget, (tituloDoVideo.querySelector("h1")?.textContent || "").trim(), tituloDoVideo);
+      } }, "PT") : null;
+    if (tituloDoVideo) tituloDoVideo.querySelectorAll(":scope > .radar-traducao").forEach((x) => x.remove());
+    const juntos = h("div", { class: "radar-titulo-botoes" }, caixa, caixaFantasma, traduzirVideo);
     if (lugar.id === "top-row") { const dono = lugar.querySelector(":scope > #owner"); juntos.classList.add("radar-grandes"); if (dono) dono.after(juntos); else lugar.prepend(juntos); }
     else if (lugar.id === "title") { lugar.classList.add("radar-com-barra"); lugar.append(juntos); }
     else lugar.prepend(caixa, caixaFantasma);
@@ -1572,6 +2106,45 @@
 
   let numerosCanal = null;
   chrome.storage.local.get("numerosCanal").then(({ numerosCanal: n }) => { numerosCanal = n || null; numerosTopo(); });
+
+  // os números sem o Studio aberto: junta com os dados do ano que o Studio guardou por último
+  window.addEventListener("message", (e) => {
+    if (e.source !== window || !e.data || e.data.radarNumerosResposta !== 1) return;
+    numerosCanal = { ...(numerosCanal || {}), ...e.data.numeros };
+    chrome.storage.local.set({ numerosCanal });
+    numerosTopo();
+  });
+  function pedirNumeros() {
+    if (ligada("numeros-fora") && (!numerosCanal || Date.now() - numerosCanal.quando > 15 * 60 * 1000)) window.postMessage({ radarNumerosPedido: 1 }, location.origin);
+  }
+  setTimeout(pedirNumeros, 4000);
+  setInterval(pedirNumeros, 5 * 60 * 1000);
+
+  // a ponte: o Claude pede pelo MCP, esta aba lê e devolve. Sem nada pedido, é só uma pergunta curta ao Radar
+  async function atenderPonte() {
+    if (!ligada("ponte") || semConta || document.visibilityState === "prerender") return;
+    const r = await api("/api/ext/ponte");
+    const p = !r.erro && r.dados.pedido;
+    if (!p) return;
+    let dados = { erro: "Não consegui ler." };
+    try {
+      if (p.tipo === "busca") dados = { videos: await buscarNoYoutube(p.alvo, "US", "en", false) };
+      else {
+        const caminho = p.alvo.startsWith("UC") ? `channel/${p.alvo}` : p.alvo.replace(/^.*youtube\.com\//, "");
+        const json = RadarLer.jsonDoHtml(await (await fetch(`https://www.youtube.com/${caminho}/videos`)).text());
+        dados = { canal: json && RadarLer.canal(json), videos: json ? RadarLer.videos(json) : [] };
+      }
+    } catch { /* volta o erro acima */ }
+    api(`/api/ext/ponte/${p.id}`, "POST", dados);
+  }
+  setInterval(atenderPonte, 4000);
+
+  // a janelinha do ícone pergunta o que esta aba leu
+  chrome.runtime.onMessage.addListener((msg, _de, responder) => {
+    if (!msg || msg.tipo !== "contadores") return;
+    const lista = [...PAGINA.values()];
+    responder({ videos: lista.length, estouraram: lista.filter((v) => (v.nota || 0) >= 5).length, canais: new Set(lista.map((v) => v.canal_id).filter(Boolean)).size });
+  });
 
   function numerosTopo() {
     const lugar = document.querySelector("ytd-masthead #end");
@@ -1705,14 +2278,18 @@
         const linguas = N.teste.linguas.map((l) => l.lingua);
         return escolherLingua(linguas.includes(npLinguaTeste) ? npLinguaTeste : linguas.includes("português") ? "português" : linguas[0] || "português");
       }
+      // o erro daqui era calado e o pedido saía com o padrão (12 min a 150 ppm): o pedido 81 saiu com 8,5 min
+      N.avisoTamanho = "";
       const r = await api(`/api/producao/${encodeURIComponent(id)}`);
       N.cfg = r.erro ? null : r.dados;
+      if (!N.cfg) N.avisoTamanho = `Não consegui ler o canal (${erroDoRadar(r)}). Escolha o canal de novo antes de enviar.`;
       if (N.cfg) {
         N.lingua = N.cfg.lingua || N.lingua;
         N.padrao = N.cfg.projeto_roteiro_id ? String(N.cfg.projeto_roteiro_id) : "padrao";
         N.agente = N.padrao;
         const ritmo = await api(`/api/roteiros/ritmo?perfil=${encodeURIComponent(N.cfg.perfil || "")}&lingua=${encodeURIComponent(N.lingua)}`);
         N.ppm = (!ritmo.erro && ritmo.dados.ppm) || 150;
+        if (ritmo.erro) N.avisoTamanho = "Não li a velocidade da voz deste canal: a conta usa 150 palavras por minuto e o vídeo pode sair com outro tempo.";
         N.caracteres = Math.round((N.cfg.minutos || 12) * N.ppm * POR_PALAVRA / 10) * 10;
       }
       desenhar(); custo();
@@ -1775,6 +2352,7 @@
             chip("O Claude escreve", N.modo === "claude", () => { N.modo = "claude"; desenhar(); }), chip("Já tenho o roteiro", N.modo === "manual", () => { N.modo = "manual"; desenhar(); }))),
           ...(N.modo === "manual" ? [(() => { const t = h("textarea", { rows: "7", placeholder: "Cole aqui o roteiro inteiro (só o que vai ser narrado)" }); t.value = N.roteiro; t.oninput = () => { N.roteiro = t.value; }; return t; })()] : [
             h("div", { class: "radar-np-campo" }, h("span", {}, `Tamanho do roteiro: ${N.caracteres.toLocaleString("pt-BR")} caracteres ≈ ${Math.round(minutos())} min`),
+              N.avisoTamanho ? h("div", { class: "radar-erro" }, N.avisoTamanho) : null,
               h("div", { class: "radar-np-chips" }, (eTeste() ? MINUTOS_TESTE : MINUTOS_NP).map((m) => chip(`${m} min`, Math.round(minutos()) === m, () => { N.caracteres = Math.round(m * N.ppm * POR_PALAVRA / 10) * 10; desenhar(); custo(); })))),
             h("div", { class: "radar-np-duas" },
               campo("Nicho (opcional)", entrada(N.nicho, { placeholder: "Ex.: grandes marcas" }, (v) => { N.nicho = v; })),
@@ -1810,6 +2388,7 @@
         erro.textContent = "";
         if (!N.titulo.trim()) { erro.textContent = "Escreva o título do vídeo."; N.passo = 1; desenhar(); return false; }
         if (!N.canal) { erro.textContent = "Escolha o canal."; N.passo = 2; desenhar(); return false; }
+        if (N.modo !== "manual" && !eTeste() && !N.cfg) { erro.textContent = N.avisoTamanho || "Não consegui ler o canal. Escolha o canal de novo."; N.passo = 2; desenhar(); return false; }
         if (N.modo !== "manual" && !N.agente) { erro.textContent = "Escolha o agente do roteiro."; N.passo = 1; desenhar(); return false; }
         if (eTeste() && !N.perfil) { erro.textContent = "Escolha uma língua que tenha voz na fábrica."; N.passo = 1; desenhar(); return false; }
         if (N.modo === "manual" && N.roteiro.split(/\s+/).filter(Boolean).length < 30) { erro.textContent = "Cole o roteiro inteiro."; N.passo = 2; desenhar(); return false; }
@@ -1876,6 +2455,7 @@
   chrome.storage.onChanged.addListener((mudou) => {
     if (mudou.token) { semConta = !mudou.token.newValue; pagina(); }
     if (mudou.semShorts) semShorts(mudou.semShorts.newValue);
+    if (mudou.funcoesDesligadas) { aplicarDesligadas(mudou.funcoesDesligadas.newValue); pagina(); }
     if (mudou.numerosCanal) { numerosCanal = mudou.numerosCanal.newValue || null; numerosTopo(); }
     if (mudou.canalTreino || mudou.token) carregarTreino().then(() => varrer());
   });
@@ -1884,4 +2464,5 @@
     .observe(document.body, { childList: true, subtree: true });
   pagina(); varrer();
   carregarTreino().then(() => varrer());
+  setTimeout(avisoDosSalvos, 4000);
 })();

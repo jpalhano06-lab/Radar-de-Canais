@@ -118,3 +118,16 @@ def test_lingua_que_nao_existe_cai_no_ingles():
 
 def test_tipo_que_nao_existe_cai_no_geral():
     assert publicar.modelo_padrao("português", "inventado") == publicar.MODELOS["português"]["geral"]
+
+
+def test_acha_video_coreano_e_japones_pelo_nome_do_arquivo(tmp_path):
+    """2026-11-08: o título coreano virava "7" no normalizar e a extensão nunca achava o vídeo (descrição curta)."""
+    import json
+    from radar import publicar
+    for nome, titulo in (("7", "한국 자동차는 경쟁국보다 몇 년이나 앞서 있다 — 전 세계를 충격에 빠뜨린 자동차 7대!"),
+                         ("roteiro-7", "日本の新発明が銅を永久に置き換える可能性")):
+        (tmp_path / nome).mkdir()
+        (tmp_path / nome / "publicacao.json").write_text(json.dumps({"titulo": titulo}, ensure_ascii=False), encoding="utf-8")
+    assert publicar.achar(tmp_path, "한국 자동차는 경쟁국보다 몇 년이나 앞서 있다 – 전 세계를 충격에 빠뜨린 자동차 7대!.mp4") == "7"
+    assert publicar.achar(tmp_path, "日本の新発明が銅を永久に置き換える可能性.mp4") == "roteiro-7"
+    assert publicar.normalizar("Desextinção: Os Mamutes.mp4") == "desextincao os mamutes"

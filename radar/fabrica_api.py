@@ -174,6 +174,34 @@ IDIOMA = {"português": "pt", "inglês": "en", "espanhol": "es", "francês": "fr
           "romeno": "ro", "búlgaro": "bg", "croata": "hr"}
 
 
+def drive_status() -> dict:
+    return _pedir("GET", "/api/drive/status")
+
+
+def drive_conectar() -> dict:
+    return _pedir("GET", "/api/drive/conectar")
+
+
+def drive_desconectar() -> dict:
+    return _pedir("POST", "/api/drive/desconectar")
+
+
+def contas_youtube() -> dict:
+    return _pedir("GET", "/api/garimpo/contas")
+
+
+def conta_youtube_nova(nome: str, cookies: str) -> dict:
+    return _pedir("POST", "/api/garimpo/contas", {"nome": nome, "cookies": cookies})
+
+
+def conta_youtube_testar(nome: str) -> dict:
+    return _pedir("POST", f"/api/garimpo/contas/{nome}/testar", tempo=90)
+
+
+def conta_youtube_apagar(nome: str) -> dict:
+    return _pedir("DELETE", f"/api/garimpo/contas/{nome}")
+
+
 def chatgpt_estado() -> dict:
     """A conta ChatGPT logada no computador da fábrica, o plano e quanto já foi usado das janelas de limite. É a
     fábrica quem gera as imagens, então é lá que o login mora (pedido do usuário em 2026-11-01)."""

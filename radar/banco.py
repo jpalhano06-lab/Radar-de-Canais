@@ -152,6 +152,10 @@ CREATE TABLE IF NOT EXISTS depoimentos (
     quando TEXT NOT NULL,
     mostrar INTEGER NOT NULL DEFAULT 1
 );
+CREATE TABLE IF NOT EXISTS capas (
+    video_id TEXT PRIMARY KEY,
+    hash INTEGER
+);
 CREATE TABLE IF NOT EXISTS modelar (
     usuario_id INTEGER NOT NULL,
     video_id TEXT NOT NULL,
@@ -284,6 +288,15 @@ CREATE TABLE IF NOT EXISTS termos_auto (
     origem TEXT NOT NULL DEFAULT '',
     criado TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS maquinas (
+    id INTEGER PRIMARY KEY,
+    nome TEXT NOT NULL,
+    chave_hash TEXT NOT NULL UNIQUE,
+    criada TEXT NOT NULL,
+    visto_em TEXT NOT NULL DEFAULT '',
+    capacidades TEXT NOT NULL DEFAULT '{}',
+    ativa INTEGER NOT NULL DEFAULT 1
+);
 CREATE TABLE IF NOT EXISTS producoes_fila (
     id INTEGER PRIMARY KEY,
     usuario_id INTEGER NOT NULL,
@@ -317,8 +330,16 @@ CREATE TABLE IF NOT EXISTS traducoes (
 
 # colunas que entraram depois do primeiro banco: são criadas no banco que já existe
 COLUNAS_NOVAS = {
+    "videos": {"molde": "TEXT"},   # a estrutura do título (molde.py); NULL = ainda não preenchido, vazio = não tem molde
+    "modelar": {"canal_id": "TEXT NOT NULL DEFAULT ''"},   # para qual canal seu é esse vídeo da fila (a extensão pergunta)
+    # o vídeo feito em outra máquina (maquinas.py): quem está com ele, até quando, e a prova da entrega
+    "producoes_fila": {"maquina_id": "INTEGER", "lease": "TEXT NOT NULL DEFAULT ''", "lease_ate": "REAL NOT NULL DEFAULT 0",
+                       "eventos": "TEXT NOT NULL DEFAULT '[]'", "prova": "TEXT NOT NULL DEFAULT ''"},
     "canais": {"subnicho": "TEXT NOT NULL DEFAULT ''", "velocidade": "REAL", "ganho_7d": "INTEGER",
-               "anuncios": "INTEGER", "membros": "INTEGER"},   # monetização vista pela extensão (1, 0 ou sem saber)
+               "anuncios": "INTEGER", "membros": "INTEGER",   # monetização vista pela extensão (1, 0 ou sem saber)
+               # por onde o canal entrou, o que o dono cadastrou e a última repescagem (descoberta.py, 2026-11-07)
+               "origem": "TEXT NOT NULL DEFAULT ''", "keywords": "TEXT NOT NULL DEFAULT ''",
+               "topicos": "TEXT NOT NULL DEFAULT '[]'", "repescado": "TEXT NOT NULL DEFAULT ''"},
     # painel: a ordem e as abas escondidas do menu de cada pessoa. Fica fora de `prefs` porque salvar_prefs reescreve
     # aquele JSON inteiro a cada resposta das perguntas, e levaria o menu junto
     "usuarios": {"prefs": "TEXT NOT NULL DEFAULT '{}'", "painel": "TEXT NOT NULL DEFAULT '{}'"},
@@ -328,7 +349,10 @@ COLUNAS_NOVAS = {
     # claude_*, arquivos e sincronizado: o projeto do claude.ai ligado ao agente (claude_projetos.py)
     "projetos_roteiro": {"ideal_para": "TEXT NOT NULL DEFAULT ''", "tipo": "TEXT NOT NULL DEFAULT 'roteiro'",
                          "claude_uuid": "TEXT NOT NULL DEFAULT ''", "claude_nome": "TEXT NOT NULL DEFAULT ''",
-                         "arquivos": "TEXT NOT NULL DEFAULT ''", "sincronizado": "TEXT NOT NULL DEFAULT ''"},
+                         "arquivos": "TEXT NOT NULL DEFAULT ''", "sincronizado": "TEXT NOT NULL DEFAULT ''",
+                         "tema": "TEXT NOT NULL DEFAULT ''",  # o tema dos vídeos deste agente (fila.ESCOLHAS)
+                         # a parte de IA e de YouTube dos vídeos deste agente. Vazio é o padrão do canal
+                         "ia_pct": "INTEGER", "footage_real": "INTEGER"},
     "buscas_feitas": {"vezes": "INTEGER NOT NULL DEFAULT 0", "total": "INTEGER NOT NULL DEFAULT 0", "zeros": "INTEGER NOT NULL DEFAULT 0"},
 }
 
@@ -356,6 +380,7 @@ def _migrar(c: sqlite3.Connection) -> None:
             if nome not in existentes:
                 c.execute(f"ALTER TABLE {tabela} ADD COLUMN {nome} {tipo}")
     c.execute("CREATE INDEX IF NOT EXISTS canais_subnicho ON canais(subnicho)")
+    c.execute("CREATE INDEX IF NOT EXISTS videos_molde ON videos(molde)")
     feitos = {l[0] for l in c.execute("SELECT chave FROM ajustes WHERE chave LIKE 'conserto:%'")}
     for nome, sql in CONSERTOS.items():
         if f"conserto:{nome}" not in feitos:
@@ -441,8 +466,11 @@ def varios(sql: str, linhas: list[tuple]) -> None:
 def gravar(tabela: str, chave: str, dados: dict) -> None:
     """INSERT ou UPDATE pelos campos dados (os outros ficam como estão)."""
     campos = list(dados)
+    # só a chave, sem mais nenhum campo (o canal que a página mostrou sem nome nem foto): o SET vazio era SQL pela metade,
+    # e o pedido inteiro caía com "incomplete input"
+    resto = ", ".join(f"{c}=excluded.{c}" for c in campos if c != chave)
     sql = (f"INSERT INTO {tabela} ({', '.join(campos)}) VALUES ({', '.join('?' * len(campos))}) "
-           f"ON CONFLICT({chave}) DO UPDATE SET " + ", ".join(f"{c}=excluded.{c}" for c in campos if c != chave))
+           f"ON CONFLICT({chave}) DO " + (f"UPDATE SET {resto}" if resto else "NOTHING"))
     executar(sql, *[json.dumps(v) if isinstance(v, (list, dict)) else v for v in dados.values()])
 
 

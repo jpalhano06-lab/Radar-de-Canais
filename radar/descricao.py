@@ -26,9 +26,12 @@ INSTRUCOES = """Você escreve o que acompanha um vídeo de canal dark do YouTube
 descrição, as tags da busca e as hashtags. Você recebe o título e o roteiro inteiro do vídeo.
 
 Responda SÓ com um JSON, sem nada antes nem depois, sem markdown e sem cercas de código, neste formato:
-{"sinopse": "...", "tags": ["...", "..."], "hashtags": ["#...", "#..."]}
+{"sinopse": "...", "tags": ["...", "..."], "hashtags": ["#...", "#..."], "titulo_pt": "...", "sinopse_pt": "..."}
 
-sinopse: de 2 a 4 frases dizendo o que a pessoa vai ver, na mesma língua do roteiro, em tom direto. Nada de "neste
+sinopse: dois parágrafos separados por uma linha em branco, de 3 a 4 frases cada, dizendo o que a pessoa vai ver, na
+mesma língua do roteiro, em tom direto, com pelo menos o número de caracteres que o pedido disser. O primeiro
+parágrafo prende (a pergunta ou o fato mais forte do vídeo); o segundo cita, pelo nome, os assuntos que o vídeo
+percorre. Cite os assuntos do vídeo pelo nome. Nada de "neste
 vídeo você vai descobrir", nada de emoji, nada de link, nada de pedir inscrição (o canal já tem um rodapé fixo para
 isso) e nada de entregar o fim. Só o que o roteiro de fato diz: não invente fato, número, data nem fala de pessoa
 real.
@@ -36,7 +39,33 @@ real.
 tags: de 12 a 20 palavras que as pessoas digitam na busca para achar um vídeo desse assunto, na mesma língua do
 roteiro, das mais buscadas para as mais específicas, sem repetir a mesma ideia, sem hashtag e sem número na frente.
 
-hashtags: de 3 a 5, começando com #, sem espaço dentro, as mais ligadas ao assunto."""
+hashtags: de 3 a 5, começando com #, sem espaço dentro, as mais ligadas ao assunto.
+
+titulo_pt e sinopse_pt: a tradução fiel para o português do Brasil do título e da sinopse, só para quem publica
+entender o que vai no vídeo (não vão para o YouTube). Se a língua do vídeo já for português, repita os mesmos."""
+
+
+# Medido em 2026-11-06 nas descrições já escritas: "de 2 a 4 frases" dava 550 caracteres em português, 255 em coreano e
+# 155 em japonês, porque essas línguas dizem o mesmo com bem menos caracteres. O tamanho agora é pedido em cada língua
+# Subido em 2026-11-07 (pedido do usuário: "a descrição de vídeos da Coreia ainda está indo muito curta e bem
+# ruim"): os coreanos saíam com uns 270 caracteres e sem rodapé nenhum
+MINIMO_DA_SINOPSE = 800
+MINIMO_POR_ESCRITA = ((re.compile(r"[\uac00-\ud7a3]"), 650), (re.compile(r"[\u3040-\u30ff\u4e00-\u9fff]"), 600))
+
+ALONGAR = """A sinopse abaixo ficou com {atual} caracteres e precisa de pelo menos {minimo}. Reescreva mais completa, na mesma
+língua, citando mais assuntos do roteiro, com as mesmas regras e sem entregar o fim. Responda só com o mesmo JSON.
+
+Sinopse:
+{sinopse}"""
+
+
+def minimo_da_sinopse(texto: str) -> int:
+    """Quantos caracteres a sinopse precisa ter, pela escrita do roteiro."""
+    amostra = (texto or "")[:2000]
+    for escrita, minimo in MINIMO_POR_ESCRITA:
+        if len(escrita.findall(amostra)) > len(amostra) * 0.2:
+            return minimo
+    return MINIMO_DA_SINOPSE
 
 
 # ---------------------------------------------------------------- o agente de descrição
@@ -92,14 +121,36 @@ def escrever(titulo: str, roteiro: str, lingua: str = "", instrucoes: str = "") 
     texto = (roteiro or "").strip()
     if len(texto) > 24000:
         texto = texto[:16000] + "\n\n[…]\n\n" + texto[-8000:]
-    pedido += f"\nRoteiro do vídeo:\n{texto}\n\nEscreva a sinopse, as tags e as hashtags."
+    minimo = minimo_da_sinopse(texto)
+    pedido += (f"\nRoteiro do vídeo:\n{texto}\n\nEscreva a sinopse (pelo menos {minimo} caracteres), as tags e as hashtags.")
     dados = _json_do_claude(roteiro_claude._claude(sistema, pedido))
-    sinopse = " ".join(str(dados.get("sinopse") or "").split())[:1500]
+    sinopse = _paragrafos(dados.get("sinopse"))
     if not sinopse:
         raise RuntimeError("O Claude não devolveu nenhuma sinopse.")
+    if len(sinopse) < minimo:
+        # uma volta só, e nunca fica pior: a curta ainda é melhor que descrição nenhuma
+        try:
+            nova = _json_do_claude(roteiro_claude._claude(sistema, f"{pedido}\n\n" + ALONGAR.format(
+                atual=len(sinopse), minimo=minimo, sinopse=sinopse)))
+            nova_sinopse = _paragrafos(nova.get("sinopse"))
+            if len(nova_sinopse) > len(sinopse):
+                sinopse = nova_sinopse
+                dados["sinopse_pt"] = nova.get("sinopse_pt") or dados.get("sinopse_pt")
+        except (RuntimeError, ValueError):
+            pass
     tags = publicar.tags_que_cabem([t for t in (dados.get("tags") or []) if 2 <= len(str(t).strip()) <= 60])
     hashtags = [h for h in (_hashtag(x) for x in (dados.get("hashtags") or [])) if h][:5]
-    return {"sinopse": sinopse, "tags": tags, "hashtags": hashtags}
+    saida = {"sinopse": sinopse, "tags": tags, "hashtags": hashtags}
+    if "portug" not in (lingua or "").lower() and (dados.get("titulo_pt") or dados.get("sinopse_pt")):
+        saida["traducao"] = {"titulo": " ".join(str(dados.get("titulo_pt") or "").split())[:200],
+                             "sinopse": _paragrafos(dados.get("sinopse_pt"))}
+    return saida
+
+
+def _paragrafos(texto) -> str:
+    """Os parágrafos da sinopse ficam (o Studio mostra a linha em branco); dentro de cada um, os espaços se arrumam."""
+    partes = [" ".join(p.split()) for p in re.split(r"\n\s*\n", str(texto or "")) if p.strip()]
+    return "\n\n".join(partes)[:2000]
 
 
 def gerar(usuario_id: int, pasta: Path, projeto_id: int | None = None) -> dict:
@@ -126,7 +177,7 @@ def salvar(pasta: Path, sinopse: str = "", tags: list | None = None, hashtags: l
     """A correção da pessoa antes de mandar para a fábrica."""
     dados = ler(pasta)
     if sinopse.strip():
-        dados["sinopse"] = " ".join(sinopse.split())[:1500]
+        dados["sinopse"] = _paragrafos(sinopse)
     if tags is not None:
         dados["tags"] = publicar.tags_que_cabem([str(t).strip() for t in tags if str(t).strip()])
     if hashtags is not None:
@@ -165,6 +216,7 @@ def levar(pasta: Path, destino: Path, titulo: str = "", perfil: str = "") -> boo
         rodape = ""
     kit = {"titulo": titulo or "", "sinopse": dados["sinopse"], "descricao": montar(dados, rodape),
            "tags": dados.get("tags") or [], "hashtags": dados.get("hashtags") or [],
+           "traducao": dados.get("traducao") or {},
            "sintetico": True,        # todo vídeo da fábrica é feito com IA
            "origem": "radar", "criado": dados.get("criado", ""), "projeto": dados.get("projeto", "")}
     try:

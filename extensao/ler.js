@@ -134,7 +134,9 @@
       const inscr = texto(cab.subscriberCountText) || linhas.find((s) => /inscrit|subscri|suscript/i.test(s)) || "";
       const qtos = texto(cab.videosCountText) || linhas.find((s) => /v[ií]deos?\b/i.test(s) && /\d/.test(s)) || "";
       const handle = (meta.vanityChannelUrl || "").split("/").pop() || "";
-      return { id: meta.externalId, titulo: meta.title || "", foto: ((meta.avatar || {}).thumbnails || []).slice(-1)[0]?.url || "",
+      // as palavras-chave do canal: separadas por espaço, com aspas em volta das que têm mais de uma palavra
+      const tags = (String(meta.keywords || "").match(/"[^"]+"|\S+/g) || []).map((t) => t.replace(/^"|"$/g, ""));
+      return { id: meta.externalId, tags, titulo: meta.title || "", foto: ((meta.avatar || {}).thumbnails || []).slice(-1)[0]?.url || "",
         handle: handle.startsWith("@") ? handle : "", inscritos: numero(inscr), videos_total: numero(qtos),
         ...(temMembros(cab) ? { membros: true } : {}) };
     }

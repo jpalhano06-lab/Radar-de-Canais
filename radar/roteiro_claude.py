@@ -57,6 +57,19 @@ def transcricao(video_id: str) -> tuple[str, str]:
     return texto, escolhida.language_code
 
 
+def fala_com_tempos(video_id: str) -> list[dict]:
+    """A fala do vídeo em trechos com o segundo em que cada um começa."""
+    from youtube_transcript_api import YouTubeTranscriptApi
+    try:
+        disponiveis = list(YouTubeTranscriptApi().list(video_id))
+    except Exception as erro:
+        raise RuntimeError(f"Não consegui ler a legenda desse vídeo. Detalhe: {str(erro)[:120]}")
+    if not disponiveis:
+        raise RuntimeError("Esse vídeo não tem legenda, nem automática.")
+    escolhida = sorted(disponiveis, key=lambda t: t.is_generated)[0]
+    return [{"seg": round(s.start, 1), "texto": s.text} for s in escolhida.fetch()]
+
+
 def tem_legenda(video_id: str) -> bool:
     """Se dá para ler a legenda desse vídeo. A Nova produção da extensão pergunta isso na confirmação, para a pessoa
     saber antes de criar que o roteiro vai sair só do título (pedido do usuário em 2026-10-28)."""
@@ -109,6 +122,20 @@ Regras:
 - Só fatos de que você tem certeza. Nada inventado sobre pessoas reais. Número, data e nome só se estiverem certos.
 - Termine com um fechamento curto.
 - Respeite o tamanho pedido (palavras ou caracteres), porque ele vira o tempo do vídeo."""
+
+# Vem da comparação com os 16 roteiros do Robô do Dotti (2026-11-05). No primeiro minuto, os nossos falavam "eu" 4 vezes
+# mais (2,59 contra 0,65 por 100 palavras), se apresentavam 5 vezes mais e tinham 5 vezes mais ressalvas: o asdas abria
+# com "I can't stand behind that one, so I'm not going to lean on it". Os deles abrem no fato e deixam uma promessa no ar.
+# Vai depois das instruções do canal, que mandam o apresentador se apresentar logo no começo
+ABERTURA = """
+
+Sobre o primeiro minuto do vídeo, por cima das instruções do canal:
+- Comece pelo fato: um número, uma cena ou uma decisão concreta, com o que quem assiste ganha ou perde com isso.
+- Antes dos 30 segundos, prometa o ponto mais importante do vídeo e guarde a resposta para mais tarde.
+- Nada de apresentação no primeiro minuto: sem nome, idade ou ofício do narrador, sem "neste vídeo", sem pedir inscrição.
+  Se o canal tem apresentador, ele se apresenta depois, numa frase só, quando já tiver entregado o primeiro ponto.
+- No primeiro minuto o assunto é o fato e quem assiste, não o narrador: quase nenhum "eu".
+- Em nenhum ponto do vídeo avise o que você não vai afirmar nem duvide dos próprios números. Sem certeza, deixe de fora."""
 
 # vai no FIM do sistema, depois das instruções do canal: é a última palavra, e vale por cima delas
 SEM_PERGUNTA = """
@@ -272,6 +299,42 @@ def traduzir_titulo(titulo: str, lingua: str) -> str:
     return traduzido
 
 
+def titulo_do_video(video_id: str) -> str:
+    """O título do vídeo de referência, pelo oEmbed do YouTube: sem chave e sem gastar a cota."""
+    r = httpx.get("https://www.youtube.com/oembed", params={"url": f"https://www.youtube.com/watch?v={video_id}", "format": "json"}, timeout=8)
+    r.raise_for_status()
+    return str(r.json().get("title") or "")
+
+
+def por_que_estourou(video_id: str, titulo: str, base: str, aviso=lambda _t: None) -> dict:
+    """A mesma leitura do botão "Por que este vídeo estourou" da extensão, e guardada junto com ela: quem já apertou o
+    botão não gasta outra chamada. Falhou, o roteiro sai só com a transcrição, como antes."""
+    from . import lente_ia  # lente_ia importa este arquivo
+
+    aviso("Lendo por que o vídeo de referência estourou…")
+    try:
+        try:
+            titulo = titulo_do_video(video_id) or titulo
+        except (httpx.HTTPError, ValueError):
+            pass  # sem o título da referência, vale o que foi pedido
+        return lente_ia.por_que(video_id, titulo, base)
+    except Exception as erro:  # noqa: BLE001
+        aviso(f"Sem a leitura do que fez o vídeo estourar, seguindo com a transcrição: {str(erro)[:120]}")
+        return {}
+
+
+def texto_do_por_que(leitura: dict) -> str:
+    """Pedido do usuário em 2026-11-06: além da transcrição, o roteiro leva em conta por que a referência estourou."""
+    campos = (("Por que clicaram", "resumo"), ("Quebra de padrão", "quebra"), ("Prova específica", "prova"),
+              ("Pergunta que fica aberta", "loop"), ("Os primeiros segundos", "comeco"))
+    linhas = [f"- {rotulo}: {leitura[chave]}" for rotulo, chave in campos if str(leitura.get(chave) or "").strip()]
+    if not linhas:
+        return ""
+    return ("\nPor que o vídeo de referência estourou (leitura do Radar). Use estes mecanismos no roteiro, principalmente no "
+            "começo: a mesma quebra de padrão, um dado específico que dê a mesma credibilidade e uma pergunta aberta que só "
+            "o fim fecha. Use só dados que estejam na transcrição, e nunca copie as frases:\n" + "\n".join(linhas) + "\n")
+
+
 def gerar(usuario_id: int, titulo: str, link: str, minutos: int, lingua: str, projeto_id: int | None,
           observacoes: str, perfil: str = "", canal: dict | None = None, projeto_descricao_id: int | None = None,
           aviso=lambda _t: None) -> dict:
@@ -295,6 +358,9 @@ def gerar(usuario_id: int, titulo: str, link: str, minutos: int, lingua: str, pr
         aviso("Copiando a thumbnail…")
         thumb = copiar_thumbnail(video_id, pasta / "thumbnail.jpg")
     original = titulo
+    leitura = por_que_estourou(video_id, titulo, base, aviso) if base else {}
+    if leitura:
+        (pasta / "por_que.json").write_text(json.dumps(leitura, ensure_ascii=False, indent=1), encoding="utf-8")
     if lingua:
         aviso(f"Traduzindo o título para {lingua}…")
         titulo = traduzir_titulo(titulo, lingua)
@@ -317,15 +383,23 @@ def gerar(usuario_id: int, titulo: str, link: str, minutos: int, lingua: str, pr
               f"({minutos} minutos narrados)\n")
     if observacoes:
         pedido += f"Observações de quem pediu: {observacoes}\n"
+    # o que os vídeos anteriores deste canal ensinaram (retencao.py). Sem Studio conectado, fica vazio
+    from . import retencao
+    aviso("Vendo o que segurou o público neste canal…")
+    licao = retencao.licoes(usuario_id, (canal or {}).get("id", ""))
+    if licao:
+        (pasta / "retencao.json").write_text(json.dumps(licao, ensure_ascii=False, indent=1), encoding="utf-8")
+    pedido += retencao.texto(licao)
     if base:
         # a transcrição muito longa é cortada: o começo e a estrutura importam mais
         pedido += f"\nTranscrição do vídeo de referência (língua: {lingua_base}):\n{base[:60000]}\n"
+        pedido += texto_do_por_que(leitura)
     elif base_erro:
         pedido += ("\nO vídeo de referência existe, mas não deu para ler a legenda dele: escreva a partir do título, "
                    "das observações e do estilo do canal, sem nenhuma base de transcrição.\n")
     else:
         pedido += "\nSem vídeo de referência: escreva a partir do título.\n"
-    sistema += SEM_PERGUNTA
+    sistema += ABERTURA + SEM_PERGUNTA
     aviso(f"O Claude está escrevendo (cerca de {_tamanho(palavras, lingua)})…")
     inicio = time.time()
     roteiro, rascunhos = _primeiro_rascunho(sistema, pedido, aviso)
@@ -335,7 +409,7 @@ def gerar(usuario_id: int, titulo: str, link: str, minutos: int, lingua: str, pr
             "projeto": projeto["nome"] if projeto else "", "palavras": contar_palavras(roteiro),
             "palavras_base": contar_palavras(base), "base_erro": base_erro[:300], "thumbnail": thumb,
             "segundos": round(time.time() - inicio), "criado": banco.agora(), "usuario_id": usuario_id, "ritmo": ritmo,
-            "conferencia": conferencia, "canal": canal or {}, "rascunhos": rascunhos}
+            "conferencia": conferencia, "canal": canal or {}, "rascunhos": rascunhos, "por_que": bool(leitura), "retencao": bool(licao)}
     (pasta / "roteiro.json").write_text(json.dumps(meta, ensure_ascii=False, indent=1), encoding="utf-8")
     _escrever_descricao(usuario_id, pasta, projeto_descricao_id, aviso)
     return _publico(pasta)
@@ -658,9 +732,72 @@ def conferir_roteiro(texto: str, meta: dict) -> str:
     return ""
 
 
-def enviar(usuario_id: int, nome: str, perfil: str) -> dict:
+LIMITE_DO_NOME = 150    # o nome da entrega entra em caminho de arquivo do Windows: os dois títulos juntos cabem nisso
+
+
+def titulo_de_entrega(meta: dict) -> str:
+    """O nome com que o vídeo é entregue. Pedido do usuário em 2026-11-04: nos canais em outro alfabeto (japonês,
+    coreano) a pasta entregue só tinha o título traduzido, e na lista de Downloads não dava para saber qual vídeo
+    era qual. Agora o título traduzido vem com o título original entre parênteses, quando os dois são diferentes."""
+    titulo = str(meta.get("titulo") or "").strip()
+    original = str(meta.get("titulo_original") or "").strip()
+    if not original or original == titulo:
+        return titulo
+    junto = f"{titulo} ({original})"
+    return junto if len(junto) <= LIMITE_DO_NOME else junto[:LIMITE_DO_NOME - 1].rstrip() + ")"
+
+
+# o tema da Nova produção vale para os textos na tela (animacoes.TEMAS) e para as cenas animadas (animation_ai.TEMAS),
+# que têm os nomes deles
+TEMA_DAS_CENAS_ANIMADAS = {"noticiario": "editorial", "dossie": "misterio", "cinema": "cinema", "jornal": "editorial",
+                           "caderno": "apple", "planilha": "blueprint", "hacker": "neon", "terror": "noite", "colagem": "riso",
+                           "cinetico": "impacto", "arquivo": "misterio", "reaberto": "noite"}
+RITMOS = {"4-6": (4.0, 6.0), "5-8": (5.0, 8.0)}
+
+
+def ajustes_do_video(opcoes: dict | None) -> tuple[dict, dict]:
+    """(config_override, perfil_override) do pedido: o que muda só neste vídeo, sem tocar no perfil do canal.
+    A folga de 5 pontos é o teto da cota da fábrica."""
+    o = opcoes or {}
+    config, perfil = {}, {}
+    if o.get("footage_real"):
+        alvo = int(o["footage_real"]) / 100
+        config["garimpo"] = {"ligado": True, "alvo": alvo, "teto": round(alvo + 0.05, 2)}
+    animacoes = {}
+    if o.get("tema"):
+        animacoes["estilo"] = {"tema": o["tema"]}
+        config["animation_ai"] = {"tema": TEMA_DAS_CENAS_ANIMADAS[o["tema"]]}
+    if o.get("som_textos"):
+        animacoes["som"] = True
+    if animacoes:
+        config["animacoes"] = animacoes
+    if o.get("ritmo") in RITMOS:
+        minimo, maximo = RITMOS[o["ritmo"]]
+        config["cenas"] = {"segundos_minimo": minimo, "segundos_maximo": maximo}
+    if o.get("ia") == "sem" or o.get("ia_pct") == 0:
+        config["ia"] = {"ativa": False}
+    elif o.get("ia_pct"):
+        # a mesma parte como alvo e como teto: a fábrica sobe até ela e não passa dela
+        config["ia"] = {"fracao": int(o["ia_pct"]) / 100, "teto": int(o["ia_pct"]) / 100}
+    if o.get("video_ia"):
+        config["video_ia"] = {"fracao": int(o["video_ia"]) / 100}
+    if o.get("acervo"):
+        config["midia"] = {"acervo": o["acervo"]}
+    if o.get("musica") == "sem":
+        config["trilha"] = {"ativo": False}
+        perfil["musica"] = None
+    if o.get("avatar") == "sem":
+        perfil["avatar"] = {"ativo": False}
+    for campo, chave in (("edicao", "visual"), ("transicao", "transicao"), ("camada", "camada")):
+        if o.get(campo):
+            perfil[chave] = o[campo]
+    return config, perfil
+
+
+def enviar(usuario_id: int, nome: str, perfil: str, opcoes: dict | None = None) -> dict:
     """Cria o projeto na fábrica com o roteiro e o título (`fabrica novo`, grátis: narrar e gerar imagens continuam
-    pedindo confirmação lá). O título vai em titulo_entrega, que a fábrica usa no nome do vídeo entregue."""
+    pedindo confirmação lá). O título vai em titulo_entrega (o traduzido com o original entre parênteses), que a
+    fábrica usa no nome do vídeo entregue."""
     if not fabrica_conectada():
         raise RuntimeError("A fábrica não está nesta pasta. O Radar precisa estar dentro da pasta da fábrica.")
     if perfil not in perfis_da_fabrica():
@@ -684,7 +821,12 @@ def enviar(usuario_id: int, nome: str, perfil: str) -> dict:
     if not (destino / "projeto.json").exists():
         raise RuntimeError("A fábrica não criou o projeto: " + (r.stderr or r.stdout or "")[-400:])
     dados = json.loads((destino / "projeto.json").read_text(encoding="utf-8"))
-    dados["titulo_entrega"] = meta["titulo"]
+    dados["titulo_entrega"] = titulo_de_entrega(meta)
+    config, do_perfil = ajustes_do_video(opcoes)
+    if config:
+        dados["config_override"] = {**(dados.get("config_override") or {}), **config}
+    if do_perfil:
+        dados["perfil_override"] = {**(dados.get("perfil_override") or {}), **do_perfil}
     (destino / "projeto.json").write_text(json.dumps(dados, ensure_ascii=False, indent=2), encoding="utf-8")
     if (pasta / "thumbnail.jpg").exists():
         shutil.copy2(pasta / "thumbnail.jpg", destino / "thumbnail_referencia.jpg")
