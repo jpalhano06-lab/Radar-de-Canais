@@ -134,6 +134,60 @@
     if (d && !tabela.querySelector(".radar-eng-linha")) tabela.append(el("div", { class: "radar-eng-linha" }, el("span", {}, "Engajadas"), el("b", {}, num(d.engajadas))));
   }
 
+  // o painel novo de estatísticas (analytics/hub_overview, 2026-11-09): os cartões viraram yt-card-view-model e o do
+  // último vídeo ("Desempenho recente do vídeo") não tem link nem imagem com o id, só o título. O id sai da lista de
+  // vídeos do canal que o studio.js pede ao Studio (radarVideos), e o cartão é o que cita UM vídeo só pelo título
+  // ("Conteúdo principal" cita vários e fica de fora)
+  const canalDaUrl = () => (location.pathname.match(/\/channel\/(UC[\w-]{22})/) || [])[1] || "";
+  let videosDoCanal = { canal: "", quando: 0, lista: [] }, lendoVideos = false;
+  const pedirVideos = (canal) => new Promise((ok) => {
+    const pedido = `lente-${++pedidos}`;     // o horario.js usa números: o texto não confunde as respostas
+    const ouvir = (e) => {
+      if (e.source !== window || !e.data?.radarVideosResposta || e.data.pedido !== pedido) return;
+      window.removeEventListener("message", ouvir);
+      ok(e.data.videos || []);
+    };
+    window.addEventListener("message", ouvir);
+    window.postMessage({ radarVideos: 1, pedido, canal }, location.origin);
+    setTimeout(() => { window.removeEventListener("message", ouvir); ok([]); }, 15000);
+  });
+
+  function videoDoCartao(texto, lista) {
+    const linhas = new Set(String(texto || "").split("\n").map((s) => s.trim()).filter(Boolean));
+    const citados = lista.filter((v) => v.titulo && linhas.has(v.titulo.trim()));
+    return citados.length === 1 ? citados[0] : null;
+  }
+
+  async function engajadasNoPainelNovo() {
+    if (!ligada("engajadas")) return;
+    const canal = canalDaUrl();
+    // uma miniatura só: "Assistidos agora mesmo" e "Conteúdo principal" têm uma por vídeo da lista
+    const cartoes = $$("yt-card-view-model").filter((c) => c.querySelector("yt-list-item-view-model") && c.querySelectorAll("img").length === 1
+      && !c.querySelector(".radar-eng-linha"));
+    if (!canal || !cartoes.length || lendoEngajadas || lendoVideos) return;
+    if (videosDoCanal.canal !== canal || Date.now() - videosDoCanal.quando > 5 * 60e3) {
+      lendoVideos = true;
+      videosDoCanal = { canal, quando: Date.now(), lista: await pedirVideos(canal) };
+      lendoVideos = false;
+    }
+    for (const cartao of cartoes) {
+      const v = videoDoCartao(cartao.innerText, videosDoCanal.lista);
+      if (!v) continue;
+      if (!ENGAJADAS.has(v.id)) {
+        lendoEngajadas = true;
+        const dados = await engajadasDe([v.id]);
+        ENGAJADAS.set(v.id, dados ? dados[v.id] || null : null);
+        lendoEngajadas = false;
+      }
+      const d = ENGAJADAS.get(v.id);
+      if (!d || cartao.querySelector(".radar-eng-linha")) continue;
+      // depois da última linha de métrica: a primeira linha da lista é o próprio vídeo (miniatura e título)
+      const linhas = cartao.querySelectorAll("yt-list-item-view-model");
+      linhas[linhas.length - 1].after(el("div", { class: "radar-eng-linha radar-eng-hub", title: "Visualizações engajadas · Radar" }, el("span", {}, "Engajadas"),
+        el("b", {}, `${num(d.engajadas)}${d.views ? ` (${Math.round(d.engajadas / d.views * 100)}%)` : ""}`)));
+    }
+  }
+
   // ------------------------------------------------------------ foto do cartão: um clique, pronta para colar
 
   async function comoImagem(no) {
@@ -165,7 +219,8 @@
 
   function botoesDeFoto() {
     if (!ligada("foto-cartao")) return $$(".radar-foto-botao").forEach((x) => x.remove());
-    for (const cartao of $$("ytcd-card, yta-key-metric-card, yta-line-chart-base-card, ytcp-analytics-card")) {
+    // yt-card-view-model: os cartões do painel novo de estatísticas (analytics/hub_overview, 2026-11-09)
+    for (const cartao of $$("ytcd-card, yta-key-metric-card, yta-line-chart-base-card, ytcp-analytics-card, yt-card-view-model")) {
       if (cartao.querySelector(":scope > .radar-foto-botao")) continue;
       if (getComputedStyle(cartao).position === "static") cartao.style.position = "relative";
       cartao.append(el("button", { class: "radar-foto-botao", type: "button", title: "Copiar a foto deste cartão (cola com Ctrl+V)", onclick: async (e) => {
@@ -274,6 +329,6 @@
 
   // ------------------------------------------------------------ a olhada de cada segundo
 
-  const PECAS = [colunaEngajadas, linhaEngajadas, botoesDeFoto, perdeGente, notaDoTitulo, botaoCapitulos];
+  const PECAS = [colunaEngajadas, linhaEngajadas, engajadasNoPainelNovo, botoesDeFoto, perdeGente, notaDoTitulo, botaoCapitulos];
   setInterval(() => PECAS.forEach((p) => { try { Promise.resolve(p()).catch(() => {}); } catch { /* peça que não achou a tela */ } }), 1000);
 })();

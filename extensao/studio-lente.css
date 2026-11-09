@@ -15,3 +15,6 @@
 .radar-perde button, .radar-nota-titulo button, .radar-capitulos button { padding: 4px 10px; border: 1px solid rgba(127,127,127,.4); border-radius: 8px; background: none; color: inherit; font: inherit; cursor: pointer; }
 .radar-capitulos-lista { display: grid; gap: 2px; margin-top: 6px; }
 .radar-eng-linha { display: flex; justify-content: space-between; padding: 6px 0; font: 13px Roboto, Arial, sans-serif; color: var(--ytcp-text-primary, inherit); }
+/* a linha de engajadas no cartão do último vídeo do painel novo (hub_overview): do tamanho das linhas do Studio */
+.radar-eng-linha.radar-eng-hub { min-height: 48px; align-items: center; padding: 0; font: 16px/22px Roboto, Arial, sans-serif; }
+.radar-eng-linha.radar-eng-hub b { font-weight: 500; }
