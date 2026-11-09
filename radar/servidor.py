@@ -2473,6 +2473,54 @@ async def acompanhar_lista(u: dict = Depends(usuario)):
         1 for p in prod["prontos"] if (p.get("criado") or "")[:10] == datetime.now(banco.BRASILIA).date().isoformat())}
 
 
+def _progresso(usuario_id: int) -> dict:
+    """Os vídeos em andamento, curtos: o título, o canal, a porcentagem e a etapa. É o que a barra do canto do Radar,
+    o ícone da extensão e o aviso de progresso no celular mostram (pedido do usuário em 2026-11-09).
+
+    Só os pedidos da fila em produção, cada um pelo /status da fábrica (centésimos de segundo). A lista inteira da
+    fábrica (/api/projetos, a do Acompanhar) levou 34 s medidos em 2026-11-09: a barra não pode esperar isso."""
+    # o erro entra só se for recente: um pedido parado há dias ficaria para sempre na barra como "parou"
+    recente = (datetime.now(timezone.utc) - timedelta(days=2)).isoformat()
+    linhas = banco.todos("SELECT id, estado, projeto, pedido FROM producoes_fila WHERE usuario_id=? AND (estado='produzindo' "
+                         "OR (estado='erro' AND atualizado>=?)) AND projeto IS NOT NULL AND projeto != '' ORDER BY ordem",
+                         usuario_id, recente)
+    na_fila = banco.um("SELECT COUNT(*) AS n FROM producoes_fila WHERE usuario_id=? AND estado IN ('na_fila', 'escrevendo', "
+                       "'enviando')", usuario_id)["n"]
+    videos, ligada = [], True
+    for linha in linhas:
+        try:
+            st = fabrica_api.status(linha["projeto"])
+        except fabrica_api.SemFabrica:
+            ligada = False
+            break
+        except Exception:  # noqa: BLE001 (um projeto que a fábrica não acha não derruba a barra dos outros)
+            continue
+        parado = bool(st.get("precisa_voce") or st.get("erro") or st.get("status") == "erro" or linha["estado"] == "erro")
+        try:
+            pedido = json.loads(linha["pedido"] or "{}")
+        except ValueError:
+            pedido = {}
+        canal = ""
+        if pedido.get("canal_id"):
+            c = banco.um("SELECT titulo FROM canais WHERE id=?", pedido["canal_id"])
+            canal = (c["titulo"] if c else "") or ""
+        videos.append({"id": linha["id"], "projeto": linha["projeto"], "titulo": pedido.get("titulo") or linha["projeto"],
+                       "canal": canal, "estado": "precisa_voce" if parado else "produzindo",
+                       "pct": max(0, min(100, int(round(float(st.get("progresso_pct") or 0))))),
+                       "mensagem": " ".join(str(st.get("erro") or st.get("mensagem") or "").split())[:160]})
+    return {"videos": videos, "na_fila": na_fila, "fabrica_ligada": ligada}
+
+
+@app.get("/api/progresso")
+async def progresso(u: dict = Depends(usuario)):
+    return await run_in_threadpool(_progresso, u["id"])
+
+
+@app.get("/api/ext/progresso")
+async def ext_progresso(u: dict = Depends(exigir("extensao"))):
+    return await run_in_threadpool(_progresso, u["id"])
+
+
 @app.get("/api/acompanhar/{nome}")
 async def acompanhar_video(nome: str, u: dict = Depends(usuario)):
     """O vídeo escolhido: o andamento ao vivo e as etapas com o tempo de cada uma."""

@@ -2136,3 +2136,19 @@ input, select, textarea, .selects select, .selects .limpar { border-radius: 8px;
 .acn-parada { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .acn-parada small { display: block; margin-top: 3px; opacity: .85; }
 .acn-parada .botao { flex: none; }
+/* a barra do canto: o andamento dos vídeos em produção em qualquer tela (pedido do usuário em 2026-11-09) */
+#progresso-canto { position: fixed; right: 16px; bottom: 16px; z-index: 900; width: 300px; max-width: calc(100vw - 32px);
+  max-height: 50vh; overflow: auto; padding: 10px 12px; border-radius: 12px; background: var(--fundo-2, #151820);
+  border: 1px solid var(--borda, rgba(127,127,127,.3)); box-shadow: 0 8px 24px rgba(0,0,0,.35); font-size: 12px; }
+#progresso-canto header { display: flex; align-items: center; gap: 8px; }
+#progresso-canto header span { margin-left: auto; font-weight: 600; }
+#progresso-canto header button { width: 22px; height: 22px; padding: 0; border: 0; border-radius: 6px; background: rgba(127,127,127,.2); color: inherit; cursor: pointer; }
+#progresso-canto.recolhida { width: auto; }
+#progresso-canto .pc-item { display: grid; grid-template-columns: 1fr auto; gap: 3px 8px; margin-top: 9px; color: inherit; text-decoration: none; }
+#progresso-canto .pc-titulo { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+#progresso-canto .pc-pct { font-weight: 600; }
+#progresso-canto .pc-barra { grid-column: 1 / -1; display: block; height: 6px; border-radius: 3px; background: rgba(127,127,127,.25); overflow: hidden; }
+#progresso-canto .pc-barra > i { display: block; height: 100%; background: #ff0000; border-radius: 3px; transition: width .6s; }
+#progresso-canto .pc-parado .pc-barra > i { background: #f5b301; }
+#progresso-canto small { grid-column: 1 / -1; opacity: .65; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+#progresso-canto .pc-fila { display: block; margin-top: 8px; opacity: .65; }

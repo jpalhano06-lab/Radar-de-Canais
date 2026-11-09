@@ -12,6 +12,11 @@
   button.vermelho { background: #ff0000; color: #fff; }
   button.sec { background: #1c2029; color: #eef1f7; border: 1px solid #262b36; font-weight: 500; }
   .caixa { background: #151820; border: 1px solid #262b36; border-radius: 10px; padding: 12px; margin-top: 8px; }
+  .pv { display: grid; grid-template-columns: 1fr auto; gap: 3px 8px; margin-top: 8px; font-size: 12px; }
+  .pv span:first-child { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+  .pv i { grid-column: 1 / -1; display: block; height: 6px; border-radius: 3px; background: #262b36; overflow: hidden; }
+  .pv i > i { height: 100%; background: #ff0000; }
+  .pv.parado i > i { background: #f5b301; }
   .fraco { color: #8d95a8; font-size: 12px; }
   .ok { color: #ff0000; font-weight: 600; }
   .linha-check { display: flex; gap: 8px; align-items: center; color: #eef1f7; font-size: 13px; margin: 12px 0 0; cursor: pointer; }
@@ -35,6 +40,7 @@
 
 <div id="dentro" hidden>
   <p class="ok" id="quem">Acesso livre neste computador</p>
+  <div class="caixa" id="progresso" hidden><b>Produzindo agora</b><div id="progresso-lista"></div></div>
   <div class="caixa"><b>Hoje no YouTube</b>
     <p class="fraco" id="hoje" style="margin:6px 0 0">Navegue pelo YouTube: o Radar lê os vídeos da tela, sem gastar a cota.</p></div>
   <div class="caixa" id="aba" hidden><b>Nesta aba</b><p class="fraco" id="aba-numeros" style="margin:6px 0 0"></p></div>

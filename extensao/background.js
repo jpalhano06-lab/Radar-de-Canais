@@ -146,3 +146,24 @@ chrome.notifications.onClicked.addListener(async (id) => {
   chrome.tabs.create({ url: `${servidor}/${id.split(":").slice(2).join(":")}` });
   chrome.notifications.clear(id);
 });
+
+// A % do vídeo em produção no ícone da extensão, no canto do Chrome (pedido do usuário em 2026-11-09). Com mais de um,
+// o ícone mostra o mais atrasado e a dica (passar o mouse) lista todos. Nada produzindo: o ícone fica limpo.
+async function olharProgresso() {
+  const r = await pedir({ caminho: "/api/ext/progresso" });
+  const videos = (r.dados && r.dados.videos) || [];
+  await chrome.storage.local.set({ progresso: videos });
+  if (!videos.length) {
+    await chrome.action.setBadgeText({ text: "" });
+    await chrome.action.setTitle({ title: "Radar de Canais" });
+    return;
+  }
+  const parado = videos.find((v) => v.estado === "precisa_voce");
+  const menor = videos.reduce((a, v) => (v.pct < a.pct ? v : a), videos[0]);
+  await chrome.action.setBadgeBackgroundColor({ color: parado ? "#f5b301" : "#ff0000" });
+  await chrome.action.setBadgeText({ text: parado ? "!" : `${menor.pct}%` });
+  await chrome.action.setTitle({ title: videos.map((v) => `${v.estado === "precisa_voce" ? "parou" : `${v.pct}%`} · ${v.titulo}`).join("\n") });
+}
+chrome.runtime.onInstalled.addListener(() => { chrome.alarms.create("progresso", { periodInMinutes: 1 }); olharProgresso(); });
+chrome.runtime.onStartup.addListener(() => { chrome.alarms.create("progresso", { periodInMinutes: 1 }); olharProgresso(); });
+chrome.alarms.onAlarm.addListener((a) => { if (a.name === "progresso") olharProgresso().catch(() => {}); });

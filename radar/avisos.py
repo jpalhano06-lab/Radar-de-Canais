@@ -225,7 +225,8 @@ def _no_celular(aviso: dict) -> None:
     token, chat, topico = (config.AMBIENTE.get(k) for k in ("RADAR_TELEGRAM_TOKEN", "RADAR_TELEGRAM_CHAT", "RADAR_NTFY_TOPICO"))
     try:
         if topico:
-            httpx.post("https://ntfy.sh/", timeout=15, json={"topic": topico, "title": aviso["titulo"], "message": aviso["texto"], "priority": 4})
+            httpx.post("https://ntfy.sh/", timeout=15, json={"topic": topico, "title": aviso["titulo"], "message": aviso["texto"],
+                                                           "priority": aviso.get("prioridade", 4)})
         if token and chat:
             httpx.post(f"https://api.telegram.org/bot{token}/sendMessage", timeout=15,
                        json={"chat_id": chat, "text": f"{aviso['titulo']}\n{aviso['texto']}"})
@@ -268,6 +269,41 @@ def vai_ao_celular(aviso: dict) -> bool:
     return aviso["nivel"] == "erro" or aviso["chave"].startswith(DE_VIDEO)
 
 
+# O andamento no celular (pedido do usuário em 2026-11-09: "ver a porcentagem do vídeo como uma barra no pc e no
+# celular"): o Radar só aceita o próprio computador, então o celular recebe pelo ntfy um aviso quieto (prioridade 2)
+# a cada MARCO, com a barra desenhada em texto. Uma vez por pedido e marco; na primeira volta depois de ligar, o que
+# já passou fica marcado sem mandar, para o Radar religado não repetir os avisos.
+MARCOS = (25, 50, 75)
+_marcos: dict = {}
+_marcos_prontos = False
+
+
+def barra_de_texto(pct: int, largura: int = 10) -> str:
+    cheios = max(0, min(largura, round(pct / 100 * largura)))
+    return "▓" * cheios + "░" * (largura - cheios)
+
+
+def progresso_no_celular(videos: list) -> list:
+    """Os avisos de progresso que ainda não foram mandados. `videos` vem de servidor._progresso."""
+    global _marcos_prontos
+    saida = []
+    for v in videos:
+        if v.get("estado") != "produzindo" or not v.get("id"):
+            continue
+        passou = max([m for m in MARCOS if v["pct"] >= m] or [0])
+        if passou <= _marcos.get(v["id"], 0):
+            continue
+        _marcos[v["id"]] = passou
+        if not _marcos_prontos:
+            continue
+        etapa = (v.get("mensagem") or "").strip()
+        saida.append({"chave": f"progresso-{v['id']}-{passou}", "nivel": "info", "link": "#/acompanhar",
+                      "titulo": f"⏳ {v['pct']}% · {v['titulo'][:60]}",
+                      "texto": f"{barra_de_texto(v['pct'])} {v['pct']}%{f' · {etapa[:80]}' if etapa else ''}", "prioridade": 2})
+    _marcos_prontos = True
+    return saida
+
+
 def _uma_volta(usuario_id: int) -> None:
     global _atuais
     if backup.na_hora():
@@ -280,6 +316,12 @@ def _uma_volta(usuario_id: int) -> None:
         if vai_ao_celular(a) and agora - _enviados.get(a["chave"], 0) > 12 * 3600:
             _enviados[a["chave"]] = agora
             _no_celular(a)
+    try:
+        from . import servidor
+        for a in progresso_no_celular(servidor._progresso(usuario_id)["videos"]):
+            _no_celular(a)
+    except Exception as erro:  # noqa: BLE001 (o andamento nunca segura os avisos de problema)
+        print("o progresso no celular falhou:", str(erro)[:160])
 
 
 def _rodar() -> None:

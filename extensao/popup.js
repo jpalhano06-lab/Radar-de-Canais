@@ -37,6 +37,7 @@ async function mostrar() {
   $("sair").hidden = !!resposta.livre;
   carregarCanais(servidor, token);
   carregarHoje(servidor, token);
+  carregarProgresso(servidor, token);
   carregarFuncoes(servidor, token);
 }
 
@@ -77,6 +78,27 @@ async function carregarFuncoes(servidor, token) {
 }
 
 // o que a extensão leu hoje nas páginas do YouTube (contado pelo servidor)
+// a barra de cada vídeo em produção (a mesma % do ícone): vem do Radar na hora em que a janelinha abre
+async function carregarProgresso(servidor, token) {
+  try {
+    const r = await fetch(servidor + "/api/ext/progresso", { headers: token ? { Authorization: `Bearer ${token}` } : {} });
+    const videos = r.ok ? (await r.json()).videos || [] : [];
+    $("progresso").hidden = !videos.length;
+    $("progresso-lista").replaceChildren(...videos.map((v) => {
+      const linha = document.createElement("div");
+      linha.className = `pv${v.estado === "precisa_voce" ? " parado" : ""}`;
+      linha.title = v.mensagem || "";
+      const titulo = document.createElement("span"), pct = document.createElement("span"), barra = document.createElement("i"), cheia = document.createElement("i");
+      titulo.textContent = v.titulo;
+      pct.textContent = v.estado === "precisa_voce" ? "parou" : `${v.pct}%`;
+      cheia.style.width = `${v.pct}%`;
+      barra.append(cheia);
+      linha.append(titulo, pct, barra);
+      return linha;
+    }));
+  } catch { /* sem o Radar, a caixa fica escondida */ }
+}
+
 async function carregarHoje(servidor, token) {
   try {
     const r = await fetch(servidor + "/api/ext/hoje", { headers: token ? { Authorization: `Bearer ${token}` } : {} });

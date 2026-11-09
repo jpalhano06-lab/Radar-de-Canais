@@ -2035,8 +2035,34 @@ function confirmar(botao, pergunta, tarefa) {
 }
 
 // avisos da fila no computador, em qualquer página: entregue, esperando sua revisão e erro (uma vez por mudança)
+// A barra do canto (pedido do usuário em 2026-11-09): em qualquer tela do Radar, o andamento de cada vídeo em produção,
+// atualizado junto com o vigia da fila. Some quando nada está produzindo; o − recolhe e fica lembrado.
+async function barraDoCanto() {
+  let caixa = document.getElementById("progresso-canto");
+  let d;
+  try { d = await api("/api/progresso"); } catch { return; }
+  const videos = d.videos || [];
+  if (!videos.length) { if (caixa) caixa.remove(); return; }
+  if (!caixa) {
+    caixa = document.createElement("aside");
+    caixa.id = "progresso-canto";
+    document.body.append(caixa);
+  }
+  const recolhida = guardado("progresso-recolhido", false);
+  caixa.classList.toggle("recolhida", recolhida);
+  const media = Math.round(videos.reduce((s, v) => s + v.pct, 0) / videos.length);
+  caixa.innerHTML = `<header><b>Produzindo ${videos.length}</b><span>${media}%</span>
+      <button type="button" data-recolher title="${recolhida ? "Abrir" : "Recolher"}">${recolhida ? "+" : "−"}</button></header>
+    ${recolhida ? "" : videos.map((v) => `<a href="#/acompanhar" class="pc-item ${v.estado === "precisa_voce" ? "pc-parado" : ""}" title="${esc(v.mensagem)}">
+        <span class="pc-titulo">${esc(v.titulo)}</span><span class="pc-pct">${v.estado === "precisa_voce" ? "parou" : `${v.pct}%`}</span>
+        <i class="pc-barra"><i style="width:${v.pct}%"></i></i><small>${esc(v.mensagem)}</small></a>`).join("")}
+    ${!recolhida && d.na_fila ? `<small class="pc-fila">+ ${d.na_fila} na fila</small>` : ""}`;
+  caixa.querySelector("[data-recolher]").onclick = () => { guardar("progresso-recolhido", !recolhida); barraDoCanto(); };
+}
+
 async function vigiarFila() {
   if (!EU?.admin) return;
+  barraDoCanto();
   try {
     const { itens } = await api("/api/fila");
     const vistos = guardado("fila-estados", {});
