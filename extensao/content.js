@@ -298,7 +298,15 @@
           h("div", { class: "rf-meta" }, [`${num(v.views)} views`, idade(v.dias)].filter(Boolean).join(" · ")),
           h("div", { class: "rf-pilulas" },
             v.nota != null ? h("span", { class: `rf-nota ${corNota(v.nota)}` }, nota(v.nota)) : null,
-            vph(v) != null ? h("span", { class: "rf-vph" }, `${num(vph(v))} VPH`) : null))));
+            vph(v) != null ? h("span", { class: "rf-vph" }, `${num(vph(v))} VPH`) : null,
+            // tradução e Método Fantasma sem abrir o vídeo (pedido do usuário em 2026-11-09)
+            botaoDoCartao(`radar-traduzir rf-acao${TRADUZIDO.has(v.titulo) ? " ligado" : ""}`, "Radar: ver o título em português", "PT",
+              (b) => traduzirTitulo(b, v.titulo, b.closest(".rf-info > div"))),
+            botaoDoCartao(`radar-traduzir radar-fantasma-mini rf-acao${FANTASMA_FEITO.has(v.id) ? " ligado" : ""}`,
+              "Radar: Método Fantasma (em que língua ninguém fez este vídeo)", "👻",
+              (b) => fantasmaRapido(b, v, b.closest(".rf-info > div")))),
+          FANTASMA_FEITO.has(v.id) ? chipsDoFantasma(v.id, FANTASMA_FEITO.get(v.id)) : null,
+          TRADUZIDO.has(v.titulo) ? linhaTraducao(TRADUZIDO.get(v.titulo)) : null)));
 
     const pintar = () => {
       // a conta é sobre tudo que o Radar leu nesta página, a mesma do selo do botão: dizer "de 300" quando o
@@ -519,16 +527,22 @@
   // ------------------------------------------------------------ traduzir o título (pedido do usuário em 2026-11-07)
   // Um botãozinho ao lado do título de cada vídeo (e do vídeo aberto) mostra o título em português logo embaixo. A
   // tradução é do Radar e fica guardada lá: o mesmo título nunca é traduzido duas vezes.
+  // o que já foi traduzido ou procurado fica aqui, por título e por vídeo: a grade dos filtros se redesenha quando
+  // chega vídeo novo, e sem isto a tradução e as bandeiras sumiam do cartão
+  const TRADUZIDO = new Map(), FANTASMA_FEITO = new Map();
+  const linhaTraducao = (texto) => h("div", { class: "radar-traducao" }, h("b", {}, "🇧🇷 "), texto);
+
   async function traduzirTitulo(botao, titulo, ondePor) {
     const ja = ondePor.querySelector(":scope > .radar-traducao");
-    if (ja) { ja.remove(); botao.classList.remove("ligado"); return; }
+    if (ja) { ja.remove(); botao.classList.remove("ligado"); TRADUZIDO.delete(titulo); return; }
     if (!titulo) return;
     botao.disabled = true; botao.textContent = "…";
     const r = await api("/api/ext/traduzir", "POST", { textos: [titulo] });
     botao.disabled = false; botao.textContent = "PT";
     const texto = r.erro ? `Radar: ${r.erro}` : (r.dados.traducoes || [])[0];
     if (!texto) return avisoRapido("Radar: não consegui traduzir agora.");
-    ondePor.append(h("div", { class: "radar-traducao" }, h("b", {}, "🇧🇷 "), texto));
+    if (!r.erro) TRADUZIDO.set(titulo, texto);
+    ondePor.append(linhaTraducao(texto));
     botao.classList.add("ligado");
   }
 
@@ -539,12 +553,61 @@
     if (!lugar) return;
     caixa.dataset.traduzir = id;
     lugar.querySelectorAll(".radar-traduzir, .radar-traducao").forEach((x) => x.remove());
+    const titulo = () => (tituloEl.getAttribute("title") || tituloEl.textContent || "").trim();
     const botao = h("button", { class: "radar-traduzir", type: "button", title: "Radar: ver o título em português" }, "PT");
     botao.addEventListener("click", (e) => {
       e.preventDefault(); e.stopPropagation();
-      traduzirTitulo(botao, (tituloEl.getAttribute("title") || tituloEl.textContent || "").trim(), lugar);
+      traduzirTitulo(botao, titulo(), lugar);
     });
     lugar.append(botao);
+    if (ligada("fantasma-cartao")) {
+      lugar.append(botaoDoCartao("radar-traduzir radar-fantasma-mini", "Radar: Método Fantasma (em que língua ninguém fez este vídeo)", "👻",
+        (b) => fantasmaRapido(b, { ...(PAGINA.get(id) || {}), id, titulo: titulo() }, lugar)));
+    }
+  }
+
+  // ------------------------------------------------------------ Método Fantasma direto no cartão (pedido de 2026-11-09)
+  // O botão 👻 ao lado do PT, em cada vídeo da grade dos filtros e das páginas do YouTube, procura sem abrir o vídeo
+  // em que língua ninguém fez aquele vídeo: a mesma busca da aba do canal (fantasmaDeUmVideo), nas línguas de
+  // LINGUAS_RAPIDAS. O resultado entra embaixo do título, com as bandeiras; clicar de novo esconde.
+  const LINGUAS_RAPIDAS = ["en", "es", "pt"];
+  async function fantasmaRapido(botao, v, ondePor) {
+    const ja = ondePor.querySelector(":scope > .radar-fantasma-rapido");
+    if (ja) { ja.remove(); botao.classList.remove("ligado"); FANTASMA_FEITO.delete(v.id); return; }
+    if (!v.titulo || FANTASMA_FEITO.get(v.id) === "procurando") return;
+    // "procurando" também fica guardado: a grade redesenhada no meio da busca mostra a espera, e o resultado entra
+    // em qualquer caixa deste vídeo que estiver na tela quando a busca terminar
+    FANTASMA_FEITO.set(v.id, "procurando");
+    ondePor.append(chipsDoFantasma(v.id, "procurando"));
+    botao.classList.add("ligado");
+    const achado = await fantasmaDeUmVideo(v, v.canal_id || "", "raiz", new Set(LINGUAS_RAPIDAS)).catch((e) => ({ erro: String(e) }));
+    if (FANTASMA_FEITO.get(v.id) !== "procurando") return;         // escondido no meio da busca
+    const valor = achado.erro ? { erro: achado.erro } : achado.paises;
+    FANTASMA_FEITO.set(v.id, valor);
+    document.querySelectorAll(".radar-fantasma-rapido").forEach((c) => { if (c.dataset.video === v.id) c.replaceWith(chipsDoFantasma(v.id, valor)); });
+  }
+
+  function chipsDoFantasma(id, valor) {
+    const caixa = h("div", { class: "radar-fantasma-rapido radar-fc-chips" });
+    caixa.dataset.video = id;
+    if (valor === "procurando") caixa.append(h("span", { class: "radar-fraco" }, "Procurando nas outras línguas…"));
+    else if (valor && valor.erro) caixa.append(h("span", { class: "radar-erro" }, `Radar: ${valor.erro}`));
+    else if (!valor || !valor.length) caixa.append(h("span", { class: "radar-fraco" }, "Nenhuma língua para procurar."));
+    else caixa.append(...valor.map((p) => {
+      const [cor, frase] = SITUACAO(p);
+      const chip = h("a", { class: `radar-fc-chip ${cor}`, href: p.link, target: "_blank", title: `${frase}: ${p.traduzido}` },
+        bandeira(p.codigo), NOME_LINGUA[p.lingua] || p.lingua);
+      chip.addEventListener("click", (e) => e.stopPropagation());
+      return chip;
+    }));
+    return caixa;
+  }
+
+  // os dois botões que não deixam o clique abrir o vídeo (o cartão inteiro é um link)
+  function botaoDoCartao(classe, titulo, texto, acao) {
+    const b = h("button", { class: classe, type: "button", title: titulo }, texto);
+    b.addEventListener("click", (e) => { e.preventDefault(); e.stopPropagation(); acao(b); });
+    return b;
   }
 
   // ------------------------------------------------------------ o selo em cima da miniatura

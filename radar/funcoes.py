@@ -32,6 +32,9 @@ FUNCOES: list[dict] = [
      "desc": "Enquanto você navega, a extensão lê os números que a página já mostra e guarda no Radar os que estouraram."},
     {"chave": "traduzir", "nome": "Traduzir o título", "onde": "video", "recurso": "extensao",
      "desc": "Um botão ao lado do título de cada vídeo (na página do vídeo e nas listas) mostra o título em português."},
+    {"chave": "fantasma-cartao", "nome": "Método Fantasma no cartão", "onde": "video", "recurso": "extensao",
+     "desc": "O botão 👻 ao lado do título de cada vídeo procura, sem abrir o vídeo, em que língua (inglês, espanhol e "
+             "português) ninguém fez aquele vídeo ainda."},
     {"chave": "treino", "nome": "Selo do treino", "onde": "video", "recurso": "extensao",
      "desc": "Os vídeos que combinam com o canal seu já treinado no site ganham o selo, com o botão de salvar a ideia."},
 
