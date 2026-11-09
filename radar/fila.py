@@ -130,7 +130,12 @@ def mudar(fid: int, estado: str, de: tuple[str, ...] | None = None, **campos) ->
         c = banco.con()
         cur = c.execute(sql, args)
         c.commit()
-        return cur.rowcount > 0
+        mudou = cur.rowcount > 0
+    if mudou and estado == "entregue":
+        # o aviso de vídeo pronto no celular (pedido do usuário em 2026-11-08), desta máquina ou de outra (maquinas.py)
+        from . import avisos
+        avisos.video_pronto(fid)
+    return mudou
 
 
 def _de(usuario_id: int, fid: int, *estados: str) -> dict:

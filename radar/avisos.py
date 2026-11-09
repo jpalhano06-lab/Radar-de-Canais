@@ -233,6 +233,32 @@ def _no_celular(aviso: dict) -> None:
         print("o aviso não chegou no celular:", type(erro).__name__)
 
 
+def video_pronto(fid: int) -> None:
+    """O aviso de vídeo pronto no celular (pedido do usuário em 2026-11-08), uma vez por pedido. Vai numa thread: quem
+    chama é o vigia da fila, que não pode esperar o ntfy responder."""
+    if fid in _prontos_avisados:
+        return
+    _prontos_avisados.add(fid)
+    linha = banco.um("SELECT pedido, projeto FROM producoes_fila WHERE id=?", fid)
+    if not linha:
+        return
+    try:
+        pedido = json.loads(linha["pedido"] or "{}")
+    except ValueError:
+        pedido = {}
+    canal = ""
+    if pedido.get("canal_id"):
+        c = banco.um("SELECT titulo FROM canais WHERE id=?", pedido["canal_id"])
+        canal = (c["titulo"] if c else "") or ""
+    titulo = (pedido.get("titulo") or linha["projeto"] or f"pedido {fid}").strip()
+    texto = f"{titulo[:150]}{f' · {canal}' if canal else ''}. Está em Acompanhar › Arquivos e em Resultados."
+    aviso = _aviso(f"pronto-{fid}", "info", f"✅ Vídeo pronto (pedido {fid})", texto, "#/resultados")
+    threading.Thread(target=_no_celular, args=(aviso,), daemon=True, name=f"pronto-{fid}").start()
+
+
+_prontos_avisados: set = set()
+
+
 # qualquer problema de vídeo vai ao celular, até o de atenção (pedido do usuário em 2026-11-07: "qualquer problema no
 # vídeo deve ser avisado por notificação"). O resto (conexões, disco, cópia, OpenRouter) só quando é erro
 DE_VIDEO = ("fila-", "travado", "qualidade-", "genaipro", "fabrica", "parado-")

@@ -147,5 +147,6 @@ def test_o_celular_recebe_pelo_ntfy(monkeypatch):
     enviados = []
     monkeypatch.setattr(avisos.config, "AMBIENTE", {"RADAR_NTFY_TOPICO": "radar-x"})
     monkeypatch.setattr(avisos.httpx, "post", lambda url, **k: enviados.append((url, k["json"])))
-    avisos._no_celular(avisos._aviso("a", "erro", "Título", "Texto"))
+    from conftest import NO_CELULAR_DE_VERDADE   # o conftest troca o envio por um de mentira em todo teste
+    NO_CELULAR_DE_VERDADE(avisos._aviso("a", "erro", "Título", "Texto"))
     assert enviados == [("https://ntfy.sh/", {"topic": "radar-x", "title": "Título", "message": "Texto", "priority": 4})]
