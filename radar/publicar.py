@@ -38,10 +38,15 @@ def _quando(pasta: Path) -> float:
 
 
 def normalizar(texto: str) -> str:
-    """Sem acento, sem extensão, só letras e números separados por espaço: 'Desextinção: Os...mp4' -> 'desextincao os'."""
+    """Sem acento, sem extensão, só letras e números separados por espaço: 'Desextinção: Os...mp4' -> 'desextincao os'.
+
+    Letras de qualquer escrita ficam (2026-11-08): só com a-z, o título coreano "한국 자동차는 … 7대!" virava "7", curto
+    demais para casar, e a extensão nunca achava os vídeos da Coreia e do Japão: a descrição completa do Radar não
+    entrava e o Studio ficava com a curta."""
     texto = re.sub(r"\.(mp4|mov|mkv|webm|avi|m4v|wmv|flv|mpe?g)$", "", (texto or "").strip(), flags=re.I)
-    texto = unicodedata.normalize("NFKD", texto).encode("ascii", "ignore").decode().lower()
-    return " ".join(re.findall(r"[a-z0-9]+", texto))
+    sem_acento = "".join(ch for ch in unicodedata.normalize("NFKD", texto) if not unicodedata.combining(ch))
+    texto = unicodedata.normalize("NFC", sem_acento).casefold()
+    return " ".join(re.findall(r"[^\W_]+", texto))
 
 
 def _nomes(pasta: Path) -> list[str]:
@@ -449,7 +454,12 @@ def escrever(o_que: str, titulo: str, fala: str = "") -> dict:
         if not tags:
             raise RuntimeError("O Claude não devolveu nenhuma tag que sirva.")
         return {"tags": tags}
-    texto = roteiro_claude._claude(SISTEMA_DESCRICAO, pedido + "Escreva a descrição.").strip().strip('"')
+    # a descrição sai pelo mesmo escritor da descrição completa (descricao.escrever): dois parágrafos, com o mínimo de
+    # caracteres de cada escrita. O SISTEMA_DESCRICAO antigo ("de 2 a 4 frases") dava uns 150 caracteres em coreano
+    # (pedido do usuário em 2026-11-08: "canal da Coreia sempre está com uma descrição muito curta")
+    from . import descricao
+    dados = descricao.escrever(titulo, fala or titulo)
+    texto = (dados.get("sinopse") or "").strip()
     if not texto:
         raise RuntimeError("O Claude não devolveu nenhuma descrição.")
-    return {"descricao": texto[:1500]}
+    return {"descricao": texto[:4000], **({"traducao": dados["traducao"]} if dados.get("traducao") else {})}
