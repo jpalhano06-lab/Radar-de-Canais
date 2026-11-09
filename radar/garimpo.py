@@ -10,7 +10,7 @@ import time
 from collections import Counter
 from datetime import datetime, timedelta, timezone
 
-from . import banco, estruturas, gosto, ia, medir, mercado, metricas, risco, youtube
+from . import banco, gosto, ia, medir, mercado, metricas, risco, youtube
 from .config import COTA_DO_GARIMPO, DADOS, MODELO_TEXTO, MODELO_VISAO
 
 # termos de partida por nicho. Um arquivo dados/termos.json ({"Nicho": ["termo", ...]}) soma ou troca estes.
@@ -75,6 +75,7 @@ LIXO_DIAS = 30
 
 DIAS_DO_VIDEO = 30         # a busca olha vídeos publicados no último mês
 REBUSCAR_DIAS = 3          # o mesmo termo só é buscado de novo depois de 3 dias
+REPETIR_HORAS = 12         # com a bolsa seca, o termo volta depois de 12 h (10 min depois o YouTube dá os mesmos canais)
 CANAL_ATE_MESES = 18       # canal novo: começou a postar há até 18 meses
 MINIMO_POR_VIDEO = 10_000  # views por vídeo (mediana dos longos) para entrar no Radar
 NOTA_OUTLIER = 3.0         # vídeo com 3 vezes o normal entra no banco (a tela de Outliers mostra 5x ou mais por padrão)
@@ -105,6 +106,12 @@ def _rendeu(b: dict) -> float:
     return (b.get("total") or 0) / max(1, b.get("vezes") or 0)
 
 
+def fora_do_ingles(termo: str) -> bool:
+    """Pedido do usuário em 2026-11-03: "as buscas só devem ser feitas em inglês". Termo curto o gosto.lingua não
+    reconhece ("policía captura video" dá "?"): o acento já mostra que não é inglês."""
+    return not termo.isascii() or gosto.lingua(termo) in ("pt", "es")
+
+
 def _proximos_termos() -> list[tuple[str, str]]:
     """Um termo de cada nicho por vez, os de CPM alto primeiro. Dentro do nicho: os nunca buscados, depois os que mais
     renderam. Termo que rendeu 0 canais nas últimas LIXO_DEPOIS buscas fica de lado por LIXO_DIAS (era lixo)."""
@@ -126,7 +133,7 @@ def _proximos_termos() -> list[tuple[str, str]]:
         if mercado.irrelevante(nicho):
             continue        # nicho que paga pouco ou de histórias narradas não gasta busca (mercado.IRRELEVANTES)
         # termo aprendido em português ou espanhol não vai para o YouTube dos EUA
-        livres = sorted((t for t in ts if livre(t) and (nicho == "Procurados" or gosto.lingua(t) not in ("pt", "es"))), key=lambda t: (t in feitos, -_rendeu(feitos.get(t, {}))))
+        livres = sorted((t for t in ts if livre(t) and not fora_do_ingles(t)), key=lambda t: (t in feitos, -_rendeu(feitos.get(t, {}))))
         por_nicho.append([(nicho, t) for t in livres])
     # cada rodada dá mais buscas a quem paga mais e engaja mais: finanças 3, direito 2, religião 1
     ordem = []
@@ -148,7 +155,9 @@ def _proximos_termos() -> list[tuple[str, str]]:
                 b = feitos.get(t)
                 if b and (b.get("zeros") or 0) >= LIXO_DEPOIS and b["quando"] >= limite_lixo:
                     continue
-                if nicho != "Procurados" and gosto.lingua(t) in ("pt", "es"):
+                if fora_do_ingles(t):
+                    continue
+                if b and b["quando"] >= (agora - timedelta(hours=REPETIR_HORAS)).isoformat():
                     continue
                 velhos.append(((b or {}).get("quando") or "", nicho, t))
         ordem = [(nicho, t) for _, nicho, t in sorted(velhos)]
@@ -304,6 +313,43 @@ def remedir(log, orcamento: int) -> int:
     return feitos
 
 
+FILA_NAVEGADOR = DADOS / "fila-navegador.txt"
+FRACAO_FILA = 0.3          # até 30% da cota do garimpo vai para a fila de canais achados no navegador
+FILA_LOTE = 40             # canais por lote (o filtro barato dos canais custa 1 unidade a cada 50)
+
+
+@youtube.por("garimpo")
+def fila_do_navegador(log, orcamento: int) -> int:
+    """Mede os canais de `dados/fila-navegador.txt` e põe no Radar os que passam.
+
+    A busca da API custa 100 unidades e devolve 20 canais; a mesma busca feita no navegador (o Claude lendo a página
+    de resultados do YouTube) não custa nada, e aqui só a medida gasta cota: umas 3 unidades por canal. Então uma
+    fila grande de canais achados assim rende muito mais canal por unidade do que buscar. Cada garimpo come um
+    pedaço da fila, do começo, e reescreve o arquivo sem os que já olhou."""
+    if not FILA_NAVEGADOR.exists():
+        return 0
+    ids = [l.strip() for l in FILA_NAVEGADOR.read_text(encoding="utf-8").splitlines() if l.strip()]
+    if not ids:
+        return 0
+    contagem = {"novos": 0, "buscas": 0}
+    inicio, olhados = youtube.cota_hoje()["usado"], 0
+    for i in range(0, len(ids), FILA_LOTE):
+        if youtube.cota_hoje()["usado"] - inicio + 3 * FILA_LOTE > orcamento:
+            break
+        try:
+            _avaliar(ids[i:i + FILA_LOTE], log, contagem, rapido=True)
+        except youtube.SemCota:
+            break
+        except Exception as erro:          # um lote ruim não para o resto da fila
+            log(f"fila do navegador: lote {i} falhou: {erro}")
+        olhados = i + FILA_LOTE
+    if olhados:
+        FILA_NAVEGADOR.write_text("\n".join(ids[olhados:]), encoding="utf-8")
+        log(f"Fila do navegador: {min(olhados, len(ids))} canais olhados, {contagem['novos']} entraram no Radar, "
+            f"{max(0, len(ids) - olhados)} ainda na fila")
+    return contagem["novos"]
+
+
 MAX_TERMOS_AUTO = 400
 
 
@@ -412,6 +458,8 @@ def rodar(log=print, unidades: int | None = None) -> dict:
     try:
         anotar(f"Garimpo começou com {orcamento} unidades de cota.")
         remedir(anotar, int(orcamento * FRACAO_REMEDIR))
+        # antes das buscas: a fila do navegador é o canal mais barato por unidade (só a medida custa cota)
+        contagem["novos"] += fila_do_navegador(anotar, int(orcamento * FRACAO_FILA))
         depois = (datetime.now(timezone.utc) - timedelta(days=DIAS_DO_VIDEO)).strftime("%Y-%m-%dT%H:%M:%SZ")
         for n, (nicho, termo) in enumerate(_proximos_termos()):
             if youtube.cota_hoje()["usado"] - inicio + 110 > orcamento:
@@ -432,21 +480,21 @@ def rodar(log=print, unidades: int | None = None) -> dict:
                 anotar(f"[{nicho}] \"{termo}\" falhou: {erro}")
                 continue
             # quanto cada termo rende, para o próximo garimpo gastar nos que trazem canal e largar o lixo
-            antes = banco.um("SELECT vezes, total, zeros FROM buscas_feitas WHERE termo=?", termo) or {}
+            antes = banco.um("SELECT quando, vezes, total, zeros FROM buscas_feitas WHERE termo=?", termo) or {}
+            # 0 numa busca repetida antes dos REBUSCAR_DIAS não diz que o termo é lixo: os canais são os mesmos da
+            # outra vez, já no Radar (2026-11-03: assim os 406 termos viraram lixo e o garimpo parou de buscar)
+            cedo = (antes.get("quando") or "") >= (datetime.now(timezone.utc) - timedelta(days=REBUSCAR_DIAS)).isoformat()
+            zeros = 0 if entraram else (antes.get("zeros") or 0) + (0 if cedo else 1)
             banco.executar("INSERT OR REPLACE INTO buscas_feitas (termo, nicho, quando, canais, vezes, total, zeros) "
                            "VALUES (?,?,?,?,?,?,?)", termo, nicho, banco.agora(), len(entraram),
                            (antes.get("vezes") or 0) + 1, (antes.get("total") or 0) + len(entraram),
-                           0 if entraram else (antes.get("zeros") or 0) + 1)
+                           zeros)
             # "Procurados" é a lista das procuras da pessoa, não um nicho: o nicho desses fica com o Groq
             for cid in entraram if nicho != "Procurados" else []:
                 banco.executar("UPDATE canais SET nicho=COALESCE(NULLIF(nicho,''), ?) WHERE id=?", nicho, cid)
             anotar(f"[{nicho}] \"{termo}\": {len(ids)} canais vistos, {len(entraram)} entraram")
-        # as próximas buscas do Meu nicho de cada pessoa: os vídeos do nicho chegam sem ela clicar
-        from . import meu_nicho
-        meu_nicho.atualizar_todos(anotar, orcamento - (youtube.cota_hoje()["usado"] - inicio))
         achar_parecidos_dos_salvos(anotar, orcamento - (youtube.cota_hoje()["usado"] - inicio), contagem)
         aprender_termos(anotar)
-        estruturas.aprender(anotar)
     except youtube.SemCota as erro:
         anotar(str(erro))
     except Exception as erro:  # o garimpo nunca derruba o servidor

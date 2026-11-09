@@ -45,6 +45,12 @@ se o canal é sem rosto (até 3 capas pequenas por pedido: o Qwen do Groq aceita
 6 mil tokens contra o limite de 7 mil por minuto). Vídeo com 5x o normal vai para os Outliers. Depois, cada canal
 salvo procura os parecidos uma vez por semana e eles vão para os Achados de quem salvou.
 
+**Reserva do Groq: o Gemini** (2026-11-03). Quando as 11 chaves do Groq gastam a cota de tokens do dia, o mesmo pedido
+(nicho, rosto, traduções) vai para o Gemini, no plano grátis, revezando as `GEMINI_API_KEY` do `.env` da fábrica
+(`ia._gemini`). Modelo `gemini-3.5-flash-lite` (`RADAR_MODELO_GEMINI`): o 2.5 Flash não aceita mais chave nova e o
+3.8 Flash dava 503 de tão cheio. As capas vão junto em base64. Chave no limite sai da roda pelo `retryDelay` (o do dia,
+1 hora).
+
 **Cota**: 10.000 unidades por dia por chave (volta às 5 h de Brasília). Busca custa 100, medir canal novo uns 3.
 O garimpo usa 60% do que sobrou (`RADAR_COTA_GARIMPO`). As buscas vêm primeiro; as perguntas ao Groq dos canais
 que ficaram sem nicho ou sem a resposta do rosto, por último (2026-10-31: o garimpo do dia 30 ficou 20 horas preso
@@ -318,8 +324,9 @@ código para quando for vender ou dividir com os sócios.
 - Cada vídeo tem **📡 Radar** entre "Salvar ideia" e "Trabalho". Ele procura o título, sem os números, traduzido para
   a língua de cada país, e desenha um radar: verde perto do centro = ninguém fez ainda, vermelho fora = já fizeram
   (forte com 100 mil views ou mais, médio com 20 mil, fraco abaixo). Embaixo, um cartão por país; clicar mostra os
-  vídeos achados. Canal sem radar próprio usa 8 línguas padrão (EUA, Brasil, Espanha, França, Alemanha, Itália,
-  Polônia, Turquia), `projeto_id` 0 em `radar_paises.conferir`. Cada país gasta uns 101 de cota; fica guardado 7 dias.
+  vídeos achados. Canal sem radar próprio usa 11 línguas padrão (EUA, Brasil, Espanha, França, Alemanha, Itália,
+  Polônia, Turquia e, desde 2026-11-03, Holanda, Japão e Coreia do Sul; japonês e coreano são comparados por pares de
+  letras, já que não separam as palavras como as línguas latinas), `projeto_id` 0 em `radar_paises.conferir`. Cada país gasta uns 101 de cota; fica guardado 7 dias.
 - A borda direita tem uma aba por canal, com a foto e o nome escrito de pé; clicar abre as ideias salvas daquele canal.
 
 ## 🎯, inscrever no algoritmo, placar por país e cores (2026-10-14)
@@ -367,6 +374,25 @@ código para quando for vender ou dividir com os sócios.
   (`radar_paises.preparar`, Groq, guardado) e a extensão abre a busca do YouTube de cada país
   (`/results?search_query=...&gl=BR&hl=pt`), lendo o `<script id="yt-initial-data">` da página. O servidor julga os
   resultados com as mesmas regras (`radar_paises.julgar`). Não gasta cota e funciona com a cota do dia acabada.
+- **Três modos** (2026-11-03, no jeito do "Método Malandro" da extensão Dotti Finder, estudada com o REA), escolhidos
+  em botões na vista do Método Fantasma e lembrados no `chrome.storage` (`fantasmaModo`):
+  - **Raiz**: o título traduzido para cada língua; o lugar do título continua nele.
+  - **Adaptado ao país**: o Groq reescreve o título trocando o lugar (e o povo, as cidades, os estados) pelo país de
+    cada língua ("Supermercados do Canadá que faliram" vira "Supermarkets in the United States that went bankrupt");
+    título sem lugar ganha o país ("Animais bizarros do Brasil que..."). `ia.regionalizar`, guardado em
+    `troca-radar:<modo>:<título>`.
+  - **Premium**: só os países de língua inglesa (`radar_paises.PREMIUM`: EUA, Reino Unido, Canadá, Austrália, Nova
+    Zelândia, Irlanda), onde o RPM é mais alto: o título em inglês, com o país trocado pelo de cada um; o país do
+    próprio título fica fora.
+  - Com o país trocado, o vídeo achado só conta se falar do país (as "marcas" que o Groq dá: "USA", "American"...): um
+    vídeo dos EUA achado na Austrália não diz que a Austrália já fez. Se o título original já cita o país, ele fica
+    sem troca.
+- Regras do placar (`radar_paises.julgar`), para os três modos: cada país tem duas buscas, a normal e a ordenada por
+  views (`&sp=CAMSAhAB`, acha o vídeo grande que a relevância esconde); não contam o mesmo canal do vídeo aberto nem
+  vídeos de mais de um ano (`velho`, nas 11 línguas); "fraco" é o achado com menos de 5% das views do vídeo aberto
+  (sem elas, o corte fixo de 20 mil).
+- Quando a busca termina, cada país já mostra o vídeo que foi julgado igual (o de mais views), sem precisar clicar;
+  clicar no país mostra todos os achados.
 - Saíram do site: o botão 📡 dos vídeos, a aba Radar de países do canal e a etiqueta "radar" dos canais.
   O código antigo (`conferir`, `/api/radar-paises/*`) ficou, sem botão.
 
@@ -474,19 +500,6 @@ código para quando for vender ou dividir com os sócios.
   `/api/fabrica/vozes` → `GET /api/vozes/genaipro` da fábrica, com ▶ para ouvir a prévia; escolher chama
   `POST /api/canais` da fábrica, que cria perfis/canal-NOME.yaml com a voz, e o Radar guarda esse perfil);
   **agente de roteiro** (com "Criar um agente novo" ali mesmo); **tempo dos vídeos**.
-
-## Vozes grátis da fábrica na configuração do canal (2026-10-28)
-
-- A fábrica cancelou as narrações pagas: a pergunta 2 (a voz) mostra as vozes open source que a fábrica roda no próprio
-  computador, as do VoiceStudio (OmniVoice) e do voicebox (Kokoro e Qwen3-TTS), pela `GET /api/vozes/local` da
-  fábrica (`fabrica_api.vozes`). As que falam a língua do canal de nascença vêm primeiro (as gravadas, depois as
-  prontas do voicebox, depois as da galeria e por último as combinações desenhadas); 80 por vez, com a busca por nome,
-  motor (`kokoro`, `qwen`, `omnivoice`) ou jeito da voz.
-- A prévia passa pelo Radar (`/api/fabrica/vozes/previa` → `GET /api/vozes/local/previa` da fábrica, com a chave
-  dela, que nunca vai ao navegador). A primeira liga o motor de voz e leva até uns 2 min; o botão mostra "…" até tocar.
-- Escolher grava o perfil do canal com `provedor: local`, o código da voz em `voz_local` (entre aspas: as desenhadas
-  têm vírgula e espaço) e `idioma`, que é o que a fábrica lê para narrar e conferir (sem ele um canal em inglês
-  narraria com o motor achando que era português). Código fora do formato `motor:voz` é recusado.
 
 ## Roteiro em passo a passo (2026-10-15)
 
@@ -1695,3 +1708,24 @@ O que entrou:
   fraca que não desiste, o roteiro comprido condensado, a volta que piora e não entra, o erro da previsão medido
   contra o vídeo entregue, a voz lenta que não dimensiona a rápida e o vídeo curto que não puxa o longo.
 - O Radar precisa ser religado (LIGAR-RADAR.bat) para a conferência valer.
+- **Japonês e chinês (2026-11-04).** Eles não separam palavras com espaço, e o Radar contava por espaço: a limpeza
+  apagava todo parágrafo japonês como se fosse título, e 4.500 letras pareciam 30 palavras. Agora
+  `roteiro_claude.contar_palavras()` conta duas letras como uma palavra (300 letras por minuto, a conta do agente do
+  canal), o pedido ao Claude fala em caracteres nessas línguas, e vídeo narrado no alfabeto errado não entra na
+  medida do ritmo da voz. Testes em `tests/test_roteiro_japones.py`.
+
+## Animações (Ferramentas > Animações)
+
+Pedido do usuário em 2026-11-07: cada ferramenta é uma página, como no Higgsfield. A página mostra a galeria de estilos
+da fábrica e, se a pessoa quiser, o **Personalizar**: cores, fundo, letras e quais animações podem entrar. A prévia é a
+própria animação tocando no navegador, sem gravar nem gastar.
+
+- **Guardar com um nome:** fica no banco do Radar (`radar/estilos_animacao.py`), por pessoa, e aparece na Nova produção.
+- **Na Nova produção:** o campo Animações vale só para aquele vídeo. Vai no pedido da fila, e `fila.passo` manda à fábrica
+  antes de produzir. "Padrão do canal" não manda nada.
+- **Padrão do canal:** grava no `perfis/canal-*.yaml` da fábrica; vale para os próximos vídeos. Canal sem perfil próprio
+  precisa escolher a voz primeiro.
+- **Conferir:** a mesma conferência da gravação, uns 40 s, grátis. A cena que reprova na produção volta para a foto.
+- Tudo passa pelo servidor do Radar: a chave da fábrica nunca chega ao navegador. Quem confere e aplica é a fábrica
+  (`fabrica/ajustes_animacao.py`, com as regras no CLAUDE.md dela).
+

@@ -64,6 +64,10 @@ def chaves_groq() -> list[str]:
     return _numeradas("GROQ_API_KEY")
 
 
+def chaves_gemini() -> list[str]:
+    return _numeradas("GEMINI_API_KEY")
+
+
 # A API do YouTube dá 10.000 unidades por dia a cada chave (projeto do Google Cloud). Uma busca custa 100;
 # ler 50 vídeos ou 50 canais custa 1. A reserva fica para a extensão de quem está navegando.
 COTA_POR_CHAVE = int(AMBIENTE.get("RADAR_COTA_POR_CHAVE", "10000"))
@@ -71,6 +75,8 @@ COTA_DO_GARIMPO = float(AMBIENTE.get("RADAR_COTA_GARIMPO", "0.6"))   # fração 
 
 MODELO_TEXTO = AMBIENTE.get("RADAR_MODELO_TEXTO", "openai/gpt-oss-120b")
 MODELO_VISAO = AMBIENTE.get("RADAR_MODELO_VISAO", "qwen/qwen3.8-27b")
+# a reserva quando o Groq gasta a cota do dia: o Lite responde em 2 s e lê as capas; o Flash dava 503 (2026-11-03)
+MODELO_GEMINI = AMBIENTE.get("RADAR_MODELO_GEMINI", "gemini-3.5-flash-lite")
 
 # o que cada plano abre
 PLANOS = {

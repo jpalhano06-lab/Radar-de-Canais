@@ -334,6 +334,24 @@ html[dark] .radar-fantasma-aviso { color: #aaa; }
   cursor: pointer; font: 600 13px Roboto, Arial, sans-serif; color: #fff; background: linear-gradient(180deg, #2c2c2c, #191919);
   box-shadow: inset 0 1px 0 rgba(255,255,255,.1), 0 3px 0 #000; }
 .radar-ver-painel:hover { filter: brightness(1.25); }
+/* pronto: cada país com o vídeo que foi julgado igual à mostra; a versão local (lugar trocado pelo país) logo embaixo (2026-11-03) */
+.radar-achado { display: grid; gap: 2px; padding: 4px 6px; border-left: 3px solid transparent; border-radius: 6px; background: rgba(128,128,128,.08); }
+.radar-achado.livre { border-left-color: #39ff88; } .radar-achado.fraco { border-left-color: #f1c40f; }
+.radar-achado.medio { border-left-color: #e67e22; } .radar-achado.forte { border-left-color: #e53935; }
+.radar-achado-cab { display: flex; align-items: center; gap: 6px; font-size: 12px; }
+.radar-achado-cab b { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.radar-achado-cab small { color: var(--yt-spec-text-secondary, #606060); white-space: nowrap; }
+html[dark] .radar-achado-cab small { color: #aaa; }
+.radar-achado-cab .radar-bandeira { width: 18px; height: 12px; border-radius: 2px; object-fit: cover; }
+/* os três modos: Raiz, Adaptado ao país, Premium (só países de língua inglesa) */
+.radar-fantasma-modos { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 4px; padding: 3px; border-radius: 10px; background: rgba(128,128,128,.15); }
+.radar-fantasma-modo { border: 1px solid transparent; border-radius: 8px; padding: 7px 4px; cursor: pointer; background: transparent; color: inherit;
+  font: 600 12px Roboto, Arial, sans-serif; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.radar-fantasma-modo:hover:not(:disabled) { background: rgba(128,128,128,.2); }
+.radar-fantasma-modo:disabled { cursor: wait; opacity: .6; }
+.radar-fantasma-modo.ligado { background: rgba(128,128,128,.35); border-color: rgba(57,255,136,.7); }
+.radar-fantasma-modo.radar-modo-premium.ligado { border-color: #e53935; color: #ff6b6b; }
+.radar-fantasma-vista.compacta .radar-lista { max-height: 300px; overflow-y: auto; }
 
 /* o fantasminha embaixo do vídeo, ao lado do botão Radar: verde neon, com aro verde; cresce no mouse */
 .radar-fantasma-caixa { position: relative; display: inline-flex; margin-right: 8px; }

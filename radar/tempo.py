@@ -79,6 +79,18 @@ def _da_api() -> dict[str, float]:
     return _CACHE["duracoes"]
 
 
+def _na_lingua_do_video(arquivo, meta: dict) -> bool:
+    """Vídeo que narrou texto no alfabeto errado não mede a voz: os dois vídeos japoneses do cobre (2026-11-03)
+    narraram perguntas em português e deram ao canal um ritmo de 116 palavras por minuto que não é o dele."""
+    codigo = roteiro_claude.codigo_da_lingua(meta.get("lingua") or "")
+    if codigo not in roteiro_claude._ALFABETOS:
+        return True
+    try:
+        return roteiro_claude._escrito_em((arquivo.parent / "roteiro.txt").read_text(encoding="utf-8"), codigo)
+    except OSError:
+        return True
+
+
 def _guardar_medida(meta_arquivo, meta: dict, medida: dict) -> None:
     """Grava no roteiro.json o que o vídeo deu, para o histórico não depender da pasta do projeto."""
     if (meta.get("medido") or {}) == medida:
@@ -127,7 +139,7 @@ def medicoes(usuario_id: int) -> list[dict]:
             m = json.loads(arquivo.read_text(encoding="utf-8"))
         except (ValueError, OSError):
             continue
-        if m.get("usuario_id") != usuario_id:
+        if m.get("usuario_id") != usuario_id or not _na_lingua_do_video(arquivo, m):
             continue
         f = m.get("fabrica") or {}
         projeto = f.get("projeto", "")

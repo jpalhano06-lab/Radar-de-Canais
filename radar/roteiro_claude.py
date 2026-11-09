@@ -24,6 +24,9 @@ from .config import DADOS, FABRICA as _FABRICA
 PASTA = DADOS / "roteiros"
 VAZIA = DADOS / "claude"          # o Claude roda numa pasta vazia, para não ler nenhum CLAUDE.md
 PALAVRAS_POR_MINUTO = 150
+LETRAS_POR_PALAVRA = 2  # japonês e chinês: 300 letras por minuto, a conta do agente do canal, são as 150 palavras
+_SEM_ESPACO = re.compile("[\u3040-\u30ff\u3400-\u9fff\uf900-\ufaff\uff66-\uff9d]")   # kana e kanji
+_PONTUACAO_SEM_ESPACO = re.compile("[\u3000-\u303f\uff00-\uff65]")                     # 。、！？「」 e companhia
 _TAREFAS: dict[str, dict] = {}
 _TRAVA = threading.Lock()
 
@@ -73,6 +76,21 @@ def copiar_thumbnail(video_id: str, destino) -> bool:
     return False
 
 
+def contar_palavras(texto: str) -> int:
+    """O tamanho do texto em palavras faladas. Japonês e chinês não separam palavras com espaço: `split()` contava um
+    parágrafo inteiro como uma palavra, então 4.500 letras (15 min) pareciam 30 palavras (2026-11-04)."""
+    letras = len(_SEM_ESPACO.findall(texto))
+    resto = _PONTUACAO_SEM_ESPACO.sub(" ", _SEM_ESPACO.sub(" ", texto))
+    return len(resto.split()) + round(letras / LETRAS_POR_PALAVRA)
+
+
+def _tamanho(palavras: int, lingua: str) -> str:
+    """O tamanho como o Claude entende nesta língua: em japonês e chinês o que se conta são os caracteres."""
+    if codigo_da_lingua(lingua) in ("ja", "zh"):
+        return f"{palavras * LETRAS_POR_PALAVRA} caracteres"
+    return f"{palavras} palavras"
+
+
 def _slug(texto: str) -> str:
     texto = unicodedata.normalize("NFKD", texto).encode("ascii", "ignore").decode().lower()
     return re.sub(r"[^a-z0-9]+", "-", texto).strip("-")[:50] or "roteiro"
@@ -90,7 +108,40 @@ Regras:
   frases: reescreva com palavras próprias, melhore o ritmo e acrescente o que faltar para cumprir o título.
 - Só fatos de que você tem certeza. Nada inventado sobre pessoas reais. Número, data e nome só se estiverem certos.
 - Termine com um fechamento curto.
-- Respeite o tamanho pedido (palavras), porque ele vira o tempo do vídeo."""
+- Respeite o tamanho pedido (palavras ou caracteres), porque ele vira o tempo do vídeo."""
+
+# vai no FIM do sistema, depois das instruções do canal: é a última palavra, e vale por cima delas
+SEM_PERGUNTA = """
+
+Por último, e por cima de QUALQUER instrução acima, inclusive as do projeto: quem pede este roteiro é um programa (o
+Radar), não uma pessoa. NINGUÉM vai ler nem responder pergunta nenhuma, e tudo que você responder aqui vira a
+narração do vídeo, falada por uma voz.
+- Nunca pergunte, nunca peça confirmação e nunca espere resposta: nem sobre a duração, nem sobre o formato, nem sobre
+  a fonte de nada. Uma instrução do projeto que mande perguntar antes de escrever não vale aqui.
+- Tudo de que você precisa está neste pedido: o título, a língua, o tamanho em palavras e em minutos, as observações
+  e a transcrição da referência.
+- O que faltar, você mesmo decide pelo estilo do canal e segue escrevendo. Faltando base para um fato, escreva sem
+  ele, nunca uma pergunta no lugar.
+- A resposta é SEMPRE o roteiro inteiro, pronto para narrar."""
+
+MINIMO_RASCUNHO = 50    # menos palavras do que isto não é roteiro: é uma pergunta, uma recusa ou uma resposta vazia
+MINIMO_LETRAS = 400     # ... e o japonês não separa palavras com espaço, então o piso conta as letras também
+
+
+def _parece_pergunta(texto: str) -> bool:
+    """Isto é um roteiro ou é o Claude falando com a gente? Pergunta é o que o roteiro de narração nunca é: curto e
+    cheio de linhas que terminam em "?" (o vídeo japonês do cobre saiu com oito perguntas numeradas narradas)."""
+    linhas = [l.strip() for l in texto.splitlines() if l.strip()]
+    if not linhas or len(texto.split()) > 600:
+        return False
+    perguntas = sum(1 for l in linhas if l.endswith("?"))
+    return perguntas >= 3 and perguntas >= len(linhas) * 0.3
+
+
+def _tem_roteiro(texto: str) -> bool:
+    """Tem texto bastante para ser um roteiro (ou o começo de um). Conta palavras E letras: em japonês e em chinês
+    um parágrafo inteiro vem sem espaço nenhum e `split()` o conta como uma palavra só."""
+    return contar_palavras(texto) >= MINIMO_RASCUNHO or len(texto.strip()) >= MINIMO_LETRAS
 
 
 def _claude(sistema: str, pedido: str, modelo: str = "") -> str:
@@ -137,36 +188,87 @@ def _limpar(texto: str) -> str:
         limpa = linha.strip()
         if _TITULO.match(limpa):
             continue
-        # linha curta sem pontuação no fim, sozinha entre linhas vazias, é título ("A fuga", "Por que elas trapaceiam")
-        if limpa and len(limpa.split()) <= 7 and not re.search(r"[.!?…:;,\"”)]$", limpa):
+        # linha curta sem pontuação no fim, sozinha entre linhas vazias, é título ("A fuga", "Por que elas trapaceiam").
+        # A conta e o fim de frase valem para o japonês também: com `split()` e sem o 。, todo parágrafo japonês virava
+        # "título" e era apagado, e o roteiro inteiro chegava vazio (2026-11-04)
+        if limpa and contar_palavras(limpa) <= 7 and not re.search(r"[.!?…:;,\"”)。！？」』）]$", limpa):
             continue
         linhas.append(limpa)
     texto = "\n".join(linhas)
     return re.sub(r"\n{3,}", "\n\n", texto).strip()
 
 
-_CODIGO_DA_LINGUA = {"português": "pt", "inglês": "en", "espanhol": "es"}
+# o alfabeto de cada língua que não escreve em latim: é por ele que o Radar confere se o título voltou MESMO na
+# língua pedida (2026-11-03: o título japonês do vídeo de referência voltava traduzido para o português, porque
+# "Língua: japonês" dava para o modelo entender "a língua do título é japonês")
+_ALFABETOS = {
+    "ja": ((0x3040, 0x30FF), (0x4E00, 0x9FFF)), "zh": ((0x4E00, 0x9FFF),),
+    "ko": ((0x1100, 0x11FF), (0x3130, 0x318F), (0xAC00, 0xD7AF)),
+    "ru": ((0x0400, 0x04FF),), "uk": ((0x0400, 0x04FF),), "bg": ((0x0400, 0x04FF),),
+    "ar": ((0x0600, 0x06FF),), "hi": ((0x0900, 0x097F),), "ta": ((0x0B80, 0x0BFF),), "el": ((0x0370, 0x03FF),),
+}
+
+
+def codigo_da_lingua(lingua: str) -> str:
+    """"japonês" -> "ja". "" quando o nome não é de nenhuma das línguas das vozes da fábrica."""
+    from .fabrica_api import IDIOMA
+    lingua = (lingua or "").strip().lower()
+    return IDIOMA.get(lingua, lingua if lingua in IDIOMA.values() else "")
+
+
+def _escrito_em(texto: str, codigo: str) -> bool:
+    """A maior parte das letras do texto é do alfabeto desta língua? Para o roteiro inteiro, que pode citar o título
+    em outro alfabeto. Língua de alfabeto latino sempre passa: aqui não dá para saber."""
+    faixas = _ALFABETOS.get(codigo)
+    letras = [c for c in texto if c.isalpha()]
+    if not faixas or not letras:
+        return True
+    return sum(1 for c in letras if any(a <= ord(c) <= b for a, b in faixas)) >= len(letras) / 2
+
+
+def _na_lingua(titulo: str, codigo: str) -> bool | None:
+    """O título está escrito nesta língua? None quando não dá para saber (duas línguas do mesmo alfabeto latino)."""
+    faixas = _ALFABETOS.get(codigo)
+    if faixas:
+        return sum(1 for c in titulo if any(a <= ord(c) <= b for a, b in faixas)) >= 2
+    if codigo in ("pt", "en", "es"):
+        from . import gosto
+        vista = gosto.lingua(titulo)
+        return None if vista in ("?", "outras") else vista == codigo
+    # língua de alfabeto latino sem lista de palavras (holandês, polonês...): pelo menos não voltou em outro alfabeto
+    if any(ord(c) > 0x024F for c in titulo if c.isalpha()):
+        return False
+    return None
+
+
+_SISTEMA_TITULO = (
+    "Você escreve o título de um vídeo do YouTube na língua de destino que o pedido indica. O título que chega pode "
+    "estar em QUALQUER língua: isso não importa, e a língua dele nunca é a língua de destino da resposta. Responda só "
+    "com o título escrito na língua de destino, no alfabeto dela (nada de transliterar para o nosso alfabeto), numa "
+    "linha, sem aspas e sem explicação. Mantenha o tom chamativo, os números e os nomes próprios. Se o título já "
+    "estiver escrito na língua de destino, devolva-o igual.")
 
 
 def traduzir_titulo(titulo: str, lingua: str) -> str:
     """O título na língua falada no vídeo (pedido do usuário em 2026-10-29: "o título lá pode ser em português, porém
     sempre terá a tradução automática pra língua que vai ser falada"). Já na língua certa, nem chama o Claude.
-    Tradução que falha ou volta estranha (várias linhas, comprida demais) deixa o título como veio: o vídeo não para
-    por causa disso."""
-    from . import gosto
+    Tradução que falha, volta estranha (várias linhas, comprida demais) ou volta em OUTRA língua deixa o título como
+    veio: o vídeo não para por causa disso."""
     titulo = " ".join(str(titulo).split())
-    if not titulo or not lingua or gosto.lingua(titulo) == _CODIGO_DA_LINGUA.get(lingua.lower()):
+    codigo = codigo_da_lingua(lingua)
+    if not titulo or not lingua or (codigo and _na_lingua(titulo, codigo) is True):
         return titulo
+    alvo = f"{lingua} ({codigo})" if codigo else lingua
     try:
-        traduzido = _claude("Você traduz títulos de vídeos do YouTube. Responda só com o título traduzido, numa linha, "
-                            "sem aspas e sem explicação. Mantenha o tom chamativo, números e nomes próprios. Se o título "
-                            "já estiver na língua pedida, devolva igual.",
-                            f"Língua: {lingua}\nTítulo: {titulo}", modelo="haiku")
+        traduzido = _claude(_SISTEMA_TITULO, f"Língua de destino (escreva o título NESTA língua): {alvo}\n\n"
+                                             f"Título que chegou (não é a língua de destino): {titulo}", modelo="haiku")
     except Exception:  # noqa: BLE001
         return titulo
     traduzido = traduzido.strip().strip("\"'“”«»").strip()
     if not traduzido or "\n" in traduzido or len(traduzido) > max(150, len(titulo) * 3):
         return titulo
+    if codigo and _na_lingua(traduzido, codigo) is False:
+        return titulo                 # voltou em outra língua: melhor o original do que o título errado
     return traduzido
 
 
@@ -211,7 +313,7 @@ def gerar(usuario_id: int, titulo: str, link: str, minutos: int, lingua: str, pr
     if arquivos:
         sistema += ("\n\nArquivos do projeto (exemplos e referências do canal: siga o estilo, o ritmo e o formato "
                     f"deles, sem copiar o assunto):\n\n{arquivos}")
-    pedido = (f"Título do vídeo: {titulo}\nLíngua do roteiro: {lingua}\nTamanho: cerca de {palavras} palavras "
+    pedido = (f"Título do vídeo: {titulo}\nLíngua do roteiro: {lingua}\nTamanho: cerca de {_tamanho(palavras, lingua)} "
               f"({minutos} minutos narrados)\n")
     if observacoes:
         pedido += f"Observações de quem pediu: {observacoes}\n"
@@ -223,16 +325,17 @@ def gerar(usuario_id: int, titulo: str, link: str, minutos: int, lingua: str, pr
                    "das observações e do estilo do canal, sem nenhuma base de transcrição.\n")
     else:
         pedido += "\nSem vídeo de referência: escreva a partir do título.\n"
-    aviso(f"O Claude está escrevendo (cerca de {palavras} palavras)…")
+    sistema += SEM_PERGUNTA
+    aviso(f"O Claude está escrevendo (cerca de {_tamanho(palavras, lingua)})…")
     inicio = time.time()
-    roteiro = _limpar(_claude(sistema, pedido))
-    roteiro, conferencia = _conferir_tamanho(roteiro, sistema, pedido, minutos, ritmo, aviso)
+    roteiro, rascunhos = _primeiro_rascunho(sistema, pedido, aviso)
+    roteiro, conferencia = _conferir_tamanho(roteiro, sistema, pedido, minutos, ritmo, aviso, lingua)
     (pasta / "roteiro.txt").write_text(roteiro, encoding="utf-8")
     meta = {"titulo": titulo, "titulo_original": original, "link": link, "video_id": video_id, "minutos": minutos, "lingua": lingua,
-            "projeto": projeto["nome"] if projeto else "", "palavras": len(roteiro.split()),
-            "palavras_base": len(base.split()), "base_erro": base_erro[:300], "thumbnail": thumb,
+            "projeto": projeto["nome"] if projeto else "", "palavras": contar_palavras(roteiro),
+            "palavras_base": contar_palavras(base), "base_erro": base_erro[:300], "thumbnail": thumb,
             "segundos": round(time.time() - inicio), "criado": banco.agora(), "usuario_id": usuario_id, "ritmo": ritmo,
-            "conferencia": conferencia, "canal": canal or {}}
+            "conferencia": conferencia, "canal": canal or {}, "rascunhos": rascunhos}
     (pasta / "roteiro.json").write_text(json.dumps(meta, ensure_ascii=False, indent=1), encoding="utf-8")
     _escrever_descricao(usuario_id, pasta, projeto_descricao_id, aviso)
     return _publico(pasta)
@@ -246,20 +349,48 @@ CONTINUAR = """
 Você já escreveu este começo (NÃO repita nada dele):
 {comeco}
 
-Continue o roteiro exatamente de onde ele parou, com mais cerca de {faltam} palavras, até o fechamento. Responda só
+Continue o roteiro exatamente de onde ele parou, com mais cerca de {faltam}, até o fechamento. Responda só
 com a continuação."""
 
-CONDENSAR = """Este é o roteiro de um vídeo de {minutos} minutos narrados, mas ele está com {atual} palavras e tem de
+CONDENSAR = """Este é o roteiro de um vídeo de {minutos} minutos narrados, mas ele está com {atual} e tem de
 ficar com cerca de {alvo}.
 
 {roteiro}
 
-Reescreva o roteiro INTEIRO com cerca de {alvo} palavras: corte o que se repete e condense as explicações longas,
+Reescreva o roteiro INTEIRO com cerca de {alvo}: corte o que se repete e condense as explicações longas,
 mantendo o gancho do começo, todos os assuntos na mesma ordem e o fechamento. Responda só com o roteiro."""
 
 
+INSISTIR = """
+
+ATENÇÃO: a sua resposta anterior não foi um roteiro (veio vazia, ou veio pergunta e comentário no lugar do texto).
+Não há ninguém para responder nada. Escreva AGORA o roteiro inteiro, só as frases que a voz vai falar, decidindo você
+mesmo tudo o que não estiver no pedido."""
+
+
+def _primeiro_rascunho(sistema: str, pedido: str, aviso=lambda _t: None) -> tuple[str, int]:
+    """O rascunho que abre o roteiro, e a garantia de que ele é um roteiro.
+
+    O vídeo japonês do cobre (2026-11-03) saiu com 1 minuto e 56: o `_limpar` apagava o roteiro japonês inteiro, o
+    laço do tamanho pediu "continue de onde parou" com o começo vazio, e o agente do canal (que manda "SEMPRE perguntar
+    a duração antes de escrever") respondeu com perguntas em português, as únicas linhas que o `_limpar` deixava
+    passar. Elas viraram o roteiro, foram narradas e viraram vídeo. Agora o `SEM_PERGUNTA` tira o pedido de perguntar, uma resposta que não é roteiro ganha mais uma
+    chance com o `INSISTIR`, e duas seguidas param o pedido com erro, em vez de descer para a fábrica."""
+    texto = ""
+    for volta in (1, 2):
+        texto = _limpar(_claude(sistema, pedido if volta == 1 else pedido + INSISTIR))
+        if _tem_roteiro(texto) and not _parece_pergunta(texto):
+            return texto, volta
+        if volta == 1:
+            aviso("O Claude não devolveu roteiro (respondeu vazio ou com perguntas). Pedindo de novo…")
+    raise RuntimeError("O Claude não escreveu o roteiro: respondeu duas vezes sem roteiro nenhum (vazio ou só "
+                       "perguntas). Veja as instruções do agente deste canal — uma regra que manda perguntar antes "
+                       "de escrever trava o Radar, porque aqui não há ninguém para responder. Começo do que ele "
+                       f"respondeu: {' '.join(texto.split()[:40]) or '(nada)'}")
+
+
 def _conferir_tamanho(roteiro: str, sistema: str, pedido: str, minutos: int, ritmo: dict,
-                      aviso=lambda _t: None) -> tuple[str, dict]:
+                      aviso=lambda _t: None, lingua: str = "") -> tuple[str, dict]:
     """Confere o roteiro escrito contra o tempo pedido e corrige até ele caber na margem de 1 minuto.
 
     Pedido do usuário em 2026-11-01: "o radar tá entregando vídeos com a duração errada, tem que conferir e colocar
@@ -279,7 +410,7 @@ def _conferir_tamanho(roteiro: str, sistema: str, pedido: str, minutos: int, rit
     from . import tempo
     ppm = ritmo.get("ppm") or PALAVRAS_POR_MINUTO
     melhor = roteiro
-    conf = tempo.conferir(len(roteiro.split()), minutos, ppm)
+    conf = tempo.conferir(contar_palavras(roteiro), minutos, ppm)
     voltas: list[dict] = []
     sem_jeito = 0
     if not minutos:
@@ -289,16 +420,20 @@ def _conferir_tamanho(roteiro: str, sistema: str, pedido: str, minutos: int, rit
             break
         faltam, atual, alvo = conf["faltam"], conf["palavras"], conf["alvo_palavras"]
         if faltam > 0:
+            if not _tem_roteiro(melhor):
+                # começo vazio não se continua: era assim que a resposta à continuação (uma lista de perguntas)
+                # virava o roteiro inteiro. Sem roteiro para continuar, o laço para e quem chamou vê o erro
+                break
             aviso(f"Conferindo o tempo: o roteiro dá {conf['previsto_min']} min e você pediu {minutos}. "
                   f"O Claude está continuando ({atual} de {alvo} palavras)…")
-            resto = _limpar(_claude(sistema, pedido + CONTINUAR.format(comeco=melhor[-12000:], faltam=faltam)))
-            tentativa = (melhor + "\n\n" + resto) if len(resto.split()) >= 30 else melhor
+            resto = _limpar(_claude(sistema, pedido + CONTINUAR.format(comeco=melhor[-12000:], faltam=_tamanho(faltam, lingua))))
+            tentativa = (melhor + "\n\n" + resto) if contar_palavras(resto) >= 30 else melhor
         else:
             aviso(f"Conferindo o tempo: o roteiro dá {conf['previsto_min']} min e você pediu {minutos}. "
                   f"O Claude está condensando ({atual} para {alvo} palavras)…")
-            tentativa = _limpar(_claude(sistema, CONDENSAR.format(minutos=minutos, atual=atual, alvo=alvo,
-                                                                  roteiro=melhor)))
-        nova = tempo.conferir(len(tentativa.split()), minutos, ppm)
+            tentativa = _limpar(_claude(sistema, CONDENSAR.format(minutos=minutos, atual=_tamanho(atual, lingua),
+                                                                  alvo=_tamanho(alvo, lingua), roteiro=melhor)))
+        nova = tempo.conferir(contar_palavras(tentativa), minutos, ppm)
         voltas.append({"palavras": nova["palavras"], "previsto_min": nova["previsto_min"],
                        "erro_min": nova["erro_min"], "o_que": "continuar" if faltam > 0 else "condensar"})
         if tentativa is melhor or abs(nova["erro_min"]) >= abs(conf["erro_min"]):
@@ -336,7 +471,7 @@ def manual(usuario_id: int, titulo: str, texto: str, link: str = "", minutos: in
     """O roteiro que a pessoa escreveu (pedido do usuário em 2026-10-18): fica igual a um do Claude, para revisar e
     mandar para a fábrica. Com link, a thumbnail da referência é copiada também."""
     texto = re.sub(r"\n{3,}", "\n\n", texto.replace("\r\n", "\n")).strip()
-    if len(texto.split()) < 30:
+    if contar_palavras(texto) < 30:
         raise RuntimeError("Cole o roteiro inteiro (tem menos de 30 palavras).")
     video_id = id_do_video(link) if link else None
     if link and not video_id:
@@ -350,9 +485,9 @@ def manual(usuario_id: int, titulo: str, texto: str, link: str = "", minutos: in
     # jeito, para a tela de Revisão poder dizer antes de mandar para a fábrica
     from . import tempo
     ritmo = tempo.ritmo(usuario_id, "", lingua, minutos)
-    conferencia = {**tempo.conferir(len(texto.split()), minutos, ritmo["ppm"]), "voltas": [], "de": ritmo["de"]}
+    conferencia = {**tempo.conferir(contar_palavras(texto), minutos, ritmo["ppm"]), "voltas": [], "de": ritmo["de"]}
     meta = {"titulo": titulo, "titulo_original": original, "link": link, "video_id": video_id, "minutos": minutos, "lingua": lingua, "projeto": "",
-            "palavras": len(texto.split()), "palavras_base": 0, "thumbnail": thumb, "segundos": 0, "manual": True,
+            "palavras": contar_palavras(texto), "palavras_base": 0, "thumbnail": thumb, "segundos": 0, "manual": True,
             "criado": banco.agora(), "usuario_id": usuario_id, "ritmo": ritmo, "conferencia": conferencia,
             "canal": canal or {}}
     (pasta / "roteiro.json").write_text(json.dumps(meta, ensure_ascii=False, indent=1), encoding="utf-8")
@@ -485,11 +620,42 @@ def salvar_texto(usuario_id: int, nome: str, texto: str, titulo: str = "") -> di
     """A pessoa pode corrigir o roteiro antes de mandar para a fábrica."""
     pasta, meta = _do_usuario(usuario_id, nome)
     (pasta / "roteiro.txt").write_text(texto.strip(), encoding="utf-8")
-    meta["palavras"] = len(texto.split())
+    meta["palavras"] = contar_palavras(texto)
     if titulo.strip():
         meta["titulo"] = titulo.strip()[:150]
     (pasta / "roteiro.json").write_text(json.dumps(meta, ensure_ascii=False, indent=1), encoding="utf-8")
     return _publico(pasta)
+
+
+MINIMO_DO_TEMPO = 0.6       # roteiro que não chega a 60% do tempo pedido não desce para a fábrica
+
+
+def conferir_roteiro(texto: str, meta: dict) -> str:
+    """O motivo pelo qual este texto NÃO pode virar vídeo ("" quando pode).
+
+    O último portão antes da fábrica (pedido do usuário em 2026-11-04, depois do vídeo japonês do cobre que saiu com
+    1 min e 56 narrando as perguntas do Claude): a conferência do tempo já dizia `dentro: false` com 13,5 minutos
+    faltando e ninguém barrava nada — o roteiro ia para a fábrica do mesmo jeito e virava vídeo publicável."""
+    palavras = contar_palavras(texto)
+    if not _tem_roteiro(texto):
+        return f"ele tem só {palavras} palavras: não é um roteiro."
+    if _parece_pergunta(texto):
+        return ("ele não é um roteiro: são perguntas, do Claude pedindo informação em vez de escrever. Escreva o "
+                "roteiro de novo (ou corrija o texto aqui) antes de mandar.")
+    codigo = codigo_da_lingua(meta.get("lingua") or "")
+    if not _escrito_em(texto, codigo):
+        return (f"ele não está escrito em {meta['lingua']}: a voz do canal fala {meta['lingua']} e o texto veio em "
+                "outro alfabeto.")
+    # o tamanho é medido contra o ALVO da conferência, não contra uma conta nova: o alvo e o ppm da voz estão na
+    # mesma unidade das palavras daqui (o `split()`), e é essa unidade que a fábrica já mediu em cada vídeo entregue
+    minutos = meta.get("minutos") or 0
+    ppm = (meta.get("ritmo") or {}).get("ppm") or PALAVRAS_POR_MINUTO
+    alvo = (meta.get("conferencia") or {}).get("alvo_palavras") or round(minutos * ppm)
+    if minutos and alvo and palavras < alvo * MINIMO_DO_TEMPO:
+        previsto = round(palavras / ppm, 1)
+        return (f"ele dá {previsto} min e você pediu {minutos}: só {palavras} das {alvo} palavras da voz do canal. "
+                "Mande o Claude escrever de novo, ou complete o texto aqui, antes de gastar a fábrica com ele.")
+    return ""
 
 
 def enviar(usuario_id: int, nome: str, perfil: str) -> dict:
@@ -500,6 +666,9 @@ def enviar(usuario_id: int, nome: str, perfil: str) -> dict:
     if perfil not in perfis_da_fabrica():
         raise RuntimeError("Escolha um perfil da fábrica.")
     pasta, meta = _do_usuario(usuario_id, nome)
+    motivo = conferir_roteiro((pasta / "roteiro.txt").read_text(encoding="utf-8"), meta)
+    if motivo:
+        raise RuntimeError("Este roteiro não pode virar vídeo: " + motivo)
     projeto = re.sub(r"-+", "-", _slug(meta["titulo"]).replace(".", "-"))[:40].strip("-") or "roteiro"
     final, n = projeto, 2
     while (FABRICA / "projetos" / final).exists():
@@ -524,7 +693,7 @@ def enviar(usuario_id: int, nome: str, perfil: str) -> dict:
     from . import descricao as _descricao
     levou = _descricao.levar(pasta, destino, meta["titulo"], perfil)
     meta["fabrica"] = {"projeto": final, "perfil": perfil, "enviado": banco.agora(), "descricao": levou,
-                       "palavras": len((pasta / "roteiro.txt").read_text(encoding="utf-8").split())}
+                       "palavras": contar_palavras((pasta / "roteiro.txt").read_text(encoding="utf-8"))}
     (pasta / "roteiro.json").write_text(json.dumps(meta, ensure_ascii=False, indent=1), encoding="utf-8")
     estimativa = "\n".join(l for l in (r.stdout or "").splitlines() if "US$" in l or "min" in l)[-600:]
     return {"projeto": final, "pasta": str(destino), "estimativa": estimativa,

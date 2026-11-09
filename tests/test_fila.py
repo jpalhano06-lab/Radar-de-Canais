@@ -348,3 +348,30 @@ def test_fabrica_que_cai_no_envio_nao_vira_erro(db):
     for pedido in (a, b):
         atual = fila.item(1, pedido["id"])
         assert (atual["estado"], atual["erro"]) == ("na_fila", "")
+
+
+def test_o_estilo_das_animacoes_vai_antes_de_produzir(db):
+    """O estilo escolhido na Nova produção chega à fábrica antes de ela começar: depois já seria tarde."""
+    class ComEstilo(Fabrica):
+        def __init__(self):
+            super().__init__()
+            self.ordem = []
+
+        def definir_animacoes(self, projeto, ajustes):
+            self.ordem.append(("estilo", projeto, ajustes))
+
+        def produzir(self, nome, confirmar):
+            self.ordem.append(("produzir", nome))
+            super().produzir(nome, confirmar)
+
+    fila.criar(1, {"titulo": "T", "roteiro_manual": "x", "animacoes": {"tema": "neon"}}, True)
+    fab = ComEstilo()
+    _volta(fab)
+    assert fab.ordem == [("estilo", "p-m-T", {"tema": "neon"}), ("produzir", "p-m-T")]
+
+
+def test_sem_estilo_escolhido_a_fabrica_nao_recebe_nada(db):
+    fila.criar(1, {"titulo": "T", "roteiro_manual": "x"}, True)
+    fab = Fabrica()              # esta fábrica de mentira nem tem definir_animacoes
+    _volta(fab)
+    assert fab.produzidos == ["p-m-T"]

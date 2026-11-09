@@ -616,14 +616,16 @@
   }
   const texto = (t) => !t ? "" : t.simpleText || (t.runs || []).map((r) => r.text).join("");
 
-  async function buscarNoYoutube(busca, pais, lingua) {
-    const url = `https://www.youtube.com/results?search_query=${encodeURIComponent(busca)}&gl=${pais}&hl=${lingua}`;
+  // porViews: a mesma busca ordenada por views (o filtro "Contagem de visualizações" do YouTube)
+  async function buscarNoYoutube(busca, pais, lingua, porViews) {
+    const url = `https://www.youtube.com/results?search_query=${encodeURIComponent(busca)}&gl=${pais}&hl=${lingua}${porViews ? "&sp=CAMSAhAB" : ""}`;
     const html = await (await fetch(url)).text();
     // os dados vêm num <script id="yt-initial-data" type="application/json"> (o jeito antigo era "var ytInitialData = ...")
     const m = html.match(/id="yt-initial-data"[^>]*>([\s\S]*?)<\/script>/) || html.match(/var ytInitialData = (\{.*?\});<\/script>/s);
     if (!m) return [];
     return achar(JSON.parse(m[1]), "videoRenderer").map((v) => ({
       id: v.videoId, titulo: texto(v.title), canal: texto(v.ownerText), views: texto(v.viewCountText), publicado: texto(v.publishedTimeText),
+      canal_id: ((((v.ownerText || {}).runs || [])[0] || {}).navigationEndpoint || {}).browseEndpoint?.browseId || "",
     })).filter((v) => v.id && v.titulo);
   }
 
@@ -752,6 +754,7 @@
     };
     // Método Fantasma: a busca fica guardada em FANTASMA; a aba e a janelinha do fantasminha mostram a mesma
     if (FANTASMA.id !== id) zerarFantasma(id, v.titulo); else FANTASMA.titulo = v.titulo;
+    Object.assign(FANTASMA, { canal_id: v.canal_id || "", views: v.views ?? null });   // o mesmo canal não conta; fraco é perto destas views
     const vista = vistaFantasma(painel, true);
     const rodarFantasma = (e) => { metodoFantasma(e.currentTarget); abrir("lingua"); };
     const abaLingua = () => [vista];
@@ -777,15 +780,23 @@
 
   // ------------------------------------------------------------ Método Fantasma: em que língua ninguém fez este vídeo
   // Uma busca por vídeo, guardada em FANTASMA: a aba do painel e a janelinha do fantasminha (embaixo do vídeo) mostram
-  // a mesma busca e se atualizam quando ela anda.
+  // a mesma busca e se atualizam quando ela anda. Três modos (2026-11-03): Raiz (só traduz), Adaptado ao país (troca
+  // o lugar do título pelo país de cada língua) e Premium (os países de língua inglesa, onde o RPM é mais alto).
   const NOME_LINGUA = { pt: "Português", en: "Inglês", es: "Espanhol", fr: "Francês", de: "Alemão", it: "Italiano", nl: "Holandês",
     pl: "Polonês", tr: "Turco", ja: "Japonês", ko: "Coreano", id: "Indonésio", ru: "Russo", ar: "Árabe" };
-  const nomeLingua = (p) => NOME_LINGUA[p.lingua] || p.lingua;
+  const nomeLingua = (p) => FANTASMA.modo === "premium" ? p.pais : NOME_LINGUA[p.lingua] || p.lingua;
   const SITUACAO = (p) => !p.feito ? ["livre", "Ninguém fez"] : p.forca === "fraco" ? ["fraco", "Feito, mas fraco"]
     : p.forca === "medio" ? ["medio", "Já fizeram"] : ["forte", "Já fizeram e foi bem"];
   const ANDANDO = ["traduzindo", "procurando", "julgando"];
+  const MODOS = [
+    ["raiz", "Raiz", "Só traduz o título para cada língua; o lugar do título continua nele"],
+    ["adaptado", "Adaptado ao país", "Troca o lugar do título pelo país de cada língua (supermercados do Canadá viram supermercados do Brasil, da Espanha…)"],
+    ["premium", "Premium", "Só os países de língua inglesa, onde o RPM é mais alto: o título em inglês, com o país trocado pelo de cada um"],
+  ];
 
-  const FANTASMA = { id: null, titulo: "", fase: "", paises: [], feitos: new Set(), lista: null, erro: "", vez: 0, ouvintes: new Set() };
+  const FANTASMA = { id: null, titulo: "", canal_id: "", views: null, modo: "raiz", lugar: "", fase: "", paises: [], feitos: new Set(),
+    lista: null, erro: "", guardados: {}, vez: 0, ouvintes: new Set() };
+  try { chrome.storage.local.get("fantasmaModo", (r) => { if (MODOS.some(([m]) => m === (r || {}).fantasmaModo)) FANTASMA.modo = r.fantasmaModo; }); } catch { /* extensão recarregada */ }
   function avisarFantasma() {
     FANTASMA.ouvintes.forEach((f) => f());
     const F = FANTASMA, livres = F.lista ? F.lista.filter((p) => !p.feito).length : 0;
@@ -795,37 +806,53 @@
       b.querySelector("em").textContent = selo;
     });
   }
+  const ZERADO = () => ({ lugar: "", fase: "", paises: [], feitos: new Set(), lista: null, erro: "" });
   function zerarFantasma(id, titulo) {
-    Object.assign(FANTASMA, { id, titulo, fase: "", paises: [], feitos: new Set(), lista: null, erro: "", vez: FANTASMA.vez + 1 });
+    Object.assign(FANTASMA, ZERADO(), { id, titulo, guardados: {}, vez: FANTASMA.vez + 1 });
     avisarFantasma();
+  }
+  // trocar de modo: o que já foi procurado neste modo volta na hora; senão, procura (se já tinha procurado em outro)
+  function trocarModo(modo) {
+    const F = FANTASMA;
+    if (modo === F.modo || ANDANDO.includes(F.fase)) return;
+    const procurou = F.fase === "pronto";
+    try { chrome.storage.local.set({ fantasmaModo: modo }); } catch { /* extensão recarregada */ }
+    Object.assign(F, ZERADO(), { modo, vez: F.vez + 1 }, F.guardados[modo] || {});
+    avisarFantasma();
+    if (!F.guardados[modo] && procurou) metodoFantasma();
   }
 
   async function metodoFantasma(origem) {
     const F = FANTASMA;
     if (origem && F.paises.length) voarFantasmas(origem, F.paises);   // a busca já tem os países: voam já
     if (!F.id || !F.titulo || ANDANDO.includes(F.fase) || F.fase === "pronto") return;
-    const vez = ++F.vez, vale = () => F.vez === vez;   // trocou de vídeo no meio: para
-    Object.assign(F, { fase: "traduzindo", paises: [], feitos: new Set(), lista: null, erro: "" }); avisarFantasma();
-    const prep = await api("/api/ext/radar/preparar", "POST", { titulo: F.titulo });
+    const vez = ++F.vez, vale = () => F.vez === vez, modo = F.modo;   // trocou de vídeo ou de modo no meio: para
+    Object.assign(F, ZERADO(), { fase: "traduzindo" }); avisarFantasma();
+    const prep = await api("/api/ext/radar/preparar", "POST", { titulo: F.titulo, modo });
     if (!vale()) return;
     if (prep.erro) { Object.assign(F, { fase: "erro", erro: prep.erro }); return avisarFantasma(); }
-    Object.assign(F, { fase: "procurando", paises: prep.dados.paises }); avisarFantasma();
+    Object.assign(F, { fase: "procurando", paises: prep.dados.paises, lugar: prep.dados.lugar || "" }); avisarFantasma();
     if (origem && origem.isConnected) voarFantasmas(origem, F.paises);
     const resultados = {};
+    // cada país: a busca do YouTube e a mesma busca ordenada por views (acha o vídeo grande que a relevância esconde)
     await Promise.all(F.paises.map(async (p, i) => {
-      try { resultados[p.codigo] = await buscarNoYoutube(p.busca, p.codigo, p.lingua); } catch { resultados[p.codigo] = []; }
+      const listas = await Promise.all([false, true].map((porViews) => buscarNoYoutube(p.busca, p.codigo, p.lingua, porViews).catch(() => [])));
+      resultados[p.codigo] = listas.flat();
       if (vale()) { F.feitos.add(i); avisarFantasma(); }
     }));
     if (!vale()) return;
     F.fase = "julgando"; avisarFantasma();
-    const r = await api("/api/ext/radar/julgar", "POST", { preparo: prep.dados, resultados, video_id: F.id });
+    const r = await api("/api/ext/radar/julgar", "POST", { preparo: prep.dados, resultados, video_id: F.id, canal_id: F.canal_id, views: F.views });
     if (!vale()) return;
     if (r.erro) { Object.assign(F, { fase: "erro", erro: r.erro }); return avisarFantasma(); }
-    Object.assign(F, { fase: "pronto", lista: r.dados.paises }); avisarFantasma();
+    Object.assign(F, { fase: "pronto", lista: r.dados.paises });
+    F.guardados[modo] = { fase: "pronto", paises: F.paises, lugar: F.lugar, lista: F.lista, feitos: new Set(F.feitos) };
+    avisarFantasma();
   }
 
   // a cena: o anel verde enche a cada língua procurada e o fantasminha flutua no meio; no fim cada língua ganha a cor
-  // do que achou. `cheia` = a do painel (clicar numa língua mostra os vídeos achados); `dono` saiu da página = a vista para.
+  // do que achou e mostra o vídeo que foi julgado igual. `cheia` = a do painel (clicar numa língua mostra todos os
+  // vídeos achados); `dono` saiu da página = a vista para.
   function vistaFantasma(dono, cheia, verNoPainel) {
     const R = 52, volta = +(2 * Math.PI * R).toFixed(1);
     const arco = novoSvg("circle", { cx: 60, cy: 60, r: R, class: "radar-anel-arco", "stroke-dasharray": volta, "stroke-dashoffset": volta, transform: "rotate(-90 60 60)" });
@@ -834,26 +861,42 @@
     const conta = h("b", {}), legenda = h("small", {}), aviso = h("div", { class: "radar-fantasma-aviso" });
     const grade = h("div", { class: "radar-sombra-chips" }), detalhes = h("div", { class: "radar-lista" });
     const comecar = botao("radar-grande", "fantasma", "Procurar com o Método Fantasma", (e) => metodoFantasma(e.currentTarget));
+    const modos = MODOS.map(([m, nome, dica]) => h("button", { class: `radar-fantasma-modo radar-modo-${m}`, type: "button", title: dica,
+      "data-modo": m, onclick: () => trocarModo(m) }, nome));
     const el = h("div", { class: `radar-fantasma-vista${cheia ? "" : " compacta"}` },
       h("div", { class: "radar-cena" }, h("span", { class: "radar-cena-brilho" }), anel, h("span", { class: "radar-cena-fantasma" }, icone("fantasma"))),
-      h("div", { class: "radar-cena-conta" }, conta, legenda), aviso, comecar, grade,
+      h("div", { class: "radar-cena-conta" }, conta, legenda), h("div", { class: "radar-fantasma-modos" }, modos), aviso, comecar, grade,
       verNoPainel ? botao("radar-ver-painel", "olho", "Ver os vídeos de cada língua", verNoPainel) : null, detalhes);
-    let chips = [], montada = null, ligada = false;
-    const mostrar = (p) => detalhes.replaceChildren(
-      h("div", { class: "radar-sub" }, `${nomeLingua(p)} (${p.pais}): ${SITUACAO(p)[1]}. Procurei “${p.busca}”.`),
-      ...p.parecidos.map((x) => h("a", { class: "radar-item", href: `https://www.youtube.com/watch?v=${x.id}` },
-        h("img", { src: `https://i.ytimg.com/vi/${x.id}/default.jpg`, alt: "", style: "width:56px;height:32px;border-radius:5px" }),
-        h("span", {}, h("b", {}, x.titulo), h("small", {}, `${x.canal} · ${num(x.views)} views${x.publicado ? " · " + x.publicado : ""}`)))),
-      h("a", { class: "radar-item", href: p.link, target: "_blank", rel: "noopener" }, h("small", {}, "Ver a busca no YouTube →")));
+    let chips = [], montada = null, resumida = null, ligada = false;
+    const videoAchado = (x) => h("a", { class: "radar-item", href: `https://www.youtube.com/watch?v=${x.id}` },
+      h("img", { src: `https://i.ytimg.com/vi/${x.id}/default.jpg`, alt: "", style: "width:56px;height:32px;border-radius:5px" }),
+      h("span", {}, h("b", {}, x.titulo), h("small", {}, `${x.canal} · ${num(x.views)} views${x.publicado ? " · " + x.publicado : ""}`)));
+    const mostrar = (p) => {
+      const todos = h("button", { class: "radar-ver-painel", type: "button" }, "← Todos os países");
+      todos.onclick = () => detalhes.replaceChildren(...resumo(FANTASMA.lista));
+      detalhes.replaceChildren(todos,
+        h("div", { class: "radar-sub" }, `${nomeLingua(p)} (${p.pais}): ${SITUACAO(p)[1]}. Procurei “${p.busca}”${p.trocado ? ` (de “${p.traduzido}”)` : ""}.`),
+        ...p.parecidos.map(videoAchado),
+        p.velhos ? h("small", { class: "radar-fantasma-aviso" }, `${p.velhos} ${p.velhos === 1 ? "vídeo igual de mais de um ano não contou" : "vídeos iguais de mais de um ano não contaram"}.`) : null,
+        h("a", { class: "radar-item", href: p.link, target: "_blank", rel: "noopener" }, h("small", {}, "Ver a busca no YouTube →")));
+    };
+    // pronto: cada país mostra logo o vídeo que foi julgado igual (o de mais views), sem precisar clicar
+    const resumo = (lista) => lista.map((p) => h("div", { class: `radar-achado ${SITUACAO(p)[0]}` },
+      h("div", { class: "radar-achado-cab" }, bandeira(p.codigo), h("b", {}, nomeLingua(p)), h("small", {}, SITUACAO(p)[1])),
+      p.parecidos[0] ? videoAchado(p.parecidos[0]) : null));
+    const explicar = (F) => F.modo === "adaptado"
+      ? (F.lugar ? `Troquei ${F.lugar} pelo país de cada língua.` : "O título não cita lugar: pus o país de cada língua no título (pode não combinar com o assunto).")
+      : F.modo === "premium" ? `Países de língua inglesa, onde o RPM é mais alto${F.lugar ? `, trocando ${F.lugar} pelo de cada um` : ""}.` : "";
     function atualizar() {
       if (dono.isConnected) ligada = true;
       else if (ligada) return FANTASMA.ouvintes.delete(atualizar);
-      const F = FANTASMA, total = F.paises.length, feitos = F.feitos.size;
+      const F = FANTASMA, total = F.paises.length, feitos = F.feitos.size, unidade = F.modo === "premium" ? "países" : "línguas";
       el.dataset.fase = F.fase || "parado";
+      modos.forEach((b) => { b.classList.toggle("ligado", b.dataset.modo === F.modo); b.disabled = ANDANDO.includes(F.fase); });
       if (montada !== F.paises) {
         montada = F.paises;
         chips = F.paises.map((p) => h("button", { class: "radar-sombra-chip", type: "button" }, bandeira(p.codigo), h("span", {}, nomeLingua(p)), h("i", {})));
-        grade.replaceChildren(...chips); detalhes.replaceChildren();
+        grade.replaceChildren(...chips); detalhes.replaceChildren(); resumida = null;
       }
       arco.setAttribute("stroke-dashoffset", total ? volta * (1 - feitos / total) : volta);
       chips.forEach((c, i) => c.classList.toggle("achado", F.feitos.has(i)));
@@ -862,8 +905,10 @@
       aviso.classList.toggle("radar-erro", F.fase === "erro");
       if (F.fase === "pronto") {
         const livres = F.lista.filter((p) => !p.feito);
-        conta.textContent = livres.length; legenda.textContent = `${livres.length === 1 ? "livre" : "livres"} de ${F.lista.length} línguas`;
-        aviso.textContent = livres.length ? "Livre em " + livres.map(nomeLingua).join(", ").replace(/, ([^,]*)$/, " e $1") : "Já fizeram em todas as línguas procuradas.";
+        conta.textContent = livres.length; legenda.textContent = `${livres.length === 1 ? "livre" : "livres"} de ${F.lista.length} ${unidade}`;
+        aviso.textContent = [explicar(F), livres.length ? "Livre em " + livres.map(nomeLingua).join(", ").replace(/, ([^,]*)$/, " e $1") + "."
+          : `Já fizeram em ${F.modo === "premium" ? "todos os países procurados" : "todas as línguas procuradas"}.`].filter(Boolean).join(" ");
+        if (resumida !== F.lista) { resumida = F.lista; detalhes.replaceChildren(...resumo(F.lista)); }
         F.lista.forEach((p) => {
           const c = chips[F.paises.findIndex((x) => x.codigo === p.codigo)];
           if (!c) return;
@@ -873,10 +918,10 @@
         });
       } else {
         conta.textContent = F.fase === "procurando" || F.fase === "julgando" ? feitos : "";
-        legenda.textContent = total ? `de ${total} línguas` : "";
-        aviso.textContent = { traduzindo: "Traduzindo o título para cada língua…", procurando: "Procurando no YouTube de cada país…",
-          julgando: "Vendo quem já fez…", erro: F.erro }[F.fase]
-          || "Em que língua ninguém fez este vídeo ainda: o título traduzido, procurado no YouTube de cada país (não gasta cota).";
+        legenda.textContent = total ? `de ${total} ${unidade}` : "";
+        aviso.textContent = { traduzindo: F.modo === "raiz" ? "Traduzindo o título para cada língua…" : "Trocando o país do título…",
+          procurando: "Procurando no YouTube de cada país…", julgando: "Vendo quem já fez…", erro: F.erro }[F.fase]
+          || MODOS.find(([m]) => m === F.modo)[2] + " (não gasta cota).";
       }
     }
     FANTASMA.ouvintes.add(atualizar);

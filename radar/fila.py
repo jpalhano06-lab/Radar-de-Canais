@@ -17,7 +17,7 @@ MIN_CARACTERES, MAX_CARACTERES = 1000, 80000
 LIMITES = (1, 2, 3, 4, 6, 8)
 ESCRITAS_AO_MESMO_TEMPO = 2       # roteiros pelo Claude ao mesmo tempo (20 pedidos de uma vez eram 20 chamadas juntas)
 CAMPOS = ("titulo", "link", "canal_id", "agente_id", "lingua", "caracteres", "roteiro_manual", "nicho", "observacao",
-          "revisar", "perfil")
+          "revisar", "perfil", "animacoes")
 
 
 def minutos_de(caracteres: int, ppm: int) -> float:
@@ -266,6 +266,8 @@ def passo(fabrica=None, roteirista=None, em_thread: bool = True, config_canal=No
                     banco.executar("UPDATE producoes_fila SET projeto=? WHERE id=?", projeto, linha["id"])
                 if not mudar(linha["id"], "enviando", de=("enviando",)):
                     continue
+                if pedido.get("animacoes"):      # o estilo escolhido só para este vídeo, na Nova produção
+                    fabrica.definir_animacoes(projeto, pedido["animacoes"])
                 fabrica.produzir(projeto, confirmar=True)
                 if mudar(linha["id"], "produzindo", de=("enviando",), passo=""):
                     vagas -= 1

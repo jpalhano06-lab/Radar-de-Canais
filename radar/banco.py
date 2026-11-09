@@ -312,31 +312,6 @@ CREATE TABLE IF NOT EXISTS traducoes (
     dados TEXT NOT NULL,
     criado TEXT NOT NULL
 );
-CREATE TABLE IF NOT EXISTS estruturas (
-    texto TEXT PRIMARY KEY,
-    origem TEXT NOT NULL DEFAULT 'partida',
-    vezes INTEGER NOT NULL DEFAULT 0,
-    canais INTEGER NOT NULL DEFAULT 0,
-    criado TEXT NOT NULL,
-    usada TEXT NOT NULL DEFAULT ''
-);
-CREATE TABLE IF NOT EXISTS nicho_videos (
-    usuario_id INTEGER NOT NULL,
-    video_id TEXT NOT NULL,
-    canal_id TEXT NOT NULL DEFAULT '',
-    estrutura TEXT NOT NULL DEFAULT '',
-    busca TEXT NOT NULL DEFAULT '',
-    achado TEXT NOT NULL,
-    PRIMARY KEY (usuario_id, video_id)
-);
-CREATE TABLE IF NOT EXISTS nicho_canais (
-    usuario_id INTEGER NOT NULL,
-    canal_id TEXT NOT NULL,
-    estrutura TEXT NOT NULL DEFAULT '',
-    busca TEXT NOT NULL DEFAULT '',
-    criado TEXT NOT NULL,
-    PRIMARY KEY (usuario_id, canal_id)
-);
 """
 
 
@@ -346,9 +321,7 @@ COLUNAS_NOVAS = {
                "anuncios": "INTEGER", "membros": "INTEGER"},   # monetização vista pela extensão (1, 0 ou sem saber)
     # painel: a ordem e as abas escondidas do menu de cada pessoa. Fica fora de `prefs` porque salvar_prefs reescreve
     # aquele JSON inteiro a cada resposta das perguntas, e levaria o menu junto
-    "usuarios": {"prefs": "TEXT NOT NULL DEFAULT '{}'", "painel": "TEXT NOT NULL DEFAULT '{}'",
-                 # nicho: o formulário do "Meu nicho" (tema, palavras das lacunas). Fora de `prefs` pelo mesmo motivo
-                 "nicho": "TEXT NOT NULL DEFAULT '{}'"},
+    "usuarios": {"prefs": "TEXT NOT NULL DEFAULT '{}'", "painel": "TEXT NOT NULL DEFAULT '{}'"},
     "salvos": {"pasta": "TEXT NOT NULL DEFAULT ''"},          # a pasta em que a pessoa guardou aquele canal
     # tipo: "roteiro" (o agente que escreve o roteiro) ou "descricao" (o que escreve a sinopse, as tags e as
     # hashtags junto com ele). Os agentes que já existiam são todos de roteiro, por isso o padrão

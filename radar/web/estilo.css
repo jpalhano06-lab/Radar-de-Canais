@@ -1936,34 +1936,6 @@ nav .subs a .olho svg { width: 15px; height: 15px; }
   .tab-vida { font-size: 13px; }
 }
 
-/* ================================================================= meu nicho: as estruturas de título (2026-10-27) */
-.lacuna { font-style: normal; padding: 0 6px; border-radius: 6px; background: color-mix(in srgb, var(--acento) 18%, transparent); color: var(--texto); }
-.lacuna-campo .chips { align-items: center; margin: 6px 0 0; }
-.lacuna-campo .nc-por { background: var(--painel2); color: var(--texto); border: 1px dashed var(--linha); border-radius: 999px; padding: 5px 12px; font: inherit; font-size: 13px; min-width: 180px; }
-.estruturas { display: grid; gap: 8px; }
-.estrutura { display: flex; gap: 10px; align-items: flex-start; padding: 12px 14px; border-radius: 12px; background: var(--painel2); cursor: pointer; }
-.estrutura span { display: grid; gap: 4px; } .estrutura small { color: var(--fraco); }
-.estrutura.sem-palavra { opacity: .55; }
-.nc-buscas { display: grid; gap: 4px; margin: 8px 0 14px; }
-.nc-agora { color: var(--texto); font-weight: 600; }
-
-/* ================================================================= o Formulário do nicho (2026-10-28) */
-.form-nicho { display: grid; gap: 14px; max-width: 980px; }
-.form-secao { display: grid; gap: 12px; padding: 22px 24px; border-radius: 18px; background: var(--painel); border: 1px solid var(--linha); }
-.form-secao h3 { margin: 0; font-size: 19px; display: flex; gap: 10px; align-items: center; }
-.form-secao .sub { margin: 0; }
-.form-n { display: inline-grid; place-items: center; width: 26px; height: 26px; border-radius: 50%; background: var(--acento); color: #fff; font-size: 13px; }
-.form-secao textarea, .form-secao select, .form-secao input[type=number] { width: 100%; background: var(--painel2); color: var(--texto); border: 1px solid var(--linha); border-radius: 9px; padding: 9px 10px; font: inherit; box-sizing: border-box; }
-.form-grade { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 12px; }
-.form-temas { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); }
-.form-temas .opcao { padding: 10px; } .form-temas .opcao b { font-size: 13px; }
-.form-check { display: flex; gap: 8px; align-items: center; }
-.form-estrutura { display: grid; gap: 6px; }
-.form-estrutura textarea { font-size: 13px; }
-.form-refs { display: grid; gap: 2px; }
-.form-salvar { position: sticky; bottom: 0; display: flex; gap: 10px; align-items: center; padding: 14px 0; background: var(--fundo, var(--painel)); z-index: 2; }
-.nc-origem { font-size: 12px; margin: 2px 0 6px; } .nc-validado { color: var(--verde); }
-
 /* ================================================================= legibilidade e teclado (2026-10-31)
    Auditoria com a skill ui-ux-pro-max (prioridades 1 e 2: acessibilidade e interação). Três defeitos reais:
 
@@ -2116,3 +2088,51 @@ input, select, textarea, .selects select, .selects .limpar { border-radius: 8px;
   #cores .caixa-cores { position: fixed; top: auto; bottom: 64px; right: 12px; }
   main { padding-bottom: 90px; }
 }
+
+/* ---------------- Animações: a galeria de estilos, o Personalizar e a prévia */
+.an { display: grid; grid-template-columns: minmax(0, 1fr) minmax(320px, 440px); gap: 24px; align-items: start; }
+.an h3 { margin: 0 0 10px; font-size: 15px; }
+.an h4 { margin: 0 0 8px; font-size: 13px; }
+.an h4 small { color: var(--fraco); font-weight: 400; margin-left: 6px; }
+.an-dir { position: sticky; top: 60px; display: grid; gap: 12px; min-width: 0; }
+.an-galeria { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 12px; }
+.an-tile { display: grid; gap: 3px; padding: 8px; text-align: left; background: var(--painel); color: var(--texto); border: 1px solid var(--linha); border-radius: var(--raio); cursor: pointer; min-width: 0; }
+.an-tile:hover { border-color: var(--fraco); }
+.an-tile.ativo { border-color: var(--acento, var(--verde)); box-shadow: 0 0 0 1px var(--acento, var(--verde)); }
+.an-tile small { color: var(--fraco); font-size: 11.5px; line-height: 1.3; }
+.an-miolo, .an-tv { display: block; position: relative; aspect-ratio: 16 / 9; overflow: hidden; border-radius: 8px; background: #000; margin-bottom: 4px; }
+.an-miolo iframe, .an-tv iframe { position: absolute; top: 0; left: 0; width: 1920px; height: 1080px; border: 0; transform-origin: 0 0; }
+.an-miolo iframe { pointer-events: none; }
+.an-vazio { display: flex; align-items: center; justify-content: center; color: var(--fraco); font-size: 12px; background: var(--painel2); }
+.an-tv-sem { display: none; position: absolute; inset: 0; }
+.an-tv.sem iframe { display: none; }
+.an-tv.sem .an-tv-sem { display: flex; }
+.an-meus { margin-top: 18px; }
+.an-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.an-meu { display: inline-flex; gap: 6px; padding: 0 4px 0 12px; align-items: center; }
+.an-meu button { background: none; border: 0; color: var(--texto); cursor: pointer; padding: 5px 0; }
+.an-meu .an-x { color: var(--fraco); padding: 5px 6px; }
+.an-personalizar { margin-top: 18px; background: var(--painel); border: 1px solid var(--linha); border-radius: var(--raio); padding: 12px 14px; }
+.an-personalizar summary { cursor: pointer; font-weight: 700; }
+.an-personalizar summary small { color: var(--fraco); font-weight: 400; margin-left: 6px; }
+.an-grupo { margin-top: 14px; }
+.an-dir .an-grupo { margin-top: 4px; }
+.an-cores { display: flex; flex-wrap: wrap; gap: 14px; align-items: center; }
+.an-cor { display: inline-flex; gap: 7px; align-items: center; font-size: 13px; cursor: pointer; }
+.an-cor input { width: 34px; height: 26px; padding: 0; border: 1px solid var(--linha); border-radius: 6px; background: none; cursor: pointer; }
+.an-tipos { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 2px 8px; }
+.an-tipo { display: flex; gap: 7px; align-items: center; border-radius: 6px; padding: 1px 6px; }
+.an-tipo.vendo { background: var(--painel2); }
+.an-tipo button { background: none; border: 0; color: var(--texto); text-align: left; padding: 4px 0; cursor: pointer; font-size: 13px; }
+.an-tipo button:hover { text-decoration: underline; }
+.an-nota { color: var(--fraco); font-size: 12px; margin: 6px 0 0; }
+.an-alerta { color: var(--laranja); font-size: 12.5px; margin: 8px 0 0; }
+.an-alerta ul { margin: 4px 0 0; padding-left: 18px; }
+.an-ok { color: var(--verde); font-size: 12.5px; margin: 0; }
+.an-linha { display: flex; gap: 8px; }
+.an-linha input, .an-linha select { flex: 1; min-width: 0; background: var(--painel2); color: var(--texto); border: 1px solid var(--linha); border-radius: 9px; padding: 7px 10px; }
+@media (max-width: 980px) {
+  .an { grid-template-columns: minmax(0, 1fr); }
+  .an-dir { position: static; order: -1; }
+}
+#an-c-dir { display: grid; gap: 12px; }

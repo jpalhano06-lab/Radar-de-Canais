@@ -154,11 +154,12 @@ def procurar(termo: str, tentativa: int = 0) -> dict:
     """Busca o nicho no YouTube agora, mede os canais e põe no Radar os novos que vão bem (uns 100 a 250 unidades).
     O termo fica para o garimpo de todo dia continuar procurando."""
     jeito = JEITOS[tentativa % len(JEITOS)]
+    # como todas as procuras do app: em inglês, nos países de língua inglesa, os EUA de preferência. O termo já traduzido
+    # é o que fica para o garimpo ("cobras venenosas" ficava em português, e o gosto.lingua não reconhece termo curto).
+    if gosto.lingua(termo) != "en":
+        termo = ia.traduzir_titulo(termo, ["en"]).get("en") or termo
     busca = _termo(termo, jeito)
     depois = (datetime.now(timezone.utc) - timedelta(days=jeito["dias"])).strftime("%Y-%m-%dT%H:%M:%SZ")
-    # como todas as procuras do app: em inglês, nos países de língua inglesa, os EUA de preferência
-    if gosto.lingua(busca) in ("pt", "es"):
-        busca = ia.traduzir_titulo(busca, ["en"]).get("en") or busca
     achados = youtube.buscar(busca, publicado_depois=depois, duracao=jeito["duracao"], ordem=jeito["ordem"],
                              regiao=mercado.regiao(tentativa), idioma="en")
     ids = list(dict.fromkeys(a["canal_id"] for a in achados))

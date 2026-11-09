@@ -18,7 +18,7 @@ def _claude_falso(monkeypatch, traducao="Why Do Cats Sleep 16 Hours a Day?"):
 
     def falso(sistema, pedido, modelo=""):
         pedidos.append(pedido)
-        if pedido.startswith("Língua:"):
+        if pedido.startswith("Língua de destino"):
             return traducao
         return "Primeira frase do roteiro. " * 200
 
@@ -74,3 +74,37 @@ def test_o_roteiro_colado_tambem(monkeypatch, tmp_path):
     r = roteiro_claude.manual(usuario_id=1, titulo=TITULO, texto="Cats sleep a lot. " * 20, lingua="inglês")
     meta = json.loads((roteiros / r["nome"] / "roteiro.json").read_text(encoding="utf-8"))
     assert meta["titulo"] == "Why Do Cats Sleep 16 Hours a Day?"
+
+
+# 2026-11-03: o título japonês do vídeo de referência voltava em PORTUGUÊS para o canal japonês ("Língua: japonês"
+# dava para o modelo entender "a língua do título é japonês"). O pedido agora diz qual é a língua de DESTINO, e o
+# Radar confere o alfabeto da resposta.
+
+JAPONES = "日本の新発明が銅を永久に置き換える可能性 — 中国が警戒！"
+
+
+def test_o_pedido_diz_a_lingua_de_destino(monkeypatch):
+    pedidos = _claude_falso(monkeypatch, "석유를 영원히 대체할 한국의 발명")
+    assert roteiro_claude.traduzir_titulo(JAPONES, "coreano") == "석유를 영원히 대체할 한국의 발명"
+    assert pedidos[0].startswith("Língua de destino (escreva o título NESTA língua): coreano (ko)")
+
+
+def test_titulo_ja_no_alfabeto_da_lingua_nem_chama_o_claude(monkeypatch):
+    pedidos = _claude_falso(monkeypatch)
+    assert roteiro_claude.traduzir_titulo(JAPONES, "japonês") == JAPONES
+    assert pedidos == []
+
+
+def test_traducao_em_outra_lingua_deixa_o_titulo(monkeypatch):
+    # era isto que chegava ao Studio: o título do canal japonês em português
+    _claude_falso(monkeypatch, "Nova invenção japonesa pode substituir o cobre — China em alerta!")
+    assert roteiro_claude.traduzir_titulo(JAPONES, "japonês") == JAPONES
+    _claude_falso(monkeypatch, "Nova invenção japonesa pode substituir o cobre")
+    assert roteiro_claude.traduzir_titulo(JAPONES, "coreano") == JAPONES
+
+
+def test_codigo_das_32_linguas_da_fabrica():
+    assert roteiro_claude.codigo_da_lingua("japonês") == "ja"
+    assert roteiro_claude.codigo_da_lingua("Holandês") == "nl"
+    assert roteiro_claude.codigo_da_lingua("ko") == "ko"
+    assert roteiro_claude.codigo_da_lingua("klingon") == ""

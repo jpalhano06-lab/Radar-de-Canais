@@ -19,7 +19,7 @@ from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 
-from . import alvos, banco, canal_painel, chatgpt_conta, claude_projetos, custos, descricao, diagnostico, estruturas, fabrica_api, fila, funcoes, garimpo, gosto, horarios, ia, integracoes, medir, mercado, metricas, meu_nicho, nichos, pagina, perfil, producao, publicar, radar_paises, roteiro_claude, studio, tempo, thumb, trabalho, treinamento, trello, youtube
+from . import alvos, banco, canal_painel, chatgpt_conta, claude_projetos, custos, descricao, diagnostico, estilos_animacao, fabrica_api, fila, funcoes, garimpo, gosto, horarios, ia, integracoes, medir, mercado, metricas, nichos, pagina, perfil, producao, publicar, radar_paises, roteiro_claude, studio, tempo, thumb, trabalho, treinamento, trello, youtube
 from .config import DADOS, NOME, PLANOS, RAIZ, pode
 
 WEB = RAIZ / "radar" / "web"
@@ -586,16 +586,18 @@ def ext_nicho_videos(canal_id: str, u: dict = Depends(exigir("parecidos"))):
 @app.post("/api/ext/radar/preparar")
 async def ext_radar_preparar(request: Request, u: dict = Depends(usuario)):
     """A busca de cada país para a extensão (o radar de países saiu do site: sem gastar a cota da API)."""
-    titulo = str((await request.json()).get("titulo", "")).strip()[:300]
+    d = await request.json()
+    titulo = str(d.get("titulo", "")).strip()[:300]
     if not titulo:
         raise HTTPException(400, "Falta o título do vídeo.")
-    return radar_paises.preparar(titulo)
+    return radar_paises.preparar(titulo, str(d.get("modo", "raiz")))
 
 
 @app.post("/api/ext/radar/julgar")
 async def ext_radar_julgar(request: Request, u: dict = Depends(usuario)):
     d = await request.json()
-    return radar_paises.julgar(d.get("preparo") or {}, d.get("resultados") or {}, str(d.get("video_id", "")))
+    return radar_paises.julgar(d.get("preparo") or {}, d.get("resultados") or {}, str(d.get("video_id", "")),
+                               str(d.get("canal_id", "")), d.get("views"))
 
 
 def _kit_com_modelo(usuario_id: int, pasta) -> dict:
@@ -1447,92 +1449,6 @@ def explorar_mais(u: dict = Depends(usuario)):
     return {"termo": termo, "nicho": nicho, "novos": len(r["novos"]), "vistos": r["vistos"]}
 
 
-# ---------------------------------------------------------------- meu nicho: o formulário e a busca pelas estruturas
-
-@app.get("/api/nicho")
-def ver_nicho(u: dict = Depends(usuario)):
-    p = meu_nicho.ler(u)
-    return {"nicho": p, "estruturas": meu_nicho.com_exemplos(p), "lacunas": list(meu_nicho.CAMPOS),
-            "temas": TEMAS_DE_PARTIDA, "proximas": meu_nicho.proximas_buscas(p, int(p.get("vez") or 0)),
-            "opcoes": {"paises": list(meu_nicho.PAISES), "linguas": list(meu_nicho.LINGUAS),
-                       "duracoes": list(meu_nicho.DURACOES), "ordens": list(meu_nicho.ORDENS)}}
-
-
-# as sugestões de tema do primeiro passo (como os gêneros do Spotify): só atalhos, o tema é livre
-TEMAS_DE_PARTIDA = [
-    ["📈", "Mercados e investimentos"], ["🛒", "Supermercado e consumo"], ["🏠", "Imóveis e moradia"],
-    ["🚗", "Carros"], ["💼", "Negócios e empresas"], ["🏛", "Economia e governo"], ["🍔", "Restaurantes e fast food"],
-    ["👴", "Aposentadoria e terceira idade"], ["🤖", "Tecnologia e IA"], ["⚖️", "Direito e golpes"],
-    ["🌍", "Geopolítica"], ["🏺", "História"], ["🧠", "Psicologia"], ["🩺", "Saúde"], ["🐾", "Animais"],
-    ["🔎", "Mistério e crimes reais"],
-]
-
-
-@app.post("/api/nicho/sugerir")
-async def sugerir_nicho(request: Request, u: dict = Depends(usuario)):
-    d = await request.json()
-    tema = re.sub(r"\s+", " ", str(d.get("tema", ""))).strip()[:80]
-    if len(tema) < 2:
-        raise HTTPException(400, "Escreva o tema do seu canal.")
-    vocab = meu_nicho.sugerir(tema, str(d.get("descricao", ""))[:300])
-    if not any(vocab.values()):
-        raise HTTPException(503, "O Groq não respondeu agora. Escreva as palavras você mesmo ou tente de novo.")
-    return {"vocab": vocab}
-
-
-@app.post("/api/nicho")
-async def salvar_nicho(request: Request, u: dict = Depends(usuario)):
-    p = meu_nicho.salvar(u, await request.json())
-    if meu_nicho.referencias_pendentes(p):
-        threading.Thread(target=_medir_referencias_do_nicho, args=(u["id"], meu_nicho.referencias_pendentes(p)),
-                         daemon=True).start()
-    return {"nicho": p, "estruturas": meu_nicho.com_exemplos(p), "proximas": meu_nicho.proximas_buscas(p, int(p.get("vez") or 0))}
-
-
-def _medir_referencias_do_nicho(usuario_id: int, refs: list[str]) -> None:
-    """Os canais de referência do Formulário: acha o canal pelo @ ou link, mede (umas 3 unidades) e guarda no perfil.
-    Os títulos que mais renderam neles viram o exemplo do Groq no "Escrever as buscas com IA"."""
-    for ref in refs:
-        try:
-            canal = medir.medir_canais([_resolver(ref)])
-            meu_nicho.guardar_referencia(usuario_id, ref, next(iter(canal.values()), None))
-        except Exception as erro:       # um @ errado não para os outros
-            print("referência do nicho", ref, "falhou:", erro)
-            meu_nicho.guardar_referencia(usuario_id, ref, None)
-
-
-@app.post("/api/nicho/reescrever")
-async def reescrever_nicho(request: Request, u: dict = Depends(usuario)):
-    """O Groq escreve as buscas e os ganchos a partir do formulário como está na tela (sem guardar: a pessoa vê,
-    edita e salva)."""
-    d = await request.json()
-    p = meu_nicho.ler(u) | {"tema": str(d.get("tema", ""))[:80], "descricao": str(d.get("descricao", ""))[:300]}
-    if isinstance(d.get("vocab"), dict):
-        p["vocab"] = {l: [str(x)[:40] for x in d["vocab"].get(l, [])][:40] for l in meu_nicho.CAMPOS}
-    if len(p["tema"].strip()) < 2:
-        raise HTTPException(400, "Escreva o tema do seu canal.")
-    r = meu_nicho.reescrever(u, p)
-    if not (r["buscas"] or r["ganchos"]):
-        raise HTTPException(503, "O Groq não respondeu agora. Tente de novo em um minuto.")
-    return r | {"estruturas": meu_nicho.com_exemplos(p | r)}
-
-
-@app.get("/api/nicho/videos")
-def videos_do_nicho(u: dict = Depends(usuario)):
-    """A tela do Meu nicho: os vídeos que as buscas do nicho trouxeram, do mais novo para o mais antigo."""
-    return {"videos": meu_nicho.videos(u)}
-
-
-@app.post("/api/nicho/procurar")
-def procurar_no_nicho(u: dict = Depends(usuario)):
-    # a fila continua de onde parou (guardada no perfil): o clique não manda mais a tentativa
-    try:
-        r = meu_nicho.procurar(u)
-    except youtube.SemCota as erro:
-        _sem_cota(erro)
-    return r
-
-
 # ---------------------------------------------------------------- ideias de cada canal, painel da direita e treino
 
 def _meu_canal(usuario_id: int, canal_id: str) -> dict:
@@ -1851,15 +1767,19 @@ async def producao_salvar(canal_id: str, request: Request, u: dict = Depends(usu
     dados = await request.json()
     cfg = producao.salvar(u["id"], canal_id, dados)
     # o rodapé não é do Radar: vai para o perfil da fábrica, que é quem escreve a descrição de cada vídeo
-    if "rodape" in dados and cfg.get("perfil"):
+    if isinstance(dados.get("rodape"), str) and cfg.get("perfil"):
         try:
-            cfg["rodape"] = producao.salvar_rodape(cfg["perfil"], str(dados.get("rodape") or ""))
+            cfg["rodape"] = producao.salvar_rodape(cfg["perfil"], dados["rodape"])
         except ValueError as erro:
             raise HTTPException(400, str(erro))
-    # quem gera as imagens de IA: também no perfil da fábrica, que é quem gera
-    if dados.get("imagens_quem") and cfg.get("perfil"):
+    # quem gera as imagens de IA: também no perfil da fábrica, que é quem gera.
+    # A tela devolve a configuração inteira ao salvar, e nela `imagens_quem` é o dicionário de opções do GET:
+    # nesse caso não há escolha nova para gravar — só o texto "assinatura"/"api" conta (senão o salvar dava erro 400
+    # e a tela travava no fim do passo a passo do canal).
+    quem = dados.get("imagens_quem")
+    if isinstance(quem, str) and quem in producao.IMAGENS_QUEM and cfg.get("perfil"):
         try:
-            cfg["imagens"] = producao.salvar_imagens_quem(cfg["perfil"], str(dados["imagens_quem"]))
+            cfg["imagens"] = producao.salvar_imagens_quem(cfg["perfil"], quem)
         except ValueError as erro:
             raise HTTPException(400, str(erro))
     return cfg
@@ -1943,25 +1863,86 @@ def _projeto_fabrica(nome: str):
     return pasta
 
 
-@app.get("/api/fabrica/vozes")
-def fabrica_vozes(lingua: str = "português", busca: str = "", genero: str = "", pagina: int = 0, origem: str = "local",
-                  u: dict = Depends(usuario)):
-    """As vozes da fábrica, com a prévia, para escolher a voz do canal: as grátis (VoiceStudio e voicebox, origem
-    local) ou as da GenAI Pro (origem genaipro, paga na narração). As duas valem (pedido do usuário em 2026-11-03)."""
+# ---------------------------------------------------------------- a página Animações (pedido do usuário em 2026-11-07)
+# Tudo passa pelo Radar: a chave da fábrica nunca chega ao navegador.
+
+def _da_fabrica(funcao, *args):
     try:
-        return fabrica_api.vozes(lingua, busca, genero, max(0, min(pagina, 20)), origem)
+        return funcao(*args)
+    except fabrica_api.FabricaDesligada as erro:
+        raise HTTPException(503, str(erro))
+    except fabrica_api.SemFabrica as erro:
+        raise HTTPException(400, str(erro))
+
+
+@app.get("/api/animacoes/catalogo")
+def animacoes_catalogo(u: dict = Depends(usuario)):
+    return _da_fabrica(fabrica_api.catalogo_animacoes)
+
+
+@app.get("/api/animacoes/previa", response_class=HTMLResponse)
+def animacoes_previa(ajustes: str = "{}", tipo: str = "", parado: float | None = None, u: dict = Depends(usuario)):
+    return HTMLResponse(_da_fabrica(fabrica_api.previa_animacao, ajustes, tipo, parado),
+                        headers={"Cache-Control": "private, max-age=600"})
+
+
+@app.get("/api/animacoes/fonte/{arquivo}")
+def animacoes_fonte(arquivo: str, u: dict = Depends(usuario)):
+    return Response(_da_fabrica(fabrica_api.fonte_animacao, arquivo), media_type="font/ttf",
+                    headers={"Cache-Control": "private, max-age=86400"})
+
+
+@app.post("/api/animacoes/conferir")
+def animacoes_conferir(corpo: dict, u: dict = Depends(dono_da_fabrica)):
+    return _da_fabrica(fabrica_api.conferir_animacoes, corpo.get("ajustes") or {})
+
+
+@app.get("/api/animacoes/estilos")
+def animacoes_estilos(u: dict = Depends(usuario)):
+    return {"estilos": estilos_animacao.listar(u["id"])}
+
+
+@app.post("/api/animacoes/estilos")
+def animacoes_estilo_salvar(corpo: dict, u: dict = Depends(usuario)):
+    try:
+        return {"estilos": estilos_animacao.salvar(u["id"], corpo.get("nome"), corpo.get("ajustes"))}
+    except ValueError as erro:
+        raise HTTPException(400, str(erro))
+
+
+@app.delete("/api/animacoes/estilos")
+def animacoes_estilo_apagar(nome: str, u: dict = Depends(usuario)):
+    return {"estilos": estilos_animacao.apagar(u["id"], nome)}
+
+
+def _perfil_para_animacoes(usuario_id: int, canal_id: str) -> str:
+    _meu_canal(usuario_id, canal_id)
+    return producao.config(usuario_id, canal_id).get("perfil") or ""
+
+
+@app.get("/api/animacoes/canal/{canal_id}")
+def animacoes_canal(canal_id: str, u: dict = Depends(usuario)):
+    """O padrão do canal. Canal sem perfil próprio responde sem padrão e diz por quê, em vez de dar erro na tela."""
+    perfil = _perfil_para_animacoes(u["id"], canal_id)
+    if not perfil.startswith("canal-"):
+        return {"ajustes": None, "motivo": "Este canal ainda não tem perfil próprio na fábrica: escolha a voz dele primeiro."}
+    return {"ajustes": _da_fabrica(fabrica_api.animacoes_do_canal, perfil), "motivo": ""}
+
+
+@app.post("/api/animacoes/canal/{canal_id}")
+def animacoes_canal_salvar(canal_id: str, corpo: dict, u: dict = Depends(dono_da_fabrica)):
+    perfil = _perfil_para_animacoes(u["id"], canal_id)
+    return _da_fabrica(fabrica_api.salvar_animacoes_do_canal, perfil, corpo.get("ajustes") or {})
+
+
+@app.get("/api/fabrica/vozes")
+def fabrica_vozes(lingua: str = "português", busca: str = "", genero: str = "", pagina: int = 0,
+                  u: dict = Depends(usuario)):
+    """As vozes da fábrica (GenAI Pro), com a prévia, para escolher a voz do canal. Não gasta crédito."""
+    try:
+        return fabrica_api.vozes(lingua, busca, genero, max(0, min(pagina, 20)))
     except fabrica_api.SemFabrica as erro:
         raise HTTPException(503, str(erro))
-
-
-@app.get("/api/fabrica/vozes/previa")
-def fabrica_vozes_previa(voz: str, idioma: str = "pt", u: dict = Depends(usuario)):
-    """O áudio de prévia de uma voz. Passa pelo Radar porque a chave da fábrica nunca vai para o navegador."""
-    try:
-        audio = fabrica_api.previa(voz[:520], idioma[:5])
-    except fabrica_api.SemFabrica as erro:
-        raise HTTPException(erro.status or 503, str(erro))
-    return Response(audio, media_type="audio/wav", headers={"Cache-Control": "private, max-age=86400"})
 
 
 @app.post("/api/producao/{canal_id}/voz")
@@ -2196,7 +2177,7 @@ def fila_roteiro(fid: int, u: dict = Depends(usuario)):
     except RuntimeError as erro:
         raise HTTPException(404, str(erro))
     texto = (pasta / "roteiro.txt").read_text(encoding="utf-8")
-    return {"nome": item["roteiro"], "titulo": meta.get("titulo", ""), "roteiro": texto, "palavras": len(texto.split())}
+    return {"nome": item["roteiro"], "titulo": meta.get("titulo", ""), "roteiro": texto, "palavras": roteiro_claude.contar_palavras(texto)}
 
 
 @app.post("/api/fila/{fid}/comecar")
@@ -2855,7 +2836,7 @@ async def pauta(request: Request, u: dict = Depends(exigir("outliers"))):
                                                      "subnicho": subnicho, "minutos": minutos, "criado": banco.agora()},
                                                     ensure_ascii=False), encoding="utf-8")
     return {"titulo": feito["titulo"], "roteiro": feito["roteiro"], "arquivo": str(arquivo),
-            "palavras": len(feito["roteiro"].split()), "comando": _comando(nome, arquivo)}
+            "palavras": roteiro_claude.contar_palavras(feito["roteiro"]), "comando": _comando(nome, arquivo)}
 
 
 def _comando(nome: str, arquivo) -> str:
@@ -2874,7 +2855,7 @@ def pautas(u: dict = Depends(exigir("outliers"))):
         if txt.exists():
             roteiro = txt.read_text(encoding="utf-8")
             saida.append(d | {"nome": meta.stem, "arquivo": str(txt), "roteiro": roteiro,
-                              "palavras": len(roteiro.split()), "comando": _comando(meta.stem, txt)})
+                              "palavras": roteiro_claude.contar_palavras(roteiro), "comando": _comando(meta.stem, txt)})
     return {"pautas": saida}
 
 

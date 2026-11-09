@@ -27,8 +27,10 @@ LINGUAS = {"pt": "português", "en": "inglês", "es": "espanhol", "fr": "francê
 GUARDA_DIAS = 7
 PARECIDO = 0.6          # 60% das palavras da ideia no título achado: é a mesma ideia
 QUASE = 0.4             # 40%: parece, mas não é a mesma ideia (só conta)
-# canal sem radar próprio confere nestas 8 línguas (o botão Radar funciona desde o primeiro clique)
-PADRAO = [("US", "en"), ("BR", "pt"), ("ES", "es"), ("FR", "fr"), ("DE", "de"), ("IT", "it"), ("PL", "pl"), ("TR", "tr")]
+# canal sem radar próprio confere nestas 11 línguas (o botão Radar funciona desde o primeiro clique); Holanda, Japão e
+# Coreia do Sul entraram em 2026-11-03
+PADRAO = [("US", "en"), ("BR", "pt"), ("ES", "es"), ("FR", "fr"), ("DE", "de"), ("IT", "it"), ("PL", "pl"), ("TR", "tr"),
+          ("NL", "nl"), ("JP", "ja"), ("KR", "ko")]
 
 
 def forca(views: int | None) -> str:
@@ -128,10 +130,26 @@ _VAZIAS3 = {"the", "and", "you", "are", "for", "was", "que", "dos", "das", "com"
             "mas", "sus", "sem", "ter", "ser", "vir", "won", "they", "top", "mais", "more", "most"}
 
 
+# japonês e coreano: kanji, katakana e hangul. O hiragana (partículas e finais de verbo) só separa
+_CJK = re.compile(r"[一-鿿゠-ヿ가-힣]+")
+_KANA = re.compile(r"[぀-ヿ]")
+_HANGUL = re.compile(r"[가-힣]")
+
+
+def _pedacos_cjk(texto: str) -> set[str]:
+    """Japonês não tem espaço e o coreano gruda a partícula na palavra ("고양이가", "고양이는"): os pares de letras
+    vizinhas fazem as vezes das palavras ("고양", "양이"). Um kanji sozinho ("猫") já é uma palavra."""
+    saida = set()
+    for trecho in _CJK.findall(texto):
+        saida |= {trecho} if len(trecho) == 1 else {trecho[i:i + 2] for i in range(len(trecho) - 1)}
+    return saida
+
+
 def palavras(texto: str) -> set[str]:
-    """As palavras do título para comparar ideias: como `gosto.chaves`, mas com as de 3 letras ("cat", "dog", "mar")."""
+    """As palavras do título para comparar ideias: como `gosto.chaves`, mas com as de 3 letras ("cat", "dog", "mar")
+    e os pedaços do japonês e do coreano (sem eles, nada batia lá e o Japão saía sempre "ninguém fez")."""
     return gosto.chaves(texto) | {p for p in re.findall(r"\b[a-z]{3}\b", gosto._simples(texto))
-                                  if p not in _VAZIAS3 and p not in gosto._VAZIAS}
+                                  if p not in _VAZIAS3 and p not in gosto._VAZIAS} | _pedacos_cjk(texto)
 
 
 def mesma_ideia(titulo: str, alvo: set[str], numero: set[str] | None = None) -> float:
@@ -165,7 +183,12 @@ def na_lingua(titulo: str, lingua: str) -> bool:
     if achada in _LATINAS:
         return achada == lingua
     if achada == "outras":
-        return lingua in {"ja", "ko", "ru", "ar"}
+        # um vídeo coreano achado no Japão não diz que o Japão já fez (nem o contrário)
+        if lingua == "ja":
+            return bool(_KANA.search(titulo))
+        if lingua == "ko":
+            return bool(_HANGUL.search(titulo))
+        return lingua in {"ru", "ar"}
     return True
 
 
@@ -224,25 +247,79 @@ def conferir(usuario_id: int, projeto_id: int, video_id: str, titulo: str) -> di
 
 # ---------------------------------------------------------------- pela extensão: o YouTube de verdade, sem cota
 
-def preparar(titulo: str) -> dict:
+# Os três modos do Método Fantasma (pedido do usuário em 2026-11-03, no jeito do "Método Malandro" de outra extensão):
+#   raiz      - o título traduzido para cada língua, o lugar do título continua nele;
+#   adaptado  - o lugar do título trocado pelo país de cada língua ("supermercados do Canadá" vira "supermarkets in
+#               the USA"); título sem lugar ganha o país ("animais bizarros do Brasil");
+#   premium   - só os países de língua inglesa, onde o RPM é mais alto: o título em inglês, com o país trocado.
+MODOS = ("raiz", "adaptado", "premium")
+PREMIUM = ["US", "GB", "CA", "AU", "NZ", "IE"]
+VIEWS_FRACO = 0.05      # o achado com menos de 5% das views do vídeo aberto é fraco: ainda vale fazer lá
+# vídeo de mais de um ano não conta: a ideia esfriou e o lugar abriu de novo (em cada língua que o YouTube mostra)
+_VELHO = re.compile(r"\d+\s*(?:(?:anos?|years?|años?|ans?|année|jahre?n?|ann[oi]|rok|lata?|yıl|jaar)(?!\w)|年|년)", re.I)
+
+
+def velho(publicado: str) -> bool:
+    return bool(_VELHO.search(str(publicado or "")))
+
+
+def preparar(titulo: str, modo: str = "raiz") -> dict:
     """O que a extensão busca em cada país (pedido do usuário em 2026-10-14: o radar saiu do site e foi para a
-    extensão). A tradução fiel sai do Groq (grátis, guardada); quem abre a busca de cada país é a extensão, na página
-    do YouTube, sem gastar a cota da API. A busca da API só via 50 resultados, numa ordem diferente da do site."""
+    extensão). A tradução e a troca do lugar saem do Groq (grátis, guardadas); quem abre a busca de cada país é a
+    extensão, na página do YouTube, sem gastar a cota da API."""
+    modo = modo if modo in MODOS else "raiz"
     ideia = sem_numeros(titulo)
     lingua_titulo = gosto.lingua(titulo)
-    outras = sorted({l for _, l in PADRAO if l != lingua_titulo})
+    alvos = [(c, "en") for c in PREMIUM] if modo == "premium" else PADRAO
+    traducoes = _traducoes(titulo, sorted({l for _, l in alvos if l != lingua_titulo}))
+    troca = {"lugar": "", "titulos": {}, "marcas": {}}
+    if modo != "raiz":
+        troca = _troca(titulo, modo, {c: (PAISES[c][0], l) for c, l in alvos})
+    paises = []
+    for codigo, lingua in alvos:
+        traduzido = sem_numeros(traducoes.get(lingua) or titulo) if lingua != lingua_titulo else ideia
+        trocado = sem_numeros(troca["titulos"].get(codigo, ""))
+        # o título já fala deste país ("Why Americans Are Leaving California" e os EUA): não há o que trocar, mesmo
+        # que o Groq tenha trocado
+        if trocado and tem_marca(titulo, troca["marcas"].get(codigo, [])):
+            trocado = ""
+        # premium com lugar: o país do próprio título fica fora
+        if modo == "premium" and troca["lugar"] and not trocado:
+            continue
+        pais = {"codigo": codigo, "pais": PAISES[codigo][0], "lingua": lingua, "traduzido": trocado or traduzido,
+                "trocado": bool(trocado), "marcas": troca["marcas"].get(codigo, []) if trocado else []}
+        pais["busca"] = palavras_da_busca(pais["traduzido"])
+        paises.append(pais)
+    return {"titulo": titulo, "ideia": ideia, "modo": modo, "lugar": troca["lugar"], "paises": paises}
+
+
+def _traducoes(titulo: str, linguas: list[str]) -> dict:
     chave = f"traducao-radar:{titulo}"
-    cache = banco.um("SELECT dados FROM traducoes WHERE chave=?", chave)
-    traducoes = json.loads(cache["dados"]) if cache else ia.traduzir_exato(titulo, outras)
-    if traducoes and not cache:
+    linha = banco.um("SELECT dados FROM traducoes WHERE chave=?", chave)
+    traducoes = json.loads(linha["dados"]) if linha else {}
+    # a guardada de antes não tem as línguas que entraram depois (holandês, japonês, coreano): só elas vão ao Groq
+    faltam = [l for l in linguas if l not in traducoes]
+    novas = ia.traduzir_exato(titulo, faltam) if faltam else {}
+    traducoes |= novas
+    if novas:
         banco.executar("INSERT OR REPLACE INTO traducoes (chave, dados, criado) VALUES (?,?,?)",
                        chave, json.dumps(traducoes, ensure_ascii=False), banco.agora())
-    paises = []
-    for codigo, lingua in PADRAO:
-        traduzido = sem_numeros(traducoes.get(lingua) or titulo) if lingua != lingua_titulo else ideia
-        paises.append({"codigo": codigo, "pais": PAISES[codigo][0], "lingua": lingua, "traduzido": traduzido,
-                       "busca": palavras_da_busca(traduzido)})
-    return {"titulo": titulo, "ideia": ideia, "paises": paises}
+    return traducoes
+
+
+def _troca(titulo: str, modo: str, alvos: dict) -> dict:
+    """O lugar do título trocado pelo de cada país, guardado. No adaptado o título sem lugar ganha o país; no
+    premium fica o título em inglês, igual para os seis. O Groq falhou: fica a tradução, e tenta de novo da próxima."""
+    chave = f"troca-radar:{modo}:{titulo}"
+    linha = banco.um("SELECT dados FROM traducoes WHERE chave=?", chave)
+    if linha:
+        return json.loads(linha["dados"])
+    r = ia.regionalizar(titulo, alvos, acrescentar=modo == "adaptado")
+    if r is None:
+        return {"lugar": "", "titulos": {}, "marcas": {}}
+    banco.executar("INSERT OR REPLACE INTO traducoes (chave, dados, criado) VALUES (?,?,?)",
+                   chave, json.dumps(r, ensure_ascii=False), banco.agora())
+    return r
 
 
 def _views(texto) -> int | None:
@@ -253,27 +330,57 @@ def _views(texto) -> int | None:
     return int(digitos) if digitos else None
 
 
-def julgar(preparo: dict, resultados: dict, video_id: str = "") -> dict:
-    """Os vídeos que a extensão achou em cada país viram o placar: já fizeram (forte, médio, fraco) ou ninguém fez."""
+def forca_relativa(views: int | None, base: int | None) -> str:
+    """Com as views do vídeo aberto, fraco é relativo a ele (menos de 5%); sem elas, o corte fixo de `forca`."""
+    if base and (views or 0) < base * VIEWS_FRACO:
+        return "fraco"
+    return forca(views)
+
+
+def tem_marca(titulo: str, marcas: list[str]) -> bool:
+    """O vídeo achado fala do país? Pela raiz ("brasileiras" e "Brasil" batem) ou pela sigla ("USA", "UK")."""
+    achadas = {_raiz(p) for p in palavras(titulo)} | {p.lower() for p in re.findall(r"\w+", titulo)}
+    for m in marcas:
+        partes = {_raiz(p) for p in palavras(m)} or {p.lower() for p in re.findall(r"\w+", m)}
+        if partes and partes <= achadas:
+            return True
+    return False
+
+
+def _placar(x: dict, achados: list, titulo: str, video_id: str, canal_id: str, base: int | None) -> dict:
+    """Os vídeos achados num país viram o placar: já fizeram (forte, médio, fraco) ou ninguém fez. Não contam o
+    próprio vídeo, os do mesmo canal, os de mais de um ano e os de outra língua; com o país trocado, o achado
+    precisa falar do país (um vídeo dos EUA achado na Austrália não diz que a Austrália já fez)."""
+    alvo = palavras(str(x.get("traduzido", "")))
+    marcas = x.get("marcas") or []
+    parecidos, quase, velhos, vistos = [], 0, 0, set()
+    for a in (achados or [])[:80]:
+        t, vid = str(a.get("titulo", "")), str(a.get("id", ""))
+        if not t or vid == video_id or vid in vistos or (canal_id and a.get("canal_id") == canal_id) \
+                or not na_lingua(t, x["lingua"]):
+            continue
+        vistos.add(vid)
+        nota = mesma_ideia(t, alvo, numeros(titulo))
+        if nota >= PARECIDO and velho(a.get("publicado", "")):
+            velhos += 1
+        elif nota >= PARECIDO and (not marcas or tem_marca(t, marcas)):
+            parecidos.append({"id": vid, "titulo": t, "canal": str(a.get("canal", "")),
+                              "views": _views(a.get("views")), "publicado": str(a.get("publicado", "")),
+                              "parecenca": round(nota, 2)})
+        elif nota >= QUASE:
+            quase += 1
+    parecidos.sort(key=lambda v: -(v["views"] or 0))
+    busca = x["busca"]
+    return {"codigo": x["codigo"], "pais": x["pais"], "lingua": x["lingua"], "busca": busca,
+            "traduzido": x.get("traduzido", ""), "trocado": bool(x.get("trocado")),
+            "feito": bool(parecidos), "parecidos": parecidos[:4], "quase": quase, "velhos": velhos,
+            "forca": forca_relativa(parecidos[0]["views"], base) if parecidos else "",
+            "link": f"https://www.youtube.com/results?search_query={busca.replace(' ', '+')}"}
+
+
+def julgar(preparo: dict, resultados: dict, video_id: str = "", canal_id: str = "", views=None) -> dict:
     titulo = str(preparo.get("titulo", ""))
-    saida = []
-    for x in preparo.get("paises", []):
-        alvo = palavras(str(x.get("traduzido", "")))
-        parecidos, quase = [], 0
-        for a in (resultados.get(x["codigo"]) or [])[:60]:
-            t = str(a.get("titulo", ""))
-            if not t or a.get("id") == video_id or not na_lingua(t, x["lingua"]):
-                continue
-            nota = mesma_ideia(t, alvo, numeros(titulo))
-            if nota >= PARECIDO:
-                parecidos.append({"id": str(a.get("id", "")), "titulo": t, "canal": str(a.get("canal", "")),
-                                  "views": _views(a.get("views")), "publicado": str(a.get("publicado", "")),
-                                  "parecenca": round(nota, 2)})
-            elif nota >= QUASE:
-                quase += 1
-        parecidos.sort(key=lambda v: -(v["views"] or 0))
-        saida.append({"codigo": x["codigo"], "pais": x["pais"], "lingua": x["lingua"], "busca": x["busca"],
-                      "feito": bool(parecidos), "parecidos": parecidos[:4], "quase": quase,
-                      "forca": forca(parecidos[0]["views"]) if parecidos else "",
-                      "link": f"https://www.youtube.com/results?search_query={x['busca'].replace(' ', '+')}"})
-    return {"ideia": preparo.get("ideia", ""), "paises": saida, "livres": sum(1 for r in saida if not r["feito"])}
+    base = _views(views)
+    saida = [_placar(x, resultados.get(x["codigo"]), titulo, video_id, canal_id, base) for x in preparo.get("paises", [])]
+    return {"ideia": preparo.get("ideia", ""), "modo": preparo.get("modo", "raiz"), "lugar": preparo.get("lugar", ""),
+            "paises": saida, "livres": sum(1 for r in saida if not r["feito"])}

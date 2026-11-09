@@ -1,6 +1,8 @@
 """O que pede um modelo: o título em outras línguas, o nicho do canal e se o canal mostra rosto.
 
-Só o Groq (gratuito), revezando as GROQ_API_KEY. Sem chave ou fora do ar, cada função devolve vazio e o Radar segue."""
+O Groq (gratuito), revezando as GROQ_API_KEY. Quando todas gastam a cota do dia, o mesmo pedido vai para o Gemini
+(plano grátis, revezando as GEMINI_API_KEY). Sem chave ou fora do ar, cada função devolve vazio e o Radar segue."""
+import base64
 import itertools
 import json
 import re
@@ -9,7 +11,7 @@ import time
 
 import httpx
 
-from .config import MODELO_TEXTO, MODELO_VISAO, chaves_groq
+from .config import MODELO_GEMINI, MODELO_TEXTO, MODELO_VISAO, chaves_gemini, chaves_groq
 
 URL = "https://api.groq.com/openai/v1/chat/completions"
 _CLIENTE = httpx.Client(timeout=httpx.Timeout(60, connect=10))
@@ -40,7 +42,12 @@ def _espera_pedida(texto: str, cabecalhos=None) -> float | None:
 
 
 def esgotado(modelo: str) -> bool:
-    """True quando toda chave já estourou a cota de tokens do dia desse modelo: nem vale perguntar."""
+    """True quando toda chave do Groq já estourou a cota de tokens do dia desse modelo e o Gemini também está fora:
+    nem vale perguntar."""
+    return _groq_esgotado(modelo) and not _gemini_livre()
+
+
+def _groq_esgotado(modelo: str) -> bool:
     chaves = [c for c in chaves_groq() if c not in _RECUSADAS]
     if not chaves:
         return True
@@ -50,9 +57,84 @@ def esgotado(modelo: str) -> bool:
     return all(_ESGOTADAS.get((modelo, c), 0) > agora for c in chaves)
 
 
+# ---------------------------------------------------------------- o Gemini, a reserva do Groq (2026-11-03)
+# Pedido do usuário: "tem alguma outra IA que possa fazer esse papel do Groq?", "só o Gemini grátis". As 11 chaves do
+# Groq gastavam a cota de tokens do dia e os canais novos ficavam sem nicho e sem rosto até o outro dia (264 numa
+# tarde). O Gemini entende o mesmo pedido do Groq (o jeito da OpenAI); só a capa vai junto em base64, não pelo link.
+
+URL_GEMINI = "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions"
+_GEMINI_FORA: dict[str, float] = {}     # chave -> o time.monotonic() em que o limite dela volta
+_VEZ_GEMINI = itertools.count()
+
+
+def _gemini_livre() -> bool:
+    agora = time.monotonic()
+    return any(_GEMINI_FORA.get(c, 0) <= agora for c in chaves_gemini() if c not in _RECUSADAS)
+
+
+def _espera_gemini(texto: str) -> float:
+    """O Gemini diz quanto esperar no retryDelay ("37s"); o limite do dia (PerDay) só volta à meia-noite do Pacífico."""
+    m = re.search(r'"retryDelay":\s*"([\d.]+)s"', texto)
+    return 3600 if "PerDay" in texto or not m else float(m.group(1)) + 1
+
+
+def _capas_embutidas(conteudo):
+    if not isinstance(conteudo, list):
+        return conteudo
+    saida = []
+    for parte in conteudo:
+        url = (parte.get("image_url") or {}).get("url", "") if parte.get("type") == "image_url" else ""
+        if url.startswith("http"):
+            try:
+                r = _CLIENTE.get(url, timeout=15)
+            except httpx.HTTPError:
+                continue
+            if r.status_code != 200:
+                continue        # capa que não existe mais fica de fora, em vez de o pedido inteiro ser recusado
+            tipo = r.headers.get("content-type", "image/jpeg").split(";")[0]
+            parte = {"type": "image_url",
+                     "image_url": {"url": f"data:{tipo};base64," + base64.b64encode(r.content).decode()}}
+        saida.append(parte)
+    return saida
+
+
+def _gemini(sistema: str, conteudo, saida: int, temperatura: float) -> dict | None:
+    chaves = [c for c in chaves_gemini() if c not in _RECUSADAS]
+    if not chaves or not _gemini_livre():
+        return None
+    conteudo = _capas_embutidas(conteudo)
+    inicio = next(_VEZ_GEMINI)
+    for chave in chaves[inicio % len(chaves):] + chaves[:inicio % len(chaves)]:
+        if _GEMINI_FORA.get(chave, 0) > time.monotonic():
+            continue
+        corpo = {"model": MODELO_GEMINI, "temperature": temperatura, "max_tokens": saida,
+                 "response_format": {"type": "json_object"},
+                 "messages": [{"role": "system", "content": sistema}, {"role": "user", "content": conteudo}]}
+        try:
+            r = _CLIENTE.post(URL_GEMINI, json=corpo, headers={"Authorization": f"Bearer {chave}"}, timeout=40)
+        except httpx.HTTPError:
+            continue
+        if r.status_code == 200:
+            try:
+                resposta = json.loads(r.json()["choices"][0]["message"]["content"])
+            except (KeyError, ValueError, IndexError, TypeError):
+                continue
+            return resposta if isinstance(resposta, dict) else None
+        if r.status_code in (401, 403):
+            _RECUSADAS.add(chave)
+            continue
+        if r.status_code == 400:
+            return None
+        if r.status_code == 429:
+            _GEMINI_FORA[chave] = time.monotonic() + _espera_gemini(r.text)
+        # 429 e 5xx (o Gemini dá 503 quando está cheio): a próxima chave
+    return None
+
+
 LINGUAS = {
     "en": "inglês", "es": "espanhol", "pt": "português", "fr": "francês", "de": "alemão",
-    "it": "italiano", "ja": "japonês", "ko": "coreano", "hi": "hindi",
+    "it": "italiano", "ja": "japonês", "ko": "coreano", "hi": "hindi", "nl": "holandês", "pl": "polonês",
+    "tr": "turco",
 }
 
 NICHOS = [
@@ -90,7 +172,7 @@ def _perguntar(modelo: str, sistema: str, conteudo, tentativas: int = 4, esperar
         restantes -= 1
         chave = _chave(modelo)
         if not chave:
-            return None
+            return _gemini(sistema, conteudo, saida, temperatura)
         corpo = {"model": modelo, "temperature": temperatura, "max_completion_tokens": saida,
                  "response_format": {"type": "json_object"},
                  "messages": [{"role": "system", "content": sistema}, {"role": "user", "content": conteudo}]}
@@ -172,7 +254,8 @@ def sugerir_termos(nicho_nome: str, titulos: list[str], quantos: int = 4) -> lis
         MODELO_TEXTO,
         "Você ajuda a achar canais novos do YouTube. A partir dos títulos de vídeos que fizeram muito sucesso, "
         f"escreva {quantos} buscas curtas (2 a 5 palavras) que achariam OUTROS vídeos do mesmo tipo, sem nomes "
-        "próprios de um vídeo só. Misture inglês, português e espanhol. Responda só JSON: {\"buscas\": [\"...\"]}.",
+        "próprios de um vídeo só. Escreva todas em inglês, mesmo que os títulos estejam em outra língua. Responda só "
+        "JSON: {\"buscas\": [\"...\"]}.",
         f"Nicho: {nicho_nome}\n" + _lista("Títulos que estouraram", titulos[:20]), esperar=60)
     buscas = (resposta or {}).get("buscas", [])
     return [re.sub(r"\s+", " ", str(b)).strip()[:60] for b in buscas if isinstance(b, str) and 2 <= len(b.split()) <= 7][:quantos]
@@ -251,87 +334,43 @@ def traduzir_exato(titulo: str, linguas: list[str]) -> dict[str, str]:
     return {c: str(resposta[c]).strip()[:150] for c in linguas if isinstance(resposta.get(c), str) and resposta[c].strip()}
 
 
-def estruturas(titulos: list[str], lacunas: tuple[str, ...]) -> list[str]:
-    """Os títulos que estouraram virados em estruturas genéricas (pedido do usuário em 2026-10-27): o gancho fica,
-    o assunto vira lacuna, e nada de nome de lugar, marca ou número."""
-    if not titulos:
-        return []
-    marcas = ", ".join("{" + l + "}" for l in lacunas)
+def regionalizar(titulo: str, alvos: dict[str, tuple[str, str]], acrescentar: bool = False) -> dict | None:
+    """O título reescrito para cada país, com o lugar trocado pelo país (pedido do usuário em 2026-11-03: "mercados
+    do Canadá e dos EUA são diferentes", "invenções do Japão e invenções da China"). `alvos` = {código: (país,
+    língua)}. `acrescentar`: título que não fala de lugar ganha o país mesmo assim ("Animais bizarros" vira "Animais
+    bizarros do Brasil"). Devolve {"lugar": "Canadá", "titulos": {código: título}, "marcas": {código: ["Brasil",
+    "brasileiro", ...]}}: as marcas são os jeitos de escrever o país naquela língua, para conferir se o vídeo achado
+    fala dele. Lugar "" = o título não fala de lugar. None = o Groq falhou."""
+    pedido = {c: {"pais": p, "lingua": LINGUAS.get(l, l)} for c, (p, l) in alvos.items()}
+    sem_lugar = ("Se o título não fala de lugar nenhum, devolva lugar vazio e, para cada país pedido, o título "
+                 "traduzido com o país acrescentado do jeito mais natural (\"Animais bizarros que parecem de outro "
+                 "mundo\" para Brasil vira \"Animais bizarros do Brasil que parecem de outro mundo\"). "
+                 if acrescentar else "Se o título não fala de lugar nenhum, devolva lugar vazio e nenhum título. ")
     resposta = _perguntar(
         MODELO_TEXTO,
-        "Você transforma títulos de vídeos do YouTube que fizeram sucesso em ESTRUTURAS genéricas, que sirvam para "
-        f"qualquer nicho. Troque o assunto específico (nomes próprios, marcas, lugares, produtos, pessoas) por uma "
-        f"destas lacunas: {marcas}. {{assunto}} é a coisa de que se fala; {{itens}}, coisas no plural; {{lugares}}, "
-        "lugares ou empresas no plural; {publico}, quem assiste; {momento}, uma situação. Mantenha as palavras do "
-        "gancho exatamente como estão, em inglês. Tire TODOS os números, anos e preços. Sem emoji. Títulos com o "
-        "mesmo gancho viram uma estrutura só. Pule o título que não tem gancho (só um nome, só um assunto). "
-        "Exemplo: 'Why 7 Walmart Stores Are Closing in 2026' vira '{lugares} Are Closing'. "
-        "Responda só JSON: {\"estruturas\": [\"...\"]}.",
-        _lista("Títulos", titulos[:30]), saida=1500, esperar=60)
-    return [re.sub(r"\s+", " ", str(e)).strip()[:110]
-            for e in (resposta or {}).get("estruturas", []) if isinstance(e, str) and e.strip()]
-
-
-def vocabulario(tema: str, descricao: str = "", lacunas: tuple[str, ...] = ()) -> dict[str, list[str]]:
-    """As palavras do nicho da pessoa para preencher as estruturas, em inglês (a busca vai para o YouTube dos EUA)."""
-    resposta = _perguntar(
-        MODELO_TEXTO,
-        "Você ajuda um canal sem rosto do YouTube a buscar vídeos do mesmo nicho. Pelo tema do canal, escreva, EM "
-        "INGLÊS, de 4 a 6 opções curtas (1 a 4 palavras) para cada lacuna, do jeito que aparecem em títulos de vídeos "
-        "que estouram nesse nicho: 'assunto' (a coisa de que o canal fala: setores, marcas, mercados), 'itens' "
-        "(coisas no plural), 'lugares' (lugares ou empresas no plural), 'publico' (quem assiste, no plural), "
-        "'momento' (situações, como 'the economy crashes'). Prefira o concreto que aparece em títulos que "
-        "estouram (marcas, redes, produtos, cargos: 'Walmart', 'Costco Members', 'Frozen Foods') ao abstrato "
-        "('Consumer Behavior'). E 'palavras': de 20 a 30 palavras soltas, concretas, que aparecem nos títulos dos "
-        "vídeos desse nicho e em nenhum outro (para animais: shark, lion, snake, predator, wildlife, dog...; para "
-        "supermercado: walmart, costco, grocery, aldi, kroger...). Sem números. Nada fora do nicho. "
-        "Responda só JSON: {\"assunto\": [...], \"itens\": [...], \"lugares\": [...], \"publico\": [...], "
-        "\"momento\": [...], \"palavras\": [...]}.",
-        f"Tema do canal: {tema}\nO que o canal faz: {descricao or '(não disse)'}", saida=1200, esperar=30)
-    # o modelo às vezes devolve a chave em inglês ("items" no lugar de "itens")
-    apelidos = {"itens": "items", "lugares": "places", "publico": "audience", "momento": "moments", "assunto": "subject"}
-    saida = {}
-    for l in lacunas:
-        opcoes = (resposta or {}).get(l) or (resposta or {}).get(apelidos.get(l, l)) or []
-        saida[l] = [re.sub(r"\s+", " ", str(o)).strip()[:40] for o in opcoes
-                    if isinstance(o, str) and o.strip() and not re.search(r"\d", o)][:30 if l == "palavras" else 8]
-    return saida
-
-
-def buscas_das_estruturas(tema: str, descricao: str, vocab: dict, estruturas: list[str],
-                          exemplos: list[str] = ()) -> dict:
-    """As buscas do nicho da pessoa: cada estrutura de título adaptada ao nicho, e os ganchos típicos do nicho.
-
-    Colar as palavras nas lacunas dava "Essential Horns Conservationists Will Stockpile" para quem escolheu animais
-    (2026-10-27): a estrutura é de nicho de consumo. O que se aproveita dela é o TIPO de gancho (colapso, boicote,
-    regra nova, pior e melhor), e o título tem de ser um que existe naquele nicho. Volta {"estruturas": {estrutura:
-    [buscas]}, "ganchos": [buscas]}; estrutura que não dá para adaptar volta com a lista vazia."""
-    if not estruturas:
-        return {"estruturas": {}, "ganchos": []}
-    numeradas = {str(i): e for i, e in enumerate(estruturas[:40])}
-    resposta = _perguntar(
-        MODELO_TEXTO,
-        "Você escreve buscas para achar no YouTube os canais de sucesso de um nicho. Recebe estruturas de título "
-        "(o gancho de vídeos que estouraram, com lacunas entre chaves), que podem ter vindo de OUTRO nicho.\n"
-        "1) 'estruturas': para cada estrutura, escreva de 1 a 2 títulos EM INGLÊS que um vídeo de sucesso DESTE "
-        "nicho teria, usando o MESMO TIPO de gancho (colapso, ninguém consegue salvar, boicote, regras mudando, pior "
-        "e melhor, ganância, algo que fica valioso). Adapte as palavras do gancho para soar natural no nicho; o "
-        "título tem de ser algo que existe de verdade nesse nicho, não uma colagem. Se o gancho não existe nesse "
-        "nicho, devolva lista vazia.\n"
-        "2) 'ganchos': 8 títulos EM INGLÊS no estilo dos que mais estouram NESTE nicho em canais sem rosto (os "
-        "ganchos típicos dele), cada um com um gancho diferente.\n"
-        "Sem números, sem nomes de canais. Responda só JSON: {\"estruturas\": {\"0\": [\"...\"], \"1\": []}, "
-        "\"ganchos\": [\"...\"]}.",
-        f"Tema do canal: {tema}\nO que o canal faz: {descricao or '(não disse)'}\n"
-        f"Palavras do nicho: {json.dumps(vocab, ensure_ascii=False)}\n"
-        # os títulos que mais renderam nos canais de referência da pessoa: o melhor retrato do estilo do nicho
-        + (_lista("Títulos que estouraram nos canais que são o modelo da pessoa (escreva no mesmo estilo)",
-                  list(exemplos)[:25]) + "\n" if exemplos else "")
-        + _lista("Estruturas", [f"{i}: {e}" for i, e in numeradas.items()]),
-        saida=4000, temperatura=0.5, esperar=60)
-    limpar = lambda lista, ate: [re.sub(r"\s+", " ", str(t)).strip()[:100] for t in (lista or [])  # noqa: E731
-                                 if isinstance(t, str) and t.strip() and "{" not in t and not re.search(r"\d", t)][:ate]
-    por_numero = (resposta or {}).get("estruturas") or {}
-    saida = {e: limpar(por_numero.get(i), 2) for i, e in numeradas.items()
-             if isinstance(por_numero, dict) and isinstance(por_numero.get(i), list)}
-    return {"estruturas": saida, "ganchos": limpar((resposta or {}).get("ganchos"), 10)}
+        "O título de um vídeo do YouTube fala de um lugar específico (país, cidade, região ou povo/nacionalidade)? "
+        "Se fala, reescreva o título para cada país pedido, na língua pedida, trocando esse lugar pelo país pedido e "
+        "mantendo todo o resto fiel ao original (as mesmas palavras e a mesma ordem, sem números). Exemplo: "
+        "\"Supermercados do Canadá que faliram\" para Estados Unidos em inglês vira \"Supermarkets in the USA that went "
+        "bankrupt\"; \"Invenções japonesas que mudaram o mundo\" para Brasil em português vira \"Invenções brasileiras "
+        "que mudaram o mundo\". Troque também o povo, o adjetivo, as cidades e os estados do lugar pelos do país pedido, "
+        "com o artigo certo: \"Why Americans Are Leaving California\" para Reino Unido vira \"Why Brits Are Leaving "
+        "Britain\". Não inclua o país do lugar do título (o Japão no exemplo das invenções; os EUA no da Califórnia). "
+        + sem_lugar +
+        "Para cada título, dê também as marcas: os jeitos de escrever aquele país na língua do título (nome, sigla, "
+        "adjetivo e povo, ex.: [\"USA\", \"United States\", \"America\", \"American\", \"Americans\"]), sem códigos de "
+        "duas letras como BR ou ES. "
+        "Responda só JSON: {\"lugar\": \"o lugar do título ou vazio\", \"titulos\": {\"codigo\": \"título\"}, "
+        "\"marcas\": {\"codigo\": [\"...\"]}}.",
+        f"Título: {titulo}\nPaíses: {json.dumps(pedido, ensure_ascii=False)}", esperar=30, saida=2000)
+    if not isinstance(resposta, dict):
+        return None
+    lugar = str(resposta.get("lugar") or "").strip()[:60]
+    titulos = resposta.get("titulos") if (lugar or acrescentar) and isinstance(resposta.get("titulos"), dict) else {}
+    titulos = {c: str(t).strip()[:150] for c, t in titulos.items() if c in alvos and isinstance(t, str) and t.strip()}
+    marcas = resposta.get("marcas") if isinstance(resposta.get("marcas"), dict) else {}
+    return {"lugar": lugar, "titulos": titulos,
+            # sigla de duas letras, só UK, US e NZ: "es", "fr" e "br" aparecem em qualquer título
+            "marcas": {c: [str(m).strip()[:40] for m in ms
+                           if isinstance(m, str) and (len(m.strip()) > 2 or m.strip() in ("UK", "US", "NZ"))][:8]
+                       for c, ms in marcas.items() if c in titulos and isinstance(ms, list)}}
