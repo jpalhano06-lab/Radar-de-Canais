@@ -951,6 +951,10 @@ questionário de anunciantes, público e visibilidade, achando o vídeo **pelo n
   Salvar canal / Parecidos deste como terceiro item, mas a grade continuava com 2 colunas — os botões caíam na
   coluna larga e os vídeos iam parar espremidos embaixo do cartão, na coluna de 210 px. Agora a grade tem áreas
   nomeadas: cartão e botões empilhados à esquerda, vídeos na coluna larga.
+- **Botão PT de volta nos cartões** (2026-11-10, extensão 0.45.3): o YouTube trocou as classes BEM dos cartões novos
+  (`yt-lockup-metadata-view-model__title`) por camelCase (`ytLockupMetadataViewModelTitle`), e o botão PT parou de
+  achar o título. O seletor `TITULO` do content.js aceita os dois jeitos. O selo de vezes o normal não sumiu por isso:
+  ele só aparece com o Radar ligado na 8400, que dá a nota.
 - **LIGAR-RADAR.bat abre o navegador só quando o Radar responde** (2026-10-19): depois que ele passou a fechar o Radar
   antigo, o navegador abria antes do servidor novo subir (uns 5 s) e mostrava "não é possível acessar este site",
   parecendo que o Radar não ligava. Agora uma espera escondida tenta o endereço a cada segundo (até 90 s) e abre o

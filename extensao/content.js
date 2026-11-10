@@ -5,7 +5,10 @@
     "ytd-rich-item-renderer", "ytd-video-renderer", "ytd-compact-video-renderer", "ytd-grid-video-renderer",
     "ytd-playlist-video-renderer", "yt-lockup-view-model", "ytd-reel-item-renderer", "ytm-shorts-lockup-view-model",
   ].join(",");
-  const IMAGEM = "ytd-thumbnail, a#thumbnail, yt-thumbnail-view-model, .yt-lockup-view-model__content-image, .shortsLockupViewModelHostThumbnailContainer";
+  const IMAGEM = "ytd-thumbnail, a#thumbnail, yt-thumbnail-view-model, .yt-lockup-view-model__content-image, .ytLockupViewModelContentImage, .shortsLockupViewModelHostThumbnailContainer";
+  // o título do cartão: em 2026-11 o YouTube trocou as classes BEM (yt-lockup-metadata-view-model__title) por
+  // camelCase (ytLockupMetadataViewModelTitle) e o botão PT sumiu; ficam os dois jeitos
+  const TITULO = "#video-title, .yt-lockup-metadata-view-model__title, .ytLockupMetadataViewModelTitle";
   let semConta = false;
 
   // Personalizar: cada função liga e desliga no ícone da extensão e muda na hora. A classe no <html> esconde o que já
@@ -548,7 +551,7 @@
 
   function botaoTraduzir(caixa, id) {
     if (caixa.dataset.traduzir === id) return;
-    const tituloEl = caixa.querySelector("#video-title, .yt-lockup-metadata-view-model__title");
+    const tituloEl = caixa.querySelector(TITULO);
     const lugar = tituloEl && (tituloEl.closest("h3") || tituloEl.parentElement);
     if (!lugar) return;
     caixa.dataset.traduzir = id;
@@ -702,7 +705,7 @@
   function marcarAlvo(caixa, id) {
     caixa.dataset.alvo = id;
     caixa.querySelectorAll(".radar-alvo").forEach((s) => s.remove());
-    const tituloEl = caixa.querySelector("#video-title, .yt-lockup-metadata-view-model__title, h3");
+    const tituloEl = caixa.querySelector(`${TITULO}, h3`);
     const titulo = tituloEl ? tituloEl.textContent.trim() : "";
     if (!combina(titulo)) return;
     const lugar = caixa.querySelector(IMAGEM) || caixa;
