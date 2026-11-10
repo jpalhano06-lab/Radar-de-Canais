@@ -947,6 +947,10 @@ questionário de anunciantes, público e visibilidade, achando o vídeo **pelo n
     título. Agora `tem_legenda` devolve `None` quando não deu para conferir; quando a referência é o vídeo aberto, a
     extensão lê a fala pelo navegador (o mesmo jeito da aba Transcrição) e manda no pedido (`transcricao_ref`, até
     80 mil letras, fora da lista do Acompanhar). O roteiro usa essa fala quando a leitura do Radar falha.
+- **Canais Parecidos voltou ao lugar** (2026-11-10, extensão 0.45.2): a linha de cada parecido ganhou os botões
+  Salvar canal / Parecidos deste como terceiro item, mas a grade continuava com 2 colunas — os botões caíam na
+  coluna larga e os vídeos iam parar espremidos embaixo do cartão, na coluna de 210 px. Agora a grade tem áreas
+  nomeadas: cartão e botões empilhados à esquerda, vídeos na coluna larga.
 - **LIGAR-RADAR.bat abre o navegador só quando o Radar responde** (2026-10-19): depois que ele passou a fechar o Radar
   antigo, o navegador abria antes do servidor novo subir (uns 5 s) e mostrava "não é possível acessar este site",
   parecendo que o Radar não ligava. Agora uma espera escondida tenta o endereço a cada segundo (até 90 s) e abre o

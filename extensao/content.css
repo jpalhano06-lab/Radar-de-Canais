@@ -568,9 +568,13 @@ html[dark] .radar-nicho-caixa { color: #f1f1f1; background: #161616; border-colo
 /* ---- Canais Parecidos em linhas (o canal e os vídeos dele ao lado); caixa e seção na largura toda (2026-10-19) ---- */
 .radar-nicho-caixa, .radar-canal-secao { width: 100%; box-sizing: border-box; align-self: stretch; }
 .radar-parecidos-linhas { display: grid; gap: 14px; }
-.radar-parecido-linha { display: grid; grid-template-columns: 210px 1fr; gap: 16px; align-items: stretch; padding: 12px; border-radius: 14px;
+/* 3 filhos: cartão e botões empilhados à esquerda, vídeos na coluna larga ocupando as duas linhas */
+.radar-parecido-linha { display: grid; grid-template-columns: 210px 1fr; grid-template-rows: 1fr auto;
+  grid-template-areas: "cartao videos" "acoes videos"; gap: 8px 16px; align-items: stretch; padding: 12px; border-radius: 14px;
   background: rgba(128,128,128,.06); border: 1px solid rgba(128,128,128,.18); }
-.radar-parecido-linha .radar-canal-cartao { align-content: center; }
+.radar-parecido-linha .radar-canal-cartao { grid-area: cartao; align-content: center; }
+.radar-parecido-linha .radar-parecido-acoes { grid-area: acoes; justify-content: center; }
+.radar-parecido-linha .radar-parecido-videos { grid-area: videos; }
 .radar-parecido-videos { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 12px; align-content: start; }
 .radar-mini-video { display: grid; gap: 5px; align-content: start; color: inherit; text-decoration: none; min-width: 0; }
 .radar-mini-video .rf-capa { border-radius: 9px; }
@@ -579,7 +583,7 @@ html[dark] .radar-nicho-caixa { color: #f1f1f1; background: #161616; border-colo
 .radar-mini-video .rf-nota { justify-self: start; font-size: 12px; font-weight: 800; }
 .radar-mini-video:hover .rf-capa { outline: 2px solid #fff; outline-offset: -2px; }
 @media (max-width: 1100px) { .radar-parecido-videos { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
-@media (max-width: 760px) { .radar-parecido-linha { grid-template-columns: 1fr; } }
+@media (max-width: 760px) { .radar-parecido-linha { grid-template-columns: 1fr; grid-template-rows: auto; grid-template-areas: "cartao" "acoes" "videos"; } }
 
 /* ---- atalhos: a tecla aparece no menu do Radar ---- */
 .radar-menu-item { grid-template-columns: 34px 1fr auto; }
