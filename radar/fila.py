@@ -18,7 +18,7 @@ LIMITES = (1, 2, 3, 4, 6, 8)
 ESCRITAS_AO_MESMO_TEMPO = 2       # roteiros pelo Claude ao mesmo tempo (20 pedidos de uma vez eram 20 chamadas juntas)
 CAMPOS = ("titulo", "link", "canal_id", "agente_id", "lingua", "caracteres", "roteiro_manual", "nicho", "observacao",
           "revisar", "perfil", "footage_real", "ia_pct", "tema", "escolhido_na_tela", "destino", "ritmo", "edicao", "transicao", "camada", "ia", "acervo",
-          "avatar", "musica", "som_textos", "video_ia", "animacoes")
+          "avatar", "musica", "som_textos", "video_ia", "animacoes", "transcricao_ref")
 FOOTAGE_REAL = (0, 15, 25, 40)    # % das cenas com trecho de vídeo real do YouTube (o garimpo da fábrica)
 IA_PCT = (0, 10, 25, 50, 75, 100)  # % das cenas com imagem de IA. Sem escolha, quem decide é o agente de cenas, até ia.teto
 # o que a Nova produção deixa escolher por vídeo. Vazio é o padrão do canal, e aí nada é gravado no projeto
@@ -71,7 +71,11 @@ def caracteres_de(minutos: float, ppm: int) -> int:
 def _publico(linha: dict | None) -> dict | None:
     if not linha:
         return None
-    return {k: v for k, v in linha.items() if k not in ("pedido", "lease")} | {"pedido": json.loads(linha["pedido"] or "{}")}
+    pedido = json.loads(linha["pedido"] or "{}")
+    # a transcrição da referência (até 80 mil letras) não vai na lista que o Acompanhar e a extensão leem a toda hora
+    if pedido.pop("transcricao_ref", None):
+        pedido["com_transcricao_ref"] = True
+    return {k: v for k, v in linha.items() if k not in ("pedido", "lease")} | {"pedido": pedido}
 
 
 def criar(usuario_id: int, pedido: dict, comecar: bool) -> dict:
@@ -80,6 +84,8 @@ def criar(usuario_id: int, pedido: dict, comecar: bool) -> dict:
     if not limpo["titulo"]:
         raise ValueError("Escreva o título do vídeo.")
     limpo["revisar"] = bool(pedido.get("revisar"))
+    if limpo.get("transcricao_ref"):  # a fala da referência lida pela extensão; o roteiro usa no máximo 60 mil letras
+        limpo["transcricao_ref"] = str(limpo["transcricao_ref"])[:80000]
     if int(limpo.get("footage_real") or 0) not in FOOTAGE_REAL:
         raise ValueError("A parte de footage real vai de 0 a 40%.")
     if limpo.get("ia_pct") is not None:
@@ -243,7 +249,8 @@ def _escrever(linha: dict, roteirista, config_canal, ritmo) -> None:
             r = roteirista.gerar(usuario_id=linha["usuario_id"], titulo=pedido["titulo"], link=pedido.get("link", ""),
                                  minutos=minutos_do(pedido, ppm), lingua=lingua,
                                  projeto_id=int(agente) if agente else None, observacoes=_observacoes(pedido),
-                                 perfil=perfil_do(pedido, cfg), canal=canal, aviso=aviso)
+                                 perfil=perfil_do(pedido, cfg), canal=canal, aviso=aviso,
+                                 transcricao_pronta=pedido.get("transcricao_ref") or "")
     except Exception as erro:  # noqa: BLE001 (qualquer falha do roteiro vira o erro do pedido, com o motivo)
         mudar(linha["id"], "erro", de=("escrevendo",), erro=str(erro)[:500], passo="")
         return

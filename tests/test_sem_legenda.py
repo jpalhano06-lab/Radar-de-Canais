@@ -62,3 +62,32 @@ def test_com_legenda_continua_usando_a_transcricao(monkeypatch, tmp_path):
     assert r["palavras_base"] == 300
     assert "Transcrição do vídeo de referência" in visto["pedido"]
     assert (roteiros / r["nome"] / "transcricao.txt").exists()
+
+
+def test_youtube_bloqueado_usa_a_fala_lida_pela_extensao(monkeypatch, tmp_path):
+    """2026-11-10: o YouTube recusa a leitura deste computador ("Sign in to confirm you're not a bot") e o roteiro
+    saía só do título de vídeo com legenda. A fala lida no navegador vem no pedido e vira a base."""
+    roteiros, visto = _mundo(monkeypatch, tmp_path, erro_da_legenda="RequestBlocked: YouTube is blocking requests")
+    r = roteiro_claude.gerar(usuario_id=1, titulo="11 Foods Vanishing", link=LINK, minutos=5, lingua="inglês",
+                             projeto_id=None, observacoes="", transcricao_pronta="A fala   lida no navegador. " * 40)
+    assert r["base_erro"] == ""
+    assert r["palavras_base"] == 200
+    assert "Transcrição do vídeo de referência" in visto["pedido"]
+    assert "sem nenhuma base de transcrição" not in visto["pedido"]
+    assert (roteiros / r["nome"] / "transcricao.txt").exists()
+
+
+def test_bloqueio_nao_vira_sem_legenda(monkeypatch):
+    from youtube_transcript_api import YouTubeTranscriptApi
+    from youtube_transcript_api import _errors as erros
+
+    def bloqueado(self, video_id):
+        raise erros.RequestBlocked(video_id)
+
+    def desligada(self, video_id):
+        raise erros.TranscriptsDisabled(video_id)
+
+    monkeypatch.setattr(YouTubeTranscriptApi, "list", bloqueado)
+    assert roteiro_claude.tem_legenda("o53UMHcHv34") is None
+    monkeypatch.setattr(YouTubeTranscriptApi, "list", desligada)
+    assert roteiro_claude.tem_legenda("o53UMHcHv34") is False

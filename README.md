@@ -941,6 +941,12 @@ questionário de anunciantes, público e visibilidade, achando o vídeo **pelo n
   - **Sem legenda não é pergunta**: `/api/titulo-do-video` passou a dizer se o vídeo tem legenda
     (`roteiro_claude.tem_legenda`), e a lista avisa ali mesmo que o roteiro vai sair do título. Nada para por causa
     disso e nada é perguntado.
+  - **YouTube bloqueado não é "sem legenda"** (2026-11-10, extensão 0.45.1): o YouTube passou a recusar a leitura
+    da legenda feita deste computador (`RequestBlocked`, "Sign in to confirm you're not a bot"), e `tem_legenda`
+    chamava isso de "sem legenda" — a confirmação avisava "Sem legenda" de vídeo com legenda e o roteiro saía só do
+    título. Agora `tem_legenda` devolve `None` quando não deu para conferir; quando a referência é o vídeo aberto, a
+    extensão lê a fala pelo navegador (o mesmo jeito da aba Transcrição) e manda no pedido (`transcricao_ref`, até
+    80 mil letras, fora da lista do Acompanhar). O roteiro usa essa fala quando a leitura do Radar falha.
 - **LIGAR-RADAR.bat abre o navegador só quando o Radar responde** (2026-10-19): depois que ele passou a fechar o Radar
   antigo, o navegador abria antes do servidor novo subir (uns 5 s) e mostrava "não é possível acessar este site",
   parecendo que o Radar não ligava. Agora uma espera escondida tenta o endereço a cada segundo (até 90 s) e abre o

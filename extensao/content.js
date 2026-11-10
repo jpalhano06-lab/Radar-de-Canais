@@ -2294,9 +2294,23 @@
       }
       desenhar(); custo();
     };
+    // a fala da referência também é lida aqui, pelo navegador, quando o vídeo é o que está aberto: o YouTube passou a
+    // recusar a leitura do computador do Radar ("Sign in to confirm you're not a bot") e a confirmação dizia "Sem
+    // legenda" de vídeo com legenda, e o roteiro saía só do título (2026-11-10). A do navegador vai junto no pedido
     const lerReferencia = async () => {
-      N.ref = null;
-      if (N.link) { const r = await api(`/api/titulo-do-video?link=${encodeURIComponent(N.link)}`); N.ref = r.erro ? null : r.dados; }
+      N.ref = null; N.refFala = ""; N.lendoFala = false;
+      if (!N.link) return desenhar();
+      const link = N.link, daquiMesmo = daqui && N.link.includes(daqui);
+      N.lendoFala = !!daquiMesmo;
+      const fala = daquiMesmo ? pedirPagina("transcricao", daqui, 25000).then((t) => t && t.linhas && t.linhas.length
+        ? t.linhas.map((l) => l.texto).join(" ").replace(/\s+/g, " ").trim() : "") : Promise.resolve("");
+      const r = await api(`/api/titulo-do-video?link=${encodeURIComponent(link)}`);
+      if (N.link !== link) return;
+      N.ref = r.erro ? null : r.dados;
+      desenhar();
+      const texto = await fala;
+      if (N.link !== link) return;
+      N.refFala = texto; N.lendoFala = false;
       desenhar();
     };
 
@@ -2365,7 +2379,9 @@
         const linha = (estado, rotulo, valor, dica) => h("div", { class: `radar-np-conf-item ${estado}` },
           h("span", { class: "radar-np-conf-ic" }, estado === "ok" ? "✓" : "!"),
           h("div", {}, h("b", {}, rotulo), h("span", {}, valor), dica ? h("small", {}, dica) : null));
-        const semLegenda = N.ref && N.ref.legenda === false;
+        // legenda null é "o YouTube não deixou o Radar conferir": não é o mesmo que não ter legenda
+        const comFala = !!N.refFala, semLegenda = !comFala && !N.lendoFala && N.ref && N.ref.legenda === false;
+        const naoConferiu = !comFala && !N.lendoFala && N.ref && N.ref.legenda == null;
         corpo = [passos, h("button", { type: "button", class: "radar-np-usar", onclick: () => { N.passo = 1; desenhar(); } }, "← Voltar ao vídeo"),
           h("div", { class: "radar-np-conf" },
             linha(N.titulo.trim() ? "ok" : "falta", "Título", N.titulo.trim() || "falta escrever o título do vídeo"),
@@ -2375,10 +2391,13 @@
             linha("ok", "Idioma e tamanho", N.modo === "manual"
               ? `${N.lingua} · ${N.roteiro.split(/\s+/).filter(Boolean).length.toLocaleString("pt-BR")} palavras coladas`
               : `${N.lingua} · ${N.caracteres.toLocaleString("pt-BR")} caracteres ≈ ${Math.round(minutos())} min`),
-            linha(!N.link ? "ok" : N.ref && N.ref.titulo ? (semLegenda ? "aviso" : "ok") : "aviso", "Vídeo de referência",
+            linha(!N.link ? "ok" : N.ref && N.ref.titulo ? (semLegenda || naoConferiu ? "aviso" : "ok") : "aviso", "Vídeo de referência",
               !N.link ? "nenhum" : N.ref && N.ref.titulo ? `“${N.ref.titulo}”` : "não consegui ler esse link",
               !N.link ? "O roteiro sai do título, das observações e do estilo do canal."
-                : N.ref && N.ref.titulo ? (semLegenda ? "Sem legenda: o roteiro sai do título, das observações e do estilo do canal — nada para por causa disso."
+                : N.ref && N.ref.titulo ? (comFala ? `Com legenda: a extensão leu a fala dele aqui no navegador (${N.refFala.split(" ").length.toLocaleString("pt-BR")} palavras) e ela é a base do roteiro.`
+                  : N.lendoFala ? "Lendo a fala do vídeo pelo navegador…"
+                  : semLegenda ? "Sem legenda: o roteiro sai do título, das observações e do estilo do canal — nada para por causa disso."
+                  : naoConferiu ? "O YouTube não deixou o Radar conferir a legenda agora. Abra o vídeo de referência no YouTube e crie a produção de lá: a extensão lê a fala pelo navegador. Sem isso, o Radar tenta de novo ao escrever."
                   : "Com legenda: a transcrição dele é a base do roteiro.") : "Confira o link no passo 1."),
             linha("ok", "Depois de escrever", N.revisar ? "para para você revisar no Acompanhar" : "segue direto para a fábrica"),
             N.custo && N.custo.usd != null ? linha("ok", "Custo estimado", `≈ US$ ${N.custo.usd.toFixed(2).replace(".", ",")}`) : null)];
@@ -2399,7 +2418,8 @@
         botao.disabled = true; botao.lastChild.textContent = comecar ? "Criando…" : "Salvando…";
         const pedido = { titulo: N.titulo, link: N.link, canal_id: eTeste() ? "" : N.canal, perfil: eTeste() ? N.perfil : "",
           agente_id: N.agente === "padrao" ? "" : N.agente, lingua: N.lingua, revisar: N.revisar,
-          ...(N.modo === "manual" ? { roteiro_manual: N.roteiro } : { caracteres: N.caracteres, nicho: N.nicho, observacao: N.obs }) };
+          ...(N.modo === "manual" ? { roteiro_manual: N.roteiro } : { caracteres: N.caracteres, nicho: N.nicho, observacao: N.obs,
+            ...(N.refFala ? { transcricao_ref: N.refFala } : {}) }) };
         const r = await api("/api/fila", "POST", { pedido, comecar });
         if (r.erro) { botao.disabled = false; botao.lastChild.textContent = comecar ? "Criar e começar" : "Salvar na Entrada"; erro.textContent = erroDoRadar(r); return; }
         janela.replaceChildren(h("div", { class: "radar-np-pronto" }, h("span", { class: "radar-janela-ic" }, icone("roteiro")),

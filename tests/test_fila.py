@@ -545,3 +545,13 @@ def test_tema_que_nao_existe_e_recusado(db):
     fila.criar(1, {"titulo": "ok", "caracteres": 2000, "tema": "cinema"}, False)
     with pytest.raises(ValueError, match="tema"):
         fila.criar(1, {"titulo": "x", "caracteres": 2000, "tema": "inventado"}, False)
+
+
+def test_transcricao_da_extensao_chega_ao_roteirista_e_fica_fora_da_lista(db):
+    rot = Roteirista()
+    fid = fila.criar(1, {"titulo": "Com fala", "caracteres": 2650, "link": "https://youtu.be/o53UMHcHv34",
+                         "transcricao_ref": "a fala do vídeo"}, True)["id"]
+    assert "transcricao_ref" not in fila.item(1, fid)["pedido"]
+    assert fila.item(1, fid)["pedido"]["com_transcricao_ref"] is True
+    _volta(Fabrica(), rot)
+    assert rot.pedidos[0]["transcricao_pronta"] == "a fala do vídeo"

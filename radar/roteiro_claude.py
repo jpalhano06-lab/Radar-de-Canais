@@ -70,14 +70,21 @@ def fala_com_tempos(video_id: str) -> list[dict]:
     return [{"seg": round(s.start, 1), "texto": s.text} for s in escolhida.fetch()]
 
 
-def tem_legenda(video_id: str) -> bool:
+def tem_legenda(video_id: str) -> bool | None:
     """Se dá para ler a legenda desse vídeo. A Nova produção da extensão pergunta isso na confirmação, para a pessoa
-    saber antes de criar que o roteiro vai sair só do título (pedido do usuário em 2026-10-28)."""
+    saber antes de criar que o roteiro vai sair só do título (pedido do usuário em 2026-10-28).
+
+    None é "não deu para saber": o YouTube recusou a leitura deste computador ("Sign in to confirm you're not a
+    bot", RequestBlocked). Antes isso virava False e a confirmação dizia "Sem legenda" de vídeos com legenda
+    (2026-11-10); False fica só para o vídeo que de fato não tem legenda."""
     from youtube_transcript_api import YouTubeTranscriptApi
+    from youtube_transcript_api import _errors as erros
     try:
         return bool(list(YouTubeTranscriptApi().list(video_id)))
-    except Exception:
+    except (erros.TranscriptsDisabled, erros.NoTranscriptFound):
         return False
+    except Exception:  # noqa: BLE001 (bloqueio, rede, mudança do YouTube: não dá para dizer que não tem)
+        return None
 
 
 def copiar_thumbnail(video_id: str, destino) -> bool:
@@ -337,7 +344,10 @@ def texto_do_por_que(leitura: dict) -> str:
 
 def gerar(usuario_id: int, titulo: str, link: str, minutos: int, lingua: str, projeto_id: int | None,
           observacoes: str, perfil: str = "", canal: dict | None = None, projeto_descricao_id: int | None = None,
-          aviso=lambda _t: None) -> dict:
+          aviso=lambda _t: None, transcricao_pronta: str = "") -> dict:
+    """transcricao_pronta: a fala do vídeo de referência lida pela extensão, no navegador da pessoa. O YouTube passou a
+    recusar a leitura deste computador ("Sign in to confirm you're not a bot") e o roteiro saía só do título de
+    vídeos com legenda (2026-11-10); a do navegador vale quando a daqui não vem."""
     video_id = id_do_video(link)
     if link and not video_id:
         raise RuntimeError("Não reconheci o link do vídeo de referência.")
@@ -354,7 +364,12 @@ def gerar(usuario_id: int, titulo: str, link: str, minutos: int, lingua: str, pr
             (pasta / "transcricao.txt").write_text(base, encoding="utf-8")
         except Exception as erro:  # noqa: BLE001
             base, lingua_base, base_erro = "", "", str(erro)
-            aviso("Esse vídeo não deu a legenda. Escrevendo o roteiro a partir do título…")
+            if transcricao_pronta.strip():
+                base, lingua_base, base_erro = re.sub(r"\s+", " ", transcricao_pronta).strip(), "a do vídeo", ""
+                (pasta / "transcricao.txt").write_text(base, encoding="utf-8")
+                aviso("Usando a transcrição lida pela extensão no navegador…")
+            else:
+                aviso("Esse vídeo não deu a legenda. Escrevendo o roteiro a partir do título…")
         aviso("Copiando a thumbnail…")
         thumb = copiar_thumbnail(video_id, pasta / "thumbnail.jpg")
     original = titulo
