@@ -1323,8 +1323,12 @@ _NORMAL = f"CASE WHEN v.duracao_s <= {metricas.CURTO_ATE_S} THEN c.base_curtos E
 _NOTA_VIVA = f"v.views * 1.0 / NULLIF({_NORMAL}, 0)"
 # e um normal de 19 views não é base para razão nenhuma: abaixo disto o canal ainda não foi medido o bastante
 NORMAL_MINIMO = 1000
+# views ÷ inscritos do canal: o vídeo que passou muito do público que o canal já tem (o "subs_score" do 1of10). O piso
+# de 100 inscritos evita que canal recém-aberto vire 500x por ter três inscritos
+_POR_INSCRITO = "v.views * 1.0 / MAX(c.inscritos, 100)"
 
 ORDENS_OUTLIERS = {"nota": (_NOTA_VIVA, "desc"), "recentes": ("v.publicado", "desc"), "views": ("v.views", "desc"),
+                   "por_inscrito": (_POR_INSCRITO, "desc"),
                    "achados": ("o.achado", "desc"), "inscritos": ("c.inscritos", "desc"),
                    "por_hora": ("v.views * 1.0 / MAX(1.0, (julianday('now') - julianday(v.publicado)) * 24)", "desc"),
                    "aleatorio": ("RANDOM()", "")}
@@ -1337,6 +1341,23 @@ def piso_de_views(nota_min: float, normal_min: float) -> int:
     de 10 mil views para cima. Dizer isso evita a pessoa arrastar um filtro que já está decidido; ela pode subir
     dali, nunca descer abaixo do que as regras impõem."""
     return max(0, int(nota_min * normal_min))
+
+
+def _filtro_videos_extra(q: dict) -> tuple[list[str], list]:
+    """Os filtros que vieram da tela Outliers do 1of10 (aberta com o REA em 2026-11-10): duração do vídeo em minutos,
+    nota máxima (para tirar o viral absurdo que não dá para copiar) e views por inscrito do canal."""
+    onde, args = [], []
+    for nome, operador in (("duracao_min", ">="), ("duracao_max", "<=")):
+        minutos = _numero(q, nome)
+        if minutos is not None and minutos > 0:
+            onde.append(f"v.duracao_s {operador} ?"); args.append(int(minutos * 60))
+    nota_max = _numero(q, "nota_max")
+    if nota_max is not None and nota_max > 0:
+        onde.append(f"{_NOTA_VIVA} <= ?"); args.append(nota_max)
+    por_inscrito = _numero(q, "por_inscrito_min")
+    if por_inscrito is not None and por_inscrito > 0:
+        onde.append(f"{_POR_INSCRITO} >= ?"); args.append(por_inscrito)
+    return onde, args
 
 
 def _ordem_videos(chave: str, sentido: str = "") -> str:
@@ -1408,6 +1429,8 @@ def outliers(request: Request, u: dict = Depends(exigir("outliers"))):
         data = _data(q, nome)
         if data:
             onde.append(f"v.publicado {operador} ?"); args.append(data + sufixo)
+    extra_onde, extra_args = _filtro_videos_extra(q)
+    onde += extra_onde; args += extra_args
     # CROSS JOIN no SQLite fixa a ordem: começa pelos outliers (39 mil) e busca cada vídeo pela chave. Com JOIN o
     # planejador varria a tabela inteira de vídeos (558 mil) atrás dos que são outliers — 4x mais trabalho
     base = (f"FROM outliers o CROSS JOIN videos v ON v.id=o.video_id JOIN canais c ON c.id=o.canal_id "
@@ -1415,7 +1438,7 @@ def outliers(request: Request, u: dict = Depends(exigir("outliers"))):
     pagina = int(_numero(q, "pagina") or 0)
     # o marcador da esteira vem junto com o vídeo: o cartão precisa saber se já está na fila ou já foi modelado
     linhas = banco.todos(
-        f"SELECT ROUND({_NOTA_VIVA}, 1) AS nota, (SELECT estado FROM modelar m WHERE m.usuario_id=? AND m.video_id=v.id) "
+        f"SELECT ROUND({_NOTA_VIVA}, 1) AS nota, ROUND({_POR_INSCRITO}, 1) AS por_inscrito, (SELECT estado FROM modelar m WHERE m.usuario_id=? AND m.video_id=v.id) "
         f"AS modelar, (SELECT d.titulo FROM modelar m JOIN canais d ON d.id=m.canal_id WHERE m.usuario_id=? AND m.video_id=v.id) "
         f"AS modelar_canal, v.id, v.titulo, v.views, v.publicado, v.duracao_s, c.id AS canal_id, c.titulo AS canal, "
         f"c.foto, c.handle, c.inscritos, c.nicho, c.subnicho, c.sem_rosto, c.fase, c.base_longos AS normal {base} "

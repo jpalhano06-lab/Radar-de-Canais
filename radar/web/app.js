@@ -442,7 +442,7 @@ function cartaoVideoGrande(v) {
       <div class="yt-texto"><a class="titulo" href="${linkVideo(esc(v.id))}" target="_blank" rel="noopener">${esc(v.titulo)}</a>
         <a class="yt-canal" href="#/canal/${esc(v.canal_id || "")}">${esc(v.canal || "")}</a>
         <div class="meta">${num(v.views)} views · ${ha(v.publicado)}</div>
-        <div class="pilulas">${porHora ? `<span>${num(porHora)} por hora</span>` : ""}${v.inscritos != null ? `<span>${num(v.inscritos)} inscritos</span>` : ""}</div></div></div>
+        <div class="pilulas">${porHora ? `<span>${num(porHora)} por hora</span>` : ""}${v.inscritos != null ? `<span>${num(v.inscritos)} inscritos</span>` : ""}${v.por_inscrito >= 1 ? `<span title="Views do vídeo ÷ inscritos do canal">${nota(v.por_inscrito)} os inscritos</span>` : ""}</div></div></div>
     <div class="video-acoes"><button class="botao sec salvar-ideia" title="Guarda no painel da direita">💡 Salvar ideia</button>
       <a class="botao sec" href="#/trabalho" data-roteiro="${esc(v.id)}" data-titulo="${esc(v.titulo)}" title="Abre o Roteiro com este vídeo de referência">${icone("roteiro")}Trabalho</a></div>
   </div>`;
@@ -4404,7 +4404,8 @@ const DEGRAUS = {
 const degrausDe = (k) => DEGRAUS[k] || [["", "qualquer"]];
 
 const PADRAO_VIDEOS = { base: "", pasta: "", busca: "", lingua: "ptenes", nicho: "", nota_min: "5", publicado_dias: "", tipo: "longo",
-  views_min: "", modelar_estado: "", ordem: "nota", sentido: "", so_novos: "", so_crescendo: "", com_cortados: "" };
+  views_min: "", modelar_estado: "", ordem: "nota", sentido: "", so_novos: "", so_crescendo: "", com_cortados: "",
+  duracao_min: "", duracao_max: "", nota_max: "", por_inscrito_min: "", inscritos_max: "" };
 
 // A tela travada. Pedido do usuário em 2026-10-25: a lista infinita rolava embaixo da busca e ele perdia de vista
 // o que já tinha olhado. Travar mostra 10 vídeos de cada vez, com Anterior e Próximo, recolhe o núcleo de busca
@@ -4433,10 +4434,15 @@ async function videosLista() {
       ["nota_min", "", [[3, "3x o normal ou mais"], [5, "5x ou mais"], [10, "10x ou mais"], [20, "20x ou mais"]]],
       ["publicado_dias", "Qualquer data", [[7, "Últimos 7 dias"], [30, "Últimos 30 dias"], [90, "Últimos 3 meses"], [365, "Último ano"]]],
       ["tipo", "Longos e Shorts", [["longo", "Só vídeos longos"], ["curto", "Só Shorts"]]],
-      ["ordem", "", [["nota", "Maior nota"], ["por_hora", "Views por hora"], ["views", "Mais views"], ["recentes", "Mais recentes"],
+      // os quatro de baixo vieram da tela Outliers do 1of10 (aberta com o REA em 2026-11-10)
+      ["duracao_min", "Qualquer duração", [[4, "4 min ou mais"], [8, "8 min ou mais"], [15, "15 min ou mais"], [20, "20 min ou mais"], [30, "30 min ou mais"]]],
+      ["duracao_max", "Sem limite de duração", [[4, "Até 4 min"], [10, "Até 10 min"], [20, "Até 20 min"], [30, "Até 30 min"], [60, "Até 1 hora"]]],
+      ["nota_max", "Sem teto de nota", [[20, "Até 20x o normal"], [50, "Até 50x o normal"], [100, "Até 100x o normal"]]],
+      ["por_inscrito_min", "Views por inscrito: qualquer", [[1, "Views ≥ inscritos"], [2, "Views ≥ 2x os inscritos"], [5, "Views ≥ 5x os inscritos"], [10, "Views ≥ 10x os inscritos"]]],
+      ["ordem", "", [["nota", "Maior nota"], ["por_hora", "Views por hora"], ["por_inscrito", "Views por inscrito"], ["views", "Mais views"], ["recentes", "Mais recentes"],
         ["inscritos", "Canal maior"], ["achados", "Achados por último"], ["aleatorio", "Aleatório"]]],
     ], f)}${botaoSentido()}</div>
-    <div class="trilhos">${trilho("views_min", "Views a partir de", degrausDe("views_min"), f)}</div>
+    <div class="trilhos">${trilho("views_min", "Views a partir de", degrausDe("views_min"), f)}${trilho("inscritos_max", "Inscritos do canal", degrausDe("inscritos_max"), f)}</div>
     ${marcas([
       ["so_novos", "Só os desta semana", "O vídeo saiu nos últimos 7 dias"],
       ["so_crescendo", "Só de canal crescendo", "O canal está acelerando agora, não é um acerto antigo"],
