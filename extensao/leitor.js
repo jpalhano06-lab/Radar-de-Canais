@@ -222,13 +222,24 @@
     return tarefa;
   }
 
+  // o canal da página que está na tela, tirado do ytd-page-manager (2026-11-10): o ultimoCanal pode ser o de uma página
+  // anterior (o YouTube às vezes troca de página sem passar pelo fetch) e o ytInitialData é o da primeira página
+  // aberta; com os dois velhos, a faixa do canal ficava em "Radar: recarregue a página" e nada do Radar aparecia
+  function canalAtual() {
+    try {
+      const pm = document.querySelector("ytd-page-manager");
+      const d = pm && pm.getCurrentData && pm.getCurrentData();
+      return d ? L.canal(d.response || d) : null;
+    } catch { return null; }
+  }
+
   window.addEventListener("message", async (e) => {
     if (e.source !== window || !e.data || !e.data.radarPedido) return;
     const { radarPedido: n, tipo, id, lingua } = e.data;
     let dados = null;
     try {
       dados = tipo === "video" ? dadosDoVideo() : tipo === "transcricao" ? await transcricao(id, lingua)
-        : tipo === "canal" ? (ultimoCanal || L.canal(window.ytInitialData)) : null;
+        : tipo === "canal" ? (canalAtual() || ultimoCanal || L.canal(window.ytInitialData)) : null;
     } catch { dados = null; }
     window.postMessage({ radarResposta: n, dados }, location.origin);
   });

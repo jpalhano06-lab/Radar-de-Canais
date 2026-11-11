@@ -955,6 +955,10 @@ questionário de anunciantes, público e visibilidade, achando o vídeo **pelo n
   (`yt-lockup-metadata-view-model__title`) por camelCase (`ytLockupMetadataViewModelTitle`), e o botão PT parou de
   achar o título. O seletor `TITULO` do content.js aceita os dois jeitos. O selo de vezes o normal não sumiu por isso:
   ele só aparece com o Radar ligado na 8400, que dá a nota.
+- **Faixa do canal não trava mais em "Radar: recarregue a página"** (2026-11-10, extensão 0.45.4): o leitor
+  respondia o canal com o `ultimoCanal` (que pode ser o de uma página anterior) ou o `ytInitialData` (o da primeira
+  página aberta). Quando os dois estavam velhos, o painel do canal desistia e sumiam Canais Parecidos, Vídeos do
+  Nicho e o resto. Agora vem primeiro do `ytd-page-manager.getCurrentData()`, que é sempre a página da tela.
 - **LIGAR-RADAR.bat abre o navegador só quando o Radar responde** (2026-10-19): depois que ele passou a fechar o Radar
   antigo, o navegador abria antes do servidor novo subir (uns 5 s) e mostrava "não é possível acessar este site",
   parecendo que o Radar não ligava. Agora uma espera escondida tenta o endereço a cada segundo (até 90 s) e abre o
