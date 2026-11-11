@@ -128,3 +128,20 @@ def test_o_banco_de_titulos_usa_a_nota_de_agora():
     assert fora == 0
     # e a rota existe e pede conta: o banco de títulos não é público
     assert TestClient(servidor.app).get("/api/titulos").status_code == 401
+
+
+def test_filtros_do_1of10_na_lista_de_videos():
+    """Duração em minutos, nota máxima e views por inscrito: o que a tela Outliers do 1of10 tinha e o Radar não."""
+    onde, args = servidor._filtro_videos_extra({"duracao_min": "8", "duracao_max": "20", "nota_max": "50",
+                                                "por_inscrito_min": "2"})
+    juntos = " AND ".join(onde)
+    assert "v.duracao_s >= ?" in juntos and "v.duracao_s <= ?" in juntos
+    assert f"{servidor._NOTA_VIVA} <= ?" in juntos
+    assert f"{servidor._POR_INSCRITO} >= ?" in juntos
+    assert args == [480, 1200, 50.0, 2.0]
+    # sem pedido, nada muda na consulta
+    assert servidor._filtro_videos_extra({}) == ([], [])
+
+
+def test_views_por_inscrito_vira_ordem():
+    assert servidor._ordem_videos("por_inscrito", "") == servidor._POR_INSCRITO + " DESC"

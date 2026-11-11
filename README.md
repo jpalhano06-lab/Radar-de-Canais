@@ -964,6 +964,10 @@ questionário de anunciantes, público e visibilidade, achando o vídeo **pelo n
   rótulo "Monetization" da barra de etapas — que aparece em todas as telas — como título da tela, e "Ad suitability"
   não estava entre os nomes conhecidos. Agora a etapa vem da que está marcada como atual na barra (`ytcp-stepper`),
   a procura por texto ignora a barra, e o recado é apagado quando a etapa muda.
+- **Vídeos: os filtros que a tela Outliers do 1of10 tinha** (2026-11-10): aberta com o REA, a 1of10 filtra por
+  duração, nota máxima e views ÷ inscritos (o `subs_score` dela). A tela Vídeos ganhou os três, a ordem "Views por
+  inscrito", o trilho de inscritos do canal e a pílula "Nx os inscritos" no cartão. O resto da 1of10 o Radar já tinha:
+  nota, views, data, aleatório, esteira (os marcadores dela), pastas (os rastreadores), capas e canais parecidos.
 - **LIGAR-RADAR.bat abre o navegador só quando o Radar responde** (2026-10-19): depois que ele passou a fechar o Radar
   antigo, o navegador abria antes do servidor novo subir (uns 5 s) e mostrava "não é possível acessar este site",
   parecendo que o Radar não ligava. Agora uma espera escondida tenta o endereço a cada segundo (até 90 s) e abre o
