@@ -205,9 +205,39 @@ def _passa(cid: str, c: dict) -> bool:
     meses = metricas.meses_postando(c["primeiro_video"])
     if (c["base_longos"] or 0) < MINIMO_POR_VIDEO or meses is None or meses > CANAL_ATE_MESES:
         return False
-    titulos = [v["titulo"] for v in banco.todos(
-        "SELECT titulo FROM videos WHERE canal_id=? ORDER BY publicado DESC LIMIT 20", cid)]
+    titulos = _titulos_recentes(cid)
+    if not em_ingles(titulos):
+        return False
     return not risco.avaliar(titulos)   # reaproveitado, em série... não entra no Radar
+
+
+def _titulos_recentes(cid: str) -> list[str]:
+    return [v["titulo"] for v in banco.todos(
+        "SELECT titulo FROM videos WHERE canal_id=? ORDER BY publicado DESC LIMIT 20", cid)]
+
+
+def em_ingles(titulos: list[str]) -> bool:
+    """Canal com os títulos em inglês: só ele entra no Radar.
+
+    Pedido do usuário (2026-11-03 e de novo em 2026-11-11): "a pesquisa é sempre em inglês". As buscas já eram em
+    inglês, mas a repescagem, os parecidos e a extensão punham canal em português no Radar (484 de 1.895 fora do
+    inglês em 2026-11-11, 229 em português): a extensão aceitava português e espanhol, e a repescagem não olhava a
+    língua. Vale a língua, não o país: canal em inglês de fora dos EUA (113 no Radar) fica. Vale o inglês em mais da
+    metade dos títulos de língua conhecida; título que o gosto.lingua não reconhece ("?") não conta."""
+    linguas = Counter(l for l in (gosto.lingua(t) for t in titulos) if l != "?")
+    return not linguas or linguas["en"] * 2 > sum(linguas.values())
+
+
+def tirar_fora_do_ingles(log=print) -> int:
+    """Tira do Radar os canais que não passam no em_ingles (os que entraram antes da regra). O que a pessoa pôs
+    à mão (origem manual) fica. Só lê o banco, não gasta cota."""
+    fora = [c["id"] for c in banco.todos("SELECT id FROM canais WHERE no_radar=1 AND origem<>'manual'")
+            if not em_ingles(_titulos_recentes(c["id"]))]
+    for cid in fora:
+        banco.executar("UPDATE canais SET no_radar=0 WHERE id=?", cid)
+    if fora:
+        log(f"{len(fora)} canais fora do inglês saíram do Radar")
+    return len(fora)
 
 
 # ---------------------------------------------------------------- categoria em alta e repescagem (2026-11-07)
@@ -539,6 +569,7 @@ def rodar(log=print, unidades: int | None = None) -> dict:
     estado = "pronto"
     try:
         anotar(f"Garimpo começou com {orcamento} unidades de cota.")
+        tirar_fora_do_ingles(anotar)
         remedir(anotar, int(orcamento * FRACAO_REMEDIR))
         # antes das buscas: a fila do navegador é o canal mais barato por unidade (só a medida custa cota)
         contagem["novos"] += fila_do_navegador(anotar, int(orcamento * FRACAO_FILA))

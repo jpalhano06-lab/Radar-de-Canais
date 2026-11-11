@@ -250,8 +250,8 @@ def _passa(c: dict, lista: list[dict], exato: bool, meses: float | None) -> bool
     if not exato and (c["inscritos"] is None or c["inscritos"] > INSCRITOS_SEM_IDADE):
         return False      # mais vídeos do que a página mostrou: sem a idade certa, só canal pequeno
     titulos = [v["titulo"] for v in lista[:20]]
-    linguas = Counter(l for l in (gosto.lingua(t) for t in titulos) if l != "?").most_common(1)
-    if not linguas or linguas[0][0] not in ("en", "pt", "es"):
+    # só canal em inglês (pedido do usuário: "a pesquisa é sempre em inglês"; antes entrava português e espanhol)
+    if not any(gosto.lingua(t) != "?" for t in titulos) or not garimpo.em_ingles(titulos):
         return False
     return not risco.avaliar(titulos)
 
