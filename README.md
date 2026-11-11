@@ -959,6 +959,11 @@ questionário de anunciantes, público e visibilidade, achando o vídeo **pelo n
   respondia o canal com o `ultimoCanal` (que pode ser o de uma página anterior) ou o `ytInitialData` (o da primeira
   página aberta). Quando os dois estavam velhos, o painel do canal desistia e sumiam Canais Parecidos, Vídeos do
   Nicho e o resto. Agora vem primeiro do `ytd-page-manager.getCurrentData()`, que é sempre a página da tela.
+- **Publicar no Studio: cada etapa com o seu botão** (2026-11-10, extensão 0.45.5): na tela "Ad suitability"
+  aparecia o "Ligar e colocar" dos anúncios e o recado do Detalhes (crianças, IA, tags). O `etapaAtual()` lia o
+  rótulo "Monetization" da barra de etapas — que aparece em todas as telas — como título da tela, e "Ad suitability"
+  não estava entre os nomes conhecidos. Agora a etapa vem da que está marcada como atual na barra (`ytcp-stepper`),
+  a procura por texto ignora a barra, e o recado é apagado quando a etapa muda.
 - **LIGAR-RADAR.bat abre o navegador só quando o Radar responde** (2026-10-19): depois que ele passou a fechar o Radar
   antigo, o navegador abria antes do servidor novo subir (uns 5 s) e mostrava "não é possível acessar este site",
   parecendo que o Radar não ligava. Agora uma espera escondida tenta o endereço a cada segundo (até 90 s) e abre o

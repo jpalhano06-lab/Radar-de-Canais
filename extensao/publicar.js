@@ -73,10 +73,14 @@
   const caixa = () => document.querySelector("ytcp-uploads-dialog") || document.querySelector("ytcp-video-editor") || document.body;
   const limpo = (el) => (el.textContent || "").replace(/\s+/g, " ").trim();
 
+  // a barra de etapas do Studio (Detalhes, Monetização, Adequação…) aparece em todas as telas da publicação
+  const BARRA_DE_ETAPAS = "ytcp-stepper, #stepper";
+
   function folhas(re, onde = caixa()) {
     const achados = [];
     for (const el of onde.querySelectorAll("div, span, b, h1, h2, h3, p, yt-formatted-string, tp-yt-paper-item, ytcp-text-label")) {
       if (el.children.length > 1) continue;
+      if (el.closest(BARRA_DE_ETAPAS)) continue;   // o rótulo da barra não diz em que etapa a pessoa está
       const t = limpo(el);
       if (t && t.length < 120 && re.test(t) && visivel(el)) achados.push(el);
     }
@@ -448,9 +452,31 @@
     setTimeout(desenhar, 1200);
   }
 
+  // a etapa marcada como atual na barra do Studio. Em 2026-11-10 a tela "Ad suitability" ganhava o botão de
+  // anúncios e o recado do Detalhes: o rótulo "Monetization" da barra (que aparece em todas as telas) era lido
+  // como se fosse o título da tela, e "Ad suitability" não estava entre os nomes conhecidos
+  const ETAPAS_DA_BARRA = [
+    [/^(Detalhes|Details)$/i, "detalhes"], [/^(Monetização|Monetization)$/i, "monetizacao"],
+    [/Adequação|suitability/i, "anunciantes"], [/Elementos|elements/i, "elementos"],
+    [/Verifica|Check/i, "verificacoes"], [/^(Visibilidade|Visibility)$/i, "visibilidade"],
+  ];
+  function etapaDaBarra() {
+    const barra = caixa().querySelector(BARRA_DE_ETAPAS);
+    if (!barra || !visivel(barra)) return "";
+    const atual = barra.querySelector('[state="active"], [aria-current="step"], [aria-current="true"], [aria-selected="true"], .step.active, .active');
+    const nome = atual ? limpo(atual) : "";
+    // um rótulo só; um pedaço maior da barra (com todos os nomes) não diz nada
+    const achado = nome && nome.length < 40 && ETAPAS_DA_BARRA.find(([re]) => re.test(nome));
+    return achado ? achado[1] : "";
+  }
+
   function etapaAtual() {
+    // a janela dos intervalos de anúncio abre por cima da etapa de Monetização: vem antes da barra
     if (temTexto(/Espaços de anúncios intermediários|Mid-?roll ad breaks|anúncios intermediários/i)) return "anuncios";
-    if (botao(/^(Enviar classificação|Submit rating)$/i) || temTexto(/Adequação (para|a) anunciantes|Advertiser suitability/i)) return "anunciantes";
+    const daBarra = etapaDaBarra();
+    if (daBarra) return daBarra;
+    if (botao(/^(Enviar classificação|Submit rating)$/i) || temTexto(/Adequação (para|a) anunciantes|Advertiser suitability|Ad suitability/i)
+      || temTexto(/^(How you rated your video overall|Como você classificou seu vídeo)/i)) return "anunciantes";
     if (visivel(campoDescricao())) return "detalhes";
     // pelo elemento próprio da tela, não pelo texto: o stepper do Studio mostra o rótulo de todas as etapas em todas
     // as telas, então procurar "Visibilidade" escrito acertaria em qualquer uma
@@ -860,7 +886,7 @@
 
   (document.body || document.documentElement).append(host);
   // o Studio troca de tela sem recarregar: confere a cada segundo a etapa e o nome do arquivo
-  let ultimo = "", ultimoVideo = "";
+  let ultimo = "", ultimoVideo = "", ultimaEtapa = "";
   setInterval(() => {
     const video = (location.pathname.match(/\/video\/([\w-]{11})/) || location.search.match(/[?&]udvid=([\w-]{11})/) || [])[1] || "";
     if (video && ultimoVideo && video !== ultimoVideo) {
@@ -880,7 +906,13 @@
       const rodape = rodapeDoStudio();
       if (!host.isConnected || (rodape && host.parentElement !== rodape)) ancorar();
     }
-    const marca = `${agora}|${!!estado.kit}|${estado.recado}|${etapaAtual()}|${estado.trabalhando}`;
+    // o recado é da etapa em que foi dado: o "✗ tags…" do Detalhes não pode seguir para a Adequação
+    const etapa = agora ? etapaAtual() : "";
+    if (etapa !== ultimaEtapa) {
+      if (ultimaEtapa && !estado.trabalhando) estado.recado = "";
+      ultimaEtapa = etapa;
+    }
+    const marca = `${agora}|${!!estado.kit}|${estado.recado}|${etapa}|${estado.trabalhando}`;
     if (marca !== ultimo) { ultimo = marca; desenhar(); }
   }, 1000);
 })();
