@@ -824,12 +824,14 @@ def concorrentes(canal_id: str, medir_agora: bool = False) -> dict:
 
 
 @youtube.por("canal")
-def ultimos_videos(canal_id: str, quantos: int = 6) -> list[dict]:
-    """Os vídeos longos mais novos do canal com a nota (do banco, sem cota): ao lado de cada canal parecido."""
+def ultimos_videos(canal_id: str, quantos: int = 6, dias: int = 365) -> list[dict]:
+    """Os vídeos longos que mais renderam no canal no último ano, com a nota (do banco, sem cota): ao lado de cada
+    canal parecido. Antes eram os mais novos, e o vídeo de hoje com 2 views tomava o lugar do que estourou."""
     achado = medir._canais_do_banco([canal_id])
     normal = achado[0]["base_longos"] if achado else None
+    corte = (datetime.now(timezone.utc) - timedelta(days=dias)).isoformat()
     videos = banco.todos("SELECT id, titulo, views, publicado, duracao_s FROM videos WHERE canal_id=? AND publicado<>'' "
-                         "ORDER BY publicado DESC LIMIT ?", canal_id, quantos * 3)
+                         "ORDER BY publicado>=? DESC, views DESC LIMIT ?", canal_id, corte, quantos * 3)
     saida = [v for v in videos if not metricas.curto(v["duracao_s"])][:quantos]
     for v in saida:
         v["nota"] = metricas.nota_outlier(v["views"], normal) if normal else None

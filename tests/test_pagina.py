@@ -105,8 +105,15 @@ def test_ultimos_videos_do_canal_parecido_com_a_nota(db):
     lista = [_video(i, 20_000, 30 + i * 10) for i in range(2, 14)] + [_video(1, 400_000, 20), _video(99, 5_000, 1, dur=40)]
     pagina.canal_lido({"id": CANAL, "titulo": "Bichos", "inscritos": 4_000, "videos_total": 14}, lista)
     vs = garimpo.ultimos_videos(CANAL, 3)
-    assert [v["id"] for v in vs] == ["vid00000001", "vid00000002", "vid00000003"]   # do mais novo, sem Shorts
-    assert vs[0]["nota"] == 20.0
+    assert vs[0]["id"] == "vid00000001" and vs[0]["nota"] == 20.0   # o que mais rendeu primeiro, sem Shorts
+    assert "vid00000099" not in [v["id"] for v in vs]
+
+
+def test_parecido_mostra_o_que_rendeu_e_nao_o_video_novo_sem_views(db):
+    lista = [_video(i, 20_000 + i * 1_000, 30 + i * 10) for i in range(2, 14)] + [_video(1, 2, 1)]
+    pagina.canal_lido({"id": CANAL, "titulo": "Bichos", "inscritos": 4_000, "videos_total": 13}, lista)
+    vs = garimpo.ultimos_videos(CANAL, 3)
+    assert [v["id"] for v in vs] == ["vid00000013", "vid00000012", "vid00000011"]   # o de hoje com 2 views fica de fora
 
 
 def _concorrente(cid, normal, dias_postando, ultimo_dias, fase):

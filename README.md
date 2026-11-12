@@ -851,8 +851,8 @@ organização, código e estilo nossos.
   data de criação do canal. Agora a página do canal (`canal-dados`) anda a lista de envios uma vez
   (`youtube.primeiro_envio`, 1 unidade por 50 vídeos, até 2.000 vídeos), guarda a data como exata e refaz a fase e o
   selo; as releituras do canal (página e API) não apagam mais essa data.
-- **Canais Parecidos em linhas:** cada canal parecido numa linha, o cartão dele à esquerda e os 5 vídeos longos mais
-  novos ao lado, com capa, views, idade e o selo de quantas vezes o normal (`/api/ext/parecidos` agora traz
+- **Canais Parecidos em linhas:** cada canal parecido numa linha, o cartão dele à esquerda e os 5 vídeos longos que
+  mais renderam no último ano ao lado (até 2026-11-12 eram os mais novos, e o vídeo de hoje com 2 views ocupava o lugar), com capa, views, idade e o selo de quantas vezes o normal (`/api/ext/parecidos` agora traz
   `videos` de cada um, do banco: `garimpo.ultimos_videos`). A caixa do nicho entra logo acima das abas, na largura
   toda, e a seção das abas também ocupa a largura toda (antes encolhiam no meio da página). Se o servidor do Radar
   estiver aberto desde antes desta versão, as abas avisam para reiniciar o `LIGAR-RADAR.bat`.
