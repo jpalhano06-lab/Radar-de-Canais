@@ -1785,3 +1785,24 @@ só usa base de imagem e vídeos de graça; a língua será só para os motions"
   palavras, frases curtas e visuais que viram cenas de banco grátis e textos na tela, nada que só faça sentido ouvido.
 - Testes em `tests/test_fila.py::test_canal_de_teste_de_5_min_sem_narracao`. Para usar: reinicie o Radar e a fábrica,
   e dê ↻ na extensão em `chrome://extensions`.
+
+
+## Extensão 0.46.1: o painel novo de estatísticas do Studio e a receita do último dia (2026-11-12)
+
+Pedido do usuário: "o youtube atualizou esta página e agora nossa extensão não funciona, arruma ela e coloca ali no
+dinheiro sempre o valor último recebido".
+
+- **O que quebrou:** o Studio trocou o painel (`analytics/hub_overview`, "Channel insights"). O `yta_web/get_cards`
+  que o `studio.js` usava passou a voltar os cartões com `isFailed` e `statusCode: 7` (sem permissão), e o título
+  "Last 48 hours" virou "48 hour views". O "Hoje" sumiu e as 48 horas pararam de chegar ao youtube.com e ao horário
+  de postar.
+- **Agora:** o `studio.js` pede a tela como o próprio Studio, `youtubei/v1/browse` com `browseId`
+  `FEanalytics_hub_channel_overview` (ou `..._revenue`) e `params` = protobuf `{200: {1: {2: "UC..."}}}` em base64.
+  As 48 horas saem do cartão com gráfico de barras de hora em hora; o "Hoje" vai no cartão cujo título é o desse
+  cartão (vale em qualquer idioma). O pedido antigo fica como reserva.
+- **Receita do último dia:** no cartão Receita estimada (painel e aba Receita) entra a linha verde com o valor do
+  dia mais recente que já tem número no gráfico diário da aba Receita, escrito na moeda da página (ex.: R$459.74 ·
+  10 de nov). Se esse dia ainda está na faixa "processando" do Studio, a linha avisa. Relê a cada 15 min e volta
+  sozinha quando o Studio redesenha o cartão.
+- Os ganhos de 12 meses (`ano()`, ainda no `get_cards`) não foram mexidos.
+- Para usar: dê ↻ na extensão em `chrome://extensions` e recarregue o Studio.
