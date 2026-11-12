@@ -1694,6 +1694,14 @@ agentes ligados a um projeto que não está ali voltam em `faltando`, e a extens
 só o que dá **404 em todas as organizações** vai para `POST /api/ext/projetos-claude/excluidos` e sai do Radar. Uma
 lista que veio pela metade não apaga nada, e a extensão antiga (sem `vistos`) também não.
 
+**Todos os agentes, não só os ligados (2026-11-12, extensão 0.45.6).** Pedido do usuário: "todos os agentes quando
+removidos do Claude devem ser excluídos do Radar também". FILIPINAS, COLOMBIA e INSETO nunca tinham sido ligados a
+um projeto, e a regra acima só via os ligados: ficavam para sempre. Agora a extensão manda também `orgs` (as
+organizações que leu inteiras) e, com elas, o agente de roteiro que não se liga a projeto nenhum sai do Radar na
+mesma leitura. O Radar vira o espelho do Claude: um agente criado só no Radar também sai na próxima leitura (a cada
+meia hora). Ficam o **CANAL DE TESTE**, que mora só no Radar (a fila usa ele), e os agentes de descrição. Uma lista
+vazia agora também conta (apagou todos no Claude: todos os ligados vão para a conferência do 404).
+
 ## O roteiro é conferido antes de sair, e a margem passa a ser de 1 minuto (2026-11-01)
 
 Pedido do usuário: "o Radar tá entregando vídeos com a duração errada, tem que conferir e colocar algo que sempre

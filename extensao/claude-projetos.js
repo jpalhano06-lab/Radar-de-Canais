@@ -36,7 +36,8 @@ async function lerProjetosClaude(base = "https://claude.ai") {
 // eslint-disable-next-line no-unused-vars
 async function sincronizarProjetosClaude(base, enviar) {
   const { projetos, vistos, orgs } = await lerProjetosClaude(base);
-  const r = await enviar("/api/ext/projetos-claude", { projetos, vistos });
+  // orgs (2026-11-12): com a leitura inteira, o Radar apaga também o agente que não tem projeto nenhum no Claude
+  const r = await enviar("/api/ext/projetos-claude", { projetos, vistos, orgs });
   const faltando = (r && r.dados && r.dados.faltando) || [];
   if (!faltando.length || !orgs.length) return r;
   const excluidos = [];
@@ -50,7 +51,7 @@ async function sincronizarProjetosClaude(base, enviar) {
   }
   if (excluidos.length) {
     const x = await enviar("/api/ext/projetos-claude/excluidos", { uuids: excluidos });
-    if (x && x.dados) r.dados.excluidos = x.dados.excluidos;
+    if (x && x.dados) r.dados.excluidos = [...(r.dados.excluidos || []), ...(x.dados.excluidos || [])];
   }
   return r;
 }

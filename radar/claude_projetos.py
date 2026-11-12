@@ -17,6 +17,8 @@ MINIMO_PARA_CRIAR = 300
 # que encheria o Claude e gastaria o limite da assinatura a cada roteiro. Os mais novos entram primeiro
 ARQUIVOS_NO_ROTEIRO = 120_000
 ARQUIVOS_GUARDADOS = 400_000
+# o único agente que mora só no Radar (servidor.py, /api/fila/teste): não sai por não ter projeto no Claude
+CANAL_DE_TESTE = "CANAL DE TESTE"
 
 
 def _normal(texto: str) -> str:
@@ -49,17 +51,24 @@ def _arquivos(lista) -> list[dict]:
     return saida
 
 
-def sincronizar(usuario_id: int, projetos: list[dict], vistos: list[str] | None = None) -> dict:
+def sincronizar(usuario_id: int, projetos: list[dict], vistos: list[str] | None = None,
+                orgs: list[str] | None = None) -> dict:
     """Liga cada projeto a um agente e copia as instruções e os arquivos. Um projeto ainda sem ligação acha o agente
     que já era cópia dele (o mesmo começo de texto, ou o mesmo nome); sem nenhum, vira um agente novo.
 
     vistos são os uuids de TODOS os projetos que a extensão achou no claude.ai, arquivados também. Os agentes ligados
     a um projeto que não está entre eles voltam em "faltando": a extensão abre cada um direto no claude.ai e só os
     que dão 404 (excluídos lá) ela manda para excluidos_no_claude. Assim uma lista que veio pela metade não apaga
-    agente nenhum (pedido do usuário em 2026-11-02: o agente excluído do Claude sai do Radar)."""
+    agente nenhum (pedido do usuário em 2026-11-02: o agente excluído do Claude sai do Radar).
+
+    orgs são as organizações do claude.ai que a extensão leu inteiras (a leitura para no primeiro erro). Com elas, o
+    agente de roteiro que não ficou ligado a projeto nenhum também sai: o Radar é o espelho do Claude (pedido do
+    usuário em 2026-11-12: "todos os agentes, quando removidos do Claude, devem ser excluídos do Radar também";
+    FILIPINAS, COLOMBIA e INSETO nunca tinham sido ligados e ficavam para sempre). O CANAL DE TESTE fica: a fila usa
+    ele para o primeiro vídeo de um canal novo. A extensão antiga não manda orgs e não apaga nada por aqui."""
     agentes = banco.todos("SELECT * FROM projetos_roteiro WHERE usuario_id=?", usuario_id)
-    resultado = {"atualizados": [], "ligados": [], "criados": [], "ignorados": [], "faltando": []}
-    if vistos:
+    resultado = {"atualizados": [], "ligados": [], "criados": [], "ignorados": [], "faltando": [], "excluidos": []}
+    if vistos is not None:
         presentes = {str(v) for v in vistos} | {str(p.get("uuid") or "") for p in projetos or []}
         resultado["faltando"] = [a["claude_uuid"] for a in agentes if a["claude_uuid"] and a["claude_uuid"] not in presentes]
     ligados = {a["claude_uuid"]: a for a in agentes if a["claude_uuid"]}
@@ -92,6 +101,11 @@ def sincronizar(usuario_id: int, projetos: list[dict], vistos: list[str] | None 
                           sincronizado=? WHERE id=? AND usuario_id=?""",
                        instrucoes, uuid, nome, json.dumps(arquivos, ensure_ascii=False), banco.agora(),
                        agente["id"], usuario_id)
+    if vistos is not None and orgs:
+        for a in livres:
+            if (a["tipo"] or "roteiro") == "roteiro" and _nome(a["nome"]) != _nome(CANAL_DE_TESTE):
+                banco.executar("DELETE FROM projetos_roteiro WHERE id=? AND usuario_id=?", a["id"], usuario_id)
+                resultado["excluidos"].append(a["nome"])
     return resultado
 
 

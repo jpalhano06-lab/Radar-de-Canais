@@ -3063,7 +3063,7 @@ def projetos(u: dict = Depends(usuario)):
 async def ext_projetos_claude(request: Request, u: dict = Depends(exigir("extensao"))):
     """Os projetos do claude.ai, lidos pela extensão no Chrome logado: cada um atualiza o agente ligado a ele."""
     d = await request.json()
-    return claude_projetos.sincronizar(u["id"], d.get("projetos") or [], d.get("vistos"))
+    return claude_projetos.sincronizar(u["id"], d.get("projetos") or [], d.get("vistos"), d.get("orgs"))
 
 
 @app.post("/api/ext/projetos-claude/excluidos")

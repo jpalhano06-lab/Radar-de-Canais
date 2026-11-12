@@ -135,3 +135,27 @@ def test_excluido_no_claude_nao_mexe_em_agente_de_outra_pessoa(agentes):
     claude_projetos.sincronizar(1, [_projeto("u-holanda", "ANIMAIS HOLANDA", HOLANDA)])
     assert claude_projetos.excluidos_no_claude(2, ["u-holanda"]) == {"excluidos": []}
     assert _agente(agentes["jan"])
+
+
+def test_agente_sem_projeto_no_claude_sai_mas_o_canal_de_teste_fica(agentes):
+    """Pedido do usuário em 2026-11-12: o Radar é o espelho do Claude. O agente que nunca foi ligado a projeto nenhum
+    também sai, desde que a extensão tenha lido as organizações inteiras. O CANAL DE TESTE mora só no Radar e fica."""
+    criar = lambda nome, tipo="roteiro": banco.executar(
+        "INSERT INTO projetos_roteiro (usuario_id, nome, instrucoes, tipo, criado) VALUES (1,?,?,?,?)",
+        nome, "x", tipo, banco.agora())
+    filipinas, teste, desc = criar("FILIPINAS AGENTE"), criar("CANAL DE TESTE"), criar("DESCRIÇÃO", "descricao")
+    projetos = [_projeto("u-uk", "AGENTE UK", UK)]
+    r = claude_projetos.sincronizar(1, projetos, vistos=["u-uk"])                     # extensão antiga: sem orgs
+    assert r["excluidos"] == [] and _agente(filipinas) and _agente(agentes["jan"])
+    r = claude_projetos.sincronizar(1, projetos, vistos=["u-uk"], orgs=["org-1"])
+    assert sorted(r["excluidos"]) == ["FILIPINAS AGENTE", "JAN DE WOLF"]
+    assert _agente(filipinas) is None and _agente(agentes["jan"]) is None
+    assert _agente(teste) and _agente(desc) and _agente(agentes["uk"])
+
+
+def test_todos_os_projetos_excluidos_no_claude_voltam_como_faltando(agentes):
+    """Lista vazia não é extensão antiga: apagou tudo no Claude, todos os ligados vão ser conferidos."""
+    claude_projetos.sincronizar(1, [_projeto("u-holanda", "ANIMAIS HOLANDA", HOLANDA), _projeto("u-uk", "AGENTE UK", UK)])
+    r = claude_projetos.sincronizar(1, [], vistos=[], orgs=["org-1"])
+    assert sorted(r["faltando"]) == ["u-holanda", "u-uk"]
+    assert _agente(agentes["jan"]) and _agente(agentes["uk"])                        # só saem depois do 404
