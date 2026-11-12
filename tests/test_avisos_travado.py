@@ -50,8 +50,9 @@ def test_fabrica_parada_esperando_alguem_avisa(monkeypatch, tmp_path):
     assert a["chave"] == "parado-9" and "cena 5" in a["texto"]
 
 
-def test_problema_de_video_vai_ao_celular_mesmo_de_atencao():
-    assert avisos.vai_ao_celular(avisos._aviso("qualidade-80", "atencao", "t", "x"))
-    assert avisos.vai_ao_celular(avisos._aviso("genaipro-saldo", "atencao", "t", "x"))
-    assert avisos.vai_ao_celular(avisos._aviso("fila-lenta-3", "atencao", "t", "x"))
-    assert not avisos.vai_ao_celular(avisos._aviso("disco", "atencao", "t", "x"))
+def test_celular_so_recebe_video_parado():
+    for chave in ("fila-erro-3", "parado-9", "travado-9", "travado-saldo-9"):
+        assert avisos.vai_ao_celular(avisos._aviso(chave, "erro", "t", "x"))
+    for chave, nivel in (("qualidade-80", "atencao"), ("genaipro-saldo", "erro"), ("fila-lenta-3", "atencao"),
+                         ("fabrica-fora", "erro"), ("backup-erro", "erro"), ("openrouter-limite", "erro"), ("disco", "atencao")):
+        assert not avisos.vai_ao_celular(avisos._aviso(chave, nivel, "t", "x"))

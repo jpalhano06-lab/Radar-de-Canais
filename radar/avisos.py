@@ -2,7 +2,7 @@
 
 Antes o pedido 76 parou sem ninguém saber, e a assinatura do ChatGPT e o limite da chave do OpenRouter acabaram no meio de
 um vídeo sem aviso. Uma linha de fundo olha tudo de 10 em 10 minutos. O site mostra no topo, a extensão avisa pelo Chrome,
-e o que for grave chega no celular: pelo ntfy com RADAR_NTFY_TOPICO no .env, ou pelo Telegram com RADAR_TELEGRAM_TOKEN e
+e no celular chega só o vídeo parado e o vídeo pronto: pelo ntfy com RADAR_NTFY_TOPICO no .env, ou pelo Telegram com RADAR_TELEGRAM_TOKEN e
 RADAR_TELEGRAM_CHAT. O tópico do ntfy não tem senha: quem souber o nome lê, por isso ele é sorteado e nunca vai para o Git.
 
 Cada aviso é {chave, nivel, titulo, texto, link}. A chave é o que impede repetir: é a mesma enquanto o problema for o mesmo.
@@ -260,13 +260,15 @@ def video_pronto(fid: int) -> None:
 _prontos_avisados: set = set()
 
 
-# qualquer problema de vídeo vai ao celular, até o de atenção (pedido do usuário em 2026-11-07: "qualquer problema no
-# vídeo deve ser avisado por notificação"). O resto (conexões, disco, cópia, OpenRouter) só quando é erro
-DE_VIDEO = ("fila-", "travado", "qualidade-", "genaipro", "fabrica", "parado-")
+# No celular só duas coisas (pedido do usuário em 2026-11-12: "única notificação a partir de agora que vai para o
+# celular é quando o vídeo para ou está pronto"): o pronto sai de video_pronto, e daqui só o vídeo parado. Pedido com
+# erro na fila, parado na fábrica, sem saldo ou repetindo a mesma falha. Demorando, qualidade, saldo acabando, fábrica
+# fora, conexões, disco e cópia ficam só no site e na extensão.
+DE_VIDEO_PARADO = ("fila-erro-", "parado-", "travado-")
 
 
 def vai_ao_celular(aviso: dict) -> bool:
-    return aviso["nivel"] == "erro" or aviso["chave"].startswith(DE_VIDEO)
+    return aviso["chave"].startswith(DE_VIDEO_PARADO)
 
 
 # O andamento no celular (pedido do usuário em 2026-11-09: "ver a porcentagem do vídeo como uma barra no pc e no
@@ -316,12 +318,7 @@ def _uma_volta(usuario_id: int) -> None:
         if vai_ao_celular(a) and agora - _enviados.get(a["chave"], 0) > 12 * 3600:
             _enviados[a["chave"]] = agora
             _no_celular(a)
-    try:
-        from . import servidor
-        for a in progresso_no_celular(servidor._progresso(usuario_id)["videos"]):
-            _no_celular(a)
-    except Exception as erro:  # noqa: BLE001 (o andamento nunca segura os avisos de problema)
-        print("o progresso no celular falhou:", str(erro)[:160])
+    # o andamento (progresso_no_celular) não vai mais ao celular: só parado e pronto (pedido do usuário em 2026-11-12)
 
 
 def _rodar() -> None:

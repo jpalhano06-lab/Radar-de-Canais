@@ -125,12 +125,13 @@ def test_erro_vem_antes_da_atencao(monkeypatch):
 def test_celular_nao_repete_o_mesmo_erro(monkeypatch):
     enviados = []
     monkeypatch.setattr(avisos.backup, "na_hora", lambda: False)
-    monkeypatch.setattr(avisos, "verificar", lambda _u: [avisos._aviso("x", "erro", "t", "y"), avisos._aviso("z", "atencao", "t", "y")])
+    monkeypatch.setattr(avisos, "verificar", lambda _u: [avisos._aviso("parado-1", "erro", "t", "y"), avisos._aviso("backup-erro", "erro", "t", "y"),
+                                                          avisos._aviso("fila-lenta-2", "atencao", "t", "y")])
     monkeypatch.setattr(avisos, "_no_celular", enviados.append)
     monkeypatch.setattr(avisos, "_enviados", {})
     avisos._uma_volta(1)
     avisos._uma_volta(1)
-    assert [a["chave"] for a in enviados] == ["x"]
+    assert [a["chave"] for a in enviados] == ["parado-1"]
 
 
 def test_qualidade_so_avisa_video_ruim_de_verdade(tmp_path, monkeypatch):
