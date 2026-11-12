@@ -231,3 +231,17 @@ def test_a_referencia_maior_vem_avisada_e_o_tamanho_repetido_no_fim(monkeypatch,
     p = pedidos[0]
     assert "10000 palavras" in p and "NÃO siga o tamanho dela" in p
     assert p.rstrip().endswith("A última parte é o fechamento.") and p.count("[PARTE 1/11]") == 2
+
+
+def test_o_roteiro_vai_no_opus_com_esforco_baixo(monkeypatch, tmp_path):
+    import json as _json, subprocess as _sp
+    visto = {}
+    monkeypatch.setattr(roteiro_claude, "VAZIA", tmp_path)
+    monkeypatch.setattr(roteiro_claude.shutil, "which", lambda _n: "claude")
+    monkeypatch.setattr(roteiro_claude.subprocess, "run",
+                        lambda c, **k: visto.update(c=c) or _sp.CompletedProcess(c, 0, _json.dumps({"result": "ok"}), ""))
+    roteiro_claude._claude("s", "p", modelo=roteiro_claude.ROTEIRO)
+    c = visto["c"]
+    assert c[c.index("--model") + 1] == "opus" and c[c.index("--effort") + 1] == "low"
+    roteiro_claude._claude("s", "p", modelo="sonnet")
+    assert "--effort" not in visto["c"]

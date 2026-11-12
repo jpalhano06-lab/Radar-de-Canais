@@ -228,7 +228,9 @@ def _claude(sistema: str, pedido: str, modelo: str = "") -> str:
     comando = [executavel, "-p", "--output-format", "json", "--system-prompt-file", str(arquivo), "--tools", "",
                "--strict-mcp-config", "--no-session-persistence", "--setting-sources", "", "--disable-slash-commands"]
     if modelo:
-        comando += ["--model", modelo]
+        # "opus:low" = o modelo e o esforço (o quanto ele pensa antes de escrever)
+        nome, _, esforco = modelo.partition(":")
+        comando += ["--model", nome] + (["--effort", esforco] if esforco else [])
     try:
         r = subprocess.run(comando, input=pedido, capture_output=True, text=True, encoding="utf-8", cwd=VAZIA,
                            env=ambiente, timeout=900)
@@ -485,6 +487,8 @@ VOLTAS_TAMANHO = 6      # quantas vezes o Radar manda o Claude corrigir o tamanh
 MELHORA_MINIMA_MIN = 0.5
 # o modelo das tarefas pequenas (descrição, tags, prompt da thumbnail, leituras da Lente): o roteiro fica no padrão
 LEVE = "sonnet"
+# o texto do roteiro: Opus com esforço baixo, para gastar pouco do limite (pedido do usuário em 2026-11-12)
+ROTEIRO = "opus:low"
 
 # o que o Radar pede ao Claude quando o roteiro conferido ficou curto ou comprido
 CONTINUAR = """
@@ -521,7 +525,7 @@ def _primeiro_rascunho(sistema: str, pedido: str, aviso=lambda _t: None) -> tupl
     chance com o `INSISTIR`, e duas seguidas param o pedido com erro, em vez de descer para a fábrica."""
     texto = ""
     for volta in (1, 2):
-        texto = _limpar(_claude(sistema, pedido if volta == 1 else pedido + INSISTIR))
+        texto = _limpar(_claude(sistema, pedido if volta == 1 else pedido + INSISTIR, modelo=ROTEIRO))
         if _tem_roteiro(texto) and not _parece_pergunta(texto):
             return texto, volta
         if volta == 1:
@@ -569,13 +573,13 @@ def _conferir_tamanho(roteiro: str, sistema: str, pedido: str, minutos: int, rit
                 break
             aviso(f"Conferindo o tempo: o roteiro dá {conf['previsto_min']} min e você pediu {minutos}. "
                   f"O Claude está continuando ({atual} de {alvo} palavras)…")
-            resto = _limpar(_claude(sistema, pedido + CONTINUAR.format(comeco=melhor[-12000:], faltam=_tamanho(faltam, lingua))))
+            resto = _limpar(_claude(sistema, pedido + CONTINUAR.format(comeco=melhor[-12000:], faltam=_tamanho(faltam, lingua)), modelo=ROTEIRO))
             tentativa = (melhor + "\n\n" + resto) if contar_palavras(resto) >= 30 else melhor
         else:
             aviso(f"Conferindo o tempo: o roteiro dá {conf['previsto_min']} min e você pediu {minutos}. "
                   f"O Claude está condensando ({atual} para {alvo} palavras)…")
             tentativa = _limpar(_claude(sistema, CONDENSAR.format(minutos=minutos, atual=_tamanho(atual, lingua),
-                                                                  alvo=_tamanho(alvo, lingua), roteiro=melhor)))
+                                                                  alvo=_tamanho(alvo, lingua), roteiro=melhor), modelo=ROTEIRO))
         nova = tempo.conferir(contar_palavras(tentativa), minutos, ppm)
         voltas.append({"palavras": nova["palavras"], "previsto_min": nova["previsto_min"],
                        "erro_min": nova["erro_min"], "o_que": "continuar" if faltam > 0 else "condensar"})
