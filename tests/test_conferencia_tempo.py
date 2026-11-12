@@ -192,3 +192,42 @@ def test_o_radar_chama_o_claude_sem_as_configuracoes_pessoais(monkeypatch, tmp_p
     assert roteiro_claude._claude("s", "p") == "ok"
     c = visto["comando"]
     assert c[c.index("--setting-sources") + 1] == "" and "--disable-slash-commands" in c
+
+
+# ------------------------------------------------- o primeiro pedido já sai no tamanho: partes medidas e base avisada
+
+def test_o_roteiro_longo_e_pedido_em_partes_que_somam_o_tempo():
+    partes, cada = roteiro_claude.partes_do_roteiro(6390)
+    assert partes == 11 and abs(partes * cada - 6390) < partes
+    texto = roteiro_claude.tamanho_no_pedido(6390, 30, "português")
+    assert "6390 palavras" in texto and f"[PARTE 1/{partes}]" in texto
+    assert "PARTE" not in roteiro_claude.tamanho_no_pedido(300, 2, "português")
+
+
+def test_a_marca_da_parte_sai_e_a_fala_grudada_nela_fica():
+    texto = "[PARTE 1/3]\nPrimeira frase da voz.\n\n[PARTE 2/3] Segunda frase da voz.\n\n[Parte 3/3]: Terceira frase."
+    limpo = roteiro_claude._limpar(texto)
+    assert "PARTE" not in limpo.upper()
+    assert "Segunda frase da voz." in limpo and "Terceira frase." in limpo and "\n\n" in limpo
+
+
+def test_a_referencia_maior_vem_avisada_e_o_tamanho_repetido_no_fim(monkeypatch, tmp_path):
+    from radar import tempo as _tempo
+    monkeypatch.setattr(roteiro_claude, "PASTA", tmp_path)
+    monkeypatch.setattr(roteiro_claude, "_escrever_descricao", lambda *a, **k: None)
+    monkeypatch.setattr(roteiro_claude, "transcricao", lambda _v: ("fala " * 10000, "pt"))
+    monkeypatch.setattr(roteiro_claude, "copiar_thumbnail", lambda *a: False)
+    monkeypatch.setattr(roteiro_claude, "por_que_estourou", lambda *a, **k: {})
+    monkeypatch.setattr(_tempo, "ritmo", lambda *a, **k: {"ppm": 213, "ppm_alvo": 213, "de": "voz"})
+    pedidos = []
+
+    def falso(sistema, pedido, modelo=""):
+        pedidos.append(pedido)
+        return "Frase do roteiro. " * 3195
+
+    monkeypatch.setattr(roteiro_claude, "_claude", falso)
+    roteiro_claude.gerar(usuario_id=1, titulo="T", link="https://youtu.be/abcdefghijk", minutos=30, lingua="",
+                         projeto_id=None, observacoes="")
+    p = pedidos[0]
+    assert "10000 palavras" in p and "NÃO siga o tamanho dela" in p
+    assert p.rstrip().endswith("A última parte é o fechamento.") and p.count("[PARTE 1/11]") == 2

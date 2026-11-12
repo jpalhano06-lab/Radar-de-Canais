@@ -111,6 +111,40 @@ def _tamanho(palavras: int, lingua: str) -> str:
     return f"{palavras} palavras"
 
 
+PALAVRAS_POR_PARTE = 600   # cerca de 3 a 5 minutos de voz: um pedaço que o Claude consegue medir sozinho
+
+
+def partes_do_roteiro(palavras: int) -> tuple[int, int]:
+    """Em quantas partes o roteiro é pedido, e com quantas palavras cada uma.
+
+    O Claude não sabe contar 6 mil palavras de uma vez: nos 25 roteiros de 2026-11-06 a 11-12 o primeiro rascunho
+    saiu 15 a 50% fora do pedido (curto nos de 30 min, comprido nos de 15) e o laço do tamanho gastava até 6 voltas
+    corrigindo. Uma parte de 600 palavras ele acerta, e partes iguais somam o tempo pedido."""
+    partes = max(1, round(palavras / PALAVRAS_POR_PARTE))
+    return partes, round(palavras / partes)
+
+
+def tamanho_no_pedido(palavras: int, minutos: int, lingua: str) -> str:
+    """A linha do tamanho no pedido: o total e, num roteiro maior que uma parte, a divisão em partes marcadas.
+    A marca `[PARTE k/N]` fica sozinha na linha e o `_limpar` a tira antes da voz (linha entre colchetes)."""
+    texto = f"Tamanho: cerca de {_tamanho(palavras, lingua)} ({minutos} minutos narrados)\n"
+    partes, cada = partes_do_roteiro(palavras)
+    if partes > 1:
+        texto += (f"Escreva o roteiro em {partes} partes de cerca de {_tamanho(cada, lingua)} cada, em sequência, "
+                  f"cada uma começando numa linha sozinha com a marca [PARTE 1/{partes}], [PARTE 2/{partes}] e assim "
+                  f"por diante. Meça cada parte: nenhuma pode passar muito de {_tamanho(cada, lingua)} nem ficar "
+                  f"curta. A última parte é o fechamento.\n")
+    return texto
+
+
+def aviso_da_base(palavras_base: int, palavras: int, lingua: str) -> str:
+    """Vai logo depois da transcrição de referência. O Claude copiava o tamanho dela no lugar do pedido: 30 min
+    pedidos (6.390 palavras) com uma referência de 10.255 saíram com mais de 10 mil palavras (2026-11-11)."""
+    return (f"\nA transcrição acima tem cerca de {_tamanho(palavras_base, lingua)}. Ela é só fonte de assunto, "
+            f"fatos e ordem das ideias: NÃO siga o tamanho dela. O seu roteiro tem cerca de "
+            f"{_tamanho(palavras, lingua)}, nem mais nem menos.\n")
+
+
 def _slug(texto: str) -> str:
     texto = unicodedata.normalize("NFKD", texto).encode("ascii", "ignore").decode().lower()
     return re.sub(r"[^a-z0-9]+", "-", texto).strip("-")[:50] or "roteiro"
@@ -215,6 +249,9 @@ _TITULO = re.compile(r"^\s*(\[[^\]]*\].*|#+.*|(parte|cap[ií]tulo|se[cç][aã]o|
                      r"(introdu[cç][aã]o|conclus[aã]o|fechamento|gancho|abertura|encerramento)\s*:?)\s*$", re.I)
 
 
+_MARCA_PARTE = re.compile(r"^\[\s*PARTE[^\]]*\]\s*[:.\-–—]?\s*", re.I)
+
+
 def _limpar(texto: str) -> str:
     """Deixa só o que a voz fala. Pedido do usuário em 2026-10-14: o roteiro vinha com "[TITULO] ..." no meio, e o
     script tem que ser limpo para narração."""
@@ -222,7 +259,12 @@ def _limpar(texto: str) -> str:
     texto = re.sub(r"\*\*|__|`", "", texto)
     linhas = []
     for linha in texto.splitlines():
+        # a marca das partes (`tamanho_no_pedido`) sai sozinha; se o Claude grudar a fala nela, a fala fica
         limpa = linha.strip()
+        if _MARCA_PARTE.match(limpa):
+            limpa = _MARCA_PARTE.sub("", limpa)
+            if not limpa:
+                continue
         if _TITULO.match(limpa):
             continue
         # linha curta sem pontuação no fim, sozinha entre linhas vazias, é título ("A fuga", "Por que elas trapaceiam").
@@ -397,8 +439,8 @@ def gerar(usuario_id: int, titulo: str, link: str, minutos: int, lingua: str, pr
     if arquivos:
         sistema += ("\n\nArquivos do projeto (exemplos e referências do canal: siga o estilo, o ritmo e o formato "
                     f"deles, sem copiar o assunto):\n\n{arquivos}")
-    pedido = (f"Título do vídeo: {titulo}\nLíngua do roteiro: {lingua}\nTamanho: cerca de {_tamanho(palavras, lingua)} "
-              f"({minutos} minutos narrados)\n")
+    palavras = round(palavras)
+    pedido = f"Título do vídeo: {titulo}\nLíngua do roteiro: {lingua}\n" + tamanho_no_pedido(palavras, minutos, lingua)
     if observacoes:
         pedido += f"Observações de quem pediu: {observacoes}\n"
     # o que os vídeos anteriores deste canal ensinaram (retencao.py). Sem Studio conectado, fica vazio
@@ -412,6 +454,10 @@ def gerar(usuario_id: int, titulo: str, link: str, minutos: int, lingua: str, pr
         # a transcrição muito longa é cortada: o começo e a estrutura importam mais
         pedido += f"\nTranscrição do vídeo de referência (língua: {lingua_base}):\n{base[:60000]}\n"
         pedido += texto_do_por_que(leitura)
+        pedido += aviso_da_base(contar_palavras(base[:60000]), palavras, lingua)
+        if partes_do_roteiro(palavras)[0] > 1:
+            # a transcrição é longa e o tamanho estava lá em cima: repetido no fim, é a última coisa que o Claude lê
+            pedido += "Lembre: " + tamanho_no_pedido(palavras, minutos, lingua)
     elif base_erro:
         pedido += ("\nO vídeo de referência existe, mas não deu para ler a legenda dele: escreva a partir do título, "
                    "das observações e do estilo do canal, sem nenhuma base de transcrição.\n")
