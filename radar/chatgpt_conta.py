@@ -111,9 +111,12 @@ def contas() -> dict:
     atual = _quem(_ler(_login()))["email"]
     guardadas = []
     for arquivo in sorted(GUARDADAS.glob("*.json")) if GUARDADAS.exists() else []:
-        q = _quem(_ler(arquivo).get("login") or {})
+        guardada = _ler(arquivo)
+        q = _quem(guardada.get("login") or {})
         if q["email"] and q["email"] != atual:
-            guardadas.append(q)
+            # a fábrica marca "recusada" quando a OpenAI revoga o login (chatgpt_assinatura.trocar_de_conta): esse
+            # login não volta a servir, só um login novo pela OpenAI
+            guardadas.append({**q, "revogada": str(guardada.get("recusada") or "")})
     with _trava:
         login = {k: v for k, v in _LOGIN.items() if k in ("estado", "erro", "email", "url")}
     return {"atual": atual, "guardadas": guardadas, "login": login}
@@ -124,6 +127,11 @@ def usar(email: str) -> dict:
     guardada = _ler(_nome_guardado(email))
     if not guardada.get("login"):
         raise ValueError("Essa conta não está guardada. Conecte de novo pelo botão.")
+    if guardada.get("recusada"):
+        # 2026-11-12: "Usar esta" religou duas vezes o login de 08/11 que a OpenAI já tinha revogado; a fábrica largou
+        # a conta na primeira imagem e os vídeos pararam. Login revogado só volta com um login novo
+        raise ValueError(f"A OpenAI revogou o login guardado de {email}. Clique em \"Conectar de novo\" e entre com "
+                         f"{email} na página da OpenAI.")
     _guardar_a_atual()
     _ligar(guardada["login"], guardada.get("limites"))
     _nome_guardado(email).unlink(missing_ok=True)

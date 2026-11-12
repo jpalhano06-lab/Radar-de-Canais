@@ -2937,7 +2937,9 @@ async function integracoes(dados) {
         : bt("sec gpt-conectar", a.conectada ? "Conectar outra conta" : "Conectar uma conta do ChatGPT")}
       ${loginGpt.estado === "erro" ? `<span class="ig-st erro">${esc(loginGpt.erro || "O login não terminou.")}</span>` : ""}
       ${(contasGpt.guardadas || []).map((g) => `<span class="gpt-guardada"><span>${esc(g.email)}</span>
-          ${bt("sec gpt-usar", "Usar esta", `data-email="${esc(g.email)}"`)}${bt("contorno gpt-esquecer", "Esquecer", `data-email="${esc(g.email)}"`)}</span>`).join("")}
+          ${g.revogada
+            ? `<span class="ig-st erro" title="${esc(g.revogada)}">login revogado</span>${loginGpt.estado === "aguardando" ? "" : bt("sec gpt-conectar", "Conectar de novo")}`
+            : bt("sec gpt-usar", "Usar esta", `data-email="${esc(g.email)}"`)}${bt("contorno gpt-esquecer", "Esquecer", `data-email="${esc(g.email)}"`)}</span>`).join("")}
     </div>`;
   const cartaoGpt = `<div class="bloco ig-conta gpt-conta">
       <div class="gpt-cab"><b>ChatGPT (assinatura)</b>
@@ -2988,14 +2990,14 @@ async function integracoes(dados) {
     }, 2000);
   };
   if (loginGpt.estado === "aguardando") esperarLogin();
-  tela.querySelector(".gpt-conectar")?.addEventListener("click", (e) => carregando(e.currentTarget, "Abrindo…", async () => {
+  tela.querySelectorAll(".gpt-conectar").forEach((b) => b.addEventListener("click", (e) => carregando(e.currentTarget, "Abrindo…", async () => {
     const aba = window.open("about:blank", "_blank");   // aberta já no clique, senão o navegador bloqueia
     try {
       const { url } = await api("/api/integracoes/chatgpt/conectar", { method: "POST", body: {} });
       if (aba) aba.location = url; else window.open(url, "_blank");
     } catch (erro) { aba?.close(); throw erro; }
     integracoes(d);
-  }));
+  })));
   tela.querySelector(".gpt-cancelar")?.addEventListener("click", () =>
     api("/api/integracoes/chatgpt/cancelar", { method: "POST", body: {} }).then(() => integracoes(d)));
   tela.querySelectorAll(".gpt-usar").forEach((b) => (b.onclick = () => carregando(b, "Trocando…", async () => {
@@ -3516,23 +3518,23 @@ async function novaProducao(preset = {}) {
     lingua: "português", ppm: 150, caracteres: 0, modo: "claude", roteiro: "", nicho: "", obs: "", revisar: false, ref: null, custo: null, anim: "",
     footage: Number(guardado("np-footage", "0")) || 0, tema: guardado("np-tema", ""), iaPct: guardado("np-ia", ""), destino: "", maquinas: [], opcoes: {}, opcoesAbertas: false };
   N.maquinas = maquinasDeFora;
-  // o estilo das animações só deste vídeo: "" é o padrão do canal, e a página Animações é onde se monta um estilo
-  const opcoesAnim = () => `<option value="">Padrão do canal</option>
-    ${(meusAnim.estilos || []).length ? `<optgroup label="Meus estilos">${meusAnim.estilos.map((m) => `<option value="meu:${esc(m.nome)}" ${N.anim === "meu:" + m.nome ? "selected" : ""}>${esc(m.nome)}</option>`).join("")}</optgroup>` : ""}
-    <optgroup label="Estilos da fábrica">${(catAnim?.temas || []).map((t) => `<option value="tema:${esc(t.id)}" ${N.anim === "tema:" + t.id ? "selected" : ""}>${esc(t.nome)}</option>`).join("")}</optgroup>
-    <option value="sem" ${N.anim === "sem" ? "selected" : ""}>Sem animações</option>`;
-  const ajustesAnim = () => {
-    if (N.anim === "sem") return { ativo: false };
-    if (N.anim.startsWith("tema:")) return { tema: N.anim.slice(5) };
-    if (N.anim.startsWith("meu:")) return (meusAnim.estilos.find((m) => m.nome === N.anim.slice(4)) || {}).ajustes;
-    return undefined;
-  };
-  const nomeAnim = () => {
-    if (!N.anim) return "padrão do canal";
-    if (N.anim === "sem") return "sem animações";
-    if (N.anim.startsWith("meu:")) return N.anim.slice(4);
-    return (catAnim?.temas || []).find((t) => t.id === N.anim.slice(5))?.nome || "";
-  };
+  // o estilo das animações só deste vídeo: "" é o padrão do canal, e a página Animações é onde se monta um estilo
+  const opcoesAnim = () => `<option value="">Padrão do canal</option>
+    ${(meusAnim.estilos || []).length ? `<optgroup label="Meus estilos">${meusAnim.estilos.map((m) => `<option value="meu:${esc(m.nome)}" ${N.anim === "meu:" + m.nome ? "selected" : ""}>${esc(m.nome)}</option>`).join("")}</optgroup>` : ""}
+    <optgroup label="Estilos da fábrica">${(catAnim?.temas || []).map((t) => `<option value="tema:${esc(t.id)}" ${N.anim === "tema:" + t.id ? "selected" : ""}>${esc(t.nome)}</option>`).join("")}</optgroup>
+    <option value="sem" ${N.anim === "sem" ? "selected" : ""}>Sem animações</option>`;
+  const ajustesAnim = () => {
+    if (N.anim === "sem") return { ativo: false };
+    if (N.anim.startsWith("tema:")) return { tema: N.anim.slice(5) };
+    if (N.anim.startsWith("meu:")) return (meusAnim.estilos.find((m) => m.nome === N.anim.slice(4)) || {}).ajustes;
+    return undefined;
+  };
+  const nomeAnim = () => {
+    if (!N.anim) return "padrão do canal";
+    if (N.anim === "sem") return "sem animações";
+    if (N.anim.startsWith("meu:")) return N.anim.slice(4);
+    return (catAnim?.temas || []).find((t) => t.id === N.anim.slice(5))?.nome || "";
+  };
   N.caracteres = Math.round(12 * N.ppm * CARACTERES_POR_PALAVRA / 10) * 10;
   const minutos = () => N.caracteres / CARACTERES_POR_PALAVRA / N.ppm;
   const palavras = () => Math.round(N.caracteres / CARACTERES_POR_PALAVRA);

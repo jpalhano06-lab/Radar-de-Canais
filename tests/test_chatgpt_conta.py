@@ -83,3 +83,23 @@ def test_a_volta_da_openai_liga_a_conta_nova_e_guarda_a_antiga(codex, monkeypatc
 def test_o_login_da_fabrica_nao_e_o_do_codex_deste_computador():
     """O ~/.codex é do Robô do Dotti; dividir o login com ele fez a OpenAI revogá-lo (2026-11-02)."""
     assert chatgpt_conta.PASTA != Path.home() / ".codex"
+
+
+def test_login_revogado_nao_volta_pelo_usar_esta(codex):
+    """2026-11-12: "Usar esta" religou um login que a OpenAI tinha revogado e os vídeos pararam sem imagem."""
+    chatgpt_conta._guardar_a_atual()
+    chatgpt_conta._ligar(_login("b@x.com"), None)
+    gaveta = codex / "codex" / "contas-radar" / "a@x.com.json"
+    guardada = json.loads(gaveta.read_text())
+    guardada["recusada"] = "A OpenAI revogou o login do ChatGPT desta fábrica (token_revoked)."
+    gaveta.write_text(json.dumps(guardada))
+    assert chatgpt_conta.contas()["guardadas"][0]["revogada"].startswith("A OpenAI revogou")
+    with pytest.raises(ValueError, match="Conectar de novo"):
+        chatgpt_conta.usar("a@x.com")
+    assert chatgpt_conta.contas()["atual"] == "b@x.com"
+
+
+def test_guardada_boa_nao_aparece_como_revogada(codex):
+    chatgpt_conta._guardar_a_atual()
+    chatgpt_conta._ligar(_login("b@x.com"), None)
+    assert chatgpt_conta.contas()["guardadas"][0]["revogada"] == ""
