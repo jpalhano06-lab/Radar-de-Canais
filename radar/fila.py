@@ -18,7 +18,13 @@ LIMITES = (1, 2, 3, 4, 6, 8)
 ESCRITAS_AO_MESMO_TEMPO = 2       # roteiros pelo Claude ao mesmo tempo (20 pedidos de uma vez eram 20 chamadas juntas)
 CAMPOS = ("titulo", "link", "canal_id", "agente_id", "lingua", "caracteres", "roteiro_manual", "nicho", "observacao",
           "revisar", "perfil", "footage_real", "ia_pct", "tema", "escolhido_na_tela", "destino", "ritmo", "edicao", "transicao", "camada", "ia", "acervo",
-          "avatar", "musica", "som_textos", "video_ia", "animacoes", "transcricao_ref")
+          "avatar", "musica", "som_textos", "video_ia", "animacoes", "transcricao_ref", "sem_narracao")
+# o Canal de teste de 5 min sem narração (pedido do usuário em 2026-11-12): não narra nada e não usa IA de imagem nem de
+# vídeo, só banco grátis (Pexels/Pixabay). A língua escolhida vale só para os textos na tela (os motions). O perfil da
+# fábrica é o sem-narracao (voz do computador só para medir o tempo, muda no vídeo final: narracao_no_video: false)
+MINUTOS_SEM_NARRACAO = 5
+PERFIL_SEM_NARRACAO = {"português": "sem-narracao"}   # as outras línguas: SEM_NARRACAO_OUTRAS
+SEM_NARRACAO_OUTRAS = "sem-narracao-en"
 FOOTAGE_REAL = (0, 15, 25, 40)    # % das cenas com trecho de vídeo real do YouTube (o garimpo da fábrica)
 IA_PCT = (0, 10, 25, 50, 75, 100)  # % das cenas com imagem de IA. Sem escolha, quem decide é o agente de cenas, até ia.teto
 # o que a Nova produção deixa escolher por vídeo. Vazio é o padrão do canal, e aí nada é gravado no projeto
@@ -44,6 +50,8 @@ def opcoes_do(usuario_id: int, pedido: dict, cfg: dict | None = None) -> dict:
     opcoes = {k: pedido[k] for k in ("footage_real", *ESCOLHAS) if pedido.get(k)}
     if pedido.get("ia_pct") is not None:
         opcoes["ia_pct"] = int(pedido["ia_pct"])
+    if pedido.get("sem_narracao"):
+        return opcoes | {"sem_narracao": True}   # nada do agente: sem IA, sem footage do YouTube
     agente = pedido.get("agente_id") or (cfg or {}).get("projeto_roteiro_id")
     if pedido.get("escolhido_na_tela") or not agente:
         return opcoes
@@ -84,6 +92,14 @@ def criar(usuario_id: int, pedido: dict, comecar: bool) -> dict:
     if not limpo["titulo"]:
         raise ValueError("Escreva o título do vídeo.")
     limpo["revisar"] = bool(pedido.get("revisar"))
+    if limpo.get("sem_narracao"):
+        if limpo.get("canal_id"):
+            raise ValueError("O vídeo sem narração é só do Canal de teste.")
+        # sem IA nenhuma e sem avatar, venha o que vier; o perfil sai da língua (ela só muda os textos na tela)
+        limpo |= {"sem_narracao": True, "ia": "sem", "avatar": "sem",
+                  "perfil": PERFIL_SEM_NARRACAO.get(limpo.get("lingua") or "português", SEM_NARRACAO_OUTRAS)}
+        for campo in ("ia_pct", "video_ia", "footage_real"):
+            limpo.pop(campo, None)
     if limpo.get("transcricao_ref"):  # a fala da referência lida pela extensão; o roteiro usa no máximo 60 mil letras
         limpo["transcricao_ref"] = str(limpo["transcricao_ref"])[:80000]
     if int(limpo.get("footage_real") or 0) not in FOOTAGE_REAL:
@@ -210,6 +226,9 @@ def _padrao():
 
 def _observacoes(pedido: dict) -> str:
     partes = [f"Nicho: {pedido['nicho']}" if pedido.get("nicho") else "", pedido.get("observacao") or ""]
+    if pedido.get("sem_narracao"):
+        partes.insert(0, "MODO SEM NARRAÇÃO (5 min): siga a seção \"Vídeo de 5 min sem narração\" do agente. Ninguém "
+                         "narra: o texto vira só as cenas de banco grátis e os textos curtos na tela (motions).")
     return "\n".join(p for p in partes if p)[:1000]
 
 
@@ -222,6 +241,8 @@ def perfil_do(pedido: dict, cfg: dict) -> str:
 def minutos_do(pedido: dict, ppm: int) -> int:
     """Os minutos do roteiro pelo tamanho pedido. O Canal de teste (sem canal, com o perfil escolhido) é sempre de 2 a
     3 min (pedido do usuário em 2026-10-29), venha o tamanho que vier."""
+    if eh_teste(pedido) and pedido.get("sem_narracao"):
+        return MINUTOS_SEM_NARRACAO       # o de 5 min sem narração (2026-11-12)
     minutos = max(1, round(minutos_de(pedido["caracteres"], ppm)))
     return min(3, max(2, minutos)) if eh_teste(pedido) else minutos
 

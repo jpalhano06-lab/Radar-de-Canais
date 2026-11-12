@@ -353,6 +353,37 @@ def test_a_rota_do_canal_de_teste(db, monkeypatch):
     assert r["linguas"][0]["perfis"][0]["perfil"] == "canal-jan-de-wolf"
 
 
+def test_canal_de_teste_de_5_min_sem_narracao(db):
+    """O Canal de teste de 5 min sem narração (2026-11-12): sem IA, sem avatar, o perfil sem-narracao da fábrica pela
+    língua (ela só vale para os motions), e na fábrica a voz muda e a IA desligada."""
+    from radar import roteiro_claude
+    enviados = []
+
+    class R(Roteirista):
+        def enviar(self, usuario_id, nome, perfil, opcoes=None):
+            enviados.append((perfil, opcoes))
+            return super().enviar(usuario_id, nome, perfil)
+    rot = R()
+    novo = fila.criar(1, {"titulo": "O oceano", "caracteres": 4430, "agente_id": "8", "lingua": "espanhol",
+                          "canal_id": "", "sem_narracao": True, "ia_pct": 50, "footage_real": 25}, True)
+    p = novo["pedido"]
+    assert p["perfil"] == "sem-narracao-en" and p["ia"] == "sem" and p["avatar"] == "sem"
+    assert "ia_pct" not in p and "footage_real" not in p
+    fila.passo(fabrica=Fabrica(), roteirista=rot, em_thread=False, config_canal=lambda uid, cid: pytest.fail("sem canal"),
+               ritmo=lambda uid, perfil, lingua: {"ppm": 150})
+    assert rot.pedidos[0]["minutos"] == 5 and rot.pedidos[0]["lingua"] == "espanhol"
+    assert "MODO SEM NARRAÇÃO" in rot.pedidos[0]["observacoes"]
+    perfil, opcoes = enviados[0]
+    assert perfil == "sem-narracao-en" and opcoes["sem_narracao"]
+    config, do_perfil = roteiro_claude.ajustes_do_video(opcoes)
+    assert config["ia"] == {"ativa": False} and config["video_ia"] == {"fracao": 0}
+    assert do_perfil["narracao_no_video"] is False and do_perfil["avatar"] == {"ativo": False}
+    assert fila.criar(1, {"titulo": "x", "caracteres": 4430, "sem_narracao": True, "lingua": "português"},
+                      False)["pedido"]["perfil"] == "sem-narracao"
+    with pytest.raises(ValueError):
+        fila.criar(1, {"titulo": "x", "caracteres": 4430, "sem_narracao": True, "canal_id": "UC1"}, False)
+
+
 def test_canal_de_teste_sempre_de_2_a_3_minutos():
     teste = {"perfil": "canal-jan-de-wolf", "canal_id": ""}
     assert fila.minutos_do(teste | {"caracteres": fila.caracteres_de(15, 150)}, 150) == 3

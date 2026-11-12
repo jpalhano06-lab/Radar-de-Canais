@@ -1764,3 +1764,24 @@ própria animação tocando no navegador, sem gravar nem gastar.
 - Tudo passa pelo servidor do Radar: a chave da fábrica nunca chega ao navegador. Quem confere e aplica é a fábrica
   (`fabrica/ajustes_animacao.py`, com as regras no CLAUDE.md dela).
 
+
+## Extensão 0.46.0: Canal de teste de 5 min sem narração (2026-11-12)
+
+Pedido do usuário: "canal de teste no radar tem que ter a opção de 5 min também, porém não narra nada e não usa IA,
+só usa base de imagem e vídeos de graça; a língua será só para os motions".
+
+- **Na Nova produção**, o 🧪 Canal de teste ganha dois chips: **Narrado · 2 a 3 min** (o de antes) e **5 min · sem
+  narração**. No sem narração a língua é "Língua dos textos na tela (motions)" (português, inglês, espanhol e as que
+  têm voz) e não há voz para escolher.
+- **A fila** (`fila.criar`): `sem_narracao` só vale sem canal; força `ia: sem` e `avatar: sem`, tira `ia_pct`,
+  `video_ia` e `footage_real`, e escolhe o perfil da fábrica pela língua (`sem-narracao` em português,
+  `sem-narracao-en` nas outras). `fila.minutos_do` dá sempre 5 min, e o pedido ao Claude leva "MODO SEM NARRAÇÃO".
+- **Na fábrica** (`roteiro_claude.ajustes_do_video`): `ia.ativa: false`, `video_ia.fracao: 0`, `garimpo.ligado: false`,
+  e no perfil `narracao_no_video: false`, sem legenda e sem avatar. A voz do computador só mede o tempo das cenas.
+- **A fábrica não tirava a voz**: o perfil `sem-narracao` dizia que o vídeo saía sem ela, mas `render._trilha` sempre
+  misturava a `narracao.wav`. Agora, com `narracao_no_video: false`, ela entra com volume 0 (repositório
+  fabrica-videos, `tests/test_narracao_no_video.py`).
+- **A regra** está no agente CANAL DE TESTE (id 8, no banco): a seção "Vídeo de 5 min sem narração" — umas 750
+  palavras, frases curtas e visuais que viram cenas de banco grátis e textos na tela, nada que só faça sentido ouvido.
+- Testes em `tests/test_fila.py::test_canal_de_teste_de_5_min_sem_narracao`. Para usar: reinicie o Radar e a fábrica,
+  e dê ↻ na extensão em `chrome://extensions`.

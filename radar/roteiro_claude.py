@@ -810,6 +810,10 @@ def ajustes_do_video(opcoes: dict | None) -> tuple[dict, dict]:
         config["video_ia"] = {"fracao": int(o["video_ia"]) / 100}
     if o.get("acervo"):
         config["midia"] = {"acervo": o["acervo"]}
+    if o.get("sem_narracao"):
+        # o Canal de teste de 5 min (2026-11-12): voz muda no vídeo, nenhuma IA de imagem ou vídeo, nada do YouTube
+        config.update({"ia": {"ativa": False}, "video_ia": {"fracao": 0}, "garimpo": {"ligado": False}})
+        perfil.update({"narracao_no_video": False, "legenda_na_tela": False, "avatar": {"ativo": False}})
     if o.get("musica") == "sem":
         config["trilha"] = {"ativo": False}
         perfil["musica"] = None

@@ -2215,6 +2215,9 @@
   const POR_PALAVRA = 5.9, MINUTOS_NP = [8, 10, 12, 15, 20, 25, 30];
   const TESTE = "teste";      // o Canal de teste da Nova produção: não é canal do Radar, a língua é escolhida na hora
   const MINUTOS_TESTE = [2, 3];   // o vídeo de teste é sempre de 2 a 3 min (pedido do usuário em 2026-10-29)
+  // ou 5 min sem narração (pedido do usuário em 2026-11-12): ninguém narra, nenhuma IA, só banco grátis; a língua vale
+  // só para os textos na tela (motions), então qualquer uma destas serve, tenha voz na fábrica ou não
+  const MINUTOS_SEM_NARRACAO = 5, LINGUAS_SEM_NARRACAO = ["português", "inglês", "espanhol"];
 
   function botaoNovaProducao() {
     const lugar = document.querySelector("ytd-masthead #end");
@@ -2245,7 +2248,7 @@
     // escrever sem agente, pelas regras do Radar; N.perfil é a voz da fábrica escolhida no Canal de teste
     const N = { passo: 1, titulo: "", link: daqui ? `https://youtu.be/${daqui}` : "", ref: null, cfg: null, agente: "", padrao: "", lingua: "português",
       ppm: 150, caracteres: Math.round(12 * 150 * POR_PALAVRA / 10) * 10, modo: "claude", roteiro: "", nicho: "", obs: "", revisar: false, custo: null,
-      teste: null, perfil: "",
+      teste: null, perfil: "", semNarracao: false,
       canal: npCanal === TESTE || canais.some((c) => c.id === npCanal) ? npCanal : canais.length === 1 ? canais[0].id : "" };
     const minutos = () => N.caracteres / POR_PALAVRA / N.ppm;
     const eTeste = () => N.canal === TESTE;
@@ -2264,9 +2267,14 @@
         if (!vozes.some((v) => v.perfil === N.perfil)) N.perfil = vozes.length ? vozes[0].perfil : "";
         const ritmo = await api(`/api/roteiros/ritmo?perfil=${encodeURIComponent(N.perfil)}&lingua=${encodeURIComponent(lingua)}`);
         N.ppm = (!ritmo.erro && ritmo.dados.ppm) || 150;
-        N.caracteres = Math.round(3 * N.ppm * POR_PALAVRA / 10) * 10;
+        N.caracteres = Math.round((N.semNarracao ? MINUTOS_SEM_NARRACAO : 3) * N.ppm * POR_PALAVRA / 10) * 10;
       }
       desenhar(); custo();
+    };
+    const escolherModoTeste = (semNarracao) => {
+      N.semNarracao = semNarracao;
+      if (!semNarracao && !vozesDaLingua().length && N.teste && N.teste.linguas.length) N.lingua = N.teste.linguas[0].lingua;
+      return escolherLingua(N.lingua);
     };
     const escolherCanal = async (id) => {
       N.canal = id; chrome.storage.local.set({ npCanal: id });
@@ -2335,11 +2343,22 @@
         h("div", { class: "radar-np-chips" }, ...canais.map((c) => chip(c.titulo, c.id === N.canal, () => escolherCanal(c.id))),
           chip("🧪 Canal de teste", eTeste(), () => escolherCanal(TESTE))));
       // no Canal de teste a língua é a escolha: ela decide a voz (um perfil da fábrica que fala essa língua)
-      const linguaTeste = () => h("div", { class: "radar-np-duas" },
-        campo("Língua do vídeo de teste", sel((N.teste ? N.teste.linguas : []).map((l) => [l.lingua, l.lingua]), N.lingua,
-          (v) => { chrome.storage.local.set({ npLinguaTeste: v }); escolherLingua(v); })),
-        campo("Voz", vozesDaLingua().length ? sel(vozesDaLingua().map((v) => [v.perfil, `${v.voz} (${v.canal || v.perfil})`]), N.perfil, (v) => { N.perfil = v; custo(); })
-          : h("span", { class: "radar-np-erro" }, "Nenhuma voz da fábrica fala essa língua.")));
+      // e o modo: narrado de 2 a 3 min, ou 5 min sem narração (aí a língua é só a dos textos na tela)
+      const linguasTeste = () => {
+        const comVoz = (N.teste ? N.teste.linguas : []).map((l) => l.lingua);
+        return N.semNarracao ? [...new Set([...LINGUAS_SEM_NARRACAO, ...comVoz])] : comVoz;
+      };
+      const linguaTeste = () => h("div", {},
+        h("div", { class: "radar-np-campo" }, h("span", {}, "Vídeo de teste"), h("div", { class: "radar-np-chips" },
+          chip("🎙️ Narrado · 2 a 3 min", !N.semNarracao, () => escolherModoTeste(false)),
+          chip("🔇 5 min · sem narração", N.semNarracao, () => escolherModoTeste(true)))),
+        h("div", { class: "radar-np-duas" },
+          campo(N.semNarracao ? "Língua dos textos na tela (motions)" : "Língua do vídeo de teste", sel(linguasTeste().map((l) => [l, l]), N.lingua,
+            (v) => { chrome.storage.local.set({ npLinguaTeste: v }); escolherLingua(v); })),
+          N.semNarracao
+            ? campo("Voz", h("small", { class: "radar-fraco" }, "Nenhuma: ninguém narra e nada é feito por IA. Só imagens e vídeos de banco grátis, com os textos na tela."))
+            : campo("Voz", vozesDaLingua().length ? sel(vozesDaLingua().map((v) => [v.perfil, `${v.voz} (${v.canal || v.perfil})`]), N.perfil, (v) => { N.perfil = v; custo(); })
+              : h("span", { class: "radar-np-erro" }, "Nenhuma voz da fábrica fala essa língua."))));
       const revisar = h("label", { class: "radar-np-revisar" }, (() => { const c = h("input", { type: "checkbox" }); c.checked = N.revisar; c.onchange = () => { N.revisar = c.checked; }; return c; })(),
         h("span", {}, h("b", {}, "Parar para eu revisar o roteiro"), h("small", {}, "O Claude escreve e espera você aprovar no Acompanhar antes de ir para a fábrica.")));
       const passos = h("div", { class: "radar-np-passos" }, h("span", { class: N.passo === 1 ? "ligado" : "" }, "1 · O vídeo"),
@@ -2370,7 +2389,7 @@
           ...(N.modo === "manual" ? [(() => { const t = h("textarea", { rows: "7", placeholder: "Cole aqui o roteiro inteiro (só o que vai ser narrado)" }); t.value = N.roteiro; t.oninput = () => { N.roteiro = t.value; }; return t; })()] : [
             h("div", { class: "radar-np-campo" }, h("span", {}, `Tamanho do roteiro: ${N.caracteres.toLocaleString("pt-BR")} caracteres ≈ ${Math.round(minutos())} min`),
               N.avisoTamanho ? h("div", { class: "radar-erro" }, N.avisoTamanho) : null,
-              h("div", { class: "radar-np-chips" }, (eTeste() ? MINUTOS_TESTE : MINUTOS_NP).map((m) => chip(`${m} min`, Math.round(minutos()) === m, () => { N.caracteres = Math.round(m * N.ppm * POR_PALAVRA / 10) * 10; desenhar(); custo(); })))),
+              h("div", { class: "radar-np-chips" }, (eTeste() ? (N.semNarracao ? [MINUTOS_SEM_NARRACAO] : MINUTOS_TESTE) : MINUTOS_NP).map((m) => chip(`${m} min`, Math.round(minutos()) === m, () => { N.caracteres = Math.round(m * N.ppm * POR_PALAVRA / 10) * 10; desenhar(); custo(); })))),
             h("div", { class: "radar-np-duas" },
               campo("Nicho (opcional)", entrada(N.nicho, { placeholder: "Ex.: grandes marcas" }, (v) => { N.nicho = v; })),
               campo("Observação (opcional)", entrada(N.obs, { placeholder: "Ex.: sem gírias, fechar com pergunta" }, (v) => { N.obs = v; })))]),
@@ -2402,6 +2421,8 @@
                   : semLegenda ? "Sem legenda: o roteiro sai do título, das observações e do estilo do canal — nada para por causa disso."
                   : naoConferiu ? "O YouTube não deixou o Radar conferir a legenda agora. Abra o vídeo de referência no YouTube e crie a produção de lá: a extensão lê a fala pelo navegador. Sem isso, o Radar tenta de novo ao escrever."
                   : "Com legenda: a transcrição dele é a base do roteiro.") : "Confira o link no passo 1."),
+            eTeste() && N.semNarracao ? linha("ok", "Sem narração", "ninguém narra · nenhuma IA · só banco grátis",
+              `A língua (${N.lingua}) vale só para os textos na tela (motions).`) : null,
             linha("ok", "Depois de escrever", N.revisar ? "para para você revisar no Acompanhar" : "segue direto para a fábrica"),
             N.custo && N.custo.usd != null ? linha("ok", "Custo estimado", `≈ US$ ${N.custo.usd.toFixed(2).replace(".", ",")}`) : null)];
       }
@@ -2412,14 +2433,17 @@
         if (!N.canal) { erro.textContent = "Escolha o canal."; N.passo = 2; desenhar(); return false; }
         if (N.modo !== "manual" && !eTeste() && !N.cfg) { erro.textContent = N.avisoTamanho || "Não consegui ler o canal. Escolha o canal de novo."; N.passo = 2; desenhar(); return false; }
         if (N.modo !== "manual" && !N.agente) { erro.textContent = "Escolha o agente do roteiro."; N.passo = 1; desenhar(); return false; }
-        if (eTeste() && !N.perfil) { erro.textContent = "Escolha uma língua que tenha voz na fábrica."; N.passo = 1; desenhar(); return false; }
+        if (eTeste() && !N.semNarracao && !N.perfil) { erro.textContent = "Escolha uma língua que tenha voz na fábrica."; N.passo = 1; desenhar(); return false; }
         if (N.modo === "manual" && N.roteiro.split(/\s+/).filter(Boolean).length < 30) { erro.textContent = "Cole o roteiro inteiro."; N.passo = 2; desenhar(); return false; }
         return true;
       };
       const enviar = async (comecar, botao) => {
         if (!conferir()) return;
         botao.disabled = true; botao.lastChild.textContent = comecar ? "Criando…" : "Salvando…";
-        const pedido = { titulo: N.titulo, link: N.link, canal_id: eTeste() ? "" : N.canal, perfil: eTeste() ? N.perfil : "",
+        // o sem narração vai sem perfil: a fila escolhe o sem-narracao da fábrica pela língua
+        const semNarracao = eTeste() && N.semNarracao;
+        const pedido = { titulo: N.titulo, link: N.link, canal_id: eTeste() ? "" : N.canal, perfil: eTeste() && !semNarracao ? N.perfil : "",
+          ...(semNarracao ? { sem_narracao: true } : {}),
           agente_id: N.agente === "padrao" ? "" : N.agente, lingua: N.lingua, revisar: N.revisar,
           ...(N.modo === "manual" ? { roteiro_manual: N.roteiro } : { caracteres: N.caracteres, nicho: N.nicho, observacao: N.obs,
             ...(N.refFala ? { transcricao_ref: N.refFala } : {}) }) };
