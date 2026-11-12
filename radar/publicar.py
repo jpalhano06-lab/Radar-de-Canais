@@ -448,7 +448,7 @@ def escrever(o_que: str, titulo: str, fala: str = "") -> dict:
     if fala:
         pedido += f"Começo da fala do vídeo (transcrição):\n{fala[:4000]}\n\n"
     if o_que == "tags":
-        texto = roteiro_claude._claude(SISTEMA_TAGS, pedido + "Escreva as tags.")
+        texto = roteiro_claude._claude(SISTEMA_TAGS, pedido + "Escreva as tags.", modelo=roteiro_claude.LEVE)
         cruas = [_SUJEIRA.sub("", l).strip().strip('"#') for l in texto.split("\n")]
         tags = tags_que_cabem([t for t in cruas if 2 <= len(t) <= 60])
         if not tags:

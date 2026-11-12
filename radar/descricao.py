@@ -123,7 +123,7 @@ def escrever(titulo: str, roteiro: str, lingua: str = "", instrucoes: str = "") 
         texto = texto[:16000] + "\n\n[…]\n\n" + texto[-8000:]
     minimo = minimo_da_sinopse(texto)
     pedido += (f"\nRoteiro do vídeo:\n{texto}\n\nEscreva a sinopse (pelo menos {minimo} caracteres), as tags e as hashtags.")
-    dados = _json_do_claude(roteiro_claude._claude(sistema, pedido))
+    dados = _json_do_claude(roteiro_claude._claude(sistema, pedido, modelo=roteiro_claude.LEVE))
     sinopse = _paragrafos(dados.get("sinopse"))
     if not sinopse:
         raise RuntimeError("O Claude não devolveu nenhuma sinopse.")
@@ -131,7 +131,7 @@ def escrever(titulo: str, roteiro: str, lingua: str = "", instrucoes: str = "") 
         # uma volta só, e nunca fica pior: a curta ainda é melhor que descrição nenhuma
         try:
             nova = _json_do_claude(roteiro_claude._claude(sistema, f"{pedido}\n\n" + ALONGAR.format(
-                atual=len(sinopse), minimo=minimo, sinopse=sinopse)))
+                atual=len(sinopse), minimo=minimo, sinopse=sinopse), modelo=roteiro_claude.LEVE))
             nova_sinopse = _paragrafos(nova.get("sinopse"))
             if len(nova_sinopse) > len(sinopse):
                 sinopse = nova_sinopse

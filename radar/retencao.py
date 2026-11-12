@@ -79,7 +79,7 @@ def aprender(usuario_id: int, canal_id: str) -> dict:
     extremos = [x for x in extremos if x["fala"]]
     if len({x["grupo"] for x in extremos}) < 2:
         return {}
-    dados = descricao._json_do_claude(roteiro_claude._claude(SISTEMA, _pedido(extremos)))
+    dados = descricao._json_do_claude(roteiro_claude._claude(SISTEMA, _pedido(extremos), modelo=roteiro_claude.LEVE))
     return {"fazer": [str(x) for x in dados.get("fazer") or []][:4], "evitar": [str(x) for x in dados.get("evitar") or []][:4], "videos": len(medidos)}
 
 

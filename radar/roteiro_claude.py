@@ -188,8 +188,11 @@ def _claude(sistema: str, pedido: str, modelo: str = "") -> str:
     # JAN DE WOLF sozinho tem 33 mil (com os arquivos do projeto do claude.ai, passa de 100 mil)
     arquivo = VAZIA / f"sistema-{uuid.uuid4().hex[:8]}.txt"
     arquivo.write_text(sistema, encoding="utf-8")
+    # --setting-sources "" e --disable-slash-commands: sem os plugins, hooks, skills e o CLAUDE.md pessoais de quem
+    # usa o computador. A pasta vazia não bastava: o ~/.claude/CLAUDE.md e o plugin caveman ("respond terse") entravam
+    # em todo roteiro, gastando o limite e puxando o texto para curto (conferido em 2026-11-12)
     comando = [executavel, "-p", "--output-format", "json", "--system-prompt-file", str(arquivo), "--tools", "",
-               "--strict-mcp-config", "--no-session-persistence"]
+               "--strict-mcp-config", "--no-session-persistence", "--setting-sources", "", "--disable-slash-commands"]
     if modelo:
         comando += ["--model", modelo]
     try:
@@ -431,6 +434,11 @@ def gerar(usuario_id: int, titulo: str, link: str, minutos: int, lingua: str, pr
 
 
 VOLTAS_TAMANHO = 6      # quantas vezes o Radar manda o Claude corrigir o tamanho antes de ficar com a melhor volta
+# a volta que melhora menos que isto encerra o laço: cada volta de condensar reescreve o roteiro inteiro, e em
+# 2026-11-11/12 metade dos roteiros gastou as 6 voltas tirando 0,1 a 0,5 min por volta (45,9 → 44,2 em 30 pedidos)
+MELHORA_MINIMA_MIN = 0.5
+# o modelo das tarefas pequenas (descrição, tags, prompt da thumbnail, leituras da Lente): o roteiro fica no padrão
+LEVE = "sonnet"
 
 # o que o Radar pede ao Claude quando o roteiro conferido ficou curto ou comprido
 CONTINUAR = """
@@ -534,7 +542,11 @@ def _conferir_tamanho(roteiro: str, sistema: str, pedido: str, minutos: int, rit
                 break
             continue
         sem_jeito = 0
+        pouco = abs(conf["erro_min"]) - abs(nova["erro_min"]) < MELHORA_MINIMA_MIN
         melhor, conf = tentativa, nova
+        if pouco:
+            # melhorou, mas quase nada: outra volta gastaria mais um roteiro inteiro para o mesmo resultado
+            break
     return melhor, {**conf, "voltas": voltas, "de": ritmo.get("de", "padrao")}
 
 

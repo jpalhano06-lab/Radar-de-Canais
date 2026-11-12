@@ -33,7 +33,7 @@ def test_compara_os_extremos(monkeypatch):
     monkeypatch.setattr(studio, "_token", lambda *_: "t")
     monkeypatch.setattr(retencao, "medir", lambda *_: [{"video": str(i), "um_minuto": 0.9 - i / 10} for i in range(7)])
     monkeypatch.setattr(retencao, "_comeco_da_fala", lambda v: f"fala {v}")
-    monkeypatch.setattr(roteiro_claude, "_claude", lambda s, p: pedidos.append(p) or json.dumps({"fazer": ["a"], "evitar": ["b"]}))
+    monkeypatch.setattr(roteiro_claude, "_claude", lambda s, p, modelo="": pedidos.append(p) or json.dumps({"fazer": ["a"], "evitar": ["b"]}))
     achado = retencao.aprender(1, "UC")
     assert achado == {"fazer": ["a"], "evitar": ["b"], "videos": 7}
     assert "fala 0" in pedidos[0] and "fala 6" in pedidos[0] and "fala 3" not in pedidos[0]

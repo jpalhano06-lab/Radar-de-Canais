@@ -239,7 +239,7 @@ def prompt_da_thumb(usuario_id: int, projeto_id: int | None, pedido: str, titulo
              f"Estilo do canal (o prompt base, já com os campos preenchidos):\n{base['prompt']}\n\n"
              f"O que a pessoa pediu agora: {pedido or '(nada a mais: siga o estilo)'}\n\n"
              f"A IA de imagem é o {IAS_IMAGEM.get(ia, IAS_IMAGEM['gemini'])[0]}. Escreva o prompt.")
-    prompt = roteiro_claude._claude(SISTEMA_THUMB, texto)
+    prompt = roteiro_claude._claude(SISTEMA_THUMB, texto, modelo=roteiro_claude.LEVE)
     nome, link = IAS_IMAGEM.get(ia, IAS_IMAGEM["gemini"])
     return {"prompt": prompt, "referencia": base["referencia"], "estilo": base["projeto"], "ia": nome, "link": link}
 

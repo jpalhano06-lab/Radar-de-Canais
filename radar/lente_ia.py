@@ -49,7 +49,7 @@ def _guardar(chave: str, dados: dict) -> dict:
 
 
 def _do_claude(sistema: str, pedido: str) -> dict:
-    dados = descricao._json_do_claude(roteiro_claude._claude(sistema, pedido))
+    dados = descricao._json_do_claude(roteiro_claude._claude(sistema, pedido, modelo=roteiro_claude.LEVE))
     if not dados:
         raise RuntimeError("O Claude não devolveu a resposta no formato certo. Tente de novo.")
     return dados

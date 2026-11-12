@@ -160,3 +160,35 @@ def test_o_video_curto_nao_puxa_o_ritmo_do_video_longo(monkeypatch, tmp_path):
         _projeto(fabrica, f"p{i}", segundos)
     assert tempo.ritmo(1, "canal-x", "inglês", 30)["medidos"] == 2     # só os dois de 30 min
     assert tempo.ritmo(1, "canal-x", "inglês", 3)["medidos"] == 2      # só os dois de 3 min
+
+
+def test_condensar_que_quase_nao_encurta_para_logo(monkeypatch):
+    """2026-11-12: 30 min pedidos, seis reescritas inteiras de 45,9 a 44,2 min. Volta que melhora menos de meio
+    minuto encerra o laço: fica a melhor, sem gastar outro roteiro inteiro."""
+    respostas = [_texto(9750), _texto(9700), _texto(9650)]
+    chamadas = []
+
+    def falso(sistema, pedido, modelo=""):
+        chamadas.append(pedido)
+        return respostas.pop(0)
+
+    monkeypatch.setattr(roteiro_claude, "_claude", falso)
+    roteiro, conf = roteiro_claude._conferir_tamanho(_texto(9800), "sis", "ped", 30, {"ppm": 215, "de": "voz"})
+    assert len(chamadas) == 1 and len(roteiro.split()) == 9750
+
+
+def test_o_radar_chama_o_claude_sem_as_configuracoes_pessoais(monkeypatch, tmp_path):
+    """O plugin caveman e o ~/.claude/CLAUDE.md entravam em todo roteiro (2026-11-12)."""
+    import json as _json, subprocess as _sp
+    visto = {}
+
+    def run(comando, **k):
+        visto["comando"] = comando
+        return _sp.CompletedProcess(comando, 0, _json.dumps({"result": "ok"}), "")
+
+    monkeypatch.setattr(roteiro_claude, "VAZIA", tmp_path)
+    monkeypatch.setattr(roteiro_claude.shutil, "which", lambda _n: "claude")
+    monkeypatch.setattr(roteiro_claude.subprocess, "run", run)
+    assert roteiro_claude._claude("s", "p") == "ok"
+    c = visto["comando"]
+    assert c[c.index("--setting-sources") + 1] == "" and "--disable-slash-commands" in c

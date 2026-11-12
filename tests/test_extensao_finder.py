@@ -237,7 +237,7 @@ def test_parecidas_nao_devolve_o_proprio_video_e_respeita_o_minimo(base):
 
 def test_leitura_da_ia_fica_guardada(base, monkeypatch):
     chamadas = []
-    monkeypatch.setattr(lente_ia.roteiro_claude, "_claude", lambda s, p: chamadas.append(p) or '```json\n{"resumo": "curiosidade"}\n```')
+    monkeypatch.setattr(lente_ia.roteiro_claude, "_claude", lambda s, p, modelo="": chamadas.append(p) or '```json\n{"resumo": "curiosidade"}\n```')
     assert lente_ia.por_que("abcdefghijk", "Título")["resumo"] == "curiosidade"
     lente_ia.por_que("abcdefghijk", "Título")
     assert len(chamadas) == 1
@@ -246,7 +246,7 @@ def test_leitura_da_ia_fica_guardada(base, monkeypatch):
 
 
 def test_titulos_sem_nenhum_titulo_e_erro(base, monkeypatch):
-    monkeypatch.setattr(lente_ia.roteiro_claude, "_claude", lambda s, p: '{"titulos": []}')
+    monkeypatch.setattr(lente_ia.roteiro_claude, "_claude", lambda s, p, modelo="": '{"titulos": []}')
     with pytest.raises(RuntimeError):
         lente_ia.titulos("Título", "assunto")
 
