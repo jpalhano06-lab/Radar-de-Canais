@@ -1806,3 +1806,18 @@ dinheiro sempre o valor último recebido".
   sozinha quando o Studio redesenha o cartão.
 - Os ganhos de 12 meses (`ano()`, ainda no `get_cards`) não foram mexidos.
 - Para usar: dê ↻ na extensão em `chrome://extensions` e recarregue o Studio.
+
+
+## Extensão 0.46.2: o agente do roteiro é sempre escolhido na hora (2026-11-13)
+
+Pedido do usuário: "quero que a parte do agente sempre tenha que escolher… sempre que vou pedir na extensão já tem
+um selecionado". Um vídeo da Coreia tinha saído com o agente da Austrália: o canal lembrado (Aussie Tech) já
+trazia o agente dele, e o pedido passou sem ninguém olhar.
+
+- **Nova produção (extensão):** o select "Agente do roteiro" abre sempre em "— escolha o agente —", também quando
+  o canal já vem lembrado, quando se troca de canal e no Canal de teste. Ele fica vermelho e o envio não passa sem
+  escolha (a trava de 2026-10-28 continua). Isso desfaz o "o canal já traz o agente" de 2026-10-29.
+- Embaixo do select, a dica diz qual é o agente do canal ("O agente deste canal é X, mas a escolha é sempre sua").
+- **3 · Confirmar:** se o agente escolhido não for o do canal, a linha do agente fica amarela, com "Não é o agente
+  deste canal (X). Confira se é esse mesmo."
+- Para usar: dê ↻ na extensão em `chrome://extensions`.
