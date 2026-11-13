@@ -1821,3 +1821,15 @@ trazia o agente dele, e o pedido passou sem ninguém olhar.
 - **3 · Confirmar:** se o agente escolhido não for o do canal, a linha do agente fica amarela, com "Não é o agente
   deste canal (X). Confira se é esse mesmo."
 - Para usar: dê ↻ na extensão em `chrome://extensions`.
+
+
+## Extensão 0.46.3: o "Sign out" do YouTube pede confirmação (2026-11-13)
+
+Pedido do usuário: "coloque na extensão algo que só dá pra apertar o sign out com confirmação, sempre aperto sem querer".
+
+- **`sair.js`** (youtube.com e studio.youtube.com, desde o `document_start`): pega o clique no item "Sign out" /
+  "Sair" do menu da conta antes do YouTube (captura na janela) e abre "Sair mesmo da conta do YouTube?". Cancelar
+  não faz nada; OK repete o clique no mesmo item e a saída segue normal.
+- Reconhece o item pelo link `/logout` ou pelo texto do item do menu (Sign out, Log out, Sair, Fazer logout...).
+  Os outros itens do menu não mudam.
+- Para usar: dê ↻ na extensão em `chrome://extensions` e recarregue o YouTube.
