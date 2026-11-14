@@ -1823,6 +1823,33 @@ trazia o agente dele, e o pedido passou sem ninguém olhar.
 - Para usar: dê ↻ na extensão em `chrome://extensions`.
 
 
+## Extensão 0.47.0: a aba Meu dia (2026-11-14)
+
+Pedido do usuário: os dois cliques com o botão direito abrem uma aba que organiza o dia e se limpa todo dia: quantos
+vídeos postar em cada canal, as thumbnails feitas (salvas pelo botão direito, como o "salvar no PC") e o link do canal
+de treino do algoritmo de cada canal; e todo pedido da Nova produção entra lá como "feito, falta a thumbnail".
+
+- **Abrir:** dois cliques com o botão direito no YouTube (antes abria o painel do Claude, que continua no Alt+C e na
+  abinha "✦ Claude"), o botão **Meu dia** no ícone da extensão, ou o item **Abrir o Meu dia** do botão direito.
+  A aba é a `dia.html` da extensão; chamar de novo traz a mesma aba para a frente.
+- **Por canal:** a pergunta "Você pretende postar quantos vídeos por dia neste canal?" (1 a 4, ou "não posto todo
+  dia"). Com a meta, o cartão mostra `feitos/meta`, fica vermelho com "Falta pedir N vídeos hoje" e o botão Nova
+  produção (abre o YouTube com a janela aberta, `#radar-nova-producao`). Em Ajustes: o link do canal de treino (só
+  YouTube), que vira o botão "🎯 Canal de treino: procurar ideia", e "+ vídeo" para um feito fora da Nova produção.
+- **Nova produção:** ao criar ou salvar na Entrada, o vídeo entra no canal dele com "✓ Vídeo pedido · falta a
+  thumbnail" (o Canal de teste não entra). Cada vídeo tem a caixa **Postado**.
+- **Thumbnails:** botão direito numa imagem em qualquer site → **Salvar thumbnail no Meu dia** → o vídeo de hoje que
+  ainda não tem thumbnail (ou "Só guardar"). A extensão pega a imagem pela própria página (serve para `blob:`) e, se
+  não der, pela extensão; sem nenhum dos dois, avisa para arrastar. Na aba também dá para arrastar, colar (Ctrl+V) ou
+  escolher o arquivo, em cima do vídeo ou nas soltas, ligar uma solta a um vídeo e **Baixar**.
+  No editor do Canva o botão direito é o menu do Canva: use a imagem baixada (arraste o arquivo) ou a aberta numa aba.
+- **Virada do dia:** `dia-dados.js` guarda o dia em `chrome.storage.local` (`dia`, imagens em `diaThumb:<id>`); no
+  primeiro uso de outro dia, tudo isso é apagado. Ficam só a meta e o link de treino (`diaConfig`). Os canais vêm de
+  `/api/meus-canais` (com cópia em `diaCanais` para o Radar desligado).
+- Permissões novas: `contextMenus`, `scripting`, `activeTab` e `unlimitedStorage` (nenhuma pede aviso ao atualizar).
+- Para usar: dê ↻ na extensão em `chrome://extensions` e F5 nas abas do YouTube.
+
+
 ## Extensão 0.46.6: na Nova produção a escolha obrigatória é o canal, não o agente (2026-11-14)
 
 Pedido do usuário: "sempre força a escolher o agente, mas não é o agente que era para forçar a escolher e sim o canal".

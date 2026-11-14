@@ -189,7 +189,8 @@
     if (aberto) setTimeout(() => painel.querySelector("textarea").focus(), 50);
   }
 
-  // O primeiro clique direito abre o menu normal; o segundo, logo em seguida, fecha esse menu e abre o painel.
+  // O primeiro clique direito abre o menu normal; o segundo, logo em seguida, fecha esse menu e abre a aba Meu dia
+  // (pedido do usuário em 2026-11-14: antes abria este painel, que continua no Alt+C e na abinha "✦ Claude").
   window.addEventListener("contextmenu", (e) => {
     if (painel?.contains(e.target)) return;
     const agora = Date.now();
@@ -198,7 +199,7 @@
       e.stopImmediatePropagation();
       ultimo = 0;
       document.querySelectorAll(".ytp-contextmenu").forEach((m) => { m.style.display = "none"; });  // o menu do player
-      alternar();
+      try { chrome.runtime.sendMessage({ tipo: "abrir-dia" }); } catch { /* a extensão foi recarregada: F5 */ }
     } else {
       ultimo = agora;
     }

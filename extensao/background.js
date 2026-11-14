@@ -1,6 +1,6 @@
 // Faz os pedidos ao servidor do Radar pela página do YouTube: o content script não fala direto com o servidor.
 const PADRAO = "http://127.0.0.1:8400";
-importScripts("claude-projetos.js");
+importScripts("claude-projetos.js", "dia-dados.js");
 
 async function config() {
   const { servidor, token } = await chrome.storage.local.get(["servidor", "token"]);
@@ -56,6 +56,11 @@ chrome.runtime.onMessage.addListener((msg, _remetente, responder) => {
   }
   if (msg && msg.tipo === "abrir") {
     chrome.tabs.create({ url: msg.url });
+  }
+  if (msg && msg.tipo === "abrir-dia") abrirDia();       // os dois cliques com o botão direito no YouTube (claude.js)
+  if (msg && msg.tipo === "dia-video") {                 // um pedido da Nova produção entra no Meu dia (content.js)
+    diaNovoVideo(msg.video).then(() => responder({ ok: true }), (e) => responder({ erro: String(e) }));
+    return true;
   }
 });
 
@@ -142,6 +147,7 @@ chrome.runtime.onInstalled.addListener(() => chrome.alarms.create("avisos", { pe
 chrome.runtime.onStartup.addListener(() => chrome.alarms.create("avisos", { periodInMinutes: 5 }));
 chrome.alarms.onAlarm.addListener((a) => { if (a.name === "avisos") olharAvisos(); });
 chrome.notifications.onClicked.addListener(async (id) => {
+  if (id.startsWith("radar:dia-")) { chrome.notifications.clear(id); return abrirDia(); }
   const { servidor } = await config();
   chrome.tabs.create({ url: `${servidor}/${id.split(":").slice(2).join(":")}` });
   chrome.notifications.clear(id);
@@ -167,3 +173,93 @@ async function olharProgresso() {
 chrome.runtime.onInstalled.addListener(() => { chrome.alarms.create("progresso", { periodInMinutes: 1 }); olharProgresso(); });
 chrome.runtime.onStartup.addListener(() => { chrome.alarms.create("progresso", { periodInMinutes: 1 }); olharProgresso(); });
 chrome.alarms.onAlarm.addListener((a) => { if (a.name === "progresso") olharProgresso().catch(() => {}); });
+
+// ------------------------------------------------------------ Meu dia (dia.html, dia-dados.js)
+// A aba abre uma vez só: chamar de novo traz para a frente a que já está aberta
+async function abrirDia() {
+  const url = chrome.runtime.getURL("dia.html");
+  try {
+    const [aberta] = await chrome.runtime.getContexts({ contextTypes: ["TAB"], documentUrls: [url] });
+    if (aberta && aberta.tabId >= 0) {
+      const aba = await chrome.tabs.update(aberta.tabId, { active: true });
+      if (aba) await chrome.windows.update(aba.windowId, { focused: true });
+      return;
+    }
+  } catch (e) { /* Chrome antigo sem getContexts: abre outra */ }
+  chrome.tabs.create({ url });
+}
+
+// O menu do botão direito numa imagem, em qualquer site (Canva, Drive, uma aba com a imagem aberta): "Salvar
+// thumbnail no Meu dia", com os vídeos de hoje que ainda não têm thumbnail. Refeito sempre que o dia muda.
+const MENU_THUMB = "dia-thumb";
+async function montarMenuDoDia() {
+  const dia = await lerDia();
+  await chrome.contextMenus.removeAll();
+  chrome.contextMenus.create({ id: MENU_THUMB, title: "Salvar thumbnail no Meu dia", contexts: ["image"] });
+  for (const v of dia.videos.filter((x) => !x.thumb)) {
+    const titulo = `${v.canalNome ? v.canalNome + " · " : ""}${v.titulo || "vídeo sem título"}`;
+    chrome.contextMenus.create({ id: `${MENU_THUMB}:${v.id}`, parentId: MENU_THUMB, contexts: ["image"],
+      title: titulo.length > 70 ? titulo.slice(0, 69) + "…" : titulo });
+  }
+  chrome.contextMenus.create({ id: `${MENU_THUMB}:`, parentId: MENU_THUMB, contexts: ["image"],
+    title: dia.videos.some((x) => !x.thumb) ? "Só guardar (escolho o vídeo no Meu dia)" : "Guardar no Meu dia" });
+  chrome.contextMenus.create({ id: "dia-abrir", title: "Abrir o Meu dia", contexts: ["page", "image"] });
+}
+let menuEsperando = null;
+const refazerMenu = () => { clearTimeout(menuEsperando); menuEsperando = setTimeout(() => montarMenuDoDia().catch(() => {}), 200); };
+chrome.runtime.onInstalled.addListener(refazerMenu);
+chrome.runtime.onStartup.addListener(refazerMenu);
+chrome.storage.onChanged.addListener((mudou, area) => { if (area === "local" && mudou[DIA_CHAVE]) refazerMenu(); });
+
+const paraDataUrl = (bytes, tipo) => {
+  let texto = "";
+  for (let i = 0; i < bytes.length; i += 0x8000) texto += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+  return `data:${tipo || "image/png"};base64,${btoa(texto)}`;
+};
+
+// A imagem do clique: primeiro pela própria página (serve para blob:, para o mesmo site e para quem libera), depois
+// pela extensão. Sem nenhum dos dois, a pessoa arrasta a imagem para o Meu dia
+async function baixarImagemDoMenu(info, tab) {
+  const url = info.srcUrl || "";
+  if (url.startsWith("data:image/")) return url;
+  if (tab && tab.id >= 0) {
+    try {
+      const [r] = await chrome.scripting.executeScript({
+        target: { tabId: tab.id, frameIds: [info.frameId || 0] },
+        func: async (u) => {
+          try {
+            const b = await (await fetch(u)).blob();
+            if (!/^image\//.test(b.type)) return null;
+            return await new Promise((ok) => { const f = new FileReader(); f.onload = () => ok(f.result); f.onerror = () => ok(null); f.readAsDataURL(b); });
+          } catch (e) { return null; }
+        },
+        args: [url],
+      });
+      if (r && r.result) return r.result;
+    } catch (e) { /* página do Chrome, ou a página não deixou */ }
+  }
+  try {
+    const resp = await fetch(url);
+    const tipo = resp.headers.get("content-type") || "";
+    if (resp.ok && tipo.startsWith("image/")) return paraDataUrl(new Uint8Array(await resp.arrayBuffer()), tipo);
+  } catch (e) { /* o site não deixou */ }
+  return null;
+}
+
+chrome.contextMenus.onClicked.addListener(async (info, tab) => {
+  if (info.menuItemId === "dia-abrir") return abrirDia();
+  const id = String(info.menuItemId);
+  if (!id.startsWith(MENU_THUMB)) return;
+  const video = id.includes(":") ? id.split(":")[1] || null : null;
+  const dados = await baixarImagemDoMenu(info, tab);
+  if (!dados) {
+    notificar("dia-thumb-erro", "Não consegui pegar essa imagem", "Abra o Meu dia e arraste a imagem (ou o arquivo baixado) para lá.");
+    return;
+  }
+  let nome = "";
+  try { nome = decodeURIComponent(new URL(info.srcUrl).pathname.split("/").pop() || ""); } catch (e) { /* blob: ou data: */ }
+  await diaGuardarThumb(dados, { origem: tab && tab.url ? new URL(tab.url).hostname : "", nome, video });
+  const dia = await lerDia();
+  const v = video && dia.videos.find((x) => x.id === video);
+  notificar("dia-thumb", "Thumbnail guardada no Meu dia", v ? `${v.canalNome || ""} · ${v.titulo || ""}` : "Escolha o vídeo dela no Meu dia.");
+});

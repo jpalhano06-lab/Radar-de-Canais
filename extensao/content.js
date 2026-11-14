@@ -2220,6 +2220,9 @@
   // só para os textos na tela (motions), então qualquer uma destas serve, tenha voz na fábrica ou não
   const MINUTOS_SEM_NARRACAO = 5, LINGUAS_SEM_NARRACAO = ["português", "inglês", "espanhol"];
 
+  // o botão "Nova produção" do Meu dia abre o YouTube com este endereço, e a janela já vem aberta
+  if (location.hash === "#radar-nova-producao") { history.replaceState(null, "", location.pathname + location.search); setTimeout(() => novaProducao(), 800); }
+
   function botaoNovaProducao() {
     const lugar = document.querySelector("ytd-masthead #end");
     if (!lugar) return;
@@ -2455,6 +2458,9 @@
             ...(N.refFala ? { transcricao_ref: N.refFala } : {}) }) };
         const r = await api("/api/fila", "POST", { pedido, comecar });
         if (r.erro) { botao.disabled = false; botao.lastChild.textContent = comecar ? "Criar e começar" : "Salvar na Entrada"; erro.textContent = erroDoRadar(r); return; }
+        // o pedido entra no Meu dia como "feito, falta a thumbnail" (pedido do usuário em 2026-11-14). O de teste não:
+        // ele não é postado em canal nenhum
+        if (!eTeste()) try { chrome.runtime.sendMessage({ tipo: "dia-video", video: { canal: N.canal, canalNome: nomeCanal(), titulo: N.titulo.trim(), entrada: !comecar } }); } catch { /* sem a extensão */ }
         janela.replaceChildren(h("div", { class: "radar-np-pronto" }, h("span", { class: "radar-janela-ic" }, icone("roteiro")),
           h("b", {}, comecar ? "Na fila! O vídeo começa quando a fábrica tiver vaga." : "Guardado na Entrada."),
           h("div", { class: "radar-np-acoes" },

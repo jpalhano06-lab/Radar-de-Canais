@@ -181,6 +181,7 @@ $("sair").onclick = async () => {
   mostrar();
 };
 
+$("dia").onclick = () => { chrome.runtime.sendMessage({ tipo: "abrir-dia" }); window.close(); };
 $("site").onclick = async () => chrome.tabs.create({ url: await endereco() });
 
 // qualquer erro aparece na janela, em vez de deixar ela vazia
