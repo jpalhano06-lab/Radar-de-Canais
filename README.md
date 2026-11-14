@@ -1846,3 +1846,17 @@ Pedido do usuário: "a extensão no responder nada disso e pular está bugando" 
 - O botão vermelho saía do rodapé e ficava pulando nessa tela: o rodapé era achado pelo Avançar, e o Avançar
   desativado não contava. Agora conta.
 - Para usar: dê ↻ na extensão em `chrome://extensions` e recarregue o Studio.
+
+
+## Extensão 0.46.5: as views de ontem e o valor esperado no cartão Views (2026-11-14)
+
+Pedido do usuário: "coloque também a extensão nessa parte salvando quanto deu o último dia o tanto de visualizações e
+também coloque o valor mais ou menos esperado" (painel novo de estatísticas, `analytics/hub_overview`).
+
+- **`studio.js`**, no cartão **Views**: linha verde "20.111 visualizações ontem · 13 de nov · ≈ R$486.87 esperado · Radar".
+- As views de ontem saem das barras de 48 h (meia-noite a meia-noite, fuso do computador) e ficam salvas no
+  `localStorage` do Studio (`radar-views-dia:<canal>`, 90 dias), para continuarem quando as 48 h passarem.
+- O valor esperado é views de ontem × RPM dos últimos 7 dias que já têm receita: receita do dia (aba Receita, o
+  `measure` vem em milésimos da moeda da página) ÷ views do mesmo dia (gráfico do cartão Views). Passar o mouse
+  na linha mostra o RPM usado. É estimativa: o valor real aparece no Studio 2 ou 3 dias depois.
+- Para usar: dê ↻ na extensão em `chrome://extensions` e recarregue o Studio.

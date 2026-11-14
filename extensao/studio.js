@@ -81,7 +81,17 @@
 
   // o cartão de 48 horas: o único com gráfico de barras de hora em hora
   async function tempoRealNovo(canal) {
-    for (const c of await tela("FEanalytics_hub_channel_overview", canal)) {
+    const cards = await tela("FEanalytics_hub_channel_overview", canal);
+    // o cartão Views: o primeiro gráfico de linha de um ponto por dia (domain = início do dia, measure = views)
+    for (const c of cards) {
+      const g = graficoDoCartao(c, "lineChartViewModel");
+      const pts = g && g.series && g.series[0] && g.series[0].dataPoints;
+      if (!pts || pts.length < 2 || +pts[1].domain - +pts[0].domain !== 864e5) continue;
+      tituloViews = tituloDoCartao(c);
+      viewsPorDia = { canal, dias: pts.filter((p) => p.measure != null).map((p) => [Number(p.domain), Number(p.measure) || 0]) };
+      break;
+    }
+    for (const c of cards) {
       const g = graficoDoCartao(c, "barChartViewModel");
       const pts = g && g.series && g.series[0] && g.series[0].dataPoints;
       if (!pts || pts.length < 24 || +pts[1].domain - +pts[0].domain !== 3600e3) continue;
@@ -104,7 +114,11 @@
       const metrica = hover && hover.metric && hover.metric.simpleMetricViewModel;
       // a faixa hachurada do gráfico: os dias que o Studio ainda está processando (o valor ainda pode mudar)
       const faixa = ((g.domainAxis || {}).highlights || []).map((x) => x.rangeHighlight).find(Boolean);
-      return { titulo: tituloDoCartao(c), valor: (metrica && metrica.value && metrica.value.content) || String(ultimo.measure),
+      const valorTexto = (metrica && metrica.value && metrica.value.content) || "";
+      return { titulo: tituloDoCartao(c), valor: valorTexto || String(ultimo.measure),
+        // o measure vem em milésimos da moeda da página (665115 = R$665.12); o símbolo sai do texto do hover
+        moeda: valorTexto.replace(/[\d.,\s]+$/, "").trim(),
+        dias: pts.filter((p) => p.measure != null).map((p) => [Number(p.domain), Number(p.measure) / 1000]),
         dia: Number(ultimo.domain), diaTexto: (hover && hover.title && hover.title.content) || "",
         processando: !!faixa && Number(ultimo.domain) >= Number(faixa.start) };
     }
@@ -138,6 +152,7 @@
   }
 
   let ultimoAno = 0, guardadoAno = null, ultimasHoras = null, tituloDe48h = "", receita = null, ultimaLeituraReceita = 0;
+  let tituloViews = "", viewsPorDia = null;
   async function coletar() {
     const canal = canalDaPagina();
     if (!canal) return;
@@ -154,7 +169,8 @@
       }
       if (!horas && !guardadoAno) return;
       window.postMessage({ radarStudio: 1, numeros: { canal, quando: Date.now(), horas: horas || [], ...(guardadoAno || {}) } }, location.origin);
-      if (horas) { ultimasHoras = horas; mostrarHoje(horas); }
+      if (horas) { ultimasHoras = horas; mostrarHoje(horas); guardarOntem(canal, horas); }
+      mostrarOntem();
     } catch { /* o Studio mudou alguma coisa: não atrapalha a página */ }
   }
 
@@ -234,10 +250,62 @@
       + (receita.processando ? ". O Studio ainda está processando esse dia: o valor pode mudar um pouco." : "."));
     cartao.querySelector(".radar-receita").dataset.de = `${receita.dia}${receita.valor}`;
   }
+  // ------------------------------------------------------------ o último dia no cartão Views (2026-11-14)
+  // Pedido do usuário: "salvando quanto deu o último dia o tanto de visualizações e o valor mais ou menos esperado".
+  // As views de ontem saem das barras de 48 h (de meia-noite a meia-noite, no fuso do computador) e ficam guardadas
+  // no localStorage do Studio, por canal, para continuarem lá quando as 48 h passarem. O valor esperado é ontem ×
+  // RPM dos últimos 7 dias que já têm receita no Studio (receita do dia ÷ views do mesmo dia, do cartão Views).
+  const chaveDia = (ms) => { const d = new Date(ms); return `${d.getFullYear()}-${dois(d.getMonth() + 1)}-${dois(d.getDate())}`; };
+  const lerGuardado = (canal) => { try { return JSON.parse(localStorage.getItem(`radar-views-dia:${canal}`) || "{}"); } catch { return {}; } };
+
+  function guardarOntem(canal, horas) {
+    const fim = meiaNoite(), inicio = fim - 864e5;
+    // só vale se as barras cobrem o dia inteiro de ontem
+    if (!horas.length || horas[0][0] > inicio) return;
+    const views = horas.filter(([t]) => t >= inicio && t < fim).reduce((s, [, v]) => s + v, 0);
+    const salvo = lerGuardado(canal);
+    salvo[chaveDia(inicio)] = views;
+    const dias = Object.keys(salvo).sort().slice(-90);   // três meses bastam
+    try { localStorage.setItem(`radar-views-dia:${canal}`, JSON.stringify(Object.fromEntries(dias.map((k) => [k, salvo[k]])))); } catch { /* sem espaço: só não guarda */ }
+  }
+
+  // receita ÷ views dos últimos 7 dias que têm os dois números, em moeda por mil views
+  function rpm(canal) {
+    if (!receita || receita.canal !== canal || !viewsPorDia || viewsPorDia.canal !== canal || !receita.dias) return null;
+    const views = new Map(viewsPorDia.dias.map(([t, v]) => [Math.floor(t / 864e5), v]));
+    const pares = receita.dias.map(([t, r]) => [r, views.get(Math.floor(t / 864e5))]).filter(([r, v]) => r > 0 && v > 0).slice(-7);
+    if (!pares.length) return null;
+    const r = pares.reduce((s, [x]) => s + x, 0), v = pares.reduce((s, [, x]) => s + x, 0);
+    return { valor: (r / v) * 1000, dias: pares.length };
+  }
+
+  const dinheiro = (moeda, n) => `${moeda || "$"}${n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+
+  function mostrarOntem() {
+    const canal = canalDaPagina();
+    const cartao = cartaoDaTela(tituloViews);
+    if (!canal || !cartao) return;
+    const ontem = meiaNoite() - 864e5;
+    const views = lerGuardado(canal)[chaveDia(ontem)];
+    if (views == null) return;
+    const dia = new Date(ontem).toLocaleDateString("pt-BR", { day: "numeric", month: "short" }).replace(/\./g, "");
+    const taxa = rpm(canal);
+    const esperado = taxa ? ` · ≈ ${dinheiro(receita.moeda, (views * taxa.valor) / 1000)} esperado` : "";
+    const texto = `${views.toLocaleString("pt-BR")}|${esperado}`;
+    const caixa = cartao.querySelector(".radar-ontem");
+    if (caixa && caixa.dataset.de === texto) return;
+    porLinha(cartao, "radar-ontem", views.toLocaleString("pt-BR"), `visualizações ontem · ${dia}${esperado} · Radar`,
+      taxa ? `Views de ontem (meia-noite a meia-noite) × RPM de ${dinheiro(receita.moeda, taxa.valor)} por mil views, `
+        + `a média dos últimos ${taxa.dias} dias que já têm receita no Studio. É uma estimativa: o valor real aparece em 2 ou 3 dias.`
+        : "Views de ontem, de meia-noite a meia-noite. O valor esperado aparece quando a receita dos últimos dias carregar.");
+    cartao.querySelector(".radar-ontem").dataset.de = texto;
+  }
+
   // o Studio redesenha os cartões ao trocar de período ou de aba: a linha volta sozinha
   setInterval(() => {
     try {
       mostrarReceita();
+      mostrarOntem();
       const c = cartaoDaTela(tituloDe48h);
       if (ultimasHoras && c && !c.querySelector(".radar-hoje")) mostrarHoje(ultimasHoras);
     } catch { /* o Studio mudou: só não aparece */ }
