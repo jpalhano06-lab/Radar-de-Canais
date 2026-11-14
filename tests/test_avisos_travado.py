@@ -56,3 +56,38 @@ def test_celular_so_recebe_video_parado():
     for chave, nivel in (("qualidade-80", "atencao"), ("genaipro-saldo", "erro"), ("fila-lenta-3", "atencao"),
                          ("fabrica-fora", "erro"), ("backup-erro", "erro"), ("openrouter-limite", "erro"), ("disco", "atencao")):
         assert not avisos.vai_ao_celular(avisos._aviso(chave, nivel, "t", "x"))
+
+
+def _na_etapa(monkeypatch, tmp_path, etapa, relogio):
+    projeto = tmp_path / "projetos" / "p1"
+    projeto.mkdir(parents=True, exist_ok=True)
+    (projeto / "criacao.json").write_text(json.dumps({"logs": [], "concluido": False, "etapa": etapa,
+                                                      "mensagem": "Gerando as imagens de IA"}), encoding="utf-8")
+    monkeypatch.setattr(config, "FABRICA", tmp_path)
+    monkeypatch.setattr(banco, "todos", lambda sql, *a: [{"id": 7, "projeto": "p1"}])
+    monkeypatch.setattr(avisos.time, "time", lambda: relogio)
+    return avisos.travados()
+
+
+def test_uma_hora_na_mesma_etapa_avisa_no_celular(monkeypatch, tmp_path):
+    monkeypatch.setattr(avisos, "_etapas", {})
+    assert _na_etapa(monkeypatch, tmp_path, "imagens", 0) == []
+    assert _na_etapa(monkeypatch, tmp_path, "imagens", 59 * 60) == []
+    [a] = _na_etapa(monkeypatch, tmp_path, "imagens", 75 * 60)
+    assert a["chave"] == "travado-etapa-7-imagens" and "1 h 15 min na etapa imagens" in a["titulo"]
+    assert "Gerando as imagens" in a["texto"] and avisos.vai_ao_celular(a)
+
+
+def test_etapa_nova_zera_o_relogio(monkeypatch, tmp_path):
+    monkeypatch.setattr(avisos, "_etapas", {})
+    _na_etapa(monkeypatch, tmp_path, "narracao", 0)
+    assert _na_etapa(monkeypatch, tmp_path, "imagens", 50 * 60) == []
+    assert _na_etapa(monkeypatch, tmp_path, "imagens", 100 * 60) == []
+    [a] = _na_etapa(monkeypatch, tmp_path, "imagens", 111 * 60)
+    assert a["chave"] == "travado-etapa-7-imagens"
+
+
+def test_pedido_que_saiu_da_fila_some_do_relogio(monkeypatch, tmp_path):
+    monkeypatch.setattr(avisos, "_etapas", {99: ("imagens", 0)})
+    _na_etapa(monkeypatch, tmp_path, "imagens", 0)
+    assert 99 not in avisos._etapas and 7 in avisos._etapas

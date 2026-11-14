@@ -109,16 +109,47 @@ def parada(d: dict | None) -> dict | None:
             "tentativas": tentativas, "servico": servico}
 
 
+# O vídeo parado na mesma etapa da fábrica (pedido do usuário em 2026-11-14: "quando o vídeo tiver parado em uma mesma
+# função por mais de uma hora tem que ter notificação"). A fábrica não grava quando a etapa começou, então o Radar marca
+# a hora em que viu cada etapa pela primeira vez. Fica na memória: religar o Radar zera o relógio (avisa mais tarde,
+# nunca à toa). A chave leva a etapa: a próxima etapa que também emperrar avisa de novo.
+MINUTOS_NA_MESMA_ETAPA = 60
+_etapas: dict = {}   # id do pedido -> (etapa, time.time() em que o Radar a viu primeiro)
+
+
+def _na_mesma_etapa(fid: int, d: dict, agora: float) -> dict | None:
+    etapa = str(d.get("etapa") or d.get("passo_atual") or "").strip()
+    if not etapa:
+        return None
+    vista = _etapas.get(fid)
+    if not vista or vista[0] != etapa:
+        _etapas[fid] = (etapa, agora)
+        return None
+    minutos = (agora - vista[1]) / 60
+    if minutos < MINUTOS_NA_MESMA_ETAPA:
+        return None
+    mensagem = " ".join(str(d.get("mensagem") or "").split())[:160]
+    tempo = f"{int(minutos // 60)} h {int(minutos % 60):02d} min" if minutos >= 60 else f"{int(minutos)} min"
+    return _aviso(f"travado-etapa-{fid}-{etapa}", "erro", f"O pedido {fid} está há {tempo} na etapa {etapa}",
+                  (f"{mensagem}. " if mensagem else "") + "Veja no Acompanhar se ele está andando.", "#/acompanhar")
+
+
 def travados() -> list:
-    """O pedido que a fábrica está tentando de novo sem sair do lugar: sem saldo num serviço, ou a mesma falha que volta."""
+    """O pedido que a fábrica está tentando de novo sem sair do lugar: sem saldo num serviço, a mesma falha que volta,
+    ou há mais de MINUTOS_NA_MESMA_ETAPA na mesma etapa."""
     saida = []
+    agora = time.time()
+    vistos = set()
     for r in banco.todos("SELECT id, projeto FROM producoes_fila WHERE estado='produzindo' AND projeto<>''"):
         try:
             d = json.loads((config.FABRICA / "projetos" / r["projeto"] / "criacao.json").read_text(encoding="utf-8"))
         except (OSError, ValueError):
             continue
+        vistos.add(r["id"])
         p = parada(d)
         if not p:
+            if not d.get("concluido") and (lento := _na_mesma_etapa(r["id"], d, agora)):
+                saida.append(lento)
             continue
         motivo, tentativas = p["motivo"], p["tentativas"]
         if p["tipo"] == "parou":
@@ -130,6 +161,8 @@ def travados() -> list:
         else:
             saida.append(_aviso(f"travado-{r['id']}", "erro", f"O pedido {r['id']} está tentando de novo sem sair do lugar",
                                 f"{motivo} (tentativa {tentativas}).", "#/acompanhar"))
+    for fid in set(_etapas) - vistos:   # pedido que terminou ou saiu da fila
+        _etapas.pop(fid, None)
     return saida
 
 
