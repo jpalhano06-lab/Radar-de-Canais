@@ -189,27 +189,38 @@ async function abrirDia() {
   chrome.tabs.create({ url });
 }
 
-// O menu do botão direito numa imagem, em qualquer site (Canva, Drive, uma aba com a imagem aberta): "Salvar
-// thumbnail no Meu dia", com os vídeos de hoje que ainda não têm thumbnail. Refeito sempre que o dia muda.
+// O menu do botão direito numa imagem, em qualquer site (Canva, Drive, uma aba com a imagem aberta): "Salvar no Meu
+// dia" e, dentro, os canais (pedido do usuário em 2026-11-14: "a opção salvar no Meu dia e a opção do canal, e aí fica
+// como feito"). Escolher o canal marca a thumbnail dele como feita. Refeito quando o dia ou a lista de canais muda.
 const MENU_THUMB = "dia-thumb";
+async function canaisDoDia() {
+  const { diaCanais } = await chrome.storage.local.get("diaCanais");
+  if (diaCanais && diaCanais.length) return diaCanais;
+  const r = await pedir({ caminho: "/api/meus-canais" });
+  if (r.erro) return [];
+  const canais = (r.dados.canais || []).map((c) => ({ id: c.id, titulo: c.titulo }));
+  await chrome.storage.local.set({ diaCanais: canais });
+  return canais;
+}
 async function montarMenuDoDia() {
-  const dia = await lerDia();
+  const [dia, canais] = await Promise.all([lerDia(), canaisDoDia()]);
   await chrome.contextMenus.removeAll();
-  chrome.contextMenus.create({ id: MENU_THUMB, title: "Salvar thumbnail no Meu dia", contexts: ["image"] });
-  for (const v of dia.videos.filter((x) => !x.thumb)) {
-    const titulo = `${v.canalNome ? v.canalNome + " · " : ""}${v.titulo || "vídeo sem título"}`;
-    chrome.contextMenus.create({ id: `${MENU_THUMB}:${v.id}`, parentId: MENU_THUMB, contexts: ["image"],
-      title: titulo.length > 70 ? titulo.slice(0, 69) + "…" : titulo });
+  chrome.contextMenus.create({ id: MENU_THUMB, title: "Salvar no Meu dia", contexts: ["image"] });
+  for (const c of canais) {
+    const feita = dia.thumbs.some((t) => t.canal === c.id) || dia.videos.some((v) => v.canal === c.id && v.thumb);
+    const falta = dia.videos.some((v) => v.canal === c.id && !v.thumb);
+    chrome.contextMenus.create({ id: `${MENU_THUMB}:c:${c.id}`, parentId: MENU_THUMB, contexts: ["image"],
+      title: `${c.titulo}${falta ? "  (falta a thumbnail)" : feita ? "  (já tem thumbnail)" : ""}` });
   }
-  chrome.contextMenus.create({ id: `${MENU_THUMB}:`, parentId: MENU_THUMB, contexts: ["image"],
-    title: dia.videos.some((x) => !x.thumb) ? "Só guardar (escolho o vídeo no Meu dia)" : "Guardar no Meu dia" });
+  chrome.contextMenus.create({ id: `${MENU_THUMB}:sep`, parentId: MENU_THUMB, contexts: ["image"], type: "separator" });
+  chrome.contextMenus.create({ id: `${MENU_THUMB}:`, parentId: MENU_THUMB, contexts: ["image"], title: "Sem canal (escolho depois)" });
   chrome.contextMenus.create({ id: "dia-abrir", title: "Abrir o Meu dia", contexts: ["page", "image"] });
 }
 let menuEsperando = null;
 const refazerMenu = () => { clearTimeout(menuEsperando); menuEsperando = setTimeout(() => montarMenuDoDia().catch(() => {}), 200); };
 chrome.runtime.onInstalled.addListener(refazerMenu);
 chrome.runtime.onStartup.addListener(refazerMenu);
-chrome.storage.onChanged.addListener((mudou, area) => { if (area === "local" && mudou[DIA_CHAVE]) refazerMenu(); });
+chrome.storage.onChanged.addListener((mudou, area) => { if (area === "local" && (mudou[DIA_CHAVE] || mudou.diaCanais)) refazerMenu(); });
 
 const paraDataUrl = (bytes, tipo) => {
   let texto = "";
@@ -250,7 +261,7 @@ chrome.contextMenus.onClicked.addListener(async (info, tab) => {
   if (info.menuItemId === "dia-abrir") return abrirDia();
   const id = String(info.menuItemId);
   if (!id.startsWith(MENU_THUMB)) return;
-  const video = id.includes(":") ? id.split(":")[1] || null : null;
+  const canal = id.startsWith(`${MENU_THUMB}:c:`) ? id.slice(`${MENU_THUMB}:c:`.length) : null;
   const dados = await baixarImagemDoMenu(info, tab);
   if (!dados) {
     notificar("dia-thumb-erro", "Não consegui pegar essa imagem", "Abra o Meu dia e arraste a imagem (ou o arquivo baixado) para lá.");
@@ -258,8 +269,8 @@ chrome.contextMenus.onClicked.addListener(async (info, tab) => {
   }
   let nome = "";
   try { nome = decodeURIComponent(new URL(info.srcUrl).pathname.split("/").pop() || ""); } catch (e) { /* blob: ou data: */ }
-  await diaGuardarThumb(dados, { origem: tab && tab.url ? new URL(tab.url).hostname : "", nome, video });
-  const dia = await lerDia();
-  const v = video && dia.videos.find((x) => x.id === video);
-  notificar("dia-thumb", "Thumbnail guardada no Meu dia", v ? `${v.canalNome || ""} · ${v.titulo || ""}` : "Escolha o vídeo dela no Meu dia.");
+  const canalNome = canal ? ((await canaisDoDia()).find((c) => c.id === canal) || {}).titulo || "" : "";
+  const v = await diaGuardarThumb(dados, { origem: tab && tab.url ? new URL(tab.url).hostname : "", nome, canal, canalNome });
+  notificar("dia-thumb", canal ? `Thumbnail feita: ${canalNome}` : "Thumbnail guardada no Meu dia",
+    canal ? (v ? `Marcada como feita em "${v.titulo}".` : "Marcada como feita no cartão do canal.") : "Escolha o canal dela no Meu dia.");
 });

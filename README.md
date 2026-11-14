@@ -1845,6 +1845,10 @@ numa aba e só volta com o mouse no canto esquerdo.
   emoji viraram texto: Marcar, Vou modelar, Alvo, Fantasma, PT:, Print, Baixar); no menu só a aba aberta fica
   vermelha (o nome do grupo não pinta mais); o botão ChatGPT saiu do topo; a letra sobre o vermelho é branca
   (`letraLegivelSobre` aceita 3,5:1).
+- **Botão direito numa imagem (0.48.1):** "Salvar no Meu dia" → a lista dos canais (com "falta a thumbnail" ou "já
+  tem thumbnail" ao lado) e "Sem canal". Escolher o canal marca a thumbnail como feita: ela entra no primeiro vídeo de
+  hoje do canal sem thumbnail ou fica no cartão do canal como "Thumbnail feita"; a notificação confirma. As sem canal
+  ganham, no Meu dia, o "Escolher o canal…".
 
 
 ## Extensão 0.47.0: a aba Meu dia (2026-11-14)

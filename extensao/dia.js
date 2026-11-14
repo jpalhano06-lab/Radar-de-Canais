@@ -75,7 +75,7 @@ async function guardarDeTransferencia(dt, video) {
       const b = await r.blob();
       if (r.ok && b.type.startsWith("image/")) return diaGuardarThumb(await lerArquivo(b), { origem: new URL(url).hostname, video });
     } catch (e) { /* o site não deixou */ }
-    mostrarErro("Não consegui pegar essa imagem pelo endereço. Salve ela no computador e arraste o arquivo, ou use o botão direito > Salvar thumbnail no Meu dia.");
+    mostrarErro("Não consegui pegar essa imagem pelo endereço. Salve ela no computador e arraste o arquivo, ou use o botão direito > Salvar no Meu dia.");
   }
 }
 
@@ -158,16 +158,31 @@ function cartaoDoCanal(c, videos) {
   const marcar = () => { const t = novoTitulo.value.trim(); novoTitulo.blur(); if (t) diaNovoVideo({ canal: c.id, canalNome: c.titulo, titulo: t }); };
   novoTitulo.addEventListener("keydown", (e) => { if (e.key === "Enter") marcar(); });
 
+  // as thumbnails salvas para o canal pelo botão direito que não entraram num vídeo: ficam aqui, como feitas
+  const usadas = new Set(dia.videos.map((v) => v.thumb).filter(Boolean));
+  const doCanal = dia.thumbs.filter((t) => t.canal === c.id && !usadas.has(t.id) && imagens[t.id]);
+  const thumbFeita = doCanal.length || videos.some((v) => v.thumb);
+  const cartaoThumb = (t) => h("div", { class: "video" },
+    h("div", { class: "slot cheio" }, h("img", { src: imagens[t.id], alt: "" })),
+    h("div", {},
+      h("div", { class: "estado ok" }, "Thumbnail feita"),
+      h("div", { class: "acoes" }, h("span", { class: "fraco" }, `${hora(t.hora)}${t.origem ? " · " + t.origem : ""}`), baixar(t, c.titulo),
+        h("button", { class: "x", title: "Apagar esta thumbnail", onclick: async () => {
+          await mudarDia((d) => { d.thumbs = d.thumbs.filter((x) => x.id !== t.id); });
+          chrome.storage.local.remove(DIA_THUMB + t.id);
+        } }, "×"))));
+
   return h("article", { class: `canal ${estado}` },
     h("div", { class: "canal-cab" }, h("b", {}, c.titulo),
       meta == null ? null : h("span", { class: `meta ${estado}` },
         meta === 0 ? plural(feitos, "vídeo hoje", "vídeos hoje") : `${feitos}/${meta} hoje${postados ? ` · ${postados} postado${postados > 1 ? "s" : ""}` : ""}`)),
+    thumbFeita ? h("div", { class: "estado ok" }, "Thumbnail feita") : null,
     meta == null ? pergunta : null,
     falta ? h("div", { class: "linha" }, h("span", { class: "aviso" }, `Falta pedir ${plural(falta, "vídeo", "vídeos")} hoje`),
       h("a", { class: "botao vermelho", href: "https://www.youtube.com/#radar-nova-producao", target: "_blank" }, "Nova produção")) : null,
     cfg.treino ? h("div", { class: "linha" },
       h("a", { class: "botao", href: cfg.treino, target: "_blank", rel: "noopener", title: cfg.treino }, "Canal de treino: procurar ideia ↗")) : null,
-    videos.length ? h("div", { class: "videos" }, ...videos.map(cartaoDoVideo)) : null,
+    videos.length || doCanal.length ? h("div", { class: "videos" }, ...videos.map(cartaoDoVideo), ...doCanal.map(cartaoThumb)) : null,
     h("details", {}, h("summary", {}, cfg.treino ? "Ajustes do canal" : "Ajustes do canal · falta o link do canal de treino"),
       h("div", { style: "display:grid;gap:8px" },
         linkTreino,
@@ -200,16 +215,24 @@ function desenhar() {
     !metaTotal && !dia.videos.length ? h("span", { class: "pilula" }, "Nada pedido hoje") : null].filter(Boolean));
 
   const usadas = new Set(dia.videos.map((v) => v.thumb).filter(Boolean));
-  const soltas = dia.thumbs.filter((t) => !usadas.has(t.id) && imagens[t.id]);
+  const soltas = dia.thumbs.filter((t) => !usadas.has(t.id) && !t.canal && imagens[t.id]);
   const semThumbVideos = dia.videos.filter((v) => !v.thumb);
   $("soltas").replaceChildren(
     ...soltas.map((t) => {
-      const sel = h("select", {}, h("option", { value: "" }, "Ligar a um vídeo…"),
-        ...semThumbVideos.map((v) => h("option", { value: v.id }, `${v.canalNome ? v.canalNome + " · " : ""}${v.titulo}`)));
-      sel.onchange = () => sel.value && mudarDia((d) => { const x = d.videos.find((y) => y.id === sel.value); if (x) x.thumb = t.id; });
+      // escolher o canal (ou um vídeo de hoje) marca a thumbnail como feita lá
+      const sel = h("select", {}, h("option", { value: "" }, "Escolher o canal…"),
+        ...canais.map((c) => h("option", { value: "c:" + c.id }, c.titulo)),
+        ...semThumbVideos.map((v) => h("option", { value: "v:" + v.id }, `${v.canalNome ? v.canalNome + " · " : ""}${v.titulo}`)));
+      sel.onchange = () => sel.value && mudarDia((d) => {
+        const [tipo, alvo] = [sel.value.slice(0, 1), sel.value.slice(2)];
+        const th = d.thumbs.find((x) => x.id === t.id);
+        const x = tipo === "v" ? d.videos.find((y) => y.id === alvo) : d.videos.find((y) => y.canal === alvo && !y.thumb);
+        if (x) x.thumb = t.id;
+        if (th && tipo === "c") { th.canal = alvo; th.canalNome = (canais.find((c) => c.id === alvo) || {}).titulo || ""; }
+      });
       return h("div", { class: "solta" }, h("img", { src: imagens[t.id], alt: "" }),
         h("span", { class: "fraco" }, `${hora(t.hora)}${t.origem ? " · " + t.origem : ""}`),
-        semThumbVideos.length ? sel : null,
+        sel,
         h("div", { class: "linha" }, baixar(t),
           h("button", { class: "x", title: "Apagar", onclick: async () => {
             await mudarDia((d) => { d.thumbs = d.thumbs.filter((x) => x.id !== t.id); });
