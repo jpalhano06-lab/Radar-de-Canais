@@ -1823,6 +1823,25 @@ trazia o agente dele, e o pedido passou sem ninguém olhar.
 - Para usar: dê ↻ na extensão em `chrome://extensions`.
 
 
+## Visual minimalista no Radar inteiro, Meu dia no menu e no YouTube (extensão 0.48.0, 2026-11-14)
+
+Pedido do usuário: "gostei daquela identidade visual minimalista, quero no Radar inteiro"; o Meu dia embaixo do
+Perfil; o Meu dia no lugar do Claude no YouTube ("pode retirar o Claude"); e o menu da esquerda sai quando se entra
+numa aba e só volta com o mouse no canto esquerdo.
+
+- **Visual (`estilo.css`, bloco do fim):** o do Meu dia. Fundo `#0d0f14`, painéis `#151820` com fio `#262b36` e sem
+  sombra, letra do sistema (as fontes do Google saíram do `index.html`), botões redondos e o vermelho `#ff0000` de
+  acento. `IDENTIDADE` (app.js) virou vermelho; a chave `radar:identidade-3` troca a cor uma vez, depois vale o Cores.
+- **Menu da esquerda:** fica escondido; aparece com o mouse no canto esquerdo (a faixa `#beirada-menu`, com um
+  risquinho vermelho no meio) e some ao escolher uma aba ou tirar o mouse. No celular continua o botão Menu.
+- **Meu dia no Radar:** Perfil → Meu dia (`#/meu-dia`). A tela é a da extensão, num quadro: o `site.js` põe o
+  endereço em `data-radar-dia` e o `dia.html` está em `web_accessible_resources`. Sem a extensão 0.48, a tela avisa.
+- **YouTube:** o painel do Claude e do ChatGPT saiu (`claude.js`/`claude.css` apagados). No lugar, `painel-dia.js`:
+  a abinha vermelha **Meu dia** na beirada direita, que abre o Meu dia num painel (com "Abrir em aba"). Abre também
+  por dois cliques com o botão direito e pelo Alt+C. Com `?embutido=1`, o `dia.html` esconde o próprio título.
+- Para usar: ↻ na extensão em `chrome://extensions` e F5 no YouTube e no Radar.
+
+
 ## Extensão 0.47.0: a aba Meu dia (2026-11-14)
 
 Pedido do usuário: os dois cliques com o botão direito abrem uma aba que organiza o dia e se limpa todo dia: quantos
