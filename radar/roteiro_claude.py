@@ -160,6 +160,9 @@ Regras:
 - Os primeiros 15 segundos são um gancho forte que segura quem chegou pelo título.
 - A transcrição do vídeo de referência é a BASE: use a estrutura, os fatos e o que fez o vídeo funcionar. Não copie
   frases: reescreva com palavras próprias, melhore o ritmo e acrescente o que faltar para cumprir o título.
+- O roteiro é sempre sobre o assunto do TÍTULO pedido. Quando a referência fala de outra empresa, pessoa, lugar ou
+  produto, dela vêm só a estrutura, o ritmo, os ganchos e o tipo de prova; os fatos, nomes e números são os do
+  assunto do título.
 - Só fatos de que você tem certeza. Nada inventado sobre pessoas reais. Número, data e nome só se estiverem certos.
 - Termine com um fechamento curto.
 - Respeite o tamanho pedido (palavras ou caracteres), porque ele vira o tempo do vídeo."""
@@ -360,6 +363,34 @@ def titulo_do_video(video_id: str) -> str:
     return str(r.json().get("title") or "")
 
 
+def titulo_da_referencia(video_id: str) -> str:
+    """O título que o Radar guardou do vídeo (sem rede); sem ele, o do YouTube. Vazio quando nenhum dos dois vem."""
+    try:
+        linha = banco.um("SELECT titulo FROM videos WHERE id=?", video_id)
+        if linha and linha["titulo"]:
+            return str(linha["titulo"])
+    except Exception:  # noqa: BLE001 (o título da referência nunca derruba o roteiro)
+        pass
+    try:
+        return titulo_do_video(video_id)
+    except (httpx.HTTPError, ValueError):
+        return ""
+
+
+def aviso_de_outro_assunto(titulo: str, titulo_ref: str) -> str:
+    """Os dois títulos lado a lado, para o Claude ver quando o pedido troca o assunto da referência (2026-11-14:
+    "Lidl's $30 Billion Empire Is Collapsing" pedido sobre o vídeo do Sainsbury's saiu um roteiro inteiro do
+    Sainsbury's, com Tesco, porque a transcrição era a BASE dos fatos e o Claude nem via o título da referência). Quem
+    decide se o assunto mudou é o Claude: comparar palavras erra no título traduzido."""
+    titulo_ref = " ".join(str(titulo_ref or "").split())
+    if not titulo_ref or titulo_ref.casefold() == " ".join(str(titulo).split()).casefold():
+        return ""
+    return (f"\nTítulo do vídeo de referência: \"{titulo_ref}\". Título pedido: \"{titulo}\". Compare os dois. Se o "
+            "título pedido fala de outra empresa, pessoa, lugar ou produto, o roteiro inteiro é sobre o do título "
+            "PEDIDO, com fatos, nomes e números dele: da transcrição vêm só a estrutura, o ritmo, os ganchos e o tipo de "
+            "prova, e os nomes e números da referência não entram, a não ser numa comparação curta.\n")
+
+
 def por_que_estourou(video_id: str, titulo: str, base: str, aviso=lambda _t: None) -> dict:
     """A mesma leitura do botão "Por que este vídeo estourou" da extensão, e guardada junto com ela: quem já apertou o
     botão não gasta outra chamada. Falhou, o roteiro sai só com a transcrição, como antes."""
@@ -455,6 +486,7 @@ def gerar(usuario_id: int, titulo: str, link: str, minutos: int, lingua: str, pr
     if base:
         # a transcrição muito longa é cortada: o começo e a estrutura importam mais
         pedido += f"\nTranscrição do vídeo de referência (língua: {lingua_base}):\n{base[:60000]}\n"
+        pedido += aviso_de_outro_assunto(titulo, titulo_da_referencia(video_id))
         pedido += texto_do_por_que(leitura)
         pedido += aviso_da_base(contar_palavras(base[:60000]), palavras, lingua)
         if partes_do_roteiro(palavras)[0] > 1:

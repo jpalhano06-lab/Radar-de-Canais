@@ -1392,23 +1392,25 @@ async function formProducao(caixa, canalId, depois = () => {}, perguntarDeNovo =
   // editar o texto do agente (o que ele sabe sobre o canal) ou criar um, sem sair da página
   const editarAgente = () => {
     const a = projetos.find((x) => String(x.id) === String(p.projeto_roteiro_id)) || { id: "", nome: "", instrucoes: "" };
+    const partesAg = { ia_pct: parteDeIa(a.ia_pct) };
     caixa.innerHTML = `<div class="pergunta-caixa"><h3>${a.id ? "Editar o agente de roteiro" : "Criar o agente de roteiro"}</h3>
       <p class="sub">O agente guarda o jeito de escrever do canal: tom, público, como abrir e fechar, o que evitar. Vale para os próximos roteiros${a.id ? " de todos os canais que usam este agente" : ""}.</p>
       <label class="campo"><span>Nome</span><input id="ag-nome" value="${esc(a.nome)}" placeholder="Ex.: canal de animais em português"></label>
       <label class="campo"><span>Ideal para (opcional)</span><input id="ag-ideal" value="${esc(a.ideal_para || "")}" placeholder="Ex.: modelar um vídeo que foi muito bem num canal de outro país"></label>
       ${seletorDeTema("ag-tema", a.tema || "", "Tema dos vídeos deste agente", "A Nova produção já abre com ele.")}
-      <div class="np-duas"><label class="campo"><span>Imagem de IA</span><select id="ag-ia">${opcoesDe(PARTES_DE_IA, a.ia_pct)}</select></label>
-        <label class="campo"><span>Vídeo do YouTube</span><select id="ag-yt">${opcoesDe([["", "Padrão do canal"], ...PARTES_DE_YOUTUBE], a.footage_real)}</select></label></div>
+      <div class="trilhos">${trilho("ia_pct", "Imagem de IA x imagem real", PARTES_DE_IA, partesAg)}</div>
+      <div class="np-duas"><label class="campo"><span>Vídeo do YouTube</span><select id="ag-yt">${opcoesDe([["", "Padrão do canal"], ...PARTES_DE_YOUTUBE], a.footage_real)}</select></label></div>
       ${a.claude_uuid ? `<p class="sub">${ligadoAoClaude(a)}. As instruções e os arquivos vêm de lá: para mudar, mude o projeto no claude.ai.</p>` : ""}
       <label class="campo"><span>Instruções</span><textarea id="ag-instr" rows="12" ${a.claude_uuid ? "readonly" : ""} placeholder="Cole aqui as instruções (de um projeto do claude.ai, por exemplo)">${esc(a.instrucoes)}</textarea></label>
       <div class="linha"><button class="botao" id="ag-salvar">Salvar o agente</button><button class="botao sec" id="ag-cancelar">Cancelar</button></div></div>`;
     let tema = a.tema || "";
     ligarTema(caixa.querySelector("#ag-tema"), (v) => { tema = v; });
+    ligarTrilhos(caixa, partesAg, () => PARTES_DE_IA, () => {})();
     caixa.querySelector("#ag-cancelar").onclick = () => resumo();
     caixa.querySelector("#ag-salvar").onclick = (e) => carregando(e.currentTarget, "Salvando…", async () => {
       const r = await api("/api/projetos", { method: "POST", body: { id: a.id || null, nome: caixa.querySelector("#ag-nome").value,
         instrucoes: caixa.querySelector("#ag-instr").value, ideal_para: caixa.querySelector("#ag-ideal").value, tema,
-        ia_pct: caixa.querySelector("#ag-ia").value, footage_real: caixa.querySelector("#ag-yt").value } });
+        ia_pct: partesAg.ia_pct, footage_real: caixa.querySelector("#ag-yt").value } });
       projetos = (await api("/api/projetos")).projetos;
       if (!a.id) {
         await api(`/api/producao/${encodeURIComponent(canalId)}`, { method: "POST", body: { ...p, projeto_roteiro_id: String(r.id) } });
@@ -3446,8 +3448,10 @@ const DICAS_DO_TEMA = {
   reaberto: "Fita de isolamento: fundo escuro com fita amarela e preta inclinada. Bom para true crime pesado e casos reabertos.",
 };
 // quanto do vídeo sai de cada lugar: o resto é foto e vídeo de banco
-const PARTES_DE_IA = [["", "Padrão do canal"], ["0", "Sem IA"], ["10", "10% das cenas"], ["25", "25% das cenas"], ["50", "50% das cenas"],
-  ["75", "75% das cenas"], ["100", "100% das cenas"]];
+// a barra de IA x imagem real (pedido do usuário em 2026-11-14), de 10 em 10. Os 25% e 75% de antes caem no degrau vizinho
+const PARTES_DE_IA = [["", "Padrão do canal"], ["0", "Só imagem real"],
+  ...[10, 20, 30, 40, 50, 60, 70, 80, 90].map((p) => [String(p), `IA ${p}% · real ${100 - p}%`]), ["100", "Só IA"]];
+const parteDeIa = (v) => (v === "" || v == null ? "" : String(Math.min(100, Math.max(0, Math.round(Number(v) / 10) * 10))));
 const PARTES_DE_YOUTUBE = [["0", "Padrão do canal (15%, só Creative Commons)"], ["15", "15% das cenas"], ["25", "25% das cenas"], ["40", "40% das cenas"]];
 const opcoesDe = (lista, valor) => lista.map(([v, r]) => `<option value="${v}" ${v === String(valor ?? "") ? "selected" : ""}>${r}</option>`).join("");
 // os botões do tema, usados na Nova produção e no formulário do agente
@@ -3517,7 +3521,7 @@ async function novaProducao(preset = {}) {
   const lembrado = canais.some((c) => c.id === guardado("np-canal", "")) ? guardado("np-canal", "") : "";
   const N = { passo: 1, titulo: preset.titulo || "", link: preset.link || "", canal: preset.canal || CANAL_ATUAL || lembrado || (canais.length === 1 ? canais[0].id : ""), cfg: null, agente: "",
     lingua: "português", ppm: 150, caracteres: 0, modo: "claude", roteiro: "", nicho: "", obs: "", revisar: false, ref: null, custo: null, anim: "",
-    footage: Number(guardado("np-footage", "0")) || 0, tema: guardado("np-tema", ""), iaPct: guardado("np-ia", ""), destino: "", maquinas: [], opcoes: {}, opcoesAbertas: false };
+    footage: Number(guardado("np-footage", "0")) || 0, tema: guardado("np-tema", ""), iaPct: parteDeIa(guardado("np-ia", "")), destino: "", maquinas: [], opcoes: {}, opcoesAbertas: false };
   N.maquinas = maquinasDeFora;
   // o estilo das animações só deste vídeo: "" é o padrão do canal, e a página Animações é onde se monta um estilo
   const opcoesAnim = () => `<option value="">Padrão do canal</option>
@@ -3586,7 +3590,7 @@ async function novaProducao(preset = {}) {
   const temaDoAgenteEscolhido = () => {
     const a = agentes.find((x) => String(x.id) === String(N.agente));
     N.tema = a?.tema || guardado("np-tema", "");
-    N.iaPct = String(a?.ia_pct ?? guardado("np-ia", ""));
+    N.iaPct = parteDeIa(a?.ia_pct ?? guardado("np-ia", ""));
     N.footage = a?.footage_real ?? (Number(guardado("np-footage", "0")) || 0);
   };
   // O canal e a velocidade da voz dele dão o tamanho do roteiro. Antes um erro aqui era engolido calado e o pedido
@@ -3633,10 +3637,10 @@ async function novaProducao(preset = {}) {
       <select id="np-destino"><option value="">Esta máquina</option><option value="robo" ${N.destino ? "selected" : ""}>A primeira máquina livre (${N.maquinas.filter((m) => m.online).length} ligada${N.maquinas.filter((m) => m.online).length === 1 ? "" : "s"})</option></select></label>` : "";
     const opcoesHtml = `<details class="campo np-opcoes" ${N.opcoesAbertas ? "open" : ""}><summary>Mais opções deste vídeo</summary><div class="np-duas">${OPCOES_DO_VIDEO.map(([campo, rotulo, lista]) => `<label class="campo"><span>${rotulo}</span><select class="np-opcao" data-campo="${campo}">${lista.map(([v, r]) => `<option value="${v}" ${v === (N.opcoes[campo] || "") ? "selected" : ""}>${r}</option>`).join("")}</select></label>`).join("")}</div></details>`;
     const passou = Number(N.iaPct || 0) + N.footage > 100;
-    const iaHtml = `<label class="campo"><span>Imagem de IA <small>(o resto segue com fotos e vídeos de banco)</small></span>
-      <select id="np-ia">${opcoesDe(PARTES_DE_IA, N.iaPct)}</select>
+    const iaHtml = `<div class="campo"><span>Imagem de IA <small>(o resto segue com fotos e vídeos de banco e do YouTube)</small></span>
+      <div class="trilhos" id="np-ia">${trilho("ia_pct", "Quanto de IA", PARTES_DE_IA, { ia_pct: N.iaPct })}</div>
       ${passou ? '<small class="np-dica alerta">IA e YouTube juntos passam de 100% das cenas.</small>' : ""}
-      ${Number(N.iaPct) >= 50 ? '<small class="np-dica">Muitas imagens gastam o limite da assinatura do ChatGPT; acabando, as que faltam saem pela chave de API, pagas.</small>' : ""}</label>`;
+      ${Number(N.iaPct) >= 50 ? '<small class="np-dica">Muitas imagens gastam o limite da assinatura do ChatGPT; acabando, as que faltam saem pela chave de API, pagas.</small>' : ""}</div>`;
     const revisarHtml = footageHtml + iaHtml + temaHtml + destinoHtml + opcoesHtml + revisarSo;
     const passos = `<div class="np-passos"><span class="${N.passo === 1 ? "ativo" : ""}">1 · O vídeo</span><span class="${N.passo === 2 ? "ativo" : ""}">2 · Editar o roteiro</span></div>`;
     if (N.passo === 1) {
@@ -3707,7 +3711,8 @@ async function novaProducao(preset = {}) {
     $n("np-ver-anim")?.addEventListener("click", () => fechar());
     $n("np-revisar").onchange = (e) => { N.revisar = e.target.checked; desenharPrevia(); };
     $n("np-footage").onchange = (e) => { N.footage = Number(e.target.value) || 0; guardar("np-footage", String(N.footage)); desenhar(); desenharPrevia(); };
-    $n("np-ia").onchange = (e) => { N.iaPct = e.target.value; guardar("np-ia", N.iaPct); desenhar(); atualizarCusto(); };
+    const partesNp = { ia_pct: N.iaPct };
+    ligarTrilhos($n("np-ia"), partesNp, () => PARTES_DE_IA, () => { N.iaPct = partesNp.ia_pct; guardar("np-ia", N.iaPct); desenhar(); atualizarCusto(); })();
     ligarTema($n("np-tema"), (v) => { N.tema = v; guardar("np-tema", v); desenharPrevia(); });
     if ($n("np-destino")) $n("np-destino").onchange = (e) => { N.destino = e.target.value; desenharPrevia(); };
     campos.querySelector(".np-opcoes").ontoggle = (e) => { N.opcoesAbertas = e.target.open; };
