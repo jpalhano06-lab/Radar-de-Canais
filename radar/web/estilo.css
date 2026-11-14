@@ -2245,7 +2245,7 @@ body[data-tela="meu-dia"] main { max-width: none; padding: 52px 0 0; }
    (pedido do usuário em 2026-11-14) */
 nav .aba.dentro:not(:hover):not(#_) { background: none; color: var(--texto) !important; }
 nav .aba.dentro:not(:hover):not(#_) svg { color: var(--fraco) !important; }
-nav .subs a:hover:not(.ativo) { background: var(--acento); color: #fff; }
+nav .subs a:hover:not(.ativo):not(#_) { background: var(--painel2); color: var(--texto) !important; }
 
 /* sem os emojis (pedido do usuário em 2026-11-14), as caixinhas de ícone que ficaram vazias somem */
 .ic:empty, .mt-ic:empty, .ac-calmo-ic:empty { display: none; }
