@@ -1823,6 +1823,18 @@ trazia o agente dele, e o pedido passou sem ninguém olhar.
 - Para usar: dê ↻ na extensão em `chrome://extensions`.
 
 
+## Extensão 0.46.6: na Nova produção a escolha obrigatória é o canal, não o agente (2026-11-14)
+
+Pedido do usuário: "sempre força a escolher o agente, mas não é o agente que era para forçar a escolher e sim o canal".
+
+- **Nova produção (extensão):** o canal não fica mais lembrado (saiu o `npCanal`): a janela abre sem canal, os chips
+  ficam vermelhos e o envio não passa sem canal. Escolhido o canal, ele traz o agente dele já selecionado (como antes
+  de 0.46.2), além de língua, voz e tempo. O agente pode ser trocado; sem canal, o select diz "escolha o canal primeiro".
+- **3 · Confirmar:** o aviso amarelo "Não é o agente deste canal" continua quando o agente foi trocado.
+- Isso substitui o "agente sempre escolhido na hora" da 0.46.2: o erro da Coreia vinha do canal lembrado.
+- Para usar: dê ↻ na extensão em `chrome://extensions`.
+
+
 ## Extensão 0.46.3: o "Sign out" do YouTube pede confirmação (2026-11-13)
 
 Pedido do usuário: "coloque na extensão algo que só dá pra apertar o sign out com confirmação, sempre aperto sem querer".
