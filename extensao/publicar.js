@@ -542,7 +542,7 @@
       el("u", {}, el("i", { style: `height:${Math.max(Math.round((v / (topo || 1)) * 100), 6)}%` })),
       el("span", { textContent: `${h.faixas[i][0]}h` })));
     return el("div", { className: "cartao hr" },
-      el("b", { textContent: `🕒 Pico do canal: ${faixa[0]}h às ${faixa[1]}h59` }),
+      el("b", { textContent: `Pico do canal: ${faixa[0]}h às ${faixa[1]}h59` }),
       el("div", { className: "hr-g" }, colunas),
       el("small", { textContent: `Das curvas do Radar: ${h.videos} vídeos, ${h.horas} horas de curva, `
         + `sem as ${h.ignorado_h} h de estreia. Poste um pouco antes do pico.` }));
@@ -601,7 +601,7 @@
       b.onclick = () => escreverComIA(oQue);
       return b;
     };
-    const dentro = [el("b", { textContent: "✍ Não achei este vídeo na fábrica" }),
+    const dentro = [el("b", { textContent: "Não achei este vídeo na fábrica" }),
       el("small", { textContent: "O Claude do Radar escreve um rascunho a partir do título (e da legenda, se já houver). Nada é publicado." }),
       el("div", { className: "dupla" }, bt("descricao", "Escrever a descrição", "Escrevendo…"), bt("tags", "Sugerir as tags", "Procurando…"))];
     if (estado.escritaRecado) dentro.push(el("div", { className: estado.escritaErro ? "erro" : "ok", textContent: estado.escritaRecado }));
@@ -614,7 +614,7 @@
   function cartaoTraducao() {
     const t = (estado.kit && estado.kit.traducao) || {};
     if (!t.titulo && !t.sinopse) return null;
-    return el("div", { className: "cartao traducao" }, el("b", { textContent: "🇧🇷 Em português (só para você ler)" }),
+    return el("div", { className: "cartao traducao" }, el("b", { textContent: "Em português (só para você ler)" }),
       t.titulo ? el("div", {}, el("small", { textContent: "Título" }), el("div", { className: "tr-titulo", textContent: t.titulo })) : null,
       t.sinopse ? el("div", {}, el("small", { textContent: "Descrição" }), el("div", { className: "tr-texto", textContent: t.sinopse })) : null);
   }
@@ -715,7 +715,7 @@
       const b = el("button", { className: "acao", disabled: estado.comprimindo },
         el("i"), estado.comprimindo ? "Comprimindo…" : "Comprimir a capa e usar");
       b.onclick = comprimirCapa;
-      dentro.push(el("b", { textContent: `🖼 A capa tem ${mb(estado.capa.arquivo.size)} — o YouTube aceita até 2 MB.` }),
+      dentro.push(el("b", { textContent: `A capa tem ${mb(estado.capa.arquivo.size)} — o YouTube aceita até 2 MB.` }),
         el("small", { textContent: "Encolhe e salva em JPEG até caber, e já põe no campo da capa. A sua imagem no computador não muda." }),
         b);
     }

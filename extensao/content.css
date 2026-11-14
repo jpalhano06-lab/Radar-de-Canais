@@ -31,7 +31,7 @@
 .radar-alvo-botao { border: 0; border-radius: 999px; background: #10160a; color: #ff0000; font: 700 11px Roboto, Arial, sans-serif;
   padding: 3px 8px; cursor: pointer; }
 
-/* 🌍 oportunidade por país (2026-10-14: o radar saiu do site e veio para cá) */
+/* oportunidade por país (2026-10-14: o radar saiu do site e veio para cá) */
 .radar-botao-forte { background: #0071e3; color: #fff; font-weight: 700; }
 .radar-placar { display: grid; gap: 5px; }
 .radar-placar-linha { display: grid; grid-template-columns: 22px 92px 1fr 30px; gap: 8px; align-items: center; border: 0; border-radius: 9px;
@@ -825,7 +825,7 @@ html:not([dark]) .radar-np-passos span.ligado, html:not([dark]) .radar-fantasma-
 .radar-traduzir-grande { margin: 0; height: 36px; padding: 0 14px; border-radius: 18px; font-size: 13px; }
 .radar-traducao { margin-top: 4px; font: 500 13px/1.35 Roboto, Arial, sans-serif; color: var(--yt-spec-text-secondary, #aaa); }
 #title > .radar-traducao { font-size: 15px; }
-/* Método Fantasma direto no cartão e os botões PT e 👻 na grade dos filtros (2026-11-09) */
+/* Método Fantasma direto no cartão e os botões PT e na grade dos filtros (2026-11-09) */
 .radar-fantasma-mini { font-size: 11px; line-height: 1.5; }
 .radar-fantasma-rapido { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px; }
 .rf-pilulas .rf-acao { margin-left: 0; }

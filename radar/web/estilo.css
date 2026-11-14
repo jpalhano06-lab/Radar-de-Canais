@@ -500,7 +500,7 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: var(--a
 .aba-direita.aberta { background: var(--acento); color: #fff; border-color: var(--acento); }
 .aba-direita.aberta .n { background: #fff; color: var(--acento); }
 
-/* ================================================================= cor secundária, tema cinza, barra colorida, 🎯 e o placar
+/* ================================================================= cor secundária, tema cinza, barra colorida, e o placar
    (2026-10-14) Pedidos do usuário: "sempre deixe os botões nas cores, e não a escrita"; "quero sempre essa barra em
    tudo, faça divisões legais com as cores, acrescente cor secundária, e além de claro e escuro, cinza também". */
 :root { --acento2: #ff9500; }
@@ -626,7 +626,7 @@ nav .secao { color: var(--acento2); font-weight: 700; }
 .menu-bloq button:hover { background: var(--acento); }
 .video.escolha.marcado-nao .nao { background: var(--texto); color: var(--painel); }
 
-/* o 🎯 ao lado do Inscrever, na linha do canal */
+/* o ao lado do Inscrever, na linha do canal */
 .dono-acoes { margin-left: auto; display: flex; align-items: center; gap: 6px; flex: none; }
 .dono-acoes .inscrever { margin-left: 0; }
 .dono-acoes .alvo { width: 28px; height: 28px; border-radius: 50%; border: 0; cursor: pointer; font-size: 14px; display: grid; place-items: center;
@@ -2236,5 +2236,16 @@ nav a.ativo { box-shadow: none; }
     border-radius: 0 3px 3px 0; background: var(--acento); opacity: .45; }
 }
 
-/* Meu dia dentro do Radar: a própria tela da extensão, num quadro */
-.meu-dia-quadro { width: 100%; height: calc(100vh - 140px); min-height: 520px; border: 1px solid var(--linha); border-radius: var(--raio); background: var(--fundo); }
+/* Meu dia dentro do Radar: a própria tela da extensão, inteira e sem moldura, igual à aba dela. Só desce o bastante
+   para não ficar embaixo dos botões do topo */
+body[data-tela="meu-dia"] main { max-width: none; padding: 52px 0 0; }
+.meu-dia-quadro { display: block; width: 100%; height: calc(100vh - 52px); border: 0; background: var(--fundo); }
+
+/* no menu da esquerda só fica vermelho o que está sob o mouse e a aba aberta: o nome do grupo da tela não pinta mais
+   (pedido do usuário em 2026-11-14) */
+nav .aba.dentro:not(:hover) { background: none; color: var(--texto) !important; }
+nav .aba.dentro:not(:hover) svg { color: var(--fraco) !important; }
+nav .subs a:hover:not(.ativo) { background: var(--acento); color: #fff; }
+
+/* sem os emojis (pedido do usuário em 2026-11-14), as caixinhas de ícone que ficaram vazias somem */
+.ic:empty, .mt-ic:empty, .ac-calmo-ic:empty { display: none; }

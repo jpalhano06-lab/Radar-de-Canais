@@ -166,7 +166,7 @@ function cartaoDoCanal(c, videos) {
     falta ? h("div", { class: "linha" }, h("span", { class: "aviso" }, `Falta pedir ${plural(falta, "vídeo", "vídeos")} hoje`),
       h("a", { class: "botao vermelho", href: "https://www.youtube.com/#radar-nova-producao", target: "_blank" }, "Nova produção")) : null,
     cfg.treino ? h("div", { class: "linha" },
-      h("a", { class: "botao", href: cfg.treino, target: "_blank", rel: "noopener", title: cfg.treino }, "🎯 Canal de treino: procurar ideia ↗")) : null,
+      h("a", { class: "botao", href: cfg.treino, target: "_blank", rel: "noopener", title: cfg.treino }, "Canal de treino: procurar ideia ↗")) : null,
     videos.length ? h("div", { class: "videos" }, ...videos.map(cartaoDoVideo)) : null,
     h("details", {}, h("summary", {}, cfg.treino ? "Ajustes do canal" : "Ajustes do canal · falta o link do canal de treino"),
       h("div", { style: "display:grid;gap:8px" },

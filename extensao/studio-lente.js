@@ -232,8 +232,8 @@
           await navigator.clipboard.write([new ClipboardItem({ "image/png": comoImagem(cartao) })]);
           b.textContent = "✓";
         } catch { b.textContent = "✕"; b.title = "O Studio não deixou copiar este cartão."; }
-        setTimeout(() => { b.textContent = "📷"; }, 1800);
-      } }, "📷"));
+        setTimeout(() => { b.textContent = "Print"; }, 1800);
+      } }, "Print"));
     }
   }
 

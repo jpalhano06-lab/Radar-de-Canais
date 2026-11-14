@@ -215,10 +215,10 @@
     lista.forEach((v) => porCanal.set(v.canal_id || v.canal, (porCanal.get(v.canal_id || v.canal) || 0) + 1));
     const maior = Math.max(...porCanal.values()) / lista.length;
     const chance = Math.round(100 * (0.4 * Math.min(1, pequenos.length / 3) + 0.3 * (recentes / lista.length) + 0.3 * (1 - maior)));
-    const veredito = pequenos.length >= 2 ? ["boa", "🟢 Nicho aberto: canal pequeno está estourando com esse assunto."]
-      : estourados.length >= 3 ? ["media", "🟡 O assunto estoura, mas mais em canais maiores."]
-      : recentes / lista.length < 0.2 ? ["fraca", "⚪ Quase nada novo: o assunto está parado (ou ninguém achou ainda)."]
-      : ["fraca", "⚪ Nada estourando nesta busca por enquanto."];
+    const veredito = pequenos.length >= 2 ? ["boa", "Nicho aberto: canal pequeno está estourando com esse assunto."]
+      : estourados.length >= 3 ? ["media", "O assunto estoura, mas mais em canais maiores."]
+      : recentes / lista.length < 0.2 ? ["fraca", "Quase nada novo: o assunto está parado (ou ninguém achou ainda)."]
+      : ["fraca", "Nada estourando nesta busca por enquanto."];
     const caixa = h("div", { class: `radar-resumo ${veredito[0]}` },
       h("div", { class: "radar-resumo-titulo" }, h("b", {}, "Radar"), h("span", {}, veredito[1])),
       h("div", { class: "radar-resumo-numeros" },
@@ -306,7 +306,7 @@
             botaoDoCartao(`radar-traduzir rf-acao${TRADUZIDO.has(v.titulo) ? " ligado" : ""}`, "Radar: ver o título em português", "PT",
               (b) => traduzirTitulo(b, v.titulo, b.closest(".rf-info > div"))),
             botaoDoCartao(`radar-traduzir radar-fantasma-mini rf-acao${FANTASMA_FEITO.has(v.id) ? " ligado" : ""}`,
-              "Radar: Método Fantasma (em que língua ninguém fez este vídeo)", "👻",
+              "Radar: Método Fantasma (em que língua ninguém fez este vídeo)", "Fantasma",
               (b) => fantasmaRapido(b, v, b.closest(".rf-info > div")))),
           FANTASMA_FEITO.has(v.id) ? chipsDoFantasma(v.id, FANTASMA_FEITO.get(v.id)) : null,
           TRADUZIDO.has(v.titulo) ? linhaTraducao(TRADUZIDO.get(v.titulo)) : null)));
@@ -452,7 +452,7 @@
   function botaoProvar() {
     let b = document.querySelector(".radar-provar-botao");
     if (!telaDeProvar()) { if (b) b.remove(); document.querySelectorAll(".radar-provar-card").forEach((c) => c.remove()); return; }
-    if (!b) document.body.append(h("button", { class: "radar-provar-botao", onclick: abrirProvar }, "🧪 Provar capa e título"));
+    if (!b) document.body.append(h("button", { class: "radar-provar-botao", onclick: abrirProvar }, "Provar capa e título"));
     if (PROVA.capa && !document.querySelector(".radar-provar-card")) porCartao();
   }
 
@@ -514,7 +514,7 @@
   const semShorts = (sim) => document.documentElement.classList.toggle("radar-sem-shorts", !!sim);
   chrome.storage.local.get("semShorts").then(({ semShorts: s }) => semShorts(s));
 
-  // o selo do Radar e o 🎯 do treino, em cima de cada miniatura
+  // o selo do Radar e o do treino, em cima de cada miniatura
   function varrer() {
     document.querySelectorAll(CAIXAS).forEach((caixa) => {
       if (caixa.parentElement && caixa.parentElement.closest(CAIXAS)) return;
@@ -533,7 +533,7 @@
   // o que já foi traduzido ou procurado fica aqui, por título e por vídeo: a grade dos filtros se redesenha quando
   // chega vídeo novo, e sem isto a tradução e as bandeiras sumiam do cartão
   const TRADUZIDO = new Map(), FANTASMA_FEITO = new Map();
-  const linhaTraducao = (texto) => h("div", { class: "radar-traducao" }, h("b", {}, "🇧🇷 "), texto);
+  const linhaTraducao = (texto) => h("div", { class: "radar-traducao" }, h("b", {}, "PT: "), texto);
 
   async function traduzirTitulo(botao, titulo, ondePor) {
     const ja = ondePor.querySelector(":scope > .radar-traducao");
@@ -564,13 +564,13 @@
     });
     lugar.append(botao);
     if (ligada("fantasma-cartao")) {
-      lugar.append(botaoDoCartao("radar-traduzir radar-fantasma-mini", "Radar: Método Fantasma (em que língua ninguém fez este vídeo)", "👻",
+      lugar.append(botaoDoCartao("radar-traduzir radar-fantasma-mini", "Radar: Método Fantasma (em que língua ninguém fez este vídeo)", "Fantasma",
         (b) => fantasmaRapido(b, { ...(PAGINA.get(id) || {}), id, titulo: titulo() }, lugar)));
     }
   }
 
   // ------------------------------------------------------------ Método Fantasma direto no cartão (pedido de 2026-11-09)
-  // O botão 👻 ao lado do PT, em cada vídeo da grade dos filtros e das páginas do YouTube, procura sem abrir o vídeo
+  // O botão ao lado do PT, em cada vídeo da grade dos filtros e das páginas do YouTube, procura sem abrir o vídeo
   // em que língua ninguém fez aquele vídeo: a mesma busca da aba do canal (fantasmaDeUmVideo), nas línguas de
   // LINGUAS_RAPIDAS. O resultado entra embaixo do título, com as bandeiras; clicar de novo esconde.
   const LINGUAS_RAPIDAS = ["en", "es", "pt"];
@@ -660,7 +660,7 @@
       partes.push(h("span", { class: `radar-selo-raro ${v.raridade}`, title: `Canal ${SELOS[v.raridade]}: muita view por vídeo em pouco tempo de canal` }, SELOS[v.raridade]));
     }
     if (v.reacao != null && v.reacao >= reacaoAlta) {
-      partes.push(h("span", { class: "radar-selo-reacao", title: `O público reagiu ${nota(v.reacao)} mais que o normal do nicho (curtidas e comentários por view)` }, "♥", nota(v.reacao)));
+      partes.push(h("span", { class: "radar-selo-reacao", title: `O público reagiu ${nota(v.reacao)} mais que o normal do nicho (curtidas e comentários por view)` }, "reação ", nota(v.reacao)));
     }
     if (partes.length) lugar.append(h("div", { class: "radar-selo" }, partes));
     if (v.raridade && SELOS[v.raridade] && v.canal_id && !raridadesOuvidas.has(v.canal_id)) {
@@ -677,7 +677,7 @@
     if (mais.length) lugar.append(h("div", { class: "radar-selo-mais" }, mais));
   }
 
-  // ------------------------------------------------------------ treino do algoritmo: o selo 🎯 e o progresso
+  // ------------------------------------------------------------ treino do algoritmo: o selo e o progresso
 
   // o canal escolhido no ícone ("Treinar para"): as palavras do assunto dele e a lista do treino
   let treino = null; // { id, titulo, palavras: Set }: o canal escolhido no ícone e as palavras do treino dele
@@ -716,7 +716,7 @@
       const r = await api("/api/ideias-salvas", "POST", { video_id: id, titulo, canal_id: treino.id });
       botao.textContent = r.erro ? "erro" : "salva ✓";
     });
-    lugar.append(h("div", { class: "radar-alvo", title: `Combina com ${treino.titulo}` }, h("span", {}, "🎯"), botao));
+    lugar.append(h("div", { class: "radar-alvo", title: `Combina com ${treino.titulo}` }, h("span", {}, "Alvo"), botao));
   }
 
   // ------------------------------------------------------------ painel do vídeo
@@ -1440,8 +1440,8 @@
     return h("div", {}, h("div", { class: "radar-sub" }, `Views dos últimos ${lista.length} vídeos (do mais antigo ao mais novo)`), g);
   }
   function monetizacao(c) {
-    return [c.anuncios === 1 ? h("span", { class: "radar-tag" }, "💰 com anúncios") : null,
-      c.membros === 1 ? h("span", { class: "radar-tag" }, "⭐ tem membros") : null].filter(Boolean);
+    return [c.anuncios === 1 ? h("span", { class: "radar-tag" }, "com anúncios") : null,
+      c.membros === 1 ? h("span", { class: "radar-tag" }, "tem membros") : null].filter(Boolean);
   }
 
   // ------------------------------------------------------------ página do canal
@@ -1705,7 +1705,7 @@
     secao.replaceChildren(h("div", { class: "radar-parecidos-topo" }, h("b", {}, "O que o público pede"),
       h("small", { class: "radar-fraco" }, `dos comentários de ${videos} ${videos === 1 ? "vídeo" : "vídeos"}, dos mais curtidos para os menos`)),
       lista.length ? h("div", { class: "radar-pedidos" }, lista.map((p) => h("div", { class: "radar-pedido" }, h("p", {}, p.texto),
-        h("small", {}, `♥ ${num(p.curtidas)} · `, h("a", { href: `https://www.youtube.com/watch?v=${p.video_id}` }, p.video_titulo)))))
+        h("small", {}, `${num(p.curtidas)} · `, h("a", { href: `https://www.youtube.com/watch?v=${p.video_id}` }, p.video_titulo)))))
         : h("div", { class: "radar-fraco" }, "Nenhum pedido nos comentários destes vídeos."));
   }
 
@@ -1958,7 +1958,7 @@
     if (!emAlta) { const r = await api("/api/ext/em-alta"); emAlta = r.erro ? [] : r.dados.canais; }
     if (!emAlta.length || document.querySelector(".radar-alta")) return;
     const faixa = h("div", { class: "radar-alta" },
-      h("div", { class: "radar-alta-cab" }, h("b", {}, "🔥 Canais novos em alta"), h("span", { class: "radar-fraco" }, "do Radar: começaram há até 3 meses e já fazem muita view por vídeo"),
+      h("div", { class: "radar-alta-cab" }, h("b", {}, "Canais novos em alta"), h("span", { class: "radar-fraco" }, "do Radar: começaram há até 3 meses e já fazem muita view por vídeo"),
         h("button", { class: "radar-janela-x", title: "Esconder hoje", onclick: () => { chrome.storage.local.set({ altaFechada: new Date().toDateString() }); faixa.remove(); } }, "×")),
       h("div", { class: "radar-alta-lista" }, emAlta.map((c) => h("a", { class: "radar-alta-canal", href: `https://www.youtube.com/${c.handle || "channel/" + c.id}` },
         h("img", { src: c.foto, alt: "", referrerpolicy: "no-referrer" }),
@@ -2348,7 +2348,7 @@
     function desenhar() {
       const canaisEl = h("div", { class: "radar-np-campo" }, h("span", {}, N.canal ? "Canal" : "Canal (escolha a cada pedido)"),
         h("div", { class: `radar-np-chips${N.canal ? "" : " falta"}` }, ...canais.map((c) => chip(c.titulo, c.id === N.canal, () => escolherCanal(c.id))),
-          chip("🧪 Canal de teste", eTeste(), () => escolherCanal(TESTE))));
+          chip("Canal de teste", eTeste(), () => escolherCanal(TESTE))));
       // no Canal de teste a língua é a escolha: ela decide a voz (um perfil da fábrica que fala essa língua)
       // e o modo: narrado de 2 a 3 min, ou 5 min sem narração (aí a língua é só a dos textos na tela)
       const linguasTeste = () => {
@@ -2357,8 +2357,8 @@
       };
       const linguaTeste = () => h("div", {},
         h("div", { class: "radar-np-campo" }, h("span", {}, "Vídeo de teste"), h("div", { class: "radar-np-chips" },
-          chip("🎙️ Narrado · 2 a 3 min", !N.semNarracao, () => escolherModoTeste(false)),
-          chip("🔇 5 min · sem narração", N.semNarracao, () => escolherModoTeste(true)))),
+          chip("Narrado · 2 a 3 min", !N.semNarracao, () => escolherModoTeste(false)),
+          chip("5 min · sem narração", N.semNarracao, () => escolherModoTeste(true)))),
         h("div", { class: "radar-np-duas" },
           campo(N.semNarracao ? "Língua dos textos na tela (motions)" : "Língua do vídeo de teste", sel(linguasTeste().map((l) => [l, l]), N.lingua,
             (v) => { chrome.storage.local.set({ npLinguaTeste: v }); escolherLingua(v); })),

@@ -325,8 +325,8 @@ function ligarOrganizar(rota) {
 
 // "Para que serve": a caixinha verde de cada página. O × esconde; o "?" ao lado do título mostra de novo.
 const AJUDA = {
-  "radar-paises": "Um <b>radar por canal</b>: os países e as línguas onde conferir se uma ideia já foi feita. No <b>📡</b> de cada vídeo, o Radar tira toda a numeração do título, traduz a ideia para a língua de cada país e procura no YouTube daquele país: <b>⚠ já foi feito</b> (com os vídeos parecidos) ou <b>✅ ninguém fez ainda</b>.",
-  "ideias-canal": "Ideias para <b>cada canal seu</b> (uma aba por canal): vídeos que estouraram falando do mesmo assunto. <b>💡 Salvar ideia</b> guarda no painel da direita, e de lá <b>Levar para o trabalho</b> abre o roteiro com o vídeo de referência.",
+  "radar-paises": "Um <b>radar por canal</b>: os países e as línguas onde conferir se uma ideia já foi feita. No botão <b>Radar</b> de cada vídeo, o Radar tira toda a numeração do título, traduz a ideia para a língua de cada país e procura no YouTube daquele país: <b>já foi feito</b> (com os vídeos parecidos) ou <b>ninguém fez ainda</b>.",
+  "ideias-canal": "Ideias para <b>cada canal seu</b> (uma aba por canal): vídeos que estouraram falando do mesmo assunto. <b>Salvar ideia</b> guarda no painel da direita, e de lá <b>Levar para o trabalho</b> abre o roteiro com o vídeo de referência.",
   bloqueados: "Tudo o que você escondeu pelo <b>⊘</b> em cima dos vídeos: vídeos, canais e tipos de vídeo. Desbloqueie para voltar a ver.",
   animacoes: "Escolha o <b>estilo das animações</b> antes de produzir. Se quiser, abra o <b>Personalizar</b> para mudar cores, fundo, letras e quais animações podem entrar. Guarde com um nome para escolher na Nova produção, ou deixe como padrão de um canal. Olhar e testar não gasta nada.",
   custos: "Quanto a fábrica gastou: o <b>total do período</b>, a média por vídeo e por minuto, e onde foi o dinheiro: <b>por provedor</b> (GenAI Pro, OpenRouter, Kie...), por tipo de gasto (narração, imagens de IA...) e <b>por canal</b>. Clique num vídeo para ver o detalhe.",
@@ -340,7 +340,7 @@ const AJUDA = {
   perfil: "Seus canais. Conecte ao <b>YouTube Studio</b> para ver as métricas que só o dono vê (horas assistidas, retenção, receita, de onde vêm as views). Clicando num canal, as <b>ideias para copiar</b>: vídeos que estouraram falando do mesmo assunto.",
   canal: "Tudo de um canal: os últimos vídeos com a nota de cada um, as <b>ideias para copiar</b> (vídeos que estouraram em canais do mesmo nicho) e, se o canal for seu e estiver conectado, as métricas do YouTube Studio.",
   base: "Uma lista só com todos os canais do Radar. Em cima, as <b>visões</b>: perguntas já feitas (novo e crescendo, virou a chave, sem concorrência…), com quantos canais cada uma tem — clique numa para ver a lista, clique de novo para desligar. Embaixo, o filtro: base, nicho, tamanho, idade, fase e a <b>ordem</b>, que o ↓ vira para o outro lado. O que era Alerta, Procurar nicho, Em alta, Top 30 e Salvos virou filtro desta tela. Todo canal que você salva ganha um botão de <b>pasta</b>: guarde por projeto, e a pasta vira filtro aqui e nos Vídeos.",
-  videos: "Uma lista só com os vídeos que fizeram <b>muitas vezes o normal do próprio canal</b>. Se um assunto fez 10 vezes o normal, o público quer aquele assunto. Filtre por língua, nicho, nota, data e formato; as marcas ligam <b>só os desta semana</b> e <b>só de canal crescendo</b>. Quando as suas respostas escondem vídeos, a contagem diz quantos são e abre com um clique. Passe o mouse na capa e clique no <b>🔖</b> do canto para pôr o vídeo na esteira: um clique marca <b>vou modelar</b>, outro marca <b>já modelei</b>, e o filtro <b>Toda a esteira</b> mostra só esses.",
+  videos: "Uma lista só com os vídeos que fizeram <b>muitas vezes o normal do próprio canal</b>. Se um assunto fez 10 vezes o normal, o público quer aquele assunto. Filtre por língua, nicho, nota, data e formato; as marcas ligam <b>só os desta semana</b> e <b>só de canal crescendo</b>. Quando as suas respostas escondem vídeos, a contagem diz quantos são e abre com um clique. Passe o mouse na capa e clique no <b>Marcar</b> do canto para pôr o vídeo na esteira: um clique marca <b>vou modelar</b>, outro marca <b>já modelei</b>, e o filtro <b>Toda a esteira</b> mostra só esses.",
   acharam: "Cada canal que você salva vira um garimpeiro: uma vez por semana ele procura sozinho os canais <b>parecidos</b> com ele. O que eles acharam chega aqui, já medido. Quanto mais canais você salva, mais chega.",
   grupos: "Canais que fazem o <b>mesmo tipo de vídeo</b>, juntos. Poucos canais com muita view é <b>nicho aberto</b>; muitos canais, já está concorrido. Clique num grupo para ver os canais.",
   titulos: "Escreva o tema e o gerador faz <b>títulos no estilo dos que estouraram</b>. Embaixo, o banco de títulos que deram certo, para se inspirar.",
@@ -400,8 +400,8 @@ document.addEventListener("click", (e) => {
 
 // ---------------------------------------------------------------- peças
 
-// o 🔀 das listas que já vieram inteiras: embaralha o que está na tela
-const botaoAleatorio = (alvo) => ` <button class="botao vermelho embaralhar" data-alvo="${alvo}" style="font-size:13px;vertical-align:middle">🔀 Aleatório</button>`;
+// o das listas que já vieram inteiras: embaralha o que está na tela
+const botaoAleatorio = (alvo) => ` <button class="botao vermelho embaralhar" data-alvo="${alvo}" style="font-size:13px;vertical-align:middle">Aleatório</button>`;
 document.addEventListener("click", (e) => {
   const b = e.target.closest(".embaralhar");
   if (!b) return;
@@ -428,7 +428,7 @@ function cartaoVideo(v, { canal = true, roteiro = true, bloquear = true } = {}) 
     <div class="meta">${num(v.views)} views · ${ha(v.publicado)}${v.por_hora ? ` · ${num(v.por_hora)}/h` : ""}</div>
     ${canal && v.canal ? `<a class="dono" href="#/canal/${esc(v.canal_id)}"><img src="${esc(v.foto)}" alt="" referrerpolicy="no-referrer">
       <span>${esc(v.canal)}${v.inscritos != null ? " · " + num(v.inscritos) + " inscritos" : ""}</span><span class="dono-acoes">${botaoAlvo(v)}${v.canal_id ? botaoInscrever(v.canal_id) : ""}</span></a>` : ""}
-    ${roteiro ? `<div class="video-acoes"><button class="botao sec salvar-ideia" title="Guarda no painel da direita">💡 Salvar ideia</button>
+    ${roteiro ? `<div class="video-acoes"><button class="botao sec salvar-ideia" title="Guarda no painel da direita">Salvar ideia</button>
       <a class="botao sec" href="#/trabalho" data-roteiro="${esc(v.id)}" data-titulo="${esc(v.titulo)}" title="Abre o Roteiro com este vídeo de referência">${icone("roteiro")}Trabalho</a></div>` : ""}
   </div>`;
 }
@@ -444,7 +444,7 @@ function cartaoVideoGrande(v) {
         <a class="yt-canal" href="#/canal/${esc(v.canal_id || "")}">${esc(v.canal || "")}</a>
         <div class="meta">${num(v.views)} views · ${ha(v.publicado)}</div>
         <div class="pilulas">${porHora ? `<span>${num(porHora)} por hora</span>` : ""}${v.inscritos != null ? `<span>${num(v.inscritos)} inscritos</span>` : ""}${v.por_inscrito >= 1 ? `<span title="Views do vídeo ÷ inscritos do canal">${nota(v.por_inscrito)} os inscritos</span>` : ""}</div></div></div>
-    <div class="video-acoes"><button class="botao sec salvar-ideia" title="Guarda no painel da direita">💡 Salvar ideia</button>
+    <div class="video-acoes"><button class="botao sec salvar-ideia" title="Guarda no painel da direita">Salvar ideia</button>
       <a class="botao sec" href="#/trabalho" data-roteiro="${esc(v.id)}" data-titulo="${esc(v.titulo)}" title="Abre o Roteiro com este vídeo de referência">${icone("roteiro")}Trabalho</a></div>
   </div>`;
 }
@@ -457,8 +457,8 @@ function ligarRoteiro(raiz = tela) {
 // O marcador no canto da capa anda sozinho a cada clique, sem menu: vazio → vou modelar → já modelei → vazio.
 // Serve para não perder de vista o vídeo que você escolheu no meio de milhares, e para não refazer o que já fez.
 const ESTEIRA = {
-  "": { proximo: "fila", sinal: "🔖", dica: "Marcar: vou modelar este vídeo" },
-  fila: { proximo: "feito", sinal: "📌", dica: "Vou modelar — clique para marcar como já modelado" },
+  "": { proximo: "fila", sinal: "Marcar", dica: "Marcar: vou modelar este vídeo" },
+  fila: { proximo: "feito", sinal: "Vou modelar", dica: "Vou modelar — clique para marcar como já modelado" },
   feito: { proximo: "", sinal: "✓", dica: "Já modelei — clique para tirar o marcador" },
 };
 const marcadorEsteira = (v) => {
@@ -765,7 +765,7 @@ async function mostrarVitrine() {
 
 // O agente ligado a um projeto do claude.ai (2026-10-29): a extensão lê o projeto e atualiza o agente sozinha
 const ligadoAoClaude = (p) => p.claude_uuid
-  ? `🔗 projeto <b>${esc(p.claude_nome)}</b> do claude.ai${p.arquivos ? ` · ${p.arquivos} ${p.arquivos === 1 ? "arquivo" : "arquivos"}` : ""} · atualizado ${new Date(p.sincronizado).toLocaleString("pt-BR")}`
+  ? `projeto <b>${esc(p.claude_nome)}</b> do claude.ai${p.arquivos ? ` · ${p.arquivos} ${p.arquivos === 1 ? "arquivo" : "arquivos"}` : ""} · atualizado ${new Date(p.sincronizado).toLocaleString("pt-BR")}`
   : "";
 
 // O "Atualizar do claude.ai": a página pede à extensão (site.js), que lê os projetos no Chrome logado
@@ -857,7 +857,7 @@ async function trabalho() {
   // ao lado: o ponto de partida (a thumbnail da referência, para copiar) e o que já foi escolhido
   const lado = () => {
     const vid = idDoVideo(E.link), canal = (MEUS || []).find((c) => c.id === E.canal);
-    $("rt-lado").innerHTML = `<h3>📌 Seu ponto de partida</h3>
+    $("rt-lado").innerHTML = `<h3>Seu ponto de partida</h3>
       ${vid ? `<img class="thumb-ref" src="/api/thumb/imagem/${esc(vid)}" alt="">
         <div class="linha" style="gap:6px"><button class="botao sec" id="rt-copiar-thumb">Copiar a thumbnail</button><a class="botao sec" href="/api/thumb/imagem/${esc(vid)}" download="thumbnail-referencia.jpg">Baixar</a></div>
         ${E.ref && E.ref.titulo ? `<small class="sub">${esc(E.ref.titulo)}${E.ref.views ? ` · ${num(E.ref.views)} views` : ""}</small>` : ""}`
@@ -942,8 +942,8 @@ async function trabalho() {
 
       if (!E.quem) E.quem = E.link ? "claude" : "manual";
       const escolhaQuem = `<div class="painel-modos quem-escreve">
-          <button class="${E.quem === "claude" ? "ativo" : ""}" data-quem="claude">✍️ O Claude escreve</button>
-          <button class="${E.quem === "manual" ? "ativo" : ""}" data-quem="manual">📋 Eu colo o meu roteiro</button></div>`;
+          <button class="${E.quem === "claude" ? "ativo" : ""}" data-quem="claude">O Claude escreve</button>
+          <button class="${E.quem === "manual" ? "ativo" : ""}" data-quem="manual">Eu colo o meu roteiro</button></div>`;
       const ligarQuem = () => $("rt-corpo").querySelectorAll("[data-quem]").forEach((b) => (b.onclick = () => { E.quem = b.dataset.quem; passos[1](); }));
 
       if (E.quem === "manual") {
@@ -973,25 +973,25 @@ async function trabalho() {
       const ac = (E.ritmo && E.ritmo.acerto) || {};
       const sinal = (x) => (x > 0 ? "+" : "") + String(x).replace(".", ",");
       const placar = ac.total
-        ? `<div class="ritmo-placar ${ac.dentro === ac.total ? "bom" : ac.dentro ? "meio" : "ruim"}">🎯 <b>${ac.dentro} de ${ac.total}</b> dos últimos vídeos desta voz ficaram dentro de ${String(ac.margem).replace(".", ",")} min do tempo pedido${ac.erro_medio != null ? ` · erro médio <b>${sinal(ac.erro_medio)} min</b>` : ""}${ac.pior && !ac.pior.dentro ? ` · pior: pediu ${ac.pior.pedido_min} e saiu ${String(ac.pior.entregue_min).replace(".", ",")} min` : ""}</div>`
+        ? `<div class="ritmo-placar ${ac.dentro === ac.total ? "bom" : ac.dentro ? "meio" : "ruim"}"><b>${ac.dentro} de ${ac.total}</b> dos últimos vídeos desta voz ficaram dentro de ${String(ac.margem).replace(".", ",")} min do tempo pedido${ac.erro_medio != null ? ` · erro médio <b>${sinal(ac.erro_medio)} min</b>` : ""}${ac.pior && !ac.pior.dentro ? ` · pior: pediu ${ac.pior.pedido_min} e saiu ${String(ac.pior.entregue_min).replace(".", ",")} min` : ""}</div>`
         : "";
       $("rt-corpo").innerHTML = `<h2>Agora o Claude escreve</h2>${escolhaQuem}
         <p class="sub">${E.link ? "Ele lê a transcrição da referência e escreve" : "Sem vídeo de referência, ele escreve a partir do título"} um roteiro limpo, só o texto para narrar, com o agente e o tempo escolhidos. Grátis pela sua assinatura do Claude.</p>
-        <div class="ritmo-linha ${E.ritmo && E.ritmo.medidos ? "ajustado" : ""}">⏱ ${E.ritmo && E.ritmo.medidos
+        <div class="ritmo-linha ${E.ritmo && E.ritmo.medidos ? "ajustado" : ""}">${E.ritmo && E.ritmo.medidos
           ? `<span><b>Tempo ajustado:</b> esta voz fala <b>${E.ppm} palavras por minuto</b> (medido em ${E.ritmo.medidos} ${E.ritmo.medidos === 1 ? "vídeo entregue" : "vídeos entregues"}). Para ${E.minutos} min, o Claude mira <b>${alvo.toLocaleString("pt-BR")} palavras</b>${E.ritmo.ppm_alvo && E.ritmo.ppm_alvo !== E.ppm ? " (já descontando o quanto ele costuma escrever a mais)" : ""}.</span><button class="link-editar" id="rt-por-que">por quê?</button>`
           : `<span>Para ${E.minutos} min, o Claude mira ${alvo.toLocaleString("pt-BR")} palavras. Quando a fábrica entregar os vídeos desta voz, o Radar mede o tempo real e <b>ajusta sozinho</b>.</span>`}</div>${placar}
-        <div class="ritmo-linha">📝 <span>Junto com o roteiro, o Claude escreve a <b>descrição, as tags e as hashtags</b> deste vídeo${
+        <div class="ritmo-linha"><span>Junto com o roteiro, o Claude escreve a <b>descrição, as tags e as hashtags</b> deste vídeo${
           agentesDesc.length ? "" : " pelas regras do Radar (crie um agente de descrição para dar o estilo do canal)"}. Ficam prontas agora, enquanto o vídeo ainda está sendo feito.</span>${
           agentesDesc.length ? `<select id="rt-agente-desc" class="rt-agente-desc"><option value="">Regras do Radar</option>${
             agentesDesc.map((a) => `<option value="${a.id}" ${String(a.id) === E.agenteDesc ? "selected" : ""}>${esc(a.nome)}</option>`).join("")}</select>` : ""}</div>
         <h3 class="rt-sub">Quando o roteiro ficar pronto…</h3>
         <div class="modo-op">
-          <button class="modo ${modo === "revisar" ? "marcado" : ""}" data-modo="revisar"><span class="ic">👀</span><b>Quero revisar antes</b><small>Você lê, corrige e só depois manda para a fábrica.</small></button>
-          <button class="modo ${modo === "direto" ? "marcado" : ""}" data-modo="direto" ${podeDireto ? "" : "disabled"}><span class="ic">🚀</span><b>Enviar direto para a fábrica</b>
+          <button class="modo ${modo === "revisar" ? "marcado" : ""}" data-modo="revisar"><span class="ic"></span><b>Quero revisar antes</b><small>Você lê, corrige e só depois manda para a fábrica.</small></button>
+          <button class="modo ${modo === "direto" ? "marcado" : ""}" data-modo="direto" ${podeDireto ? "" : "disabled"}><span class="ic"></span><b>Enviar direto para a fábrica</b>
             <small>${podeDireto ? `Assim que ficar pronto, vira projeto na fábrica com a voz <b>${esc(perfilDireto())}</b>. Produzir ainda pede o seu sim.` : fab.conectada ? "Só a administração manda para a fábrica." : "A fábrica não está ligada a este Radar."}</small></button>
         </div>
-        <p class="sub aviso-notif">🔔 Você recebe uma <b>notificação no computador</b> quando o roteiro ficar pronto. Pode sair desta página.</p>
-        <button class="botao vermelho grande" id="rt-escrever" style="justify-self:start">✍️ Escrever o roteiro com o Claude</button>
+        <p class="sub aviso-notif">Você recebe uma <b>notificação no computador</b> quando o roteiro ficar pronto. Pode sair desta página.</p>
+        <button class="botao vermelho grande" id="rt-escrever" style="justify-self:start">Escrever o roteiro com o Claude</button>
         <div id="rt-escrevendo"></div>`;
       ligarQuem();
       const escolhaDesc = $("rt-agente-desc");
@@ -1025,7 +1025,7 @@ async function trabalho() {
             if (t.erro_envio) aviso("O roteiro ficou pronto, mas não foi para a fábrica: " + t.erro_envio);
             editor(); lado(); break;
           }
-        } catch (erro) { aviso(porque(erro)); botao.disabled = false; botao.textContent = "✍️ Escrever o roteiro com o Claude"; }
+        } catch (erro) { aviso(porque(erro)); botao.disabled = false; botao.textContent = "Escrever o roteiro com o Claude"; }
       };
       return () => "Escreva o roteiro primeiro.";
     },
@@ -1034,7 +1034,7 @@ async function trabalho() {
       $("rt-corpo").innerHTML = `<h2>Confira e envie</h2>${blocoDescricao()}
         ${fab.conectada ? `<p class="sub">Cria o projeto na fábrica com este roteiro, este título e a voz do canal. <b>Não gasta nada</b>: produzir pede a sua confirmação.</p>
           <label class="campo"><span>Voz (perfil da fábrica)</span><select id="rt-perfil">${fab.perfis.map((p) => `<option ${p === (E.perfil || "documentario") ? "selected" : ""}>${esc(p)}</option>`).join("")}</select></label>
-          <button class="botao vermelho grande" id="rt-enviar" style="justify-self:start">🏭 Enviar para a fábrica</button><div id="rt-enviado"></div>`
+          <button class="botao vermelho grande" id="rt-enviar" style="justify-self:start">Enviar para a fábrica</button><div id="rt-enviado"></div>`
           : '<p class="sub">A fábrica não está nesta pasta: o Radar precisa estar dentro da pasta da fábrica para enviar.</p>'}`;
       ligarDescricao();
       const enviar = $("rt-enviar");
@@ -1067,11 +1067,11 @@ async function trabalho() {
       ? `<select id="rt-desc-agente"><option value="">Regras do Radar</option>${agentesDesc.map((a) => `<option value="${a.id}" ${String(a.id) === E.agenteDesc ? "selected" : ""}>${esc(a.nome)}</option>`).join("")}</select>`
       : "";
     if (!d.sinopse) {
-      return `<div class="bloco rt-descricao"><h3>📝 Descrição do vídeo</h3>
+      return `<div class="bloco rt-descricao"><h3>Descrição do vídeo</h3>
         <p class="sub">${erro ? `O Claude não conseguiu escrever: ${esc(erro)}` : "Este roteiro ainda não tem descrição."} Dá para escrever agora — ela vai junto para a fábrica e aparece sozinha no YouTube Studio.</p>
         <div class="linha">${escolha}<button class="botao sec" id="rt-desc-refazer">Escrever a descrição</button></div></div>`;
     }
-    return `<div class="bloco rt-descricao"><h3>📝 Descrição do vídeo</h3>
+    return `<div class="bloco rt-descricao"><h3>Descrição do vídeo</h3>
       <p class="sub">Escrita pelo Claude${d.projeto ? ` com o agente <b>${esc(d.projeto)}</b>` : " pelas regras do Radar"}, a partir do roteiro. Vai junto para a fábrica: no Studio, a extensão põe este texto, estas tags e estas hashtags sozinha.</p>
       <label class="campo"><span>Sinopse (abre a descrição; o rodapé fixo do canal entra depois dela)</span>
         <textarea id="rt-desc-sinopse" rows="4">${esc(d.sinopse)}</textarea></label>
@@ -1146,7 +1146,7 @@ function conferenciaRoteiro(r, palavras) {
   const erro = previsto - pedido, dentro = Math.abs(erro) <= margem;
   return { conta, classe: dentro ? "dentro" : "fora",
     recado: dentro ? `✓ Dentro da margem: você pediu ${pedido} min e o roteiro dá ${min(previsto)} min.`
-      : `⚠ Fora da margem de ${min(margem)} min: você pediu ${pedido} min e o roteiro dá ${min(previsto)} min `
+      : `Fora da margem de ${min(margem)} min: você pediu ${pedido} min e o roteiro dá ${min(previsto)} min `
         + `(${erro > 0 ? "+" : ""}${min(erro)} min). ${erro > 0 ? "Corte" : "Acrescente"} umas `
         + `${Math.abs(Math.round(erro * ppm)).toLocaleString("pt-BR")} palavras.` };
 }
@@ -1226,10 +1226,10 @@ async function aplicarProducao(canalId, caixa, campos) {
   if (campos.minutos && MINUTOS.includes(+p.minutos)) campos.minutos.value = p.minutos;
   const estilo = campos.projeto ? campos.projeto.selectedOptions[0]?.textContent.replace(/^Agente: /, "") : "";
   caixa.innerHTML = `<div class="producao-resumo">
-    <span>🎙 <b>${p.voz ? esc(p.voz) : "sem voz"}</b><small>${p.perfil ? "perfil " + esc(p.perfil) : "nenhum perfil da fábrica com o nome deste canal"}</small></span>
-    <span>✍️ <b>${esc(estilo || "Padrão")}</b><small>agente de roteiro</small></span>
-    <span>🌐 <b>${esc(p.lingua)}</b><small>língua</small></span>
-    <span>⏱ <b>${esc(p.minutos)} min</b><small>tempo do vídeo</small></span>
+    <span><b>${p.voz ? esc(p.voz) : "sem voz"}</b><small>${p.perfil ? "perfil " + esc(p.perfil) : "nenhum perfil da fábrica com o nome deste canal"}</small></span>
+    <span><b>${esc(estilo || "Padrão")}</b><small>agente de roteiro</small></span>
+    <span><b>${esc(p.lingua)}</b><small>língua</small></span>
+    <span><b>${esc(p.minutos)} min</b><small>tempo do vídeo</small></span>
     <button class="botao sec" id="pr-salvar" data-dica="Guarda o agente de roteiro e a língua escolhidos aqui como o padrão deste canal.">Salvar como padrão do canal</button>
     <a class="sub" href="#" id="pr-ajustar">editar</a></div>`;
   caixa.querySelector("#pr-salvar").onclick = (e) => carregando(e.currentTarget, "Salvando…", async () => {
@@ -1337,11 +1337,11 @@ async function formProducao(caixa, canalId, depois = () => {}, perguntarDeNovo =
     () => {
       caixa.innerHTML = moldura(2, `<h3>Qual agente de roteiro escreve para este canal?</h3>
         <p class="sub">O agente guarda o jeito de escrever: tom, público, como abrir e fechar.</p>` + cartoes([
-          ["", "✍️", "Agente padrão", "o Claude no jeito padrão"], ...projetos.map((x) => [String(x.id), x.claude_uuid ? "🔗" : "✍️", x.nome,
+          ["", "", "Agente padrão", "o Claude no jeito padrão"], ...projetos.map((x) => [String(x.id), x.claude_uuid ? "" : "", x.nome,
             x.claude_uuid ? `projeto ${x.claude_nome} do claude.ai${x.arquivos ? ` · ${x.arquivos} arquivos` : ""}` : x.instrucoes.slice(0, 80)]),
         ], "projeto_roteiro_id") + `
-        <p class="sub">🔗 Os seus projetos do claude.ai viram agentes sozinhos: a extensão lê as instruções e os arquivos de cada um e atualiza o agente quando você muda lá (ao abrir o Chrome, a cada meia hora e ao abrir o claude.ai).</p>
-        <button class="opcao opcao-nova" id="ag-sincronizar"><span class="ic">🔗</span><b>Atualizar do claude.ai agora</b><small>lê os seus projetos de novo</small></button>
+        <p class="sub">Os seus projetos do claude.ai viram agentes sozinhos: a extensão lê as instruções e os arquivos de cada um e atualiza o agente quando você muda lá (ao abrir o Chrome, a cada meia hora e ao abrir o claude.ai).</p>
+        <button class="opcao opcao-nova" id="ag-sincronizar"><span class="ic"></span><b>Atualizar do claude.ai agora</b><small>lê os seus projetos de novo</small></button>
         <button class="opcao opcao-nova" id="ag-novo"><span class="ic">＋</span><b>Criar um agente novo</b><small>sem projeto no claude.ai: cole as instruções aqui</small></button>
         <div class="agente-novo" id="ag-form" hidden><input id="ag-nome" placeholder="Nome do agente (ex.: canal de animais em inglês)">
           <textarea id="ag-instr" rows="7" placeholder="Instruções: tom de voz, público, estrutura, como abrir e fechar, o que evitar…"></textarea>
@@ -1367,7 +1367,7 @@ async function formProducao(caixa, canalId, depois = () => {}, perguntarDeNovo =
     () => {
       caixa.innerHTML = moldura(3, `<h3>Quanto tempo costumam ter os vídeos?</h3>
         <p class="sub">É o tamanho que o Claude mira no roteiro. Dá para mudar em cada vídeo, no Roteiro.</p>` +
-        cartoes(MINUTOS.map((m) => [String(m), "⏱", `${m} minutos`, ""]), "minutos"));
+        cartoes(MINUTOS.map((m) => [String(m), "", `${m} minutos`, ""]), "minutos"));
       ligarVoltar(3);
       // o clique mostra "Salvando…" no próprio cartão e o erro em aviso: antes o await ficava calado e a tela
       // parecia travada no fim do passo a passo
@@ -1376,14 +1376,14 @@ async function formProducao(caixa, canalId, depois = () => {}, perguntarDeNovo =
         if (salvando) return;
         salvando = true;
         const cartao = caixa.querySelector(`.opcao[data-v="${escolha.minutos}"]`);
-        if (cartao) { cartao.classList.add("marcada"); cartao.querySelector(".ic").textContent = "⏳"; }
+        if (cartao) { cartao.classList.add("marcada"); cartao.querySelector(".ic").textContent = "…"; }
         try {
           await api(`/api/producao/${encodeURIComponent(canalId)}`, { method: "POST", body: { ...p, ...escolha } });
           p = await api(`/api/producao/${encodeURIComponent(canalId)}`);
           aviso(`${p.canal} configurado.`); resumo(); depois();
         } catch (erro) {
           salvando = false;
-          if (cartao) cartao.querySelector(".ic").textContent = "⏱";
+          if (cartao) cartao.querySelector(".ic").textContent = "";
           aviso(porque(erro));
         }
       });
@@ -1421,12 +1421,12 @@ async function formProducao(caixa, canalId, depois = () => {}, perguntarDeNovo =
     caixa.innerHTML = `<div class="pergunta-caixa producao-pronta"><div class="producao-pronta-cab"><h3>Configuração de ${esc(p.canal)}</h3>
         <button class="botao sec" id="pc-editar">Editar</button></div>
       <div class="producao-respostas">
-        <div><span class="ic">🌐</span><small>Língua</small><b>${esc(p.lingua)}</b></div>
-        <div><span class="ic">🎙</span><small>Voz</small><b>${esc(p.voz || p.perfil || "sem voz")}</b></div>
-        <div><span class="ic">✍️</span><small>Agente de roteiro</small><b>${esc(agenteDe(p.projeto_roteiro_id))}</b>
+        <div><span class="ic"></span><small>Língua</small><b>${esc(p.lingua)}</b></div>
+        <div><span class="ic"></span><small>Voz</small><b>${esc(p.voz || p.perfil || "sem voz")}</b></div>
+        <div><span class="ic"></span><small>Agente de roteiro</small><b>${esc(agenteDe(p.projeto_roteiro_id))}</b>
           <button class="link-editar" id="pc-editar-agente" style="margin:4px 0 0">${p.projeto_roteiro_id ? "editar o agente" : "criar um agente"}</button></div>
-        <div><span class="ic">⏱</span><small>Tempo dos vídeos</small><b>${esc(p.minutos)} minutos</b></div>
-        <div><span class="ic">🖼</span><small>Quem gera as imagens de IA</small>
+        <div><span class="ic"></span><small>Tempo dos vídeos</small><b>${esc(p.minutos)} minutos</b></div>
+        <div><span class="ic"></span><small>Quem gera as imagens de IA</small>
           <select id="pc-imagens" class="pc-imagens">${Object.entries(p.imagens_quem || { api: "Chave de API" })
             .map(([v, nome]) => `<option value="${esc(v)}" ${((p.imagens || {}).quem || "api") === v ? "selected" : ""}>${esc(nome)}</option>`).join("")}</select>
           <small id="pc-imagens-sub" class="pc-imagens-sub">${esc(textoDaAssinatura(p))}</small></div></div></div>`;
@@ -1520,7 +1520,7 @@ async function thumbnail() {
         <input id="th-link" placeholder="Link do vídeo de referência (a thumbnail dele é a base)" value="${esc(preset.link || "")}">
         <input id="th-titulo" placeholder="Título do seu vídeo" value="${esc(preset.titulo || "")}">
         <div id="th-ref"></div>
-        <div class="linha"><button class="botao" id="th-criar">✨ Criar o prompt com o Claude</button>
+        <div class="linha"><button class="botao" id="th-criar">Criar o prompt com o Claude</button>
           <button class="botao sec" id="th-padrao" data-dica="Guarda o estilo e a IA de imagem escolhidos como o padrão deste canal.">Salvar como padrão do canal</button></div>
       </div>
       <div class="passo" id="th-resultado" hidden><h2><span class="n">2</span>Mandar para a IA de imagem</h2>
@@ -1642,11 +1642,11 @@ async function painelCanal(caixa, canalId) {
   try { d = await api(url); } catch (e) { caixa.innerHTML = `<div class="vazio">${esc(e.message)}</div>`; return; }
   const desenhar = () => {
     caixa.innerHTML = `<div class="cp-main">
-      <section class="cp-bloco"><h3>🎬 Prontos para postar <small class="sub">${d.para_postar.length}</small></h3>
+      <section class="cp-bloco"><h3>Prontos para postar <small class="sub">${d.para_postar.length}</small></h3>
         <p class="sub">Os vídeos que a fábrica já entregou para este canal e ainda não foram publicados.</p>
         <div class="cp-postar">${d.para_postar.map((v, i) => `<div class="cp-post">
             <div class="cp-post-midia">
-              <button class="cp-post-capa" data-assistir-p="${i}" title="Assistir o vídeo">${v.capa ? `<img src="${esc(v.capa)}" alt="">` : '<div class="prod-sem-capa">🎬</div>'}<span class="dur">${minSeg(v.duracao)}</span><span class="play">▶</span></button>
+              <button class="cp-post-capa" data-assistir-p="${i}" title="Assistir o vídeo">${v.capa ? `<img src="${esc(v.capa)}" alt="">` : '<div class="prod-sem-capa"></div>'}<span class="dur">${minSeg(v.duracao)}</span><span class="play">▶</span></button>
               ${v.shorts.map((s, k) => `<button class="cp-short" data-short-p="${i}" data-sid="${esc(s.id)}" title="${esc(s.titulo || "Short " + (k + 1))}">
                 <video src="/api/producoes/${encodeURIComponent(v.nome)}/shorts/${encodeURIComponent(s.id)}#t=1" preload="metadata" muted></video><span>▶ Short ${k + 1}</span></button>`).join("")}
             </div>
@@ -1657,7 +1657,7 @@ async function painelCanal(caixa, canalId) {
               <div class="cp-itens">${[["video", "Vídeo"], ...v.shorts.map((s, k) => [s.id, `Short ${k + 1}`])].map(([id, nomeItem]) => {
                 const feito = v.postados.includes(id);
                 return `<div class="cp-item ${feito ? "feito" : ""}"><span>${feito ? "✓ " : ""}${nomeItem}</span>
-                  <button class="mini-bt" data-postar="${i}" data-item="${id}">📤 Postar</button>
+                  <button class="mini-bt" data-postar="${i}" data-item="${id}">Postar</button>
                   <button class="mini-bt" data-postei="${i}" data-item="${id}" data-feito="${feito ? 1 : 0}">${feito ? "desfazer" : "✓ Postei"}</button></div>`;
               }).join("")}</div></div>
           </div>`).join("") || '<div class="vazio">Nada esperando: todo vídeo pronto deste canal já foi publicado.</div>'}</div>
@@ -1704,8 +1704,8 @@ async function painelCanal(caixa, canalId) {
 async function fabricaDoCanal(caixa, url) {
   let f;
   try { f = await api(url + "/fabrica"); }
-  catch (e) { caixa.innerHTML = `<h3>📝 Descrição e shorts</h3><p class="sub">${esc(e.message)}</p>`; return; }
-  caixa.innerHTML = `<h3>📝 Descrição e shorts</h3>
+  catch (e) { caixa.innerHTML = `<h3>Descrição e shorts</h3><p class="sub">${esc(e.message)}</p>`; return; }
+  caixa.innerHTML = `<h3>Descrição e shorts</h3>
     <p class="sub">Fica no perfil do canal na fábrica (${esc(f.perfil)}) e vale para os próximos vídeos.</p>
     <label class="campo"><span>Texto fixo no começo da descrição (links, redes, hashtags)</span>
       <textarea id="cf-texto" rows="5" maxlength="1500" placeholder="Ex.: Inscreva-se para mais vídeos como este! #animais #natureza">${esc(f.texto_fixo)}</textarea></label>
@@ -1726,10 +1726,10 @@ function explicarAjusteTempo(ritmo, minutos) {
   const antes = minutos * ritmo.padrao, agora = minutos * (ritmo.ppm_alvo || ritmo.ppm);
   const n = (x) => Math.round(x).toLocaleString("pt-BR");
   const min = (x) => String(x).replace(".", ",");
-  notificar("⏱ Tempo do vídeo ajustado", `A voz fala ${ritmo.ppm} palavras por minuto: para ${minutos} min, o Claude vai escrever ${n(agora)} palavras.`);
+  notificar("Tempo do vídeo ajustado", `A voz fala ${ritmo.ppm} palavras por minuto: para ${minutos} min, o Claude vai escrever ${n(agora)} palavras.`);
   document.getElementById("ajuste-tempo")?.remove();
   document.body.insertAdjacentHTML("beforeend", `<div class="modal-fundo" id="ajuste-tempo"><div class="modal-tempo">
-    <div class="mt-ic">⏱</div>
+    <div class="mt-ic"></div>
     <h2>O Radar ajusta o tempo do vídeo sozinho</h2>
     <p>Cada voz fala num ritmo. Por isso o Radar <b>olha quanto tempo cada vídeo entregue ficou de verdade</b> e corrige quantas palavras pedir ao Claude na próxima vez.</p>
     ${ex.titulo ? `<div class="mt-exemplo">
@@ -1782,9 +1782,9 @@ async function rodarVigia() {
       catch (e) { if (e.status === 404) estado = { estado: "sumiu" }; else continue; }
       if (estado.estado === "rodando") continue;
       guardar("roteiros-vigiados", guardado("roteiros-vigiados", []).filter((x) => x.tarefa !== tarefa));
-      if (estado.estado === "pronto" && estado.fabrica) notificar("🚀 Roteiro pronto e na fábrica", `“${t}” virou o projeto ${estado.fabrica.projeto}. Falta só dar o ▶ Produzir.`, "#/acompanhar");
-      else if (estado.estado === "pronto") notificar("✅ Roteiro pronto", `“${t}” está pronto para você revisar${estado.erro_envio ? " (não foi para a fábrica: " + estado.erro_envio + ")" : ""}.`, "#/trabalho");
-      else if (estado.estado === "erro") notificar("⚠ O roteiro não saiu", `“${t}”: ${estado.erro}`, "#/trabalho");
+      if (estado.estado === "pronto" && estado.fabrica) notificar("Roteiro pronto e na fábrica", `“${t}” virou o projeto ${estado.fabrica.projeto}. Falta só dar o ▶ Produzir.`, "#/acompanhar");
+      else if (estado.estado === "pronto") notificar("Roteiro pronto", `“${t}” está pronto para você revisar${estado.erro_envio ? " (não foi para a fábrica: " + estado.erro_envio + ")" : ""}.`, "#/trabalho");
+      else if (estado.estado === "erro") notificar("O roteiro não saiu", `“${t}”: ${estado.erro}`, "#/trabalho");
       if (document.getElementById("painel-ideias")?.hidden === false) painel();
     }
   }
@@ -1821,8 +1821,8 @@ function anel(pct) {
 // você, produzindo, na fila, entrada, parados); à direita o vídeo escolhido com as abas Acompanhamento, Diagnóstico
 // (de onde vieram as cenas: real × IA, e o log), Arquivos e Tags e descrição. O vídeo aberto atualiza a cada 5 s, a
 // lista a cada 20 s.
-const BLOCOS_AC = [["precisa_voce", "✋ Precisa de você"], ["produzindo", "⚙️ Produzindo"], ["na_fila", "⏳ Na fila"],
-  ["entrada", "📥 Entrada"], ["parados", "⏸ Parados na fábrica"]];
+const BLOCOS_AC = [["precisa_voce", "Precisa de você"], ["produzindo", "Produzindo"], ["na_fila", "Na fila"],
+  ["entrada", "Entrada"], ["parados", "Parados na fábrica"]];
 const ESTADO_FILA = { entrada: "Na Entrada", na_fila: "Na fila", escrevendo: "Escrevendo o roteiro", sua_vez: "Esperando sua revisão",
   enviando: "Enviando para a fábrica", produzindo: "Produzindo", erro: "Parou com erro", precisa_voce: "Precisa de você", parado: "Parado" };
 
@@ -1849,7 +1849,7 @@ async function acompanhar() {
       <div class="acn-filtros"><input id="acn-busca" placeholder="Buscar título" value="${esc(A.busca)}">
         <select id="acn-canal"><option value="">Todos os canais</option>${canais.map((c) => `<option ${c === A.canal ? "selected" : ""}>${esc(c)}</option>`).join("")}</select></div>
       ${BLOCOS_AC.map(([k, nome]) => { const itens = d[k].filter(filtro); return itens.length ? `<section class="acn-bloco b-${k}"><h3>${nome}<em>${itens.length}</em></h3>${itens.map(cartao).join("")}</section>` : ""; }).join("")
-        || `<div class="ac-calmo"><div class="ac-calmo-ic">🏭</div><b>A fábrica está tranquila</b><span>Nada na fila.</span>${EU.admin ? '<button class="botao" id="acn-nova">+ Nova produção</button>' : ""}</div>`}`;
+        || `<div class="ac-calmo"><div class="ac-calmo-ic"></div><b>A fábrica está tranquila</b><span>Nada na fila.</span>${EU.admin ? '<button class="botao" id="acn-nova">+ Nova produção</button>' : ""}</div>`}`;
     raiz.querySelector("#acn-busca").oninput = (e) => { A.busca = e.target.value.toLowerCase(); desenharLista(); raiz.querySelector("#acn-busca").focus(); };
     raiz.querySelector("#acn-canal").onchange = (e) => { A.canal = e.target.value; desenharLista(); };
     raiz.querySelector("#acn-nova")?.addEventListener("click", () => novaProducao());
@@ -1887,7 +1887,7 @@ async function acompanhar() {
     if (!p) return "";
     const titulo = p.tipo === "saldo" ? `Parado: acabou o saldo da ${esc(p.servico)}` : p.tipo === "parou" ? "Parado na fábrica" : "Tentando de novo sem sair do lugar";
     const dica = p.tipo === "saldo" ? "Recarregue e clique em Retomar: ele segue de onde parou, sem esperar a próxima tentativa." : "Resolva o motivo, se for o caso, e clique em Retomar: ele segue de onde parou.";
-    return `<div class="chamada aviso acn-parada"><div><b>⏸ ${titulo}</b>${p.tentativas ? ` · tentativa ${p.tentativas}` : ""}
+    return `<div class="chamada aviso acn-parada"><div><b>${titulo}</b>${p.tentativas ? ` · tentativa ${p.tentativas}` : ""}
         <small>${esc(p.motivo)}</small><small>${dica}</small></div>${acao("↻ Retomar", "", 'id="acn-retomar"')}</div>`;
   };
 
@@ -1899,7 +1899,7 @@ async function acompanhar() {
     if (!x.projeto) {
       caixa.innerHTML = `<header class="acn-cab"><span class="acn-estado e-${esc(x.estado)}">${esc(ESTADO_FILA[x.estado])}</span>
           <h2>${esc(x.titulo)}</h2><small>${esc(x.canal || "sem canal")} · pedido ${esc(ha(x.criado))}</small></header>
-        ${x.erro ? `<div class="chamada aviso">⚠ ${esc(x.erro)}</div>` : ""}
+        ${x.erro ? `<div class="chamada aviso">${esc(x.erro)}</div>` : ""}
         <p class="acn-explica">${{ entrada: "Guardado na Entrada: não começa sozinho e não gasta nada.", na_fila: "Esperando a vez: começa quando a fábrica tiver vaga.",
           escrevendo: `O Claude está escrevendo o roteiro. ${esc(x.passo || "")}`, sua_vez: "O roteiro está pronto. Leia, ajuste se quiser e aprove para ir para a fábrica.",
           enviando: "Criando o projeto na fábrica…", erro: "Corrija o que o aviso diz e tente de novo." }[x.estado] || ""}</p>
@@ -1939,7 +1939,7 @@ async function acompanhar() {
         <small>${esc(x.canal || "")}${x.criado ? ` · pedido ${esc(ha(x.criado))}` : ""}${et.total ? ` · etapa ${et.passo} de ${et.total}` : ""}</small>
         <small class="acn-msg">› ${esc(et.mensagem || x.mensagem || "")}</small></div></header>
       ${v.pago_pendente ? `<div class="chamada aviso">Os modelos grátis acabaram: a fábrica espera você liberar o modelo pago. ${acao("Liberar o pago hoje", "", 'id="acn-pago"')}</div>` : ""}
-      ${x.erro ? `<div class="chamada aviso">⚠ ${esc(x.erro)}</div>` : ""}
+      ${x.erro ? `<div class="chamada aviso">${esc(x.erro)}</div>` : ""}
       ${paradaHtml(v.parada)}
       <nav class="acn-abas">${[["acompanhamento", "Acompanhamento"], ["diagnostico", "Diagnóstico"], ["arquivos", "Arquivos"], ["tags", "Tags e descrição"]]
         .map(([id, n]) => `<button data-aba="${id}" class="${A.aba === id ? "ativa" : ""}">${n}</button>`).join("")}</nav>
@@ -1990,7 +1990,7 @@ async function acompanhar() {
       caixa.innerHTML = v.tem_final ? `<div class="acn-arquivos">
           <button class="botao" id="acn-assistir">▶ Assistir o vídeo</button>
           ${v.legenda ? `<a class="botao contorno" href="/api/acompanhar/${nome}/legenda">Baixar a legenda (.srt)</a>` : ""}
-          <button class="botao contorno" id="acn-pasta">📁 Abrir pasta</button></div>
+          <button class="botao contorno" id="acn-pasta">Abrir pasta</button></div>
           <p class="acn-explica">Os shorts, as thumbnails e o custo ficam em <a href="#/resultados">Resultados</a>.</p>`
         : '<p class="acn-explica">O vídeo final e a legenda aparecem aqui quando a produção terminar.</p>';
       caixa.querySelector("#acn-assistir")?.addEventListener("click", () => window.open(`/api/producoes/${nome}/video`, "_blank"));
@@ -2072,9 +2072,9 @@ async function vigiarFila() {
     for (const i of itens) {
       if (vistos[i.id] && vistos[i.id] !== i.estado) {
         const t = i.pedido.titulo;
-        if (i.estado === "entregue") notificar("🎬 Vídeo pronto", `“${t}” foi entregue pela fábrica.`, "#/resultados");
-        if (i.estado === "sua_vez") notificar("✍️ Roteiro para revisar", `“${t}” espera sua aprovação no Acompanhar.`, "#/acompanhar");
-        if (i.estado === "erro") notificar("⚠ A produção parou", `“${t}”: ${i.erro}`, "#/acompanhar");
+        if (i.estado === "entregue") notificar("Vídeo pronto", `“${t}” foi entregue pela fábrica.`, "#/resultados");
+        if (i.estado === "sua_vez") notificar("Roteiro para revisar", `“${t}” espera sua aprovação no Acompanhar.`, "#/acompanhar");
+        if (i.estado === "erro") notificar("A produção parou", `“${t}”: ${i.erro}`, "#/acompanhar");
       }
       vistos[i.id] = i.estado;
     }
@@ -2112,7 +2112,7 @@ async function resultados() {
   const caixa = document.getElementById("res-lista");
 
   const linha = (p) => `<article class="res-linha" draggable="true" data-nome="${esc(p.nome)}">
-      <div class="res-capa">${p.capa ? `<img src="${esc(p.capa)}" alt="" draggable="false">` : '<div class="prod-sem-capa">🎬</div>'}<span class="dur">${minSeg(p.duracao)}</span>
+      <div class="res-capa">${p.capa ? `<img src="${esc(p.capa)}" alt="" draggable="false">` : '<div class="prod-sem-capa"></div>'}<span class="dur">${minSeg(p.duracao)}</span>
         <button class="res-play" data-assistir="${esc(p.nome)}" title="Assistir">▶</button></div>
       <div class="res-info"><b>${esc(p.titulo)}</b>
         <small>${esc(p.canal)} · ${p.criado ? new Date(p.criado).toLocaleDateString("pt-BR") : ""} · ${minSeg(p.duracao)} · ${p.cenas} cenas</small>
@@ -2123,7 +2123,7 @@ async function resultados() {
         ${p.shorts && p.shorts.length ? `<div class="res-shorts"><span>Shorts</span>${p.shorts.map((s, i) => `<button data-short="${esc(p.nome)}" data-sid="${esc(s.id)}" title="${esc(s.titulo || "")}">▶ ${i + 1}</button>`).join("")}</div>` : ""}
       </div>
       <div class="res-direita"><div class="res-custo">${CUSTOS_VISTOS[p.nome] ? CUSTOS_VISTOS[p.nome].html : '<span class="sub">calculando…</span>'}</div>
-        <div class="video-acoes"><button class="botao sec" data-assistir="${esc(p.nome)}">▶ Assistir</button><button class="botao sec" data-pasta="${esc(p.nome)}">📁 Pasta</button></div></div>
+        <div class="video-acoes"><button class="botao sec" data-assistir="${esc(p.nome)}">▶ Assistir</button><button class="botao sec" data-pasta="${esc(p.nome)}">Pasta</button></div></div>
     </article>`;
   // "Todos" é uma lista só, os mais recentes primeiro: em blocos por canal, o primeiro canal enchia a tela inteira
   // e parecia que só ele tinha vídeos (pedido do usuário em 2026-11-03)
@@ -2167,7 +2167,7 @@ async function resultados() {
   if (ids.length) api("/api/resultados/views", { method: "POST", body: { ids } }).then(({ videos }) => {
     caixa.querySelectorAll("[data-views]").forEach((el) => {
       const v = videos[el.dataset.views];
-      el.textContent = v ? `👁 ${num(v.views)} views${v.curtidas != null ? ` · 👍 ${num(v.curtidas)}` : ""}` : "";
+      el.textContent = v ? `${num(v.views)} views${v.curtidas != null ? ` · ${num(v.curtidas)}` : ""}` : "";
     });
   }).catch(() => caixa.querySelectorAll("[data-views]").forEach((el) => (el.textContent = "")));
   // o custo de cada vídeo e os totais
@@ -2214,10 +2214,10 @@ function assistir(nome, tituloVideo, short = "") {
 // ---------------------------------------------------------------- o Assistente: a janela de IA à direita
 
 const ATALHOS = [
-  ["🌍 Regionalizar", (t) => `Adapte este título para o público dos EUA, do Reino Unido e da Austrália (uma versão para cada), sem perder a ideia: "${t}"`],
-  ["🔥 Mais chamativo", (t) => `Me dê 5 versões mais chamativas deste título, sem enganar quem clica: "${t}"`],
-  ["🇺🇸 Para o inglês", (t) => `Reescreva este título em inglês, do jeito que um canal americano grande escreveria: "${t}"`],
-  ["📝 Descrição", (t) => `Escreva a descrição de YouTube (3 parágrafos curtos e 5 hashtags) para o vídeo "${t}"`],
+  ["Regionalizar", (t) => `Adapte este título para o público dos EUA, do Reino Unido e da Austrália (uma versão para cada), sem perder a ideia: "${t}"`],
+  ["Mais chamativo", (t) => `Me dê 5 versões mais chamativas deste título, sem enganar quem clica: "${t}"`],
+  ["Para o inglês", (t) => `Reescreva este título em inglês, do jeito que um canal americano grande escreveria: "${t}"`],
+  ["Descrição", (t) => `Escreva a descrição de YouTube (3 parágrafos curtos e 5 hashtags) para o vídeo "${t}"`],
 ];
 
 // os títulos de uma resposta (linhas numeradas ou com marcador), para o botão "usar"
@@ -2233,7 +2233,7 @@ const titulosDaResposta = (texto) => {
 async function montarAssistente(caixa, obterTitulo = () => "", opcoes = {}) {
   const canais = await meusCanais();
   let canal = guardado("assistente-canal", "");
-  caixa.innerHTML = `<div class="assist-cab"><b>💬 Assistente</b>
+  caixa.innerHTML = `<div class="assist-cab"><b>Assistente</b>
       <select id="as-canal" data-dica="O canal do Assistente é à parte: ele usa os dados deste canal para responder."><option value="">Sem canal</option>${canais.map((c) => `<option value="${esc(c.id)}" ${c.id === canal ? "selected" : ""}>${esc(c.titulo)}</option>`).join("")}</select>
       <button class="botao sec" id="as-limpar" data-dica="Começar uma conversa nova">↺</button></div>
     <div class="assist-msgs" id="as-msgs"></div>
@@ -2262,7 +2262,7 @@ async function montarAssistente(caixa, obterTitulo = () => "", opcoes = {}) {
     try {
       const r = await api("/api/assistente", { method: "POST", body: { canal_id: canal, mensagens: conversa } });
       conversa.push({ papel: "assistente", texto: r.resposta });
-    } catch (e) { conversa.push({ papel: "assistente", texto: "⚠ " + e.message }); }
+    } catch (e) { conversa.push({ papel: "assistente", texto: "" + e.message }); }
     guardar(chave(), conversa.slice(-30)); $("as-enviar").disabled = false; desenhar();
   };
   $("as-enviar").onclick = enviar;
@@ -2299,7 +2299,7 @@ const PADRAO_IDEIAS_CANAL = { lingua: "ptenes", nota_min: "3", publicado_dias: "
 // as ideias de um canal da pessoa, com filtros e o aleatório (na aba Ideias e na página do canal)
 async function componenteIdeias(caixa, canalId) {
   const f = recorte(PADRAO_IDEIAS_CANAL);
-  caixa.innerHTML = `<div class="grande-acao"><button class="botao vermelho" id="ic-youtube" data-dica="Procura no YouTube agora vídeos que estão estourando no assunto que você ensinou ao algoritmo (🎯, treino e canais inscritos). Cada clique busca de um jeito diferente. Gasta uns 250 da cota grátis.">🔄 Buscar ideias novas</button>
+  caixa.innerHTML = `<div class="grande-acao"><button class="botao vermelho" id="ic-youtube" data-dica="Procura no YouTube agora vídeos que estão estourando no assunto que você ensinou ao algoritmo (alvos, treino e canais inscritos). Cada clique busca de um jeito diferente. Gasta uns 250 da cota grátis.">Buscar ideias novas</button>
     ${selects([
       ["lingua", "", [["ptenes", "Português, inglês e espanhol"], ["pt", "Só português"], ["en", "Só inglês"], ["es", "Só espanhol"], ["todas", "Todas as línguas"]]],
       ["nota_min", "", [[3, "3x o normal ou mais"], [5, "5x ou mais"], [10, "10x ou mais"], [20, "20x ou mais"]]],
@@ -2325,14 +2325,14 @@ async function componenteIdeias(caixa, canalId) {
   };
   ligarSelects(caixa, f, PADRAO_IDEIAS_CANAL, () => carregar());
   caixa.querySelector("#ic-mais").onclick = () => carregar(true);
-  // 🔄 busca ideias novas no YouTube pelo que a pessoa ensinou ao algoritmo; as novas aparecem em cima e entram na lista
+  // busca ideias novas no YouTube pelo que a pessoa ensinou ao algoritmo; as novas aparecem em cima e entram na lista
   caixa.querySelector("#ic-youtube").onclick = (e) => carregando(e.currentTarget, "Procurando ideias novas no YouTube…", async () => {
     const r = await api(`/api/perfil/canal/${encodeURIComponent(canalId)}/ideias`, { method: "POST", body: { tentativa } });
     tentativa = r.proxima;
     const sai = caixa.querySelector("#ic-do-youtube");
-    sai.innerHTML = `<div class="bloco novas-ideias"><h3>🔄 Ideias novas de agora</h3>
+    sai.innerHTML = `<div class="bloco novas-ideias"><h3>Ideias novas de agora</h3>
       <p class="sub">Procurei <b>${esc(r.buscas.join(", "))}</b> (${esc(r.jeito)}): ${r.videos.length} ${r.videos.length === 1 ? "vídeo" : "vídeos"} acima do normal do canal. Clique de novo para buscar de outro jeito.</p>
-      <div class="grade-videos">${r.videos.map((v) => cartaoVideo(v)).join("") || '<span class="sub">Nada novo desta vez. Marque mais 🎯 para o algoritmo entender melhor.</span>'}</div></div>`;
+      <div class="grade-videos">${r.videos.map((v) => cartaoVideo(v)).join("") || '<span class="sub">Nada novo desta vez. Marque mais para o algoritmo entender melhor.</span>'}</div></div>`;
     ligarRoteiro(sai);
     carregar();
   });
@@ -2429,17 +2429,17 @@ function faixaPassos(atual) {
 // ---------------------------------------------------------------- Início
 
 const CAMINHO = [
-  ["🔎", "Ache o nicho", "Alerta, Explorar e Procurar"], ["📈", "Veja o que estourou", "Os vídeos acima do normal"],
-  ["💡", "Salve a ideia", "No painel da direita"], ["🧩", "Confira na extensão", "Em que país ninguém fez?"],
-  ["✍️", "Escreva o roteiro", "O Claude escreve"], ["🏭", "Mande para a fábrica", "Vira vídeo"],
+  ["", "Ache o nicho", "Alerta, Explorar e Procurar"], ["", "Veja o que estourou", "Os vídeos acima do normal"],
+  ["", "Salve a ideia", "No painel da direita"], ["", "Confira na extensão", "Em que país ninguém fez?"],
+  ["", "Escreva o roteiro", "O Claude escreve"], ["", "Mande para a fábrica", "Vira vídeo"],
 ];
 const MAPA = [
-  ["canais", "📺", "Meus canais", "Seus canais com os números e as métricas do YouTube Studio."],
-  ["trabalho", "✍️", "Roteiro", "O Claude escreve o roteiro a partir de um vídeo de referência (transcrição e thumbnail) e você manda para a fábrica."],
-  ["explorar", "🔀", "Explorar", "Vídeos que estouraram, sorteados, com filtros de língua, nicho, nota e data."],
-  ["procurar", "🔎", "Procurar nicho", "Escreva um assunto e ache os canais dele, na base ou no YouTube na hora."],
-  ["ideias", "📈", "Vídeos que estouraram", "A lista completa dos vídeos que fizeram muitas vezes o normal do próprio canal."],
-  ["extensao", "🧩", "Extensão", "A nota de cada vídeo e o 🌍 Oportunidade por país, dentro do próprio YouTube."],
+  ["canais", "", "Meus canais", "Seus canais com os números e as métricas do YouTube Studio."],
+  ["trabalho", "", "Roteiro", "O Claude escreve o roteiro a partir de um vídeo de referência (transcrição e thumbnail) e você manda para a fábrica."],
+  ["explorar", "", "Explorar", "Vídeos que estouraram, sorteados, com filtros de língua, nicho, nota e data."],
+  ["procurar", "", "Procurar nicho", "Escreva um assunto e ache os canais dele, na base ou no YouTube na hora."],
+  ["ideias", "", "Vídeos que estouraram", "A lista completa dos vídeos que fizeram muitas vezes o normal do próprio canal."],
+  ["extensao", "", "Extensão", "A nota de cada vídeo e a Oportunidade por país, dentro do próprio YouTube."],
 ];
 
 async function inicio() {
@@ -2522,14 +2522,14 @@ async function canais(acao) {
   tela.innerHTML = titulo("Canais", "Seus canais e a produção de cada um: a língua, a voz e o agente de roteiro.") + `
     ${ok ? '<div class="chamada"><span class="texto"><b>YouTube Studio conectado.</b> Escolha o canal para ver as métricas.</span></div>' : ""}
     <div class="dois-grandes">
-      <button class="grande-escolha ${acao === "novo" ? "" : "ativa"}" id="op-trabalhar"><span class="ic">📺</span><b>Ver um canal</b><small>Os números e as métricas do Studio</small></button>
-      <button class="grande-escolha ${acao === "novo" ? "ativa" : ""}" id="op-adicionar"><span class="ic">➕</span><b>Adicionar canal</b><small>Pelo Google ou só pelo @</small></button>
+      <button class="grande-escolha ${acao === "novo" ? "" : "ativa"}" id="op-trabalhar"><span class="ic"></span><b>Ver um canal</b><small>Os números e as métricas do Studio</small></button>
+      <button class="grande-escolha ${acao === "novo" ? "ativa" : ""}" id="op-adicionar"><span class="ic"></span><b>Adicionar canal</b><small>Pelo Google ou só pelo @</small></button>
     </div>
     <div id="op-trabalhar-caixa" ${acao === "novo" ? "hidden" : ""}>
       <div class="tiles">${p.canais.map((c) => `<a class="tile" href="#/canal/${esc(c.id)}">
         <img src="${esc(c.foto)}" alt="" referrerpolicy="no-referrer">
         <b>${esc(c.titulo)}</b><small>${num(c.inscritos)} inscritos · ${num(c.normal_longos)} por vídeo</small>
-        <span class="tile-etapas"><i class="${c.studio ? "ok" : ""}">📊 ${c.studio ? "Studio" : "sem Studio"}</i></span>
+        <span class="tile-etapas"><i class="${c.studio ? "ok" : ""}">${c.studio ? "Studio" : "sem Studio"}</i></span>
         <button class="tirar-canal" data-canal="${esc(c.id)}" data-nome="${esc(c.titulo)}" title="Tirar este canal do Radar">×</button></a>`).join("")
         || '<div class="vazio">Nenhum canal ainda. Clique em <b>Adicionar canal</b>.</div>'}</div>
       <div class="bloco" style="margin-top:14px"><h3>Conexões com o YouTube Studio</h3><div id="conexoes-studio"></div></div></div>
@@ -2569,7 +2569,7 @@ async function canais(acao) {
 // ---------------------------------------------------------------- a página do canal: ideias, treino, radar e métricas
 
 // as ideias e o treino do algoritmo saíram em 2026-10-14 (pedido do usuário: a cota do YouTube fica só para nichos)
-const ABAS_CANAL = [["metricas", "📊 Métricas"]];
+const ABAS_CANAL = [["metricas", "Métricas"]];
 
 async function canal(id, aba) {
   const [d, est] = await Promise.all([api(`/api/perfil/canal/${encodeURIComponent(id)}`),
@@ -2605,8 +2605,8 @@ async function canal(id, aba) {
   const corpo = document.getElementById("aba-corpo");
   if (aba === "ideias") {
     corpo.innerHTML = (est && est.feito
-      ? `<div class="chamada"><span class="texto">🎯 <b>Seguindo o treino</b> de ${new Date(est.quando).toLocaleDateString("pt-BR")} (${est.escolhidos} vídeos escolhidos). Salve as boas no 💡. Para saber em que país ninguém fez ainda, use o 🌍 da extensão no YouTube.</span></div>`
-      : `<div class="chamada aviso"><span class="texto">⚠ <b>Este canal ainda não foi treinado.</b> As ideias seguem só os títulos do canal e podem vir misturadas.</span><a class="botao vermelho" href="#/canal/${esc(id)}/treino">Treinar agora</a></div>`) +
+      ? `<div class="chamada"><span class="texto"><b>Seguindo o treino</b> de ${new Date(est.quando).toLocaleDateString("pt-BR")} (${est.escolhidos} vídeos escolhidos). Salve as boas nas ideias. Para saber em que país ninguém fez ainda, use o da extensão no YouTube.</span></div>`
+      : `<div class="chamada aviso"><span class="texto"><b>Este canal ainda não foi treinado.</b> As ideias seguem só os títulos do canal e podem vir misturadas.</span><a class="botao vermelho" href="#/canal/${esc(id)}/treino">Treinar agora</a></div>`) +
       '<div id="ideias-corpo"></div>';
     componenteIdeias(document.getElementById("ideias-corpo"), id);
   } else if (aba === "treino") {
@@ -2658,10 +2658,10 @@ function ideiasDoCanal(caixa, c) {
 function horariosDoCanal(caixa, h) {
   if (!caixa) return;
   if (!h) { caixa.remove(); return; }
-  const cabeca = `<h3>🕒 Melhor horário para postar</h3>
+  const cabeca = `<h3>Melhor horário para postar</h3>
     <p class="sub">Das curvas de views por hora deste canal, somando ${num(h.horas)} ${h.horas === 1 ? "hora" : "horas"} de curva de ${num(h.videos)} ${h.videos === 1 ? "vídeo" : "vídeos"}. As primeiras ${h.ignorado_h} h de cada vídeo ficam de fora: o pico de estreia diz a hora em que você postou, não a hora em que o público assiste.</p>`;
   if (!h.suficiente) {
-    caixa.innerHTML = `${cabeca}<div class="chamada aviso"><span class="texto">⚠ <b>Ainda não dá para dizer.</b>
+    caixa.innerHTML = `${cabeca}<div class="chamada aviso"><span class="texto"><b>Ainda não dá para dizer.</b>
       O Radar precisa de ${h.minimo.videos} vídeos e ${num(h.minimo.horas)} horas de curva deste canal; tem ${num(h.videos)} e ${num(h.horas)}.
       Enquanto não tiver, não aparece horário nenhum aqui — número inventado é pior que número nenhum.</span></div>`;
     return;
@@ -2717,7 +2717,7 @@ async function sugestoesDoCanal(caixa, c) {
 function telaTreino(caixa, canalInfo, est) {
   caixa.innerHTML = `<div class="explica">
       <div><b>O que é:</b> você ensina ao Radar o tipo de vídeo que <b>${esc(canalInfo.titulo)}</b> faz, escolhendo vídeos de exemplo.</div>
-      <div><b>Para que serve:</b> depois do treino, a aba <b>Ideias</b> só mostra vídeos desse tipo, e o selo 🎯 da extensão também segue o treino.</div>
+      <div><b>Para que serve:</b> depois do treino, a aba <b>Ideias</b> só mostra vídeos desse tipo, e o selo da extensão também segue o treino.</div>
       <div><b>Quanto leva:</b> uns 2 minutos. Faça uma vez; refaça quando o canal mudar de rumo.</div></div><div id="treino-corpo"></div>`;
   const corpo = caixa.querySelector("#treino-corpo");
   const comecar = () => assistenteTreino(corpo, canalInfo, () => { location.hash = `#/canal/${canalInfo.id}/ideias`; });
@@ -2735,10 +2735,10 @@ async function telaRadar(caixa, canalInfo) {
   const meus = projetos.filter((p) => p.canal_id === canalInfo.id);
   const atual = meus[0] || null;
   caixa.innerHTML = `<div class="explica">
-      <div><b>O que é:</b> os países e as línguas onde o 📡 de cada vídeo vai conferir se a ideia já foi feita.</div>
+      <div><b>O que é:</b> os países e as línguas onde o de cada vídeo vai conferir se a ideia já foi feita.</div>
       <div><b>Como procura:</b> o <b>título exato</b> do vídeo, <b>sem nenhum número</b>. Na mesma língua vai o título igual; em outra língua, a tradução fiel dele.</div>
       <div><b>Custo:</b> uns 101 da cota grátis do YouTube por país conferido. O resultado fica guardado 7 dias.</div></div>
-    <div class="passo"><h2><span class="n">📡</span>${atual ? "O radar deste canal" : "Criar o radar deste canal"}</h2>
+    <div class="passo"><h2>${atual ? "O radar deste canal" : "Criar o radar deste canal"}</h2>
       <input id="rp-nome" placeholder="Nome do radar" value="${esc(atual ? atual.nome : "Radar do " + canalInfo.titulo)}">
       <p class="sub" style="margin:0">Marque os países. Cada um usa a língua ao lado (troque se quiser).</p>
       <div class="paises">${paises.map((p) => {
@@ -2751,7 +2751,7 @@ async function telaRadar(caixa, canalInfo) {
     const escolhidos = [...caixa.querySelectorAll(".pais input:checked")].map((ck) => ({ codigo: ck.value, lingua: caixa.querySelector(`select[data-lingua="${ck.value}"]`).value }));
     try {
       await api("/api/radar-paises", { method: "POST", body: { id: atual ? atual.id : null, nome: caixa.querySelector("#rp-nome").value, canal_id: canalInfo.id, paises: escolhidos } });
-      RADARES = null; aviso("Radar salvo. Agora use o 📡 em cima dos vídeos das Ideias."); telaRadar(caixa, canalInfo);
+      RADARES = null; aviso("Radar salvo. Agora use o em cima dos vídeos das Ideias."); telaRadar(caixa, canalInfo);
     } catch (e) { aviso(porque(e)); }
   };
 }
@@ -2797,7 +2797,7 @@ async function conferirPaises(projeto, videoId, tituloVideo) {
   }
   const caixa = modal.querySelector(".modal");
   modal.hidden = false;
-  const cab = (nome) => `<div class="painel-cab"><b>🌍 Oportunidade por país</b><button class="botao sec fechar-modal">×</button></div>
+  const cab = (nome) => `<div class="painel-cab"><b>Oportunidade por país</b><button class="botao sec fechar-modal">×</button></div>
     <p class="sub radar-pergunta">${esc(nome)} · onde este vídeo ainda vale a pena ser feito</p>`;
   caixa.innerHTML = cab(projeto.nome) + `<div class="placar">${(projeto.paises.length ? projeto.paises : Array.from({ length: 8 }, () => ({ codigo: "un", nome: "Procurando…", lingua: "" })))
     .map((p) => linhaPlacar(p, true)).join("")}</div>
@@ -3743,12 +3743,12 @@ async function novaProducao(preset = {}) {
 
 // ---------------------------------------------------------------- painel da direita: ideias salvas
 
-// ---------------------------------------------------------------- 🎯 e "inscrever no algoritmo": a pessoa ensina o algoritmo
-// O 🎯 é uma curtida para o algoritmo de um canal dela ("quero ideias assim"); inscrever um canal faz o mesmo com o canal
+// ---------------------------------------------------------------- e "inscrever no algoritmo": a pessoa ensina o algoritmo
+// O é uma curtida para o algoritmo de um canal dela ("quero ideias assim"); inscrever um canal faz o mesmo com o canal
 // inteiro. Quanto mais ela marca, mais as ideias daquele canal ficam parecidas com o que ela quer.
 
 let ALVOS = {};
-const DICA_ALVO = "🎯 Ensinar o algoritmo: “quero ideias assim”. Funciona como uma curtida: quanto mais você marca, melhores ficam as ideias e as buscas do seu canal.";
+const DICA_ALVO = "Ensinar o algoritmo: “quero ideias assim”. Funciona como uma curtida: quanto mais você marca, melhores ficam as ideias e as buscas do seu canal.";
 const DICA_INSCREVER = "Inscrever no algoritmo: os assuntos deste canal passam a pesar nas ideias do seu canal, e os vídeos dele que estouram aparecem primeiro.";
 async function carregarAlvos() { try { ALVOS = (await api("/api/alvos")).canais; } catch { ALVOS = {}; } }
 function canalDoContexto() { return ["ideias-canal", "treino", "canal"].includes(rotaAtual()) && CANAL_ATUAL ? CANAL_ATUAL : ""; }
@@ -3757,7 +3757,7 @@ function temAlvo(tipo, valor) {
   return c ? (ALVOS[c]?.[tipo] || []).includes(valor) : Object.values(ALVOS).some((x) => (x[tipo] || []).includes(valor));
 }
 const botaoAlvo = (_v) => "";
-const _botaoAlvoAntigo = (v) => `<button class="alvo ${temAlvo("videos", v.id) ? "ligado" : ""}" data-dica="${DICA_ALVO}" aria-label="Ensinar o algoritmo">🎯</button>`;
+const _botaoAlvoAntigo = (v) => `<button class="alvo ${temAlvo("videos", v.id) ? "ligado" : ""}" data-dica="${DICA_ALVO}" aria-label="Ensinar o algoritmo">Alvo</button>`;
 const botaoInscrever = (_c) => "";
 const _botaoInscreverAntigo = (canalId) => `<button class="inscrever ${temAlvo("canais", canalId) ? "ligado" : ""}" data-inscrever="${esc(canalId)}" data-dica="${DICA_INSCREVER}">${temAlvo("canais", canalId) ? "✓ Inscrito" : "+ Inscrever"}</button>`;
 
@@ -3800,7 +3800,7 @@ document.addEventListener("click", async (e) => {
       const r = await api("/api/alvos", { method: "POST", body: { canal_id: canal, video_id: v.dataset.video, titulo: v.dataset.titulo, ligar } });
       ALVOS[canal].videos = ligar ? [...ALVOS[canal].videos, v.dataset.video] : ALVOS[canal].videos.filter((x) => x !== v.dataset.video);
       document.querySelectorAll(`.video[data-video="${CSS.escape(v.dataset.video)}"] .alvo`).forEach((b) => b.classList.toggle("ligado", ligar));
-      aviso(ligar ? `🎯 Ensinado ao algoritmo de ${nome} (${r.alvos} ${r.alvos === 1 ? "vídeo" : "vídeos"}). Quanto mais 🎯, melhores as ideias.` : "🎯 Tirado do algoritmo.");
+      aviso(ligar ? `Ensinado ao algoritmo de ${nome} (${r.alvos} ${r.alvos === 1 ? "vídeo" : "vídeos"}). Quanto mais , melhores as ideias.` : "Tirado do algoritmo.");
     } else {
       const ref = inscrever.dataset.inscrever, ligar = !(ALVOS[canal].canais.includes(ref));
       const r = await api("/api/alvos/canal", { method: "POST", body: { canal_id: canal, ref_canal_id: ref, ligar } });
@@ -3835,33 +3835,33 @@ async function painel(abrir) {
   abas.hidden = false;
   abas.classList.toggle("com-painel", !caixa.hidden);
   abas.innerHTML = `<button class="aba-lateral ${caixa.hidden ? "" : "aberta"}" title="${caixa.hidden ? "Abrir" : "Fechar"} as ideias salvas e os vídeos feitos">
-    <span class="seta-lat">${caixa.hidden ? "‹" : "›"}</span><span class="txt">💡 Ideias e vídeos</span>
+    <span class="seta-lat">${caixa.hidden ? "‹" : "›"}</span><span class="txt">Ideias e vídeos</span>
     ${escrevendo.length ? `<span class="n girando">${escrevendo.length}</span>` : roteiros.length ? `<span class="n">${roteiros.length}</span>` : ""}</button>`;
   abas.querySelector("button").onclick = () => painel(caixa.hidden);
   const botaoIdeias = document.getElementById("bt-ideias");
-  if (botaoIdeias) botaoIdeias.innerHTML = `💡 Ideias e vídeos${escrevendo.length ? ` <span class="n girando">${escrevendo.length}</span>` : roteiros.length ? ` <span class="n">${roteiros.length}</span>` : ""}`;
+  if (botaoIdeias) botaoIdeias.innerHTML = `Ideias e vídeos${escrevendo.length ? ` <span class="n girando">${escrevendo.length}</span>` : roteiros.length ? ` <span class="n">${roteiros.length}</span>` : ""}`;
   if (caixa.hidden) return;
   const modo = PAINEL_MODO === "feitos" ? "feitos" : "ideias";
   const thumbDe = (r) => r.thumbnail_url || (idDoVideo(r.link) ? `/api/thumb/imagem/${idDoVideo(r.link)}` : "");
   const feitos = [...escrevendo.map((t) => ({ ...t, escrevendo: true })), ...roteiros];
   const cartaoFeito = (r, i) => {
     const th = r.escrevendo ? (idDoVideo(r.link) ? `/api/thumb/imagem/${idDoVideo(r.link)}` : "") : thumbDe(r);
-    const estado = r.escrevendo ? `<span class="feito-estado escrevendo">✍️ ${esc(r.passo || "Escrevendo…")}</span>`
-      : r.fabrica ? `<span class="feito-estado fabrica">🏭 Na fábrica</span>` : `<span class="feito-estado pronto">📝 Roteiro pronto</span>`;
+    const estado = r.escrevendo ? `<span class="feito-estado escrevendo">${esc(r.passo || "Escrevendo…")}</span>`
+      : r.fabrica ? `<span class="feito-estado fabrica">Na fábrica</span>` : `<span class="feito-estado pronto">Roteiro pronto</span>`;
     return `<div class="feito" data-i="${i}">
-      <div class="feito-capa">${th ? `<img src="${esc(th)}" alt="" loading="lazy">` : '<div class="prod-sem-capa">🎬</div>'}${estado}</div>
-      <span class="feito-canal${r.canal_nome ? "" : " sem"}">📺 ${esc(r.canal_nome || "Canal não informado")}</span>
+      <div class="feito-capa">${th ? `<img src="${esc(th)}" alt="" loading="lazy">` : '<div class="prod-sem-capa"></div>'}${estado}</div>
+      <span class="feito-canal${r.canal_nome ? "" : " sem"}">${esc(r.canal_nome || "Canal não informado")}</span>
       <b class="feito-titulo">${esc(r.titulo)}</b>
       ${r.link ? `<div class="feito-link"><a href="${esc(r.link)}" target="_blank" rel="noopener" title="Abrir a referência no YouTube">${esc(r.link.replace(/^https?:\/\/(www\.)?/, ""))}</a></div>`
         : '<div class="feito-link sem">Sem vídeo de referência</div>'}
       <div class="feito-acoes">
-        ${r.link ? `<button class="botao sec" data-copiar-link>🔗 Copiar link</button>` : ""}
-        ${th ? `<button class="botao sec" data-copiar-thumb>🖼 Copiar thumbnail</button><a class="botao sec" href="${esc(th)}" download="thumbnail-referencia.jpg" title="Baixar a thumbnail">⬇</a>` : ""}
+        ${r.link ? `<button class="botao sec" data-copiar-link>Copiar link</button>` : ""}
+        ${th ? `<button class="botao sec" data-copiar-thumb>Copiar thumbnail</button><a class="botao sec" href="${esc(th)}" download="thumbnail-referencia.jpg" title="Baixar a thumbnail">Baixar</a>` : ""}
       </div></div>`;
   };
   caixa.innerHTML = `<div class="painel-cab"><b>${modo === "feitos" ? "Vídeos feitos" : "Ideias salvas"}</b><button class="botao sec" id="fechar-painel">×</button></div>
-    <div class="painel-modos"><button class="${modo === "ideias" ? "ativo" : ""}" data-modo="ideias">💡 Ideias salvas · ${d.total || 0}</button>
-      <button class="${modo === "feitos" ? "ativo" : ""}" data-modo="feitos">🎬 Vídeos feitos · ${feitos.length}</button></div>
+    <div class="painel-modos"><button class="${modo === "ideias" ? "ativo" : ""}" data-modo="ideias">Ideias salvas · ${d.total || 0}</button>
+      <button class="${modo === "feitos" ? "ativo" : ""}" data-modo="feitos">Vídeos feitos · ${feitos.length}</button></div>
     <div id="painel-corpo"></div>`;
   const corpo = document.getElementById("painel-corpo");
   if (modo === "feitos") {
@@ -3875,7 +3875,7 @@ async function painel(abrir) {
         const t = Object.assign(document.createElement("textarea"), { value: r.link }); document.body.appendChild(t); t.select();
         const ok = document.execCommand("copy"); t.remove(); if (!ok) return aviso("O navegador não deixou copiar."); }
       bl.textContent = "✓ Link copiado"; };
-      if (bt) bt.onclick = async () => { try { await copiarImagem(th); bt.textContent = "✓ Thumbnail copiada"; } catch { aviso("O navegador não deixou copiar. Use o ⬇ para baixar."); } };
+      if (bt) bt.onclick = async () => { try { await copiarImagem(th); bt.textContent = "✓ Thumbnail copiada"; } catch { aviso("O navegador não deixou copiar. Use o para baixar."); } };
     });
   } else {
     // todas as ideias numa lista só, sem separar por canal (pedido do usuário em 2026-10-18)
@@ -3886,7 +3886,7 @@ async function painel(abrir) {
         <small>${i.views ? num(i.views) + " views · " : ""}${esc(i.canal_origem || "")}</small>
         <div class="ideia-acoes"><a class="botao vermelho" href="#/trabalho" data-roteiro="${esc(i.video_id)}" data-titulo="${esc(i.titulo)}">Levar para o trabalho</a>
           <button class="botao sec tirar-ideia" data-id="${i.id}" title="Tirar">×</button></div></div></div>`).join("")
-      : '<p class="sub">Nenhuma ideia salva. Use o botão <b>💡 Salvar ideia</b> nos vídeos.</p>'}</div>`;
+      : '<p class="sub">Nenhuma ideia salva. Use o botão <b>Salvar ideia</b> nos vídeos.</p>'}</div>`;
     corpo.querySelectorAll(".tirar-ideia").forEach((b) => (b.onclick = async () => { await api(`/api/ideias-salvas/${b.dataset.id}`, { method: "DELETE" }); painel(); }));
     ligarRoteiro(corpo);
   }
@@ -3900,7 +3900,7 @@ async function painel(abrir) {
 async function salvarIdeia(videoId, tituloVideo, canalId) {
   await api("/api/ideias-salvas", { method: "POST", body: { video_id: videoId, titulo: tituloVideo, canal_id: canalId } });
   PAINEL_ABA = canalId; guardar("painel-aba", canalId); PAINEL_MODO = "ideias"; guardar("painel-modo2", "ideias");
-  aviso("Ideia salva no painel da direita 💡");
+  aviso("Ideia salva no painel da direita ");
   painel(true);
 }
 
@@ -3958,13 +3958,13 @@ async function painelThumb(caixa, obter) {
     caixa.dataset.canal = canal || "";
     const lista = dados.projetos.filter((p) => !p.canal_id || p.canal_id === canal);
     const nomeIa = (ia) => (ia === "chatgpt" ? "ChatGPT" : "Gemini");
-    caixa.innerHTML = `<h3 style="margin:0">🖼 Thumbnail</h3>
+    caixa.innerHTML = `<h3 style="margin:0">Thumbnail</h3>
       ${vid ? `<img class="thumb-ref" src="/api/thumb/imagem/${esc(vid)}" alt="">` : '<div class="thumb-vazia">Cole o link do vídeo de referência e a thumbnail dele aparece aqui.</div>'}
       <textarea id="th-pedido" rows="2" placeholder="O que você quer? Ex.: igual à referência, mas sem texto · troque o leão por um lobo">${esc(antes.pedido)}</textarea>
       <div class="linha" style="gap:6px"><select id="th-projeto"><option value="">Estilo padrão</option>${lista.map((p) => `<option value="${p.id}" ${String(p.id) === String(antes.projeto) ? "selected" : ""}>Estilo: ${esc(p.nome)}</option>`).join("")}</select>
         <select id="th-ia"><option value="gemini" ${antes.ia === "gemini" ? "selected" : ""}>Gemini</option><option value="chatgpt" ${antes.ia === "chatgpt" ? "selected" : ""}>ChatGPT</option></select>
         <a href="#" id="th-projetos" class="sub" style="flex:none">estilos</a></div>
-      <button class="botao" id="th-montar" ${vid ? "" : "disabled"}>✨ Criar o prompt com o Claude</button>
+      <button class="botao" id="th-montar" ${vid ? "" : "disabled"}>Criar o prompt com o Claude</button>
       <textarea id="th-prompt" rows="9" placeholder="O Claude escreve o prompt aqui, com o estilo do canal, o seu pedido e a referência.">${esc(antes.prompt)}</textarea>
       <div class="linha" style="gap:6px"><button class="botao vermelho" id="th-enviar">Enviar para o ${nomeIa(antes.ia)}</button>
         <button class="botao sec" id="th-copiar">Copiar prompt</button><button class="botao sec" id="th-copiar-img" ${vid ? "" : "disabled"}>Copiar a thumbnail</button></div>
@@ -3984,7 +3984,7 @@ async function painelThumb(caixa, obter) {
     // ChatGPT: abre com o prompt escrito e a thumbnail copiada para colar. Gemini: abre com o prompt copiado.
     $("th-enviar").onclick = async () => {
       const prompt = $("th-prompt").value.trim();
-      if (!prompt) return aviso("Crie o prompt primeiro (✨ Criar o prompt com o Claude).");
+      if (!prompt) return aviso("Crie o prompt primeiro (Criar o prompt com o Claude).");
       // com a extensão: a página do ChatGPT ou do Gemini abre e ela cola o prompt E a thumbnail sozinha
       if (document.documentElement.dataset.radarExtensao) {
         const janela = abrirLateral("about:blank");
@@ -4094,7 +4094,7 @@ function faixaVisoes(caixa, vs, f, aoEscolher) {
 }
 
 // as opções do select de pasta: as que existem, mais "sem pasta" para achar o que ainda não foi guardado
-const opcoesDePasta = (p) => [...p.pastas.map((x) => [x.nome, `📁 ${x.nome} (${x.canais})`]),
+const opcoesDePasta = (p) => [...p.pastas.map((x) => [x.nome, `${x.nome} (${x.canais})`]),
   ...(p.sem_pasta ? [["sem_pasta", `Sem pasta (${p.sem_pasta})`]] : [])];
 
 const PADRAO_BASE = { visao: "", busca: "", base: "", pasta: "", nicho: "", inscritos_max: "", media_min: "",
@@ -4416,22 +4416,22 @@ const PADRAO_VIDEOS = { base: "", pasta: "", busca: "", lingua: "ptenes", nicho:
 // em cima — a pilha dos que ele quer rever depois.
 //
 // A pilha vive SÓ NESTA JANELA, de propósito, como ele pediu: não vai para o servidor nem para o endereço. Fechou
-// a aba, acabou. Quem quiser guardar de verdade tem a esteira (🔖 no canto da capa) e o 💡 Salvar ideia, que já
+// a aba, acabou. Quem quiser guardar de verdade tem a esteira (no canto da capa) e o Salvar ideia, que já
 // gravam. Isto aqui é a mesa de trabalho de uma sessão de garimpo, não um arquivo.
 async function videosLista() {
   const f = recorte(PADRAO_VIDEOS);
   const [o, p] = await Promise.all([opcoes(), pastas()]);
   tela.innerHTML = titulo("Vídeos", "Todos os vídeos que fizeram muitas vezes o normal do próprio canal: o assunto já provou que dá view.") + `
     <div class="grande-acao"><button class="botao" id="mais-youtube">Buscar vídeos novos no YouTube</button>
-      <button class="botao sec" id="travar" title="Mostra 10 de cada vez, recolhe a busca e deixa você separar os que quer rever">📌 Travar 10 na tela</button></div>
-    <button class="puxar-busca" id="puxar" hidden>🔍 Abrir a busca e os filtros</button>
+      <button class="botao sec" id="travar" title="Mostra 10 de cada vez, recolhe a busca e deixa você separar os que quer rever">Travar 10 na tela</button></div>
+    <button class="puxar-busca" id="puxar" hidden>Abrir a busca e os filtros</button>
     <div class="busca-caixa" id="busca-caixa">
     <div class="procura"><input id="busca" placeholder="Procurar no título do vídeo ou do canal" value="${esc(f.busca)}"><button class="botao vermelho" id="ir">Procurar</button></div>
     <div class="filtra">${selects([
       ["base", "Todos os canais", [["salvos", "Só os que eu salvei"], ["acharam", "Só os que acharam para mim"],
         ["repescagem", "Só os que voltaram a crescer"]]],
       ...(opcoesDePasta(p).length ? [["pasta", "Todas as pastas", opcoesDePasta(p)]] : []),
-      ["modelar_estado", "Toda a esteira", [["fila", "🔖 Vou modelar"], ["feito", "✓ Já modelei"]]],
+      ["modelar_estado", "Toda a esteira", [["fila", "Vou modelar"], ["feito", "✓ Já modelei"]]],
       ["lingua", "", [["ptenes", "Português, inglês e espanhol"], ["pt", "Só português"], ["en", "Só inglês"], ["es", "Só espanhol"], ["todas", "Todas as línguas"]]],
       ["nicho", "Todos os nichos", o.nichos.map((n) => [n.valor, n.valor])],
       ["nota_min", "", [[3, "3x o normal ou mais"], [5, "5x ou mais"], [10, "10x ou mais"], [20, "20x ou mais"]]],
@@ -4469,7 +4469,7 @@ async function videosLista() {
   const pintarSeparados = () => {
     bandeja.hidden = !travado && !separados.length;
     bandeja.innerHTML = `<div class="sep-cab"><b>Separados para ver depois · ${separados.length}</b>
-        <span class="sub">Arraste um vídeo para cá, ou clique em <b>Separar</b>. Esta pilha vive só nesta janela: para guardar de verdade, use o 🔖 da capa ou o 💡 Salvar ideia.</span>
+        <span class="sub">Arraste um vídeo para cá, ou clique em <b>Separar</b>. Esta pilha vive só nesta janela: para guardar de verdade, use o da capa ou o Salvar ideia.</span>
         ${separados.length ? '<button class="botao sec" id="sep-limpar">Limpar a pilha</button>' : ""}</div>
       <div class="sep-itens">${separados.map((v) => `<div class="sep-item" data-sep="${esc(v.id)}">
         <a href="${linkVideo(esc(v.id))}" target="_blank" rel="noopener"><img src="https://i.ytimg.com/vi/${esc(v.id)}/mqdefault.jpg" alt="" loading="lazy"></a>
@@ -4561,7 +4561,7 @@ async function videosLista() {
     caixaBusca.classList.toggle("recolhida", ligar);
     document.getElementById("puxar").hidden = !ligar;
     document.getElementById("paginador").hidden = !ligar;
-    botaoTravar.textContent = ligar ? "✕ Soltar a tela" : "📌 Travar 10 na tela";
+    botaoTravar.textContent = ligar ? "✕ Soltar a tela" : "Travar 10 na tela";
     botaoTravar.classList.toggle("vermelho", ligar);
     pintarSeparados();
     carregar().then(() => {
@@ -4646,12 +4646,12 @@ async function grupos() {
 // mostrar uma lista qualquer fingindo que é para você.
 async function recomendados(caixa) {
   if (!caixa) return;
-  caixa.innerHTML = '<h3>⭐ Recomendados para os seus canais</h3><p class="sub">Procurando…</p>';
+  caixa.innerHTML = '<h3>Recomendados para os seus canais</h3><p class="sub">Procurando…</p>';
   let lista;
   try { ({ titulos: lista } = await api("/api/titulos?meus=1&nota_min=5")); }
-  catch (e) { caixa.innerHTML = `<h3>⭐ Recomendados para os seus canais</h3><p class="sub">${esc(porque(e))}</p>`; return; }
+  catch (e) { caixa.innerHTML = `<h3>Recomendados para os seus canais</h3><p class="sub">${esc(porque(e))}</p>`; return; }
   const nichos = [...new Set(lista.map((t) => t.nicho).filter(Boolean))];
-  caixa.innerHTML = `<h3>⭐ Recomendados para os seus canais</h3>
+  caixa.innerHTML = `<h3>Recomendados para os seus canais</h3>
     <p class="sub">${lista.length
       ? `Os títulos que mais estouraram ${nichos.length ? `em ${nichos.map(esc).join(", ")}` : "nos seus nichos"} — 5x o normal do canal ou mais. Não é previsão: é o que já deu certo no seu assunto.`
       : "Nenhum título ainda. Isto enche quando os seus canais (no Perfil) tiverem nicho e o Radar achar vídeos que estouraram nele."}</p>
@@ -4931,7 +4931,7 @@ async function quadroCota() {
   const pct = c.total ? Math.min(100, Math.round(c.usado / c.total * 100)) : 0;
   const botao = !EU.admin ? "" : c.garimpando
     ? `<button class="botao" disabled>Garimpando…${c.orcamento ? ` ${num(c.gasto)} de ${num(c.orcamento)}` : ""}</button>`
-    : `<button class="botao" id="gastar-tudo" ${c.livre < 110 ? "disabled" : ""} data-dica="Usa toda a cota do YouTube que sobrou hoje para achar canais novos e vídeos que estouraram. Bom de apertar antes de desligar o PC: a cota volta às 5 h e o que não for usado se perde.">⚡ Gastar tudo agora</button>`;
+    : `<button class="botao" id="gastar-tudo" ${c.livre < 110 ? "disabled" : ""} data-dica="Usa toda a cota do YouTube que sobrou hoje para achar canais novos e vídeos que estouraram. Bom de apertar antes de desligar o PC: a cota volta às 5 h e o que não for usado se perde.">Gastar tudo agora</button>`;
   // o garimpo fica rodando enquanto a fatia do dia aguentar: recomeça 10 min depois do anterior
   const fatia = c.fatia || { teto: 0, gasto: 0, resta: 0 };
   const quando = !c.garimpo_ligado ? "desligado"
@@ -4949,7 +4949,7 @@ async function quadroCota() {
   caixa.innerHTML = `<div class="quadro-cota"><b>Créditos do YouTube</b>
     <div class="barra-cota"><i style="width:${pct}%"></i></div>
     <span class="sub"><b>${num(c.livre)}</b> livres de ${num(c.total)}</span>
-    <span class="sub auto-garimpo" data-dica="O Radar fica procurando canais novos e medindo de novo os seus, recomeçando alguns minutos depois de cada rodada, até gastar a parte da cota que você deixou para ele. Só roda com o Radar ligado: com o PC desligado ele para. A cota volta às 5 h e o que sobrar se perde; por isso o Gastar tudo antes de desligar.">🕑 Garimpo automático: ${quando} <u>?</u></span>${ajuste}${botao}</div>`;
+    <span class="sub auto-garimpo" data-dica="O Radar fica procurando canais novos e medindo de novo os seus, recomeçando alguns minutos depois de cada rodada, até gastar a parte da cota que você deixou para ele. Só roda com o Radar ligado: com o PC desligado ele para. A cota volta às 5 h e o que sobrar se perde; por isso o Gastar tudo antes de desligar.">Garimpo automático: ${quando} <u>?</u></span>${ajuste}${botao}</div>`;
   const b = document.getElementById("gastar-tudo");
   if (b) b.onclick = () => janelaGastar(c);
   const liga = document.getElementById("garimpo-ligado");
@@ -4975,7 +4975,7 @@ async function mudarGarimpo(mudanca) {
 function janelaGastar(c) {
   const fundo = document.createElement("div");
   fundo.className = "modal-fundo";
-  fundo.innerHTML = `<div class="modal janela-gastar"><h2>⚡ Gastar toda a cota de hoje?</h2>
+  fundo.innerHTML = `<div class="modal janela-gastar"><h2>Gastar toda a cota de hoje?</h2>
     <p>O Radar vai usar os <b>${c.livre.toLocaleString("pt-BR")} créditos livres</b> do YouTube de hoje, de uma vez, para:</p>
     <ul><li><b>Procurar canais novos</b> nos seus nichos (cada busca gasta 100). Os que estão indo bem entram no Radar e no Alerta.</li>
       <li><b>Medir de novo</b> os canais do Radar e os salvos: views, vídeos novos e quem está em alta.</li>
@@ -5024,8 +5024,8 @@ const VELHAS = {
 // extensão (chrome.storage), então aqui entra a própria tela dela num quadro: o site.js diz o endereço no <html>
 async function meuDia() {
   const url = document.documentElement.dataset.radarDia;
-  tela.innerHTML = `<div class="cab-tela"><div><h1>Meu dia</h1><p class="sub">Os vídeos de hoje, as thumbnails e o canal de treino de cada canal. Se apaga sozinho quando vira o dia.</p></div></div>
-    ${url ? `<iframe class="meu-dia-quadro" src="${esc(url)}?embutido=1" title="Meu dia"></iframe>`
+  // a tela é a mesma da aba da extensão, inteira e sem moldura (pedido do usuário em 2026-11-14: "igual aquela de antes")
+  tela.innerHTML = `${url ? `<iframe class="meu-dia-quadro" src="${esc(url)}" title="Meu dia"></iframe>`
       : `<div class="vazio">O Meu dia mora na extensão do Radar (versão 0.48 ou mais nova).<br>Instale ou atualize a extensão e aperte F5 nesta página.</div>`}`;
 }
 
@@ -5184,12 +5184,11 @@ function aplicarCores() {
 function seletorCores() {
   const grupo = (chave, titulo) => `<b>${titulo}</b><div class="bolinhas" data-chave="${chave}"></div>
       <label>Outra cor <input type="color" data-chave="${chave}"></label>`;
-  document.body.insertAdjacentHTML("beforeend", `<div id="cores"><button id="bt-ideias" class="bt-topo" title="As ideias salvas e os vídeos mandados fazer">💡 Ideias e vídeos</button>
-    <button id="bt-chatgpt" class="bt-topo" title="Abre o ChatGPT numa janela no lado direito da tela">💬 ChatGPT</button>
+  document.body.insertAdjacentHTML("beforeend", `<div id="cores"><button id="bt-ideias" class="bt-topo" title="As ideias salvas e os vídeos mandados fazer">Ideias e vídeos</button>
     <button id="bt-nova" class="bt-topo bt-nova" title="Nova produção (Alt+N)" hidden>+ Nova produção</button>
     <button id="bt-cores" title="Cores do app"><i></i><i class="seg"></i>Cores</button>
     <div class="caixa-cores" hidden>${grupo("cor", "Cor do app")}
-      <b>Aparência</b><div class="temas"><button data-tema="claro">☀️ Claro</button><button data-tema="cinza">🌫 Cinza</button><button data-tema="escuro">🌙 Escuro</button><button data-tema="pb">◐ Preto e branco</button></div></div></div>`);
+      <b>Aparência</b><div class="temas"><button data-tema="claro">Claro</button><button data-tema="cinza">Cinza</button><button data-tema="escuro">Escuro</button><button data-tema="pb">Preto e branco</button></div></div></div>`);
   const caixa = document.querySelector("#cores .caixa-cores");
   const PADRAO = { cor: IDENTIDADE.cor, cor2: IDENTIDADE.cor2 };
   const marcar = () => {
@@ -5207,7 +5206,6 @@ function seletorCores() {
   caixa.querySelectorAll("input[type=color]").forEach((i) => (i.oninput = () => { guardar(i.dataset.chave, i.value); aplicarCores(); marcar(); }));
   caixa.querySelectorAll(".temas button").forEach((b) => (b.onclick = () => { guardar("tema", b.dataset.tema); aplicarCores(); marcar(); }));
   document.getElementById("bt-cores").onclick = (e) => { e.stopPropagation(); caixa.hidden = !caixa.hidden; marcar(); };
-  document.getElementById("bt-chatgpt").onclick = () => abrirLateral("https://chatgpt.com/");
   document.getElementById("bt-ideias").onclick = () => { const c = document.getElementById("painel-ideias"); painel(c ? c.hidden : true); };
   document.getElementById("bt-nova").onclick = () => novaProducao();
   // Alt+N abre a Nova produção (o Ctrl+N o Chrome guarda para abrir janela nova)
