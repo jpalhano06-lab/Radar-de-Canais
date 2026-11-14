@@ -57,7 +57,7 @@ chrome.runtime.onMessage.addListener((msg, _remetente, responder) => {
   if (msg && msg.tipo === "abrir") {
     chrome.tabs.create({ url: msg.url });
   }
-  if (msg && msg.tipo === "abrir-dia") abrirDia();       // os dois cliques com o botão direito no YouTube (claude.js)
+  if (msg && msg.tipo === "abrir-dia") abrirDia();       // o "Abrir em aba" do painel do YouTube e o ícone (popup)
   if (msg && msg.tipo === "dia-video") {                 // um pedido da Nova produção entra no Meu dia (content.js)
     diaNovoVideo(msg.video).then(() => responder({ ok: true }), (e) => responder({ erro: String(e) }));
     return true;
@@ -93,9 +93,9 @@ async function binario(caminho) {
 }
 
 // Alt+S (chrome://extensions/shortcuts): o content.js da aba aberta salva o canal do vídeo ou da página do canal;
-// Alt+C: o claude.js abre ou fecha o painel do Claude
+// Alt+C: o painel-dia.js abre ou fecha o Meu dia na beirada do YouTube
 chrome.commands.onCommand.addListener(async (comando) => {
-  const tipo = { "salvar-canal": "salvar-canal", "abrir-claude": "claude" }[comando];
+  const tipo = { "salvar-canal": "salvar-canal", "abrir-claude": "painel-dia" }[comando];
   if (!tipo) return;
   const [aba] = await chrome.tabs.query({ active: true, currentWindow: true });
   if (aba && /^https:\/\/www\.youtube\.com\//.test(aba.url || "")) chrome.tabs.sendMessage(aba.id, { tipo }).catch(() => {});

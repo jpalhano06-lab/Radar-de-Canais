@@ -185,7 +185,7 @@ const icone = (n, classe = "") => `<svg ${classe ? `class="${classe}"` : ""} vie
 // A terceira posição de uma aba é o endereço dela, quando não é só "#/rota": serve para a mesma tela entrar no
 // menu com um recorte pronto (Entraram hoje é a lista de canais com a visão já ligada).
 const MENU = [
-  ["perfil", "Perfil", [["inicio", "Início"], ["trabalho", "Produzir"], ["acompanhar", "Acompanhar"], ["resultados", "Resultados"], ["custos", "Custos"]]],
+  ["perfil", "Perfil", [["inicio", "Início"], ["meu-dia", "Meu dia"], ["trabalho", "Produzir"], ["acompanhar", "Acompanhar"], ["resultados", "Resultados"], ["custos", "Custos"]]],
   ["descobrir", "Niche Finder", [["base", "Canais"], ["entraram", "Entraram hoje", "#/base?visao=entraram_hoje"],
     // Títulos saiu do menu de manhã (25/10) e voltou de tarde, no mesmo dia, quando o usuário pediu os "títulos
     // recomendados": agora a tela abre com os títulos que estouraram NOS NICHOS DOS CANAIS DELE, que é o que
@@ -206,6 +206,7 @@ const DICAS = {
   titulo: "Converse com o Claude sobre o título e leve para o roteiro", medir: "Cole um @ e veja os números na hora",
   extensao: "Garimpa enquanto você usa o YouTube", bloqueados: "O que você escondeu pelo ⊘", admin: "Cota do YouTube, garimpo e convites",
   integracoes: "As chaves de API e o saldo de cada serviço",
+  "meu-dia": "Os vídeos de hoje de cada canal, as thumbnails feitas e o link do canal de treino",
 };
 
 // a aba de endereço pronto (Entraram hoje) está acesa quando a tela é a dela e o recorte dela está ligado
@@ -5019,9 +5020,18 @@ const VELHAS = {
   salvos: "#/base?base=salvos", achados: "#/acharam",
   ideias: "#/videos", explorar: "#/videos?ordem=aleatorio", novidades: "#/videos?base=salvos&publicado_dias=7&nota_min=3",
 };
+// Meu dia (pedido do usuário em 2026-11-14: "a aba Meu dia vai embaixo do meu perfil"). Quem guarda o dia é a
+// extensão (chrome.storage), então aqui entra a própria tela dela num quadro: o site.js diz o endereço no <html>
+async function meuDia() {
+  const url = document.documentElement.dataset.radarDia;
+  tela.innerHTML = `<div class="cab-tela"><div><h1>Meu dia</h1><p class="sub">Os vídeos de hoje, as thumbnails e o canal de treino de cada canal. Se apaga sozinho quando vira o dia.</p></div></div>
+    ${url ? `<iframe class="meu-dia-quadro" src="${esc(url)}?embutido=1" title="Meu dia"></iframe>`
+      : `<div class="vazio">O Meu dia mora na extensão do Radar (versão 0.48 ou mais nova).<br>Instale ou atualize a extensão e aperte F5 nesta página.</div>`}`;
+}
+
 const ROTAS = { entrar: () => entrar(false), criar: () => entrar(true), inicio, canais, perfil: canais, canal,
   senha: telaSenha, "ideias-canal": ideiasCanal, treino, trabalho, acompanhar, resultados, titulo: () => { location.hash = "#/trabalho"; }, thumbnail: () => { location.hash = "#/trabalho"; },
-  base: baseCanais, videos: videosLista, acharam, grupos, titulos, medir, extensao, bloqueados, admin, integracoes, custos, animacoes,
+  "meu-dia": meuDia, base: baseCanais, videos: videosLista, acharam, grupos, titulos, medir, extensao, bloqueados, admin, integracoes, custos, animacoes,
   entraram: () => { location.hash = "#/base?visao=entraram_hoje"; },
   planos: telaPlanos,
   ...Object.fromEntries(Object.entries(VELHAS).map(([de, para]) => [de, () => { location.hash = para; }])) };
@@ -5053,6 +5063,27 @@ async function telaSenha() {
     aviso("Senha salva. Use este e-mail e esta senha no celular.");
   };
 }
+
+// o menu da esquerda fica escondido e só aparece com o mouse no canto esquerdo (pedido do usuário em 2026-11-14:
+// "quando entra em uma aba ela sai"). Escolher uma aba ou tirar o mouse de cima esconde de novo
+(() => {
+  const lateral = document.getElementById("lateral");
+  if (!lateral) return;
+  const beirada = document.createElement("div");
+  beirada.id = "beirada-menu"; beirada.title = "Menu";
+  document.body.append(beirada);
+  let saindo = null;
+  const mostrar = () => { clearTimeout(saindo); if (!lateral.hidden) lateral.classList.add("mostrando"); };
+  const esconder = (ja) => { clearTimeout(saindo); saindo = setTimeout(() => lateral.classList.remove("mostrando"), ja ? 0 : 350); };
+  beirada.addEventListener("mouseenter", mostrar);
+  beirada.addEventListener("click", mostrar);
+  lateral.addEventListener("mouseenter", mostrar);
+  lateral.addEventListener("mouseleave", () => esconder(false));
+  // o canto da tela: a beirada já pega, mas um mouse rápido pode passar por ela sem o mouseenter
+  document.addEventListener("mousemove", (e) => { if (e.clientX <= 2) mostrar(); });
+  addEventListener("hashchange", () => esconder(true));
+  lateral.addEventListener("click", (e) => { if (e.target.closest("nav a[href]") && !ORGANIZANDO) esconder(true); });
+})();
 
 // no celular o menu inteiro ocupava a primeira tela e empurrava a fila para baixo: fica fechado, atrás de um botão
 document.getElementById("abrir-menu")?.addEventListener("click", (e) => {
@@ -5100,14 +5131,15 @@ async function rota() {
 // ---------------------------------------------------------------- cores do app: a identidade visual de cada pessoa
 // As cores de destaque da Apple, uma cor livre e o modo claro ou escuro, guardados no navegador.
 const CORES = [["#0071e3", "Azul"], ["#5e5ce6", "Índigo"], ["#bf5af2", "Roxo"], ["#ff375f", "Rosa"], ["#ff3b30", "Vermelho"],
-  ["#ff9f0a", "Laranja"], ["#34c759", "Verde"], ["#30b0c7", "Verde-água"], ["#1d1d1f", "Grafite"], ["#a2845e", "Marrom"]];
+  ["#ff9f0a", "Laranja"], ["#34c759", "Verde"], ["#30b0c7", "Verde-água"], ["#1d1d1f", "Grafite"], ["#a2845e", "Marrom"], ["#ff0000", "Vermelho do YouTube"]];
 
-// a identidade do app (pedido do usuário em 2026-10-15, pela imagem da versão escura): tema escuro e o marrom-dourado
-const IDENTIDADE = { cor: "#a2845e", cor2: "#a2845e", tema: "escuro" };
+// a identidade do app: tema escuro e o vermelho do visual minimalista (pedido do usuário em 2026-11-14, igual ao Meu
+// dia; antes, de 2026-10-15, era o marrom-dourado). A chave nova faz a troca uma vez; depois o Cores manda
+const IDENTIDADE = { cor: "#ff0000", cor2: "#ff0000", tema: "escuro" };
 try {
-  if (!localStorage.getItem("radar:identidade-2")) {
+  if (!localStorage.getItem("radar:identidade-3")) {
     for (const [k, v] of Object.entries(IDENTIDADE)) guardar(k, v);
-    localStorage.setItem("radar:identidade-2", "1");
+    localStorage.setItem("radar:identidade-3", "1");
   }
 } catch {}
 

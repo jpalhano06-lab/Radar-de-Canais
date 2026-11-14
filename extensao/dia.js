@@ -231,4 +231,5 @@ chrome.storage.onChanged.addListener((mudou, area) => {
 setInterval(() => { if (dia.data !== hojeLocal()) recarregar(); }, 60 * 1000);
 document.addEventListener("visibilitychange", () => { if (!document.hidden && dia.data !== hojeLocal()) recarregar(); });
 
+if (new URLSearchParams(location.search).has("embutido")) document.body.classList.add("embutido");
 recarregar().then(lerCanais);

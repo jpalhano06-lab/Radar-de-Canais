@@ -1,6 +1,8 @@
 // Avisa o site do Radar que a extensão está instalada: com ela, o "Enviar para o ChatGPT/Gemini" cola o prompt e a
 // thumbnail sozinho (colar.js). O atributo fica no <html>, que a página consegue ler.
 document.documentElement.dataset.radarExtensao = chrome.runtime.getManifest().version;
+// o endereço do Meu dia: a aba "Meu dia" do Radar mostra a tela da extensão num quadro (web_accessible_resources)
+document.documentElement.dataset.radarDia = chrome.runtime.getURL("dia.html");
 // O botão "Atualizar do claude.ai" dos agentes: a página pede pelo postMessage e recebe a resposta do mesmo jeito
 window.addEventListener("message", (e) => {
   if (e.source !== window || !e.data || e.data.radar !== "sincronizar-claude") return;

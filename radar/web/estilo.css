@@ -2200,3 +2200,41 @@ input, select, textarea, .selects select, .selects .limpar { border-radius: 8px;
 #progresso-canto .pc-parado .pc-barra > i { background: #f5b301; }
 #progresso-canto small { grid-column: 1 / -1; opacity: .65; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 #progresso-canto .pc-fila { display: block; margin-top: 8px; opacity: .65; }
+
+/* ================================================================ visual minimalista (pedido do usuário em 2026-11-14)
+   "Gostei daquela identidade visual minimalista, quero ela no Radar inteiro": a do Meu dia da extensão. Fundo
+   azul-quase-preto, painéis com fio fino e sem sombra, letra do sistema (sem a condensada), botões redondos e o
+   vermelho de acento (IDENTIDADE no app.js). Fica no fim para vencer as camadas de antes. */
+:root[data-tema="escuro"] {
+  --fundo: #0d0f14; --painel: #151820; --painel2: #1c2029; --linha: #262b36; --texto: #eef1f7; --fraco: #8d95a8;
+  --verde: #2ecc71; --verde-claro: #10261a; --verde-escuro: #10261a; --vidro: #151820; --sombra: none;
+}
+:root { --letra: system-ui, "Segoe UI", sans-serif; --mostrador: system-ui, "Segoe UI", sans-serif; --raio: 14px; }
+body { font: 14px/1.45 var(--letra); letter-spacing: 0; -webkit-font-smoothing: auto; }
+h1 { font-family: var(--letra); font-weight: 700; font-size: 24px; line-height: 1.2; letter-spacing: 0; }
+.marca b { font-family: var(--letra); font-size: 16px; font-weight: 700; letter-spacing: 0; }
+.ponto { width: 12px; height: 12px; background: var(--acento); box-shadow: 0 0 10px var(--acento); }
+.numeros b, .cota-livre b, .canal-cab .posicao, .capa .nota { font-family: var(--letra); letter-spacing: 0; }
+.numeros b { font-size: 15px; } .numeros .media b { font-size: 16px; } .cota-livre b { font-size: 26px; }
+.capa .nota { font-size: 14px; font-weight: 800; } .video.yt .capa .nota { font-size: 22px; } .capas .capa .nota { font-size: 13px; }
+.lateral { background: var(--painel); backdrop-filter: none; -webkit-backdrop-filter: none; }
+.cartao, .canal, .bloco, .passo, .quadro-cota, .painel-filtros, .modal { box-shadow: none; }
+.botao { border-radius: 999px; font-weight: 600; font-size: 13px; padding: 7px 14px; box-shadow: none; }
+.chip { font-weight: 600; }
+nav a.ativo { box-shadow: none; }
+#cores > button, .bt-topo { box-shadow: none; }
+
+/* o menu da esquerda some depois de escolher uma aba e só volta com o mouse no canto esquerdo da tela (pedido do
+   usuário em 2026-11-14). A beirada (#beirada-menu) é a faixa fina que chama o menu. No celular continua o botão Menu */
+#beirada-menu { display: none; }
+@media (min-width: 761px) {
+  .lateral { position: fixed; left: 0; top: 0; z-index: 950; transform: translateX(-100%); transition: transform .18s ease;
+    border-right: 1px solid var(--linha); overflow-y: auto; }
+  .lateral.mostrando { transform: none; box-shadow: 0 0 40px rgba(0,0,0,.5); }
+  #beirada-menu { display: block; position: fixed; left: 0; top: 0; bottom: 0; width: 10px; z-index: 949; }
+  #beirada-menu::after { content: ""; position: absolute; left: 0; top: 50%; width: 3px; height: 56px; margin-top: -28px;
+    border-radius: 0 3px 3px 0; background: var(--acento); opacity: .45; }
+}
+
+/* Meu dia dentro do Radar: a própria tela da extensão, num quadro */
+.meu-dia-quadro { width: 100%; height: calc(100vh - 140px); min-height: 520px; border: 1px solid var(--linha); border-radius: var(--raio); background: var(--fundo); }

@@ -60,6 +60,10 @@
   .solta-zona { border: 1.5px dashed var(--linha); border-radius: 12px; padding: 18px; text-align: center; color: var(--fraco); cursor: pointer; display: grid; place-items: center; min-height: 120px; }
   .erro { color: #ff6b6b; font-size: 13px; margin: 8px 0; }
   .vazio { color: var(--fraco); font-size: 12.5px; }
+  /* dentro de um quadro (o painel do YouTube e a aba Meu dia do Radar): sem o título, que já está em volta */
+  body.embutido main { padding: 14px 12px 40px; }
+  body.embutido h1, body.embutido .so-aba { display: none; }
+  body.embutido header { margin-bottom: 12px; }
   @media (max-width: 420px) { .canais { grid-template-columns: 1fr; } .video { grid-template-columns: 90px 1fr; } .slot { width: 90px; } }
 </style>
 </head>
@@ -69,7 +73,7 @@
     <div>
       <h1><i></i>Meu dia</h1>
       <div class="fraco" id="data"></div>
-      <div class="fraco">Tudo daqui se apaga sozinho quando vira o dia. A meta de cada canal e o link do canal de treino ficam.</div>
+      <div class="fraco so-aba">Tudo daqui se apaga sozinho quando vira o dia. A meta de cada canal e o link do canal de treino ficam.</div>
     </div>
     <div class="resumo" id="resumo"></div>
   </header>
