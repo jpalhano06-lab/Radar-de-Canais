@@ -5166,7 +5166,9 @@ const LETRA_ESCURA = "#16120c";
 function letraLegivelSobre(cor) {
   if (luminanciaRelativa(cor) === null) return "#fff";
   const branco = contraste(cor, "#ffffff"), quente = contraste(cor, LETRA_ESCURA), preto = contraste(cor, "#000000");
-  if (branco >= quente && branco >= 4.5) return "#fff";
+  // 3,5:1 basta: o texto sobre o acento é sempre negrito de botão. Assim o vermelho do visual minimalista leva letra
+  // branca, como no Meu dia (com 4,5 ele levava letra escura)
+  if (branco >= quente && branco >= 3.5) return "#fff";
   if (quente >= 4.5) return LETRA_ESCURA;
   return preto >= branco ? "#000" : "#fff";
 }
