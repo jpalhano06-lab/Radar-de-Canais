@@ -1840,6 +1840,11 @@ numa aba e só volta com o mouse no canto esquerdo.
   a abinha vermelha **Meu dia** na beirada direita, que abre o Meu dia num painel (com "Abrir em aba"). Abre também
   por dois cliques com o botão direito e pelo Alt+C. Com `?embutido=1`, o `dia.html` esconde o próprio título.
 - Para usar: ↻ na extensão em `chrome://extensions` e F5 no YouTube e no Radar.
+- **Ajustes do mesmo dia**, a pedido do usuário: o Meu dia do Radar é a tela inteira da extensão, sem moldura e sem
+  o título do Radar em volta (igual à aba dela); saíram todos os emojis do Radar e da extensão (os botões que eram só
+  emoji viraram texto: Marcar, Vou modelar, Alvo, Fantasma, PT:, Print, Baixar); no menu só a aba aberta fica
+  vermelha (o nome do grupo não pinta mais); o botão ChatGPT saiu do topo; a letra sobre o vermelho é branca
+  (`letraLegivelSobre` aceita 3,5:1).
 
 
 ## Extensão 0.47.0: a aba Meu dia (2026-11-14)
