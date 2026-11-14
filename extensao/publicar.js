@@ -328,15 +328,38 @@
   }
 
   // ------------------------------------------------------------ 3. Adequação para anunciantes
+  // Em 2026-11-14 a tela mudou: não existe mais a caixinha "Nenhuma das opções". Cada categoria (linguagem,
+  // conteúdo adulto, violência…) já vem com "None"/"Nenhum" e o resumo diz "Safe for ads"; só falta o "Submit
+  // rating". A extensão procurava a caixinha, não achava, dava erro e clicava no Avançar ainda desativado — o
+  // Avançar só libera depois que a classificação é enviada. Agora: caixinha antiga se existir, envia, confirma a
+  // janelinha se ela abrir, e espera o Avançar ficar clicável antes de seguir.
+  const ENVIAR_CLASSIFICACAO = /^(Enviar classificação|Enviar avaliação|Submit rating)$/i;
   async function responderNadaDisso({ avancar = true } = {}) {
     estado.trabalhando = "anunciantes"; desenhar();
     const nenhuma = folhas(/^Nenhuma das opções( acima)?$|^None of the above$/i)
       .map((e) => e.closest("ytcp-checkbox-lit, tp-yt-paper-checkbox, ytcp-checkbox") || e.parentElement).filter(Boolean)[0];
     if (nenhuma) { marcar(nenhuma, true); await esperar(500); }
-    else recado("Não achei o \"Nenhuma das opções\": marque você e clique em Enviar classificação.", true);
-    if (clicar(/^(Enviar classificação|Submit rating)$/i)) await esperar(1200);
+    // na tela nova, uma categoria que não esteja em "None" é resposta da pessoa (ou do YouTube): não passo por cima
+    const marcadas = folhas(/^(None|Nenhum|Nenhuma)$/i).length;
+    const enviou = clicar(ENVIAR_CLASSIFICACAO);
+    if (enviou) {
+      await esperar(1000);
+      // algumas contas pedem confirmação numa janelinha por cima ("Enviar" / "Submit")
+      const janela = [...document.querySelectorAll("tp-yt-paper-dialog, ytcp-dialog, ytcp-confirmation-dialog")]
+        .filter((d) => visivel(d) && !d.closest("ytcp-uploads-dialog")).pop();
+      if (janela && clicar(/^(Enviar|Submit|Confirmar|Confirm|Enviar classificação|Submit rating)$/i, janela)) await esperar(1000);
+    }
+    // o Avançar só libera depois que o Studio grava a classificação ("Saving…")
+    const fim = Date.now() + 15000;
+    while (!botao(/^(Avançar|Próxima|Next)$/i) && Date.now() < fim) await esperar(400);
     estado.trabalhando = "";
-    if (nenhuma) recado("Questionário respondido com \"Nenhuma das opções\" — confira se é verdade para este vídeo.");
+    const livre = !!botao(/^(Avançar|Próxima|Next)$/i);
+    if (!enviou && !livre) {
+      return recado("Não achei o \"Enviar classificação\" (Submit rating): clique você e depois Avançar.", true);
+    }
+    if (!livre) return recado("Enviei a classificação, mas o Avançar ainda não liberou: espere salvar e clique Avançar.", true);
+    recado(enviou ? `Classificação enviada${nenhuma ? " com \"Nenhuma das opções\"" : marcadas ? " com tudo em \"None\"" : ""} — confira se é verdade para este vídeo.`
+      : "A classificação já estava enviada.");
     if (avancar) proximaEtapa();
   }
 
@@ -831,8 +854,11 @@
 
   // ------------------------------------------------------------ desenhar
   // o rodapé do Studio: o bloco que tem o Voltar e o Avançar. É lá que o botão mora, do lado de fora dos dois.
+  // O Avançar vale mesmo desativado: na Adequação ele fica cinza até enviar a classificação, e o botão(), que pula
+  // os desativados, não achava o rodapé — o nosso botão saía da barra e ficava boiando/pulando pela tela.
   function rodapeDoStudio() {
-    const avancar = botao(/^(Avançar|Próxima|Continuar|Next|Continue)$/i);
+    const avancar = [...caixa().querySelectorAll(CLICAVEIS)]
+      .find((b) => visivel(b) && /^(Avançar|Próxima|Continuar|Next|Continue)$/i.test(limpo(b)));
     if (!avancar) return null;
     let p = avancar.parentElement;
     for (let i = 0; i < 5 && p; i++, p = p.parentElement) {

@@ -1833,3 +1833,16 @@ Pedido do usuário: "coloque na extensão algo que só dá pra apertar o sign ou
 - Reconhece o item pelo link `/logout` ou pelo texto do item do menu (Sign out, Log out, Sair, Fazer logout...).
   Os outros itens do menu não mudam.
 - Para usar: dê ↻ na extensão em `chrome://extensions` e recarregue o YouTube.
+
+
+## Extensão 0.46.4: "Responder nada disso" na tela nova da Adequação (2026-11-14)
+
+Pedido do usuário: "a extensão no responder nada disso e pular está bugando" (tela "Ad suitability" em inglês).
+
+- O Studio tirou a caixinha "Nenhuma das opções": cada categoria já vem em "None" e o resumo diz "Safe for ads";
+  só falta o **Submit rating**. A extensão procurava a caixinha, dava erro e clicava no Avançar ainda desativado.
+- Agora: marca a caixinha antiga se ela existir, clica "Enviar classificação"/"Submit rating", confirma a
+  janelinha se abrir e espera até 15 s o Avançar liberar (o Studio mostra "Saving…") antes de seguir.
+- O botão vermelho saía do rodapé e ficava pulando nessa tela: o rodapé era achado pelo Avançar, e o Avançar
+  desativado não contava. Agora conta.
+- Para usar: dê ↻ na extensão em `chrome://extensions` e recarregue o Studio.
