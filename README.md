@@ -2053,6 +2053,16 @@ sem o canal certo".
   1 minuto) e a aba do YouTube que abre faz a troca para a conta de treino.
 - Para usar: dê ↻ na extensão em `chrome://extensions` (o Radar não precisa religar).
 
+## Extensão 0.52.9: troca de conta a partir de outro e-mail (2026-11-15)
+
+Saindo de 한국의 미래 (e-mail zepalhano.pirata), o "procurar ideia" não trocava para PALHANO nem Coreia TECNOLOGIA. O
+menu "Mudar de conta" só mostra o @ dos canais do e-mail aberto; os de jpalhano34 vinham só com o nome, e a conta de
+treino guardada é o @. Pior: essa leitura regravava o `contasYoutube` sem os @. Agora:
+
+- `contasHandle` guarda o @ de cada canal visto alguma vez e nunca encolhe; o `contasYoutube` herda os @ conhecidos;
+- um alvo com @ que não aparece na lista é achado pelo @ guardado ou, se nunca visto, pelo nome igual ao @ sem o
+  sufixo (@PALHANO-x6o = PALHANO, @CoreiaTECNOLOGIA = Coreia TECNOLOGIA), só quando há um canal só assim.
+
 ## Extensão 0.52.8: o avatar é clicado mesmo com outra caixa aberta (2026-11-15)
 
 Pelo botão, a troca parava em "Abrindo o menu da conta…". Na 0.52.4 a extensão só clicava no avatar se nenhuma caixa

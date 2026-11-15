@@ -2316,13 +2316,33 @@
       const nome = ((i.querySelector("#channel-title") || {}).textContent || "").replace(/\s+/g, " ").trim();
       return { el: i, nome, handle: (i.textContent.match(/@[\w.\-]+/) || [""])[0], email: email ? email[0] : "" };
     });
-    if (lista.length) chrome.storage.local.set({ contasYoutube: lista.map(({ nome, handle, email }) => ({ nome, handle, email })) });
+    // o menu só mostra o @ dos canais do e-mail aberto (2026-11-15: em 한국의 미래, do zepalhano.pirata, PALHANO e
+    // Coreia TECNOLOGIA vinham sem @ e o "procurar ideia" não achava @PALHANO-x6o). O @ já conhecido de cada canal
+    // fica guardado, e um alvo com @ é procurado também pelo nome que esse @ tinha
+    // contasHandle: o @ de cada canal visto alguma vez (só cresce; o contasYoutube é refeito a cada leitura)
+    const { contasYoutube: conhecidas = [], contasHandle = {} } = await chrome.storage.local.get(["contasYoutube", "contasHandle"]).catch(() => ({}));
+    const chave = (c) => `${normal(c.nome)}|${c.email}`;
+    const handleConhecido = new Map([...conhecidas.filter((c) => c.handle).map((c) => [chave(c), c.handle]),
+      ...Object.entries(contasHandle).map(([h, c]) => [chave(c), h])]);
+    for (const c of lista) {
+      if (!c.handle) c.handle = handleConhecido.get(chave(c)) || "";
+      if (c.handle) contasHandle[c.handle.toLowerCase()] = { nome: c.nome, email: c.email };
+    }
+    if (lista.length) chrome.storage.local.set({ contasHandle, contasYoutube: lista.map(({ nome, handle, email }) => ({ nome, handle, email })) });
     if (soLer) {
       fecharMenu();
       return aviso(lista.length ? `Li ${lista.length} contas do YouTube: escolha a conta de treino de cada canal no Meu dia.`
         : "Não consegui ler as contas do menu. Abra o avatar > Trocar de conta e tente de novo.");
     }
-    const certo = lista.find((c) => contaBate(alvo, c.nome, c.el.textContent));
+    // sem o @ na lista: pelo @ guardado e, se nunca visto, pelo nome parecido com o @ (@PALHANO-x6o ↔ PALHANO,
+    // @CoreiaTECNOLOGIA ↔ Coreia TECNOLOGIA; o YouTube põe um sufixo como -x6o quando o @ já existia)
+    const soLetras = (t) => normal(t).normalize("NFD").replace(/[^\p{L}\p{N}]/gu, "");
+    const baseDoHandle = soLetras(alvo.handle.replace(/-[a-z0-9]{2,4}$/i, ""));
+    const parecidos = alvo.handle ? lista.filter((c) => !c.handle && soLetras(c.nome) === baseDoHandle) : [];
+    const certo = lista.find((c) => contaBate(alvo, c.nome, c.el.textContent))
+      || (alvo.handle && lista.find((c) => c.handle.toLowerCase() === alvo.handle))
+      || (parecidos.length === 1 ? parecidos[0] : null);
+    if (certo && !contaBate(alvo, certo.nome, certo.el.textContent)) registrarTroca(`${alvo.handle} sem @ na lista: achei pelo nome ${certo.nome}`);
     if (!certo) {
       fecharMenu();
       return aviso(`Não achei ${rotulo} entre as contas deste navegador. Entre no e-mail dessa conta ("Adicionar conta") e tente de novo.`);
@@ -2334,7 +2354,8 @@
     // clique (às vezes é a lista velha, reaberta da última vez). Agora espera a lista firmar, clica de novo no item
     // achado na hora e confere se a página recarregou; se não, fecha o menu e tenta tudo de novo (3 vezes)
     await esperarMs(1500);
-    const agora = itens().find((i) => contaBate(alvo, ((i.querySelector("#channel-title") || {}).textContent || ""), i.textContent)) || certo.el;
+    const agora = itens().find((i) => normal((i.querySelector("#channel-title") || {}).textContent) === normal(certo.nome)
+      && ((i.closest("ytd-account-section-list-renderer") || {}).textContent || "").includes(certo.email)) || certo.el;
     registrarTroca(`clique em ${certo.nome} (tentativa ${tentativa})`);
     const saiu = new Promise((r) => { window.addEventListener("pagehide", () => r(true), { once: true }); setTimeout(() => r(false), 6000); });
     // a foto do avatar de antes: depois de recarregar, se ela for a mesma, a conta não trocou e tenta de novo
