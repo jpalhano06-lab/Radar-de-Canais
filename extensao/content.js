@@ -2223,6 +2223,81 @@
   // o botão "Nova produção" do Meu dia abre o YouTube com este endereço, e a janela já vem aberta
   if (location.hash === "#radar-nova-producao") { history.replaceState(null, "", location.pathname + location.search); setTimeout(() => novaProducao(), 800); }
 
+  // ------------------------------------------------------------ trocar para a conta de treino
+  // Pedido do usuário em 2026-11-15: o "Canal de treino: procurar ideia" do Meu dia só abria o YouTube na conta que
+  // estivesse aberta, e as contas de treino são várias, muitas no mesmo e-mail e outras em e-mails diferentes. O Meu
+  // dia abre `youtube.com/#radar-conta=<alvo>` e aqui a extensão faz o que a pessoa faria: abre o menu do avatar,
+  // "Trocar de conta" e clica no canal certo, que pode estar em qualquer e-mail da lista. O alvo é o @ do canal, o
+  // nome dele como aparece no menu, ou um link com o @. A lista de contas vista fica guardada (contasYoutube) para o
+  // Meu dia sugerir os nomes.
+  const esperarMs = (ms) => new Promise((r) => setTimeout(r, ms));
+  async function esperarAte(achar, limite = 10000) {
+    const fim = Date.now() + limite;
+    for (;;) {
+      const x = achar();
+      if (x || Date.now() >= fim) return x || null;
+      await esperarMs(250);
+    }
+  }
+  const normal = (t) => String(t || "").replace(/\s+/g, " ").trim().toLowerCase();
+  function alvoDaConta(texto) {
+    const t = String(texto || "").trim();
+    let solto = t;
+    try { solto = decodeURIComponent(t); } catch { /* % solto no nome */ }
+    const arroba = (solto.match(/@[\w.\-]+/) || [])[0];
+    return arroba ? { handle: arroba.toLowerCase(), nome: "" } : { handle: "", nome: normal(t) };
+  }
+  const contaBate = (alvo, nome, texto) => alvo.handle ? normal(texto).includes(alvo.handle) : normal(nome) === alvo.nome;
+
+  async function trocarDeConta(textoAlvo) {
+    const alvo = alvoDaConta(textoAlvo);
+    if (!alvo.handle && /^https?:\/\//i.test(String(textoAlvo).trim())) {
+      return avisoRapido("O link guardado no Meu dia não diz qual conta abrir: em Ajustes do canal, troque pelo @ ou pelo nome da conta de treino.");
+    }
+    if (!alvo.handle && !alvo.nome) return;
+    const rotulo = alvo.handle || textoAlvo;
+    const avatar = await esperarAte(() => document.querySelector("ytd-masthead #avatar-btn"), 15000);
+    if (!avatar) return avisoRapido("Entre numa conta do YouTube para a extensão trocar para a conta de treino.");
+    await esperarMs(1200);   // logo depois de carregar, o clique no avatar ainda não abre o menu
+    const menu = () => [...document.querySelectorAll("ytd-popup-container ytd-multi-page-menu-renderer")].find((m) => m.offsetWidth > 0);
+    for (let i = 0; i < 3 && !menu(); i++) { avatar.click(); await esperarAte(menu, 2500); }
+    if (!menu()) return avisoRapido(`Não consegui abrir o menu da conta. Troque para ${rotulo} pelo avatar.`);
+    const fecharMenu = () => document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+    const itens = () => [...document.querySelectorAll("ytd-popup-container ytd-account-item-renderer")].filter((i) => i.offsetWidth > 0);
+    const linkTrocar = () => [...(menu() ? menu().querySelectorAll("ytd-compact-link-renderer") : [])]
+      .find((e) => e.offsetWidth > 0 && /Switch account|Alternar conta|Trocar (de )?conta|Cambiar de cuenta/i.test(e.textContent));
+    // o menu abre carregando (só a rodinha), e o YouTube às vezes o reabre já na lista de contas da última vez
+    await esperarAte(() => linkTrocar() || itens().length, 8000);
+    if (!itens().length) {
+      const trocar = linkTrocar();
+      if (!trocar) { fecharMenu(); return avisoRapido(`Não achei o "Trocar de conta". Troque para ${rotulo} pelo avatar.`); }
+      (trocar.querySelector("a, tp-yt-paper-item") || trocar).click();
+      await esperarAte(() => itens().length, 10000);
+    }
+    const lista = itens().map((i) => {
+      const secao = i.closest("ytd-account-section-list-renderer");
+      const email = ((secao && secao.textContent) || "").match(/[\w.+-]+@[\w-]+\.[\w.]+/);
+      const nome = ((i.querySelector("#channel-title") || {}).textContent || "").replace(/\s+/g, " ").trim();
+      return { el: i, nome, handle: (i.textContent.match(/@[\w.\-]+/) || [""])[0], email: email ? email[0] : "" };
+    });
+    if (lista.length) chrome.storage.local.set({ contasYoutube: lista.map(({ nome, handle, email }) => ({ nome, handle, email })) });
+    const certo = lista.find((c) => contaBate(alvo, c.nome, c.el.textContent));
+    if (!certo) {
+      fecharMenu();
+      return avisoRapido(`Não achei ${rotulo} entre as contas deste navegador. Entre no e-mail dessa conta ("Adicionar conta") e tente de novo.`);
+    }
+    // a conta aberta tem o anel e o ✓ na lista: clicar nela não faz nada
+    if (certo.el.hasAttribute("enable-ring-for-active-account")) { fecharMenu(); return avisoRapido(`Você já está em ${certo.nome}.`); }
+    avisoRapido(`Trocando para ${certo.nome}${certo.email ? ` (${certo.email})` : ""}…`);
+    (certo.el.querySelector("tp-yt-paper-icon-item") || certo.el).click();   // o YouTube recarrega já na conta nova
+  }
+
+  if (location.hash.startsWith("#radar-conta=")) {
+    const alvo = decodeURIComponent(location.hash.slice("#radar-conta=".length));
+    history.replaceState(null, "", location.pathname + location.search);
+    trocarDeConta(alvo);
+  }
+
   function botaoNovaProducao() {
     const lugar = document.querySelector("ytd-masthead #end");
     if (!lugar) return;

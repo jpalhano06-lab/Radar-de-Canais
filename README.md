@@ -1971,3 +1971,19 @@ ir lá mudar tudo".
   `POST /api/producao/{canal_id}` troca a configuração inteira e apagaria anúncios, tela final e descrição.
 - Não aparece no Canal de teste nem com "Já tenho o roteiro".
 - Para usar: religue o Radar, dê ↻ na extensão em `chrome://extensions` e recarregue o YouTube.
+
+
+## Extensão 0.51.0: "Canal de treino: procurar ideia" troca para a conta certa (2026-11-15)
+
+Pedido do usuário: "quando aperto para ir procurar ideia, acaba só direcionando pro YouTube, pq o link é o mesmo…
+muitas contas são no mesmo email".
+
+- O botão do Meu dia abre `youtube.com/#radar-conta=<conta>`. A extensão (`content.js`, `trocarDeConta`) abre o menu
+  do avatar, "Trocar de conta" e clica no canal certo, em qualquer e-mail da lista. O YouTube recarrega já nele.
+- Em **Ajustes do canal**, a conta de treino agora é o **@ do canal** ou o **nome dele como aparece no Trocar de
+  conta** (os canais de outros e-mails não mostram o @, então vale o nome). O campo sugere as contas que a extensão
+  já viu no menu (`contasYoutube`).
+- Link sem @ guardado antes não diz qual conta abrir: o Meu dia avisa "troque o link pelo @ da conta de treino".
+- Conferido no Chrome sem trocar de conta: acha a conta aberta, Canada Insight (mesmo e-mail), British Tech e
+  한국의 미래 (outros e-mails) e avisa quando não acha. O clique final na conta não foi testado.
+- Para usar: dê ↻ na extensão em `chrome://extensions`, recarregue o YouTube e escreva a conta de treino de cada canal.

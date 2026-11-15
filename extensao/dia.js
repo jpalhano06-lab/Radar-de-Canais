@@ -136,6 +136,19 @@ function cartaoDoVideo(v) {
           onclick: () => { if (confirm(`Tirar "${v.titulo}" do Meu dia?`)) mudarDia((d) => { d.videos = d.videos.filter((y) => y.id !== v.id); }); } }, "×"))));
 }
 
+// o link do "procurar ideia": abre o YouTube e a extensão troca para a conta de treino (content.js, #radar-conta=)
+function linkDaContaDeTreino(treino) {
+  return `https://www.youtube.com/#radar-conta=${encodeURIComponent(treino || "")}`;
+}
+
+// as contas que a extensão viu no "Trocar de conta" do YouTube, sugeridas no campo da conta de treino
+async function desenharContasYoutube() {
+  const { contasYoutube = [] } = await chrome.storage.local.get("contasYoutube");
+  let lista = document.getElementById("contas-youtube");
+  if (!lista) { lista = h("datalist", { id: "contas-youtube" }); document.body.append(lista); }
+  lista.replaceChildren(...contasYoutube.map((c) => h("option", { value: c.handle || c.nome }, [c.nome, c.email].filter(Boolean).join(" · "))));
+}
+
 function cartaoDoCanal(c, videos) {
   const cfg = config[c.id] || {};
   const meta = cfg.porDia;
@@ -150,11 +163,13 @@ function cartaoDoCanal(c, videos) {
       h("button", { onclick: () => escolherMeta(0), title: "O canal não aparece como pendente" }, "Não posto todo dia")));
 
   const linkTreino = (() => {
-    const input = h("input", { type: "url", placeholder: "Link do canal de treino (a conta onde você treina o algoritmo)", value: cfg.treino || "" });
+    // a conta de treino é o @ do canal, o nome dele como aparece no "Trocar de conta" do YouTube, ou um link com o @
+    // (2026-11-15: o link sozinho abria o YouTube na conta que estivesse aberta). A lista vem das contas que a
+    // extensão já viu no menu do YouTube
+    const input = h("input", { placeholder: "Conta de treino: @ do canal ou o nome dele no Trocar de conta", value: cfg.treino || "", list: "contas-youtube" });
     const salvar = () => {
-      let v = input.value.trim();
-      if (v && !/^https?:\/\//i.test(v)) v = "https://" + v.replace(/^\/+/, "");
-      if (v && !/^https:\/\/(www\.|m\.)?youtube\.com\//i.test(v) && !/^https:\/\/youtu\.be\//i.test(v)) return mostrarErro("O link do canal de treino precisa ser do YouTube.");
+      const v = input.value.trim();
+      if (v && /^https?:\/\//i.test(v) && !/@[\w.\-]+/.test(v)) return mostrarErro("Use o @ do canal de treino (ex.: @CanadaInsightTV) ou o nome dele: o link sem @ não diz qual conta abrir.");
       input.blur();
       guardarConfig(c.id, { treino: v });
     };
@@ -197,10 +212,11 @@ function cartaoDoCanal(c, videos) {
     falta ? h("div", { class: "linha" }, h("span", { class: "aviso" }, `Falta pedir ${plural(falta, "vídeo", "vídeos")} hoje`),
       h("a", { class: "botao vermelho", href: "https://www.youtube.com/#radar-nova-producao", target: "_blank" }, "Nova produção")) : null,
     cfg.treino ? h("div", { class: "linha" },
-      h("a", { class: "botao", href: cfg.treino, target: "_blank", rel: "noopener", title: cfg.treino }, "Canal de treino: procurar ideia ↗")) : null,
+      h("a", { class: "botao", href: linkDaContaDeTreino(cfg.treino), target: "_blank", rel: "noopener", title: `Abre o YouTube na conta ${cfg.treino}` }, "Canal de treino: procurar ideia ↗")) : null,
     videos.length || doCanal.length ? h("div", { class: "videos" }, ...videos.map(cartaoDoVideo), ...doCanal.map(cartaoThumb)) : null,
     c.id && !NO_SITE ? novaThumb : null,
-    h("details", {}, h("summary", {}, cfg.treino ? "Ajustes do canal" : "Ajustes do canal · falta o link do canal de treino"),
+    h("details", {}, h("summary", {}, !cfg.treino ? "Ajustes do canal · falta a conta de treino"
+      : /^https?:\/\//i.test(cfg.treino) && !/@[\w.\-]+/.test(cfg.treino) ? "Ajustes do canal · troque o link pelo @ da conta de treino" : "Ajustes do canal"),
       h("div", { style: "display:grid;gap:8px" },
         linkTreino,
         meta == null ? null : h("div", { class: "linha" }, h("span", { class: "fraco" }, "Vídeos por dia:"),
@@ -261,6 +277,7 @@ function desenhar() {
 
 // ------------------------------------------------------------ começo e atualizações
 chrome.storage.onChanged.addListener((mudou, area) => {
+  if (area === "local" && mudou.contasYoutube) desenharContasYoutube();
   if (area !== "local" || !(mudou[DIA_CHAVE] || mudou[DIA_CONFIG])) return;
   // não redesenha no meio de quem está digitando um link ou título
   const digitando = () => document.activeElement && document.activeElement.tagName === "INPUT" && document.activeElement.type !== "checkbox";
@@ -273,3 +290,4 @@ document.addEventListener("visibilitychange", () => { if (!document.hidden && di
 
 if (new URLSearchParams(location.search).has("embutido")) document.body.classList.add("embutido");
 recarregar().then(lerCanais);
+desenharContasYoutube();
