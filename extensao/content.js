@@ -2260,7 +2260,7 @@
       diaTrocaLog: [...diaTrocaLog.slice(-39), { t: new Date().toISOString(), url: location.href, passo }] })).catch(() => {});
   }
 
-  async function trocarDeConta(textoAlvo, soLer = false) {
+  async function trocarDeConta(textoAlvo, soLer = false, tentativa = 1) {
     const alvo = soLer ? { handle: "", nome: "-" } : alvoDaConta(textoAlvo);
     const aviso = (t) => { registrarTroca(`aviso: ${t}`); return avisoRapido(t); };
     registrarTroca(`trocar para ${textoAlvo}`);
@@ -2325,9 +2325,38 @@
     // a conta aberta tem o anel e o ✓ na lista: clicar nela não faz nada
     if (certo.el.hasAttribute("enable-ring-for-active-account")) { fecharMenu(); return aviso(`Você já está em ${certo.nome}.`); }
     aviso(`Trocando para ${certo.nome}${certo.email ? ` (${certo.email})` : ""}…`);
-    registrarTroca(`clique em ${certo.nome}`);
-    (certo.el.querySelector("tp-yt-paper-icon-item") || certo.el).click();   // o YouTube recarrega já na conta nova
+    // 2026-11-15: o registro mostrou o clique em PALHANO e a conta não trocou. A lista aparece antes de aceitar o
+    // clique (às vezes é a lista velha, reaberta da última vez). Agora espera a lista firmar, clica de novo no item
+    // achado na hora e confere se a página recarregou; se não, fecha o menu e tenta tudo de novo (3 vezes)
+    await esperarMs(1500);
+    const agora = itens().find((i) => contaBate(alvo, ((i.querySelector("#channel-title") || {}).textContent || ""), i.textContent)) || certo.el;
+    registrarTroca(`clique em ${certo.nome} (tentativa ${tentativa})`);
+    const saiu = new Promise((r) => { window.addEventListener("pagehide", () => r(true), { once: true }); setTimeout(() => r(false), 6000); });
+    // a foto do avatar de antes: depois de recarregar, se ela for a mesma, a conta não trocou e tenta de novo
+    const fotoAntes = (document.querySelector("ytd-masthead #avatar-btn img") || {}).src || "";
+    try { sessionStorage.setItem("radar-troca", JSON.stringify({ alvo: textoAlvo, fotoAntes, tentativa, quando: Date.now() })); } catch { /* sem sessionStorage */ }
+    (agora.querySelector("tp-yt-paper-icon-item") || agora).click();   // o YouTube recarrega já na conta nova
+    if (await saiu) return;
+    try { sessionStorage.removeItem("radar-troca"); } catch { /* sem sessionStorage */ }
+    registrarTroca(`a página não recarregou depois do clique (tentativa ${tentativa})`);
+    fecharMenu();
+    if (tentativa < 3) { await esperarMs(1500); return trocarDeConta(textoAlvo, false, tentativa + 1); }
+    aviso(`O YouTube não trocou para ${certo.nome}. Troque pelo avatar > Mudar de conta.`);
   }
+
+  // depois do clique na conta o YouTube recarrega: confere pela foto do avatar se a conta trocou mesmo
+  (async () => {
+    let p = null;
+    try { p = JSON.parse(sessionStorage.getItem("radar-troca") || "null"); sessionStorage.removeItem("radar-troca"); } catch { /* nada */ }
+    if (!p || Date.now() - p.quando > 60 * 1000) return;
+    const img = await esperarAte(() => { const i = document.querySelector("ytd-masthead #avatar-btn img[src]"); return i && i.src ? i : null; }, 20000);
+    await esperarMs(2500);   // a foto pode trocar de um marcador para a de verdade logo depois de carregar
+    const foto = ((document.querySelector("ytd-masthead #avatar-btn img") || img || {}).src) || "";
+    if (foto && foto !== p.fotoAntes) return registrarTroca(`conta trocou (tentativa ${p.tentativa})`);
+    registrarTroca(`recarregou mas a conta não trocou (tentativa ${p.tentativa})`);
+    if (p.tentativa < 3) trocarDeConta(p.alvo, false, p.tentativa + 1);
+    else avisoRapido("O YouTube não trocou de conta. Troque pelo avatar > Mudar de conta.");
+  })();
 
   if (location.hash === "#radar-contas-ler") {
     history.replaceState(null, "", location.pathname + location.search);
