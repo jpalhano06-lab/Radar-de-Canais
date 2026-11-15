@@ -18,7 +18,8 @@ function h(tag, attrs = {}, ...filhos) {
 }
 
 let canais = [], config = {}, dia = { data: hojeLocal(), videos: [], thumbs: [] }, imagens = {}, erroRadar = "";
-let destinoArquivo = null;   // o vídeo que recebe o arquivo escolhido (null: fica solta)
+let destinoArquivo = null;   // quem recebe o arquivo escolhido: o vídeo, { canal } ou null (fica solta)
+let colarEm = null;          // o canal sob o mouse: o Ctrl+V cai nele
 
 const hora = (t) => new Date(t).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
 const plural = (n, um, varios) => `${n} ${n === 1 ? um : varios}`;
@@ -60,39 +61,43 @@ const lerArquivo = (arquivo) => new Promise((ok) => {
   const f = new FileReader(); f.onload = () => ok(f.result); f.onerror = () => ok(null); f.readAsDataURL(arquivo);
 });
 
-async function guardarDeTransferencia(dt, video) {
+// `alvo`: { video } para o vídeo, { canal, canalNome } para o canal (fica como feita nele) ou {} para as soltas
+const alvoDe = (alvo) => (alvo && typeof alvo === "object" ? alvo : { video: alvo || null });
+
+async function guardarDeTransferencia(dt, alvo) {
+  alvo = alvoDe(alvo);
   const arquivo = [...(dt.files || [])].find((f) => f.type.startsWith("image/"));
   if (arquivo) {
     const dados = await lerArquivo(arquivo);
-    if (dados) return diaGuardarThumb(dados, { nome: arquivo.name, origem: "arquivo", video });
+    if (dados) return diaGuardarThumb(dados, { nome: arquivo.name, origem: "arquivo", ...alvo });
   }
   // uma imagem arrastada de outra aba vem só com o endereço
   const url = (dt.getData && (dt.getData("text/uri-list") || dt.getData("text/plain")) || "").split("\n")[0].trim();
-  if (/^data:image\//.test(url)) return diaGuardarThumb(url, { origem: "arrastada", video });
+  if (/^data:image\//.test(url)) return diaGuardarThumb(url, { origem: "arrastada", ...alvo });
   if (/^https?:\/\//.test(url)) {
     try {
       const r = await fetch(url);
       const b = await r.blob();
-      if (r.ok && b.type.startsWith("image/")) return diaGuardarThumb(await lerArquivo(b), { origem: new URL(url).hostname, video });
+      if (r.ok && b.type.startsWith("image/")) return diaGuardarThumb(await lerArquivo(b), { origem: new URL(url).hostname, ...alvo });
     } catch (e) { /* o site não deixou */ }
     mostrarErro("Não consegui pegar essa imagem pelo endereço. Salve ela no computador e arraste o arquivo, ou use o botão direito > Salvar no Meu dia.");
   }
 }
 
-function zonaDeImagem(el, video) {
+function zonaDeImagem(el, alvo) {
   el.addEventListener("dragover", (e) => { e.preventDefault(); el.classList.add("sobre"); });
   el.addEventListener("dragleave", () => el.classList.remove("sobre"));
-  el.addEventListener("drop", (e) => { e.preventDefault(); el.classList.remove("sobre"); guardarDeTransferencia(e.dataTransfer, video); });
-  el.addEventListener("click", () => { destinoArquivo = video; $("arquivo").value = ""; $("arquivo").click(); });
+  el.addEventListener("drop", (e) => { e.preventDefault(); el.classList.remove("sobre"); guardarDeTransferencia(e.dataTransfer, alvo); });
+  el.addEventListener("click", () => { destinoArquivo = alvo; $("arquivo").value = ""; $("arquivo").click(); });
   return el;
 }
 $("arquivo").addEventListener("change", async () => {
   const f = $("arquivo").files[0];
-  if (f) { const dados = await lerArquivo(f); if (dados) await diaGuardarThumb(dados, { nome: f.name, origem: "arquivo", video: destinoArquivo }); }
+  if (f) { const dados = await lerArquivo(f); if (dados) await diaGuardarThumb(dados, { nome: f.name, origem: "arquivo", ...alvoDe(destinoArquivo) }); }
 });
 document.addEventListener("paste", (e) => {
   if (e.target.closest && e.target.closest("input")) return;
-  if ([...(e.clipboardData.files || [])].some((f) => f.type.startsWith("image/"))) { e.preventDefault(); guardarDeTransferencia(e.clipboardData, null); }
+  if ([...(e.clipboardData.files || [])].some((f) => f.type.startsWith("image/"))) { e.preventDefault(); guardarDeTransferencia(e.clipboardData, colarEm); }
 });
 
 function mostrarErro(texto) {
@@ -172,6 +177,14 @@ function cartaoDoCanal(c, videos) {
           chrome.storage.local.remove(DIA_THUMB + t.id);
         } }, "×"))));
 
+  // a thumbnail entra direto no canal (pedido do usuário em 2026-11-14: soltar lá embaixo e depois escolher o canal era
+  // trabalho a mais). Arraste, clique para escolher o arquivo, ou passe o mouse e cole (Ctrl+V)
+  const novaThumb = zonaDeImagem(h("div", { class: "solta-zona canal-thumb", tabindex: "0",
+    title: "Arraste a imagem, clique para escolher o arquivo, ou passe o mouse aqui e cole (Ctrl+V)" }, "+ Adicionar thumbnail"),
+  { canal: c.id, canalNome: c.titulo });
+  novaThumb.addEventListener("mouseenter", () => { colarEm = { canal: c.id, canalNome: c.titulo }; });
+  novaThumb.addEventListener("mouseleave", () => { colarEm = null; });
+
   return h("article", { class: `canal ${estado}` },
     h("div", { class: "canal-cab" }, h("b", {}, c.titulo),
       meta == null ? null : h("span", { class: `meta ${estado}` },
@@ -183,6 +196,7 @@ function cartaoDoCanal(c, videos) {
     cfg.treino ? h("div", { class: "linha" },
       h("a", { class: "botao", href: cfg.treino, target: "_blank", rel: "noopener", title: cfg.treino }, "Canal de treino: procurar ideia ↗")) : null,
     videos.length || doCanal.length ? h("div", { class: "videos" }, ...videos.map(cartaoDoVideo), ...doCanal.map(cartaoThumb)) : null,
+    c.id ? novaThumb : null,
     h("details", {}, h("summary", {}, cfg.treino ? "Ajustes do canal" : "Ajustes do canal · falta o link do canal de treino"),
       h("div", { style: "display:grid;gap:8px" },
         linkTreino,

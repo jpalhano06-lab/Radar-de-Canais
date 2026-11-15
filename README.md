@@ -1849,6 +1849,9 @@ numa aba e só volta com o mouse no canto esquerdo.
   tem thumbnail" ao lado) e "Sem canal". Escolher o canal marca a thumbnail como feita: ela entra no primeiro vídeo de
   hoje do canal sem thumbnail ou fica no cartão do canal como "Thumbnail feita"; a notificação confirma. As sem canal
   ganham, no Meu dia, o "Escolher o canal…".
+- **+ Adicionar thumbnail em cada canal (0.49.0):** no Meu dia, cada cartão de canal tem a própria zona: arrastar a
+  imagem, clicar para escolher o arquivo ou passar o mouse e colar (Ctrl+V). A thumbnail entra direto no canal, como no
+  botão direito, sem passar pelas "Thumbnails sem canal" lá embaixo.
 
 
 ## Extensão 0.47.0: a aba Meu dia (2026-11-14)
