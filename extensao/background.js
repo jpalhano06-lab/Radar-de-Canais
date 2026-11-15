@@ -77,7 +77,11 @@ chrome.runtime.onMessage.addListener((msg, _remetente, responder) => {
   // primeira aba do YouTube que carregasse levava, que nem sempre era a aba aberta pelo botão. Agora o background abre
   // a aba e guarda o pedido pelo id dela: só ela pega (content.js pede com "troca-pendente")
   if (msg && msg.tipo === "procurar-ideia") {
-    chrome.tabs.create({ url: "https://www.youtube.com/", active: true }).then(async (aba) => {
+    // na mesma janela do clique, ao lado (2026-11-15: sem windowId ia para a última janela em foco, às vezes uma
+    // janela escondida atrás, onde o YouTube não desenha o menu e a troca não andava)
+    const de = _remetente.tab;
+    chrome.tabs.create({ url: "https://www.youtube.com/", active: true,
+      ...(de && de.windowId >= 0 ? { windowId: de.windowId, index: de.index + 1 } : {}) }).then(async (aba) => {
       const { trocasPorAba = {} } = await chrome.storage.session.get("trocasPorAba");
       trocasPorAba[aba.id] = { alvo: msg.alvo, quando: Date.now() };
       await chrome.storage.session.set({ trocasPorAba });

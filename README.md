@@ -2053,6 +2053,13 @@ sem o canal certo".
   1 minuto) e a aba do YouTube que abre faz a troca para a conta de treino.
 - Para usar: dê ↻ na extensão em `chrome://extensions` (o Radar não precisa religar).
 
+## Extensão 0.53.0: a aba do "procurar ideia" abre na mesma janela (2026-11-15)
+
+Testando todas as contas, a aba aberta pelo background ia para a última janela do Chrome em foco, que podia estar
+escondida atrás; lá o YouTube não desenha o menu da conta e a troca parava. Agora a aba abre na janela do clique, ao
+lado da aba do Meu dia. Se mesmo assim o menu não abrir com a aba sem foco, a troca recomeça quando ela volta para a
+frente.
+
 ## Extensão 0.52.9: troca de conta a partir de outro e-mail (2026-11-15)
 
 Saindo de 한국의 미래 (e-mail zepalhano.pirata), o "procurar ideia" não trocava para PALHANO nem Coreia TECNOLOGIA. O

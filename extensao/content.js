@@ -2297,7 +2297,18 @@
       await esperarAte(menu, 3000);
     }
     registrarTroca(menu() ? "menu da conta aberto" : "menu da conta não abriu");
-    if (!menu()) return aviso(`Não consegui abrir o menu da conta. Troque para ${rotulo} pelo avatar.`);
+    if (!menu()) {
+      // aba atrás de outra janela: o YouTube não desenha o menu. Tenta de novo quando ela voltar para a frente
+      if (tentativa < 3 && (!document.hasFocus() || document.hidden)) {
+        registrarTroca("menu não abriu com a aba sem foco: espera a aba voltar para a frente");
+        const voltar = () => { window.removeEventListener("focus", voltar); document.removeEventListener("visibilitychange", voltar);
+          if (!document.hidden) trocarDeConta(textoAlvo, false, tentativa + 1); };
+        window.addEventListener("focus", voltar);
+        document.addEventListener("visibilitychange", voltar);
+        return;
+      }
+      return aviso(`Não consegui abrir o menu da conta. Troque para ${rotulo} pelo avatar.`);
+    }
     const fecharMenu = () => document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
     const itens = () => [...document.querySelectorAll("ytd-popup-container ytd-account-item-renderer")].filter((i) => i.offsetWidth > 0);
     const linkTrocar = () => [...(menu() ? menu().querySelectorAll("ytd-compact-link-renderer") : [])]
