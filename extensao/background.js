@@ -34,6 +34,12 @@ async function pedir({ caminho, metodo = "GET", corpo }) {
   }
 }
 
+// o registro da troca de conta do "procurar ideia" (o mesmo diaTrocaLog do content.js)
+function registrarTrocaBg(passo) {
+  chrome.storage.local.get("diaTrocaLog").then(({ diaTrocaLog = [] }) => chrome.storage.local.set({
+    diaTrocaLog: [...diaTrocaLog.slice(-39), { t: new Date().toISOString(), url: "background", passo }] })).catch(() => {});
+}
+
 chrome.runtime.onMessage.addListener((msg, _remetente, responder) => {
   if (msg && msg.tipo === "api") {
     pedir(msg).then(responder);
@@ -70,6 +76,7 @@ chrome.runtime.onMessage.addListener((msg, _remetente, responder) => {
       const { trocasPorAba = {} } = await chrome.storage.session.get("trocasPorAba");
       trocasPorAba[aba.id] = { alvo: msg.alvo, quando: Date.now() };
       await chrome.storage.session.set({ trocasPorAba });
+      registrarTrocaBg(`aba ${aba.id} aberta para ${msg.alvo}`);
       responder({ ok: true });
     }, (e) => responder({ erro: String(e) }));
     return true;
@@ -79,6 +86,7 @@ chrome.runtime.onMessage.addListener((msg, _remetente, responder) => {
     chrome.storage.session.get("trocasPorAba").then(async ({ trocasPorAba = {} }) => {
       const p = trocasPorAba[id];
       if (p) { delete trocasPorAba[id]; await chrome.storage.session.set({ trocasPorAba }); }
+      if (p) registrarTrocaBg(`aba ${id} pegou o pedido ${p.alvo}`);
       responder(p && Date.now() - p.quando < 2 * 60 * 1000 ? { alvo: p.alvo } : {});
     });
     return true;

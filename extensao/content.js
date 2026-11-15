@@ -2253,10 +2253,19 @@
   const contaBate = (alvo, nome, texto) => alvo.handle ? normal(texto).includes(alvo.handle) : normal(nome) === alvo.nome;
 
   // soLer: só lê as contas do menu e guarda (o "Ler as contas do YouTube" do Meu dia), sem trocar de conta
+  // o registro da troca de conta (2026-11-15): o "procurar ideia" falhou três vezes sem dar para ver onde; cada passo
+  // fica em diaTrocaLog (os últimos 40), para conferir depois
+  function registrarTroca(passo) {
+    chrome.storage.local.get("diaTrocaLog").then(({ diaTrocaLog = [] }) => chrome.storage.local.set({
+      diaTrocaLog: [...diaTrocaLog.slice(-39), { t: new Date().toISOString(), url: location.href, passo }] })).catch(() => {});
+  }
+
   async function trocarDeConta(textoAlvo, soLer = false) {
     const alvo = soLer ? { handle: "", nome: "-" } : alvoDaConta(textoAlvo);
+    const aviso = (t) => { registrarTroca(`aviso: ${t}`); return avisoRapido(t); };
+    registrarTroca(`trocar para ${textoAlvo}`);
     if (!alvo.handle && /^https?:\/\//i.test(String(textoAlvo).trim())) {
-      return avisoRapido("O link guardado no Meu dia não diz qual conta abrir: em Ajustes do canal, troque pelo @ ou pelo nome da conta de treino.");
+      return aviso("O link guardado no Meu dia não diz qual conta abrir: em Ajustes do canal, troque pelo @ ou pelo nome da conta de treino.");
     }
     if (!alvo.handle && !alvo.nome) return;
     const rotulo = alvo.handle || textoAlvo;
@@ -2270,11 +2279,11 @@
       return b && document.readyState === "complete" && b.querySelector("img[src]") ? b : null;
     };
     if (!await esperarAte(avatarPronto, 30000)) {
-      return avisoRapido(document.querySelector("ytd-masthead #avatar-btn")
+      return aviso(document.querySelector("ytd-masthead #avatar-btn")
         ? `O YouTube demorou para carregar. Troque para ${rotulo} pelo avatar.`
         : "Entre numa conta do YouTube para a extensão trocar para a conta de treino.");
     }
-    avisoRapido(`Abrindo o menu da conta para trocar para ${rotulo}…`);
+    aviso(`Abrindo o menu da conta para trocar para ${rotulo}…`);
     await esperarMs(2000);   // logo depois de carregar, o clique no avatar ainda não abre o menu
     const menu = () => [...document.querySelectorAll("ytd-popup-container ytd-multi-page-menu-renderer")].find((m) => m.offsetWidth > 0);
     const caixaAberta = () => [...document.querySelectorAll("ytd-popup-container tp-yt-iron-dropdown")]
@@ -2283,7 +2292,7 @@
       if (!caixaAberta()) (avatarPronto() || document.querySelector("ytd-masthead #avatar-btn")).click();
       await esperarAte(menu, 3000);
     }
-    if (!menu()) return avisoRapido(`Não consegui abrir o menu da conta. Troque para ${rotulo} pelo avatar.`);
+    if (!menu()) return aviso(`Não consegui abrir o menu da conta. Troque para ${rotulo} pelo avatar.`);
     const fecharMenu = () => document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
     const itens = () => [...document.querySelectorAll("ytd-popup-container ytd-account-item-renderer")].filter((i) => i.offsetWidth > 0);
     const linkTrocar = () => [...(menu() ? menu().querySelectorAll("ytd-compact-link-renderer") : [])]
@@ -2292,7 +2301,7 @@
     await esperarAte(() => linkTrocar() || itens().length, 8000);
     if (!itens().length) {
       const trocar = linkTrocar();
-      if (!trocar) { fecharMenu(); return avisoRapido(`Não achei o "Trocar de conta". Troque para ${rotulo} pelo avatar.`); }
+      if (!trocar) { fecharMenu(); return aviso(`Não achei o "Trocar de conta". Troque para ${rotulo} pelo avatar.`); }
       (trocar.querySelector("a, tp-yt-paper-item") || trocar).click();
       await esperarAte(() => itens().length, 10000);
     }
@@ -2305,23 +2314,31 @@
     if (lista.length) chrome.storage.local.set({ contasYoutube: lista.map(({ nome, handle, email }) => ({ nome, handle, email })) });
     if (soLer) {
       fecharMenu();
-      return avisoRapido(lista.length ? `Li ${lista.length} contas do YouTube: escolha a conta de treino de cada canal no Meu dia.`
+      return aviso(lista.length ? `Li ${lista.length} contas do YouTube: escolha a conta de treino de cada canal no Meu dia.`
         : "Não consegui ler as contas do menu. Abra o avatar > Trocar de conta e tente de novo.");
     }
     const certo = lista.find((c) => contaBate(alvo, c.nome, c.el.textContent));
     if (!certo) {
       fecharMenu();
-      return avisoRapido(`Não achei ${rotulo} entre as contas deste navegador. Entre no e-mail dessa conta ("Adicionar conta") e tente de novo.`);
+      return aviso(`Não achei ${rotulo} entre as contas deste navegador. Entre no e-mail dessa conta ("Adicionar conta") e tente de novo.`);
     }
     // a conta aberta tem o anel e o ✓ na lista: clicar nela não faz nada
-    if (certo.el.hasAttribute("enable-ring-for-active-account")) { fecharMenu(); return avisoRapido(`Você já está em ${certo.nome}.`); }
-    avisoRapido(`Trocando para ${certo.nome}${certo.email ? ` (${certo.email})` : ""}…`);
+    if (certo.el.hasAttribute("enable-ring-for-active-account")) { fecharMenu(); return aviso(`Você já está em ${certo.nome}.`); }
+    aviso(`Trocando para ${certo.nome}${certo.email ? ` (${certo.email})` : ""}…`);
+    registrarTroca(`clique em ${certo.nome}`);
     (certo.el.querySelector("tp-yt-paper-icon-item") || certo.el).click();   // o YouTube recarrega já na conta nova
   }
 
   if (location.hash === "#radar-contas-ler") {
     history.replaceState(null, "", location.pathname + location.search);
     trocarDeConta("", true);
+  }
+  // o mesmo caminho do "procurar ideia" (background abre a aba nova e entrega o pedido), para testar sem o painel
+  if (location.hash.startsWith("#radar-procurar=")) {
+    const alvo = decodeURIComponent(location.hash.slice("#radar-procurar=".length));
+    history.replaceState(null, "", location.pathname + location.search);
+    registrarTroca(`teste procurar-ideia ${alvo}`);
+    chrome.runtime.sendMessage({ tipo: "procurar-ideia", alvo }).catch((e) => registrarTroca(`procurar-ideia falhou: ${e}`));
   }
   if (location.hash.startsWith("#radar-conta=")) {
     const alvo = decodeURIComponent(location.hash.slice("#radar-conta=".length));
@@ -2334,8 +2351,9 @@
     // recebe. Pergunta 3 vezes: a aba pode carregar antes de o background terminar de guardar
     (async () => {
       for (let i = 0; i < 3; i++) {
-        const p = await chrome.runtime.sendMessage({ tipo: "troca-pendente" }).catch(() => null);
-        if (p && p.alvo) return trocarDeConta(p.alvo);
+        const p = await chrome.runtime.sendMessage({ tipo: "troca-pendente" }).catch((e) => ({ erro: String(e) }));
+        if (p && p.erro) registrarTroca(`troca-pendente falhou: ${p.erro}`);
+        if (p && p.alvo) { registrarTroca(`pedido recebido: ${p.alvo}`); return trocarDeConta(p.alvo); }
         await esperarMs(1000);
       }
     })();

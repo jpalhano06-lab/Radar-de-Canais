@@ -279,7 +279,9 @@ async function procurarIdeia(c, treino, quando) {
   destinos[c.id] = { dia: quando, quando: Date.now() };
   await chrome.storage.local.set({ [DIA_DESTINO]: destinos });
   // o background abre a aba e entrega o pedido só para ela (antes ia pelo storage e outra aba do YouTube podia pegar)
-  chrome.runtime.sendMessage({ tipo: "procurar-ideia", alvo: treino });
+  const { diaTrocaLog = [] } = await chrome.storage.local.get("diaTrocaLog");
+  await chrome.storage.local.set({ diaTrocaLog: [...diaTrocaLog.slice(-39), { t: new Date().toISOString(), url: "Meu dia", passo: `botão procurar ideia: ${treino}` }] });
+  chrome.runtime.sendMessage({ tipo: "procurar-ideia", alvo: treino }).catch((e) => alert(`Não consegui abrir o YouTube: ${e}`));
 }
 
 // as contas do "Trocar de conta" do YouTube (pedido do usuário em 2026-11-15: "deixe lá todas as opções que tem no
