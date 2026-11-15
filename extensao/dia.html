@@ -61,6 +61,29 @@
   .solta img { width: 100%; aspect-ratio: 16/9; object-fit: cover; border-radius: 7px; background: #000; }
   .solta-zona { border: 1.5px dashed var(--linha); border-radius: 12px; padding: 18px; text-align: center; color: var(--fraco); cursor: pointer; display: grid; place-items: center; min-height: 120px; }
   .erro { color: #ff6b6b; font-size: 13px; margin: 8px 0; }
+  /* a conta de treino: painel próprio, só os nomes, o e-mail como título de cada grupo */
+  .conta-treino { display: grid; gap: 6px; }
+  .conta-caixa { position: relative; }
+  .conta-escolha { width: 100%; display: flex; align-items: center; gap: 8px; border-radius: 10px; padding: 7px 10px; text-align: left; }
+  .conta-escolha.vazia { border-style: dashed; color: var(--fraco); }
+  .conta-escolha .conta-nome { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .conta-seta { color: var(--fraco); font-size: 12px; }
+  .conta-ic { flex: none; width: 22px; height: 22px; border-radius: 50%; display: grid; place-items: center; font-size: 11px; font-weight: 700;
+    background: #2a3040; color: var(--texto); }
+  .contas { position: absolute; z-index: 20; left: 0; right: 0; top: calc(100% + 6px); max-height: 340px; overflow-y: auto;
+    background: #12151c; border: 1px solid var(--linha); border-radius: 12px; padding: 6px; box-shadow: 0 14px 34px rgba(0,0,0,.55); }
+  .contas[hidden] { display: none; }
+  .contas-grupo + .contas-grupo { border-top: 1px solid var(--linha); margin-top: 4px; padding-top: 4px; }
+  .contas-email { font-size: 11px; color: var(--fraco); padding: 6px 8px 4px; }
+  .contas-lista { display: grid; gap: 2px; }
+  .conta { display: flex; align-items: center; gap: 9px; width: 100%; border: 0; border-radius: 8px; background: none; padding: 6px 8px; text-align: left; font-weight: 500; }
+  .conta:hover { background: var(--campo); }
+  .conta.escolhida { background: rgba(255,0,0,.12); }
+  .conta.escolhida .conta-ic { background: var(--vermelho); color: #fff; }
+  .conta .conta-nome { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .conta-ok { color: var(--vermelho); font-weight: 700; }
+  .conta-ler { justify-self: start; font-size: 12px; color: var(--fraco); text-decoration: none; }
+  .conta-ler:hover { color: var(--texto); }
   .vazio { color: var(--fraco); font-size: 12.5px; }
   /* dentro de um quadro (o painel do YouTube e a aba Meu dia do Radar): sem o título, que já está em volta */
   body.embutido main { padding: 14px 12px 40px; }

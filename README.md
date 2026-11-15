@@ -1999,3 +1999,14 @@ Pedido do usuário: "deixe lá todas as opções que tem no YouTube, aí só sel
   do avatar, lê a lista, guarda em `contasYoutube` e fecha o menu, sem trocar de conta. O Meu dia se atualiza sozinho.
 - Para usar: dê ↻ na extensão em `chrome://extensions`, clique em "Ler as contas do YouTube" uma vez e escolha a
   conta de cada canal.
+
+
+## Extensão 0.51.2: lista de contas de treino mais limpa (2026-11-15)
+
+Pedido do usuário: "coloca só os nomes dos canais, sem o @, e deixa mais bonito".
+
+- A lista nativa (que abria branca, com @ e e-mails misturados) virou um painel do Meu dia: só o nome de cada canal
+  com a inicial, o e-mail como título pequeno de cada grupo, a conta escolhida em vermelho com ✓.
+- "↻ Ler as contas de novo" fica embaixo, discreto. Conferido no navegador com contas de exemplo: abre, escolhe,
+  guarda e o "procurar ideia" passa a abrir a conta escolhida.
+- Para usar: dê ↻ na extensão em `chrome://extensions`.

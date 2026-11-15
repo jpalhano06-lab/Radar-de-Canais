@@ -167,22 +167,42 @@ function cartaoDoCanal(c, videos) {
   const linkTreino = (() => {
     const valorDe = (conta) => conta.handle || conta.nome;
     const atual = cfg.treino || "";
-    const conhecida = contasYoutube.some((conta) => valorDe(conta) === atual);
     const porEmail = new Map();
     for (const conta of contasYoutube) {
       if (!porEmail.has(conta.email)) porEmail.set(conta.email, []);
       porEmail.get(conta.email).push(conta);
     }
-    const opcao = (valor, texto) => { const o = h("option", { value: valor }, texto); if (valor === atual) o.selected = true; return o; };
-    const escolha = h("select", {},
-      opcao("", contasYoutube.length ? "— escolha a conta de treino —" : "— leia as contas do YouTube primeiro —"),
-      atual && !conhecida ? opcao(atual, `${atual} (guardada antes)`) : null,
-      ...[...porEmail].map(([email, contas]) => h("optgroup", { label: email || "Conta do YouTube" },
-        ...contas.map((conta) => opcao(valorDe(conta), conta.handle ? `${conta.nome} · ${conta.handle}` : conta.nome)))));
-    escolha.addEventListener("change", () => guardarConfig(c.id, { treino: escolha.value }));
-    return h("div", { class: "linha" }, h("span", { class: "fraco" }, "Conta de treino:"), escolha,
-      h("a", { class: "botao", href: LER_CONTAS, target: "_blank", rel: "noopener",
-        title: "Abre o YouTube e lê todas as contas do menu Trocar de conta" }, contasYoutube.length ? "Ler de novo" : "Ler as contas do YouTube"));
+    // a lista nativa (select) abria branca, com o @ e os e-mails misturados aos nomes (pedido do usuário em
+    // 2026-11-15: "só os nomes dos canais, sem o @, e mais bonito"). Agora é um painel do próprio Meu dia: o e-mail
+    // é só o título pequeno de cada grupo, e cada conta é o nome com a inicial
+    const nomeAtual = (contasYoutube.find((conta) => valorDe(conta) === atual) || {}).nome || atual;
+    const inicial = (nome) => [...(nome || "?").trim()][0].toUpperCase();
+    const painel = h("div", { class: "contas", hidden: true },
+      ...[...porEmail].map(([email, contas]) => h("div", { class: "contas-grupo" },
+        h("div", { class: "contas-email" }, email || "Conta do YouTube"),
+        h("div", { class: "contas-lista" }, ...contas.map((conta) => {
+          const escolhida = valorDe(conta) === atual;
+          return h("button", { type: "button", class: `conta${escolhida ? " escolhida" : ""}`, title: conta.handle || conta.nome,
+            onclick: () => { painel.hidden = true; guardarConfig(c.id, { treino: valorDe(conta) }); } },
+          h("span", { class: "conta-ic" }, inicial(conta.nome)), h("span", { class: "conta-nome" }, conta.nome),
+          escolhida ? h("span", { class: "conta-ok" }, "✓") : null);
+        })))));
+    const escolha = h("button", { type: "button", class: `conta-escolha${atual ? "" : " vazia"}`,
+      onclick: (e) => {
+        e.stopPropagation();
+        if (!contasYoutube.length) return window.open(LER_CONTAS, "_blank");
+        painel.hidden = !painel.hidden;
+        if (!painel.hidden) document.addEventListener("click", function fora(ev) {
+          if (!painel.contains(ev.target)) { painel.hidden = true; document.removeEventListener("click", fora); }
+        });
+      } },
+    atual ? h("span", { class: "conta-ic" }, inicial(nomeAtual)) : null,
+    h("span", { class: "conta-nome" }, atual ? nomeAtual : contasYoutube.length ? "Escolher a conta de treino" : "Ler as contas do YouTube"),
+    h("span", { class: "conta-seta" }, "▾"));
+    return h("div", { class: "conta-treino" }, h("span", { class: "fraco" }, "Conta de treino"),
+      h("div", { class: "conta-caixa" }, escolha, painel),
+      contasYoutube.length ? h("a", { class: "conta-ler", href: LER_CONTAS, target: "_blank", rel: "noopener",
+        title: "Abre o YouTube e lê de novo todas as contas do menu Trocar de conta" }, "↻ Ler as contas de novo") : null);
   })();
 
   const novoTitulo = h("input", { placeholder: "Título de um vídeo feito fora da Nova produção" });
