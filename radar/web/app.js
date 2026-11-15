@@ -5030,7 +5030,7 @@ const VELHAS = {
 async function meuDia() {
   const url = document.documentElement.dataset.radarDia;
   // a tela é a mesma da aba da extensão, inteira e sem moldura (pedido do usuário em 2026-11-14: "igual aquela de antes")
-  tela.innerHTML = `${url ? `<iframe class="meu-dia-quadro" src="${esc(url)}" title="Meu dia"></iframe>`
+  tela.innerHTML = `${url ? `<iframe class="meu-dia-quadro" src="${esc(url)}?site=1" title="Meu dia"></iframe>`
       : `<div class="vazio">O Meu dia mora na extensão do Radar (versão 0.48 ou mais nova).<br>Instale ou atualize a extensão e aperte F5 nesta página.</div>`}`;
 }
 

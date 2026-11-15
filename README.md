@@ -1851,7 +1851,8 @@ numa aba e só volta com o mouse no canto esquerdo.
   ganham, no Meu dia, o "Escolher o canal…".
 - **+ Adicionar thumbnail em cada canal (0.49.0):** no Meu dia, cada cartão de canal tem a própria zona: arrastar a
   imagem, clicar para escolher o arquivo ou passar o mouse e colar (Ctrl+V). A thumbnail entra direto no canal, como no
-  botão direito, sem passar pelas "Thumbnails sem canal" lá embaixo.
+  botão direito, sem passar pelas "Thumbnails sem canal" lá embaixo. Desde a 0.49.1 é um botão pequeno e fica só na extensão: a aba
+  Meu dia do site (o quadro com `?site=1`) não mostra.
 
 
 ## Extensão 0.47.0: a aba Meu dia (2026-11-14)

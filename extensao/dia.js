@@ -20,6 +20,9 @@ function h(tag, attrs = {}, ...filhos) {
 let canais = [], config = {}, dia = { data: hojeLocal(), videos: [], thumbs: [] }, imagens = {}, erroRadar = "";
 let destinoArquivo = null;   // quem recebe o arquivo escolhido: o vídeo, { canal } ou null (fica solta)
 let colarEm = null;          // o canal sob o mouse: o Ctrl+V cai nele
+// dentro da aba Meu dia do site do Radar (o quadro leva ?site=1): o "+ Adicionar thumbnail" de cada canal fica só na
+// extensão (pedido do usuário em 2026-11-14)
+const NO_SITE = new URLSearchParams(location.search).has("site");
 
 const hora = (t) => new Date(t).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
 const plural = (n, um, varios) => `${n} ${n === 1 ? um : varios}`;
@@ -196,7 +199,7 @@ function cartaoDoCanal(c, videos) {
     cfg.treino ? h("div", { class: "linha" },
       h("a", { class: "botao", href: cfg.treino, target: "_blank", rel: "noopener", title: cfg.treino }, "Canal de treino: procurar ideia ↗")) : null,
     videos.length || doCanal.length ? h("div", { class: "videos" }, ...videos.map(cartaoDoVideo), ...doCanal.map(cartaoThumb)) : null,
-    c.id ? novaThumb : null,
+    c.id && !NO_SITE ? novaThumb : null,
     h("details", {}, h("summary", {}, cfg.treino ? "Ajustes do canal" : "Ajustes do canal · falta o link do canal de treino"),
       h("div", { style: "display:grid;gap:8px" },
         linkTreino,
