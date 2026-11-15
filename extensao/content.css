@@ -664,6 +664,8 @@ html[dark] .radar-np { background: #1c1c1c; color: #f1f1f1; border: 1px solid rg
 html[dark] .radar-np select option { background: #1c1c1c; }
 .radar-np input:focus, .radar-np select:focus, .radar-np textarea:focus { outline: 2px solid rgba(255,0,0,.6); border-color: transparent; }
 .radar-np-usar { justify-self: start; border: 0; background: none; padding: 0; cursor: pointer; color: #ff0000; font: 600 13px Roboto, Arial, sans-serif; text-align: left; }
+.radar-np-usar:disabled { opacity: .6; cursor: default; }
+.radar-np-padrao-ok { color: #2ba640; font: 600 12px Roboto, Arial, sans-serif; }
 .radar-np-chips { display: flex; flex-wrap: wrap; gap: 6px; }
 .radar-np-chips.falta { padding: 6px; border: 1px solid rgba(229,57,53,.75); border-radius: 10px; background: rgba(229,57,53,.08); }
 .radar-np-chip { border: 1px solid rgba(128,128,128,.4); background: none; color: inherit; padding: 7px 12px; border-radius: 999px; cursor: pointer; font: 600 13px Roboto, Arial, sans-serif; }

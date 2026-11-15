@@ -2183,6 +2183,25 @@ def fabrica_vozes(lingua: str = "português", busca: str = "", genero: str = "",
         raise HTTPException(503, str(erro))
 
 
+@app.post("/api/producao/{canal_id}/padrao")
+async def producao_padrao(canal_id: str, request: Request, u: dict = Depends(usuario)):
+    """O "Tornar padrão" da Nova produção (pedido do usuário em 2026-11-15): o agente, o idioma e o tempo escolhidos
+    no pedido viram o padrão do canal. Só esses três mudam: o POST /api/producao troca a configuração inteira."""
+    _meu_canal(u["id"], canal_id)
+    d = await request.json()
+    novo = {k: d[k] for k in ("projeto_roteiro_id", "lingua", "minutos") if k in d}
+    if "projeto_roteiro_id" in novo:
+        novo["projeto_roteiro_id"] = str(novo["projeto_roteiro_id"] or "")
+    if "lingua" in novo:
+        novo["lingua"] = str(novo["lingua"] or "").strip()[:40]
+    if "minutos" in novo:
+        try:
+            novo["minutos"] = round(float(novo["minutos"]))
+        except (TypeError, ValueError):
+            raise HTTPException(400, "Tempo inválido.")
+    return producao.salvar(u["id"], canal_id, producao.config(u["id"], canal_id) | novo)
+
+
 @app.post("/api/producao/{canal_id}/voz")
 async def producao_voz(canal_id: str, request: Request, u: dict = Depends(dono_da_fabrica)):
     """A voz escolhida vira o canal na fábrica (perfil canal-NOME) e fica como a voz deste canal no Radar."""

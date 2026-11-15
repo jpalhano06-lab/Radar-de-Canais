@@ -2295,7 +2295,7 @@
         return escolherLingua(linguas.includes(npLinguaTeste) ? npLinguaTeste : linguas.includes("português") ? "português" : linguas[0] || "português");
       }
       // o erro daqui era calado e o pedido saía com o padrão (12 min a 150 ppm): o pedido 81 saiu com 8,5 min
-      N.avisoTamanho = "";
+      N.avisoTamanho = ""; N.padraoSalvo = "";
       const r = await api(`/api/producao/${encodeURIComponent(id)}`);
       N.cfg = r.erro ? null : r.dados;
       if (!N.cfg) N.avisoTamanho = `Não consegui ler o canal (${erroDoRadar(r)}). Escolha o canal de novo antes de enviar.`;
@@ -2345,8 +2345,37 @@
     const selAgente = () => sel([["", N.canal ? "— escolha o agente —" : "— escolha o canal primeiro —"], ["padrao", "Padrão do Claude (sem agente)"],
       ...agentes.map((a) => [a.id, a.nome])], N.agente, escolherAgente);
 
+    // "Tornar padrão" (pedido do usuário em 2026-11-15: "mudei o tempo do agente, não quero ter que ir lá mudar
+    // tudo"): o agente, o idioma e o tempo deste pedido viram o padrão do canal no Radar, e o próximo pedido já abre
+    // com eles. Só aparece quando algum dos três está diferente do que o canal guarda
+    const padraoDoCanal = () => N.cfg ? { agente: N.cfg.projeto_roteiro_id ? String(N.cfg.projeto_roteiro_id) : "padrao",
+      lingua: N.cfg.lingua || "", minutos: Number(N.cfg.minutos) || 12 } : null;
+    const mudouDoPadrao = () => {
+      const p = padraoDoCanal();
+      if (!p) return [];
+      return [N.agente && N.agente !== p.agente ? "agente" : null, N.lingua !== p.lingua ? "idioma" : null,
+        Math.round(minutos()) !== p.minutos ? "tempo" : null].filter(Boolean);
+    };
+    const tornarPadrao = () => {
+      if (eTeste() || !N.canal || N.modo === "manual") return null;
+      const mudou = mudouDoPadrao();
+      if (!mudou.length) return N.padraoSalvo ? h("small", { class: "radar-np-padrao-ok" }, N.padraoSalvo) : null;
+      const b = h("button", { type: "button", class: "radar-np-usar" }, `★ Tornar padrão de ${nomeCanal()} (${mudou.join(", ")})`);
+      b.onclick = async () => {
+        b.disabled = true; b.textContent = "Salvando o padrão…";
+        const r = await api(`/api/producao/${encodeURIComponent(N.canal)}/padrao`, "POST",
+          { projeto_roteiro_id: N.agente === "padrao" ? "" : N.agente, lingua: N.lingua, minutos: Math.round(minutos()) });
+        if (r.erro) { b.disabled = false; b.textContent = `Não salvou (${erroDoRadar(r)}): tente de novo`; return; }
+        N.cfg = { ...N.cfg, ...r.dados };
+        N.padrao = N.cfg.projeto_roteiro_id ? String(N.cfg.projeto_roteiro_id) : "padrao";
+        N.padraoSalvo = `✓ Agora é o padrão de ${nomeCanal()}: ${nomeDoAgente(N.padrao)} · ${N.cfg.lingua} · ${N.cfg.minutos} min.`;
+        desenhar();
+      };
+      return b;
+    };
+
     function desenhar() {
-      const canaisEl = h("div", { class: "radar-np-campo" }, h("span", {}, N.canal ? "Canal" : "Canal (escolha a cada pedido)"),
+      const canaisEl =h("div", { class: "radar-np-campo" }, h("span", {}, N.canal ? "Canal" : "Canal (escolha a cada pedido)"),
         h("div", { class: `radar-np-chips${N.canal ? "" : " falta"}` }, ...canais.map((c) => chip(c.titulo, c.id === N.canal, () => escolherCanal(c.id))),
           chip("Canal de teste", eTeste(), () => escolherCanal(TESTE))));
       // no Canal de teste a língua é a escolha: ela decide a voz (um perfil da fábrica que fala essa língua)
@@ -2384,6 +2413,7 @@
                 h("small", {}, [nomeCanal() || "escolha o canal", N.lingua, N.modo === "manual" ? null : `≈ ${Math.round(minutos())} min`].filter(Boolean).join(" · "))),
               h("button", { type: "button", class: "radar-np-editar", onclick: () => { N.passo = 2; desenhar(); } }, "Editar")),
             h("small", { class: "radar-fraco" }, `${!N.canal ? "Escolha o canal: ele traz o agente dele. " : N.padrao && N.agente !== N.padrao ? `O agente deste canal é ${nomeDoAgente(N.padrao)}. ` : ""}O título pode ser em português: ele é traduzido para a língua do vídeo. Se o vídeo de referência não tiver legenda, o Claude escreve a partir do título — o pedido não para.`)),
+          tornarPadrao(),
           revisar];
       } else if (N.passo === 2) {
         corpo = [passos, h("button", { type: "button", class: "radar-np-usar", onclick: () => { N.passo = 1; desenhar(); } }, "← Voltar ao vídeo"), canaisEl,
@@ -2400,6 +2430,7 @@
             h("div", { class: "radar-np-duas" },
               campo("Nicho (opcional)", entrada(N.nicho, { placeholder: "Ex.: grandes marcas" }, (v) => { N.nicho = v; })),
               campo("Observação (opcional)", entrada(N.obs, { placeholder: "Ex.: sem gírias, fechar com pergunta" }, (v) => { N.obs = v; })))]),
+          tornarPadrao(),
           revisar];
       } else {
         // 3 · Confirmar (pedido do usuário em 2026-10-28): a lista do que vai ser feito, item por item, antes de o

@@ -1957,3 +1957,17 @@ deixe como observação ou pedido".
   meio ou no fim, curtas e ligadas ao assunto.
 - Vale para o roteiro pedido na tela e para o da fila. Sem canal escolhido ou sem o número de inscritos, nada muda.
 - Para usar: religue o Radar.
+
+
+## Extensão 0.50.0: "Tornar padrão" na Nova produção (2026-11-15)
+
+Pedido do usuário: "coloque uma opção aqui como tornar padrão, exemplo eu mudei o tempo do agente, não quero ter que
+ir lá mudar tudo".
+
+- Na Nova produção da extensão, quando o agente, o idioma ou o tempo ficam diferentes do que o canal guarda, aparece
+  **★ Tornar padrão de <canal> (agente, idioma, tempo)**. Um clique grava os três como o padrão do canal no Radar, e
+  o próximo pedido desse canal já abre com eles.
+- Rota nova `POST /api/producao/{canal_id}/padrao`: muda só `projeto_roteiro_id`, `lingua` e `minutos`. O
+  `POST /api/producao/{canal_id}` troca a configuração inteira e apagaria anúncios, tela final e descrição.
+- Não aparece no Canal de teste nem com "Já tenho o roteiro".
+- Para usar: religue o Radar, dê ↻ na extensão em `chrome://extensions` e recarregue o YouTube.
