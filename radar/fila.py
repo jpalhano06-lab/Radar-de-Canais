@@ -376,6 +376,11 @@ def passo(fabrica=None, roteirista=None, em_thread: bool = True, config_canal=No
                     banco.executar("UPDATE producoes_fila SET projeto=? WHERE id=?", projeto, linha["id"])
                 if not mudar(linha["id"], "enviando", de=("enviando",)):
                     continue
+                try:   # a regra Todos pela conexão vale antes de o vídeo começar a gerar imagem
+                    from . import producao
+                    producao.aplicar_regra()
+                except Exception as erro:  # noqa: BLE001 — a regra nunca segura o vídeo
+                    print("a regra das imagens não deu para aplicar:", str(erro)[:160])
                 if pedido.get("animacoes"):      # o estilo escolhido só para este vídeo, na Nova produção
                     fabrica.definir_animacoes(projeto, pedido["animacoes"])
                 fabrica.produzir(projeto, confirmar=True)

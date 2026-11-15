@@ -130,6 +130,7 @@ def salvar_imagens_quem(nome: str, quem: str) -> dict:
         raise ValueError("Este canal não tem perfil na fábrica.")
     if quem not in IMAGENS_QUEM:
         raise ValueError("Escolha entre a assinatura do ChatGPT e a chave de API.")
+    _recusar_contra_a_regra(quem)
     atual = imagens_do_perfil(nome)
     if quem == "assinatura":
         # o provedor de chave que estava valendo vira a reserva, para as imagens que faltarem
@@ -141,6 +142,44 @@ def salvar_imagens_quem(nome: str, quem: str) -> dict:
                  "provedor_reserva": ""}
     _gravar_campos_de_imagens(arquivo, novos)
     return imagens_do_perfil(nome)
+
+
+# "Todos pela conexão" vira regra (pedido do usuário em 2026-11-15: "o canal UK Market mudou sozinho para API...
+# sempre que a opção todos pela assinatura se torna regra"). Ligada pelo botão Todos pela conexão em Integrações e
+# desligada só pelo Todos pela chave de API. Com ela ligada, nenhum canal sai da assinatura: trocar um canal para a
+# chave de API é recusado, e aplicar_regra devolve à assinatura o perfil que mudou por fora (outra tela, um agente, um
+# canal novo), na volta dos avisos de 5 em 5 min, antes de cada vídeo ir para a fábrica e depois de criar um canal.
+REGRA_IMAGENS = "imagens_regra"
+
+
+def regra_imagens() -> str:
+    linha = banco.um("SELECT valor FROM ajustes WHERE chave=?", REGRA_IMAGENS)
+    return linha["valor"] if linha and linha["valor"] in IMAGENS_QUEM else ""
+
+
+def definir_regra_imagens(quem: str) -> None:
+    banco.executar("INSERT OR REPLACE INTO ajustes (chave, valor) VALUES (?, ?)", REGRA_IMAGENS,
+                   "assinatura" if quem == "assinatura" else "")
+
+
+def _recusar_contra_a_regra(quem: str) -> None:
+    if quem != "assinatura" and regra_imagens() == "assinatura":
+        raise ValueError("A regra \"Todos pela conexão\" está ligada: todo canal gera imagem pela assinatura do "
+                         "ChatGPT. Para usar a chave de API, desligue a regra em Integrações › Todos pela chave de API.")
+
+
+def aplicar_regra() -> list[str]:
+    """Põe na assinatura todo perfil de canal que saiu dela, com a regra ligada. Devolve os perfis que mudaram."""
+    if regra_imagens() != "assinatura":
+        return []
+    mudados = []
+    for p in imagens_dos_perfis():
+        if p["e_canal"] and p["quem"] != "assinatura":
+            salvar_imagens_quem(p["perfil"], "assinatura")
+            mudados.append(p["perfil"])
+    if mudados:
+        print(f"regra Todos pela conexão: {', '.join(mudados)} voltaram para a assinatura do ChatGPT")
+    return mudados
 
 
 def _gravar_campos_de_imagens(arquivo, campos: dict[str, str]) -> None:

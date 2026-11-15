@@ -376,6 +376,11 @@ def _uma_volta(usuario_id: int) -> None:
     global _atuais
     if backup.na_hora():
         backup.fazer()
+    try:   # a regra Todos pela conexão: o perfil que saiu da assinatura por fora volta para ela
+        from . import producao
+        producao.aplicar_regra()
+    except Exception as erro:  # noqa: BLE001
+        print("a regra das imagens não deu para aplicar:", str(erro)[:160])
     novos = verificar(usuario_id)
     with _trava:
         _atuais = novos

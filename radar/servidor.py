@@ -2213,6 +2213,7 @@ async def producao_voz(canal_id: str, request: Request, u: dict = Depends(dono_d
         perfil_novo = fabrica_api.criar_canal(c["titulo"], d)
     except fabrica_api.SemFabrica as erro:
         raise HTTPException(503, str(erro))
+    producao.aplicar_regra()   # canal novo nasce na assinatura quando a regra Todos pela conexão está ligada
     return producao.salvar(u["id"], canal_id, producao.config(u["id"], canal_id) | {"perfil": perfil_novo})
 
 
@@ -2837,6 +2838,7 @@ async def chatgpt_esquecer(corpo: dict, u: dict = Depends(_chaves_aqui)):
 async def chatgpt_canais(u: dict = Depends(_chaves_aqui)):
     """Quem gera as imagens em cada canal da fábrica, para trocar pela conexão do ChatGPT direto em Integrações
     (pedido do usuário em 2026-11-01). É o mesmo imagens.provedor da Configuração do canal."""
+    await run_in_threadpool(producao.aplicar_regra)
     return await run_in_threadpool(producao.imagens_dos_perfis)
 
 
@@ -2844,6 +2846,10 @@ async def chatgpt_canais(u: dict = Depends(_chaves_aqui)):
 async def chatgpt_canais_salvar(corpo: dict, u: dict = Depends(_chaves_aqui)):
     """{"quem": "assinatura" | "api", "perfil": "canal-x"} troca um perfil; sem perfil, troca todos os canais."""
     quem, perfil = str(corpo.get("quem") or ""), str(corpo.get("perfil") or "")
+    if not perfil and quem in producao.IMAGENS_QUEM:
+        # Todos pela conexão liga a regra (todo canal fica na assinatura, inclusive os novos); Todos pela chave de API
+        # desliga. Antes de trocar, para a regra ligada não recusar a volta para a chave
+        await run_in_threadpool(producao.definir_regra_imagens, quem)
     nomes = [perfil] if perfil else [p["perfil"] for p in producao.imagens_dos_perfis() if p["e_canal"]]
     for nome in nomes:
         await run_in_threadpool(_integracao, producao.salvar_imagens_quem, nome, quem)

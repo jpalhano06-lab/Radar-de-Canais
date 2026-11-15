@@ -111,6 +111,8 @@ def test_video_parado_repete_de_10_em_10_min(monkeypatch):
     monkeypatch.setattr(avisos, "verificar", lambda u: [aviso])
     monkeypatch.setattr(avisos, "_no_celular", lambda a: mandados.append(relogio[0]))
     monkeypatch.setattr(avisos.backup, "na_hora", lambda: False)
+    from radar import producao
+    monkeypatch.setattr(producao, "aplicar_regra", lambda: [])   # nunca mexer nos perfis de verdade num teste
     monkeypatch.setattr(avisos, "_enviados", {})
     relogio = [0.0]
     monkeypatch.setattr(avisos.time, "time", lambda: relogio[0])
