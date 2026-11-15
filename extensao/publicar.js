@@ -333,27 +333,55 @@
   // rating". A extensão procurava a caixinha, não achava, dava erro e clicava no Avançar ainda desativado — o
   // Avançar só libera depois que a classificação é enviada. Agora: caixinha antiga se existir, envia, confirma a
   // janelinha se ela abrir, e espera o Avançar ficar clicável antes de seguir.
+  //
+  // "Às vezes trava" (2026-11-14): a janelinha de confirmação era procurada uma vez só, 1 s depois do Submit, e só
+  // fora do ytcp-uploads-dialog. Quando ela demorava mais para abrir, ou abria dentro do diálogo do envio, ninguém
+  // confirmava: o Avançar nunca liberava e o botão ficava 15 s em "Respondendo…" para terminar em erro. E qualquer
+  // exceção no meio deixava o "Respondendo…" para sempre. Agora a espera confirma a janelinha quando ela aparecer,
+  // aperta o Submit de novo se o primeiro clique não pegou, e o finally sempre solta o botão.
   const ENVIAR_CLASSIFICACAO = /^(Enviar classificação|Enviar avaliação|Submit rating)$/i;
+  const CONFIRMAR_CLASSIFICACAO = /^(Enviar|Submit|Confirmar|Confirm|Enviar classificação|Submit rating)$/i;
+  const AVANCAR_LIVRE = /^(Avançar|Próxima|Next)$/i;
+
+  // a janelinha de confirmação: qualquer diálogo visível que não seja o próprio diálogo do envio (o que tem a barra
+  // de etapas), esteja ele dentro ou fora do ytcp-uploads-dialog
+  function confirmarJanelinha() {
+    const janela = [...document.querySelectorAll("tp-yt-paper-dialog, ytcp-dialog, ytcp-confirmation-dialog")]
+      .filter((d) => visivel(d) && !d.querySelector(BARRA_DE_ETAPAS) && botao(CONFIRMAR_CLASSIFICACAO, d)).pop();
+    return janela ? clicar(CONFIRMAR_CLASSIFICACAO, janela) : false;
+  }
+
   async function responderNadaDisso({ avancar = true } = {}) {
+    if (estado.trabalhando) return;
     estado.trabalhando = "anunciantes"; desenhar();
+    try {
+      await responderNadaDissoAgora({ avancar });
+    } catch (e) {
+      recado(`A Adequação deu erro (${e && e.message || e}): clique "Submit rating" e Avançar você.`, true);
+    } finally {
+      estado.trabalhando = ""; desenhar();
+    }
+  }
+
+  async function responderNadaDissoAgora({ avancar }) {
     const nenhuma = folhas(/^Nenhuma das opções( acima)?$|^None of the above$/i)
       .map((e) => e.closest("ytcp-checkbox-lit, tp-yt-paper-checkbox, ytcp-checkbox") || e.parentElement).filter(Boolean)[0];
     if (nenhuma) { marcar(nenhuma, true); await esperar(500); }
     // na tela nova, uma categoria que não esteja em "None" é resposta da pessoa (ou do YouTube): não passo por cima
     const marcadas = folhas(/^(None|Nenhum|Nenhuma)$/i).length;
     const enviou = clicar(ENVIAR_CLASSIFICACAO);
-    if (enviou) {
-      await esperar(1000);
-      // algumas contas pedem confirmação numa janelinha por cima ("Enviar" / "Submit")
-      const janela = [...document.querySelectorAll("tp-yt-paper-dialog, ytcp-dialog, ytcp-confirmation-dialog")]
-        .filter((d) => visivel(d) && !d.closest("ytcp-uploads-dialog")).pop();
-      if (janela && clicar(/^(Enviar|Submit|Confirmar|Confirm|Enviar classificação|Submit rating)$/i, janela)) await esperar(1000);
+    // o Avançar só libera depois que o Studio grava a classificação ("Saving…"). Enquanto espera: confirma a
+    // janelinha se ela abrir (pode demorar) e, se o Submit continuar ativo depois de 3 s, aperta de novo
+    const inicio = Date.now(), fim = inicio + 20000;
+    let reenviou = false;
+    while (!botao(AVANCAR_LIVRE) && Date.now() < fim) {
+      if (enviou) {
+        if (confirmarJanelinha()) { await esperar(800); continue; }
+        if (!reenviou && Date.now() - inicio > 3000 && clicar(ENVIAR_CLASSIFICACAO)) reenviou = true;
+      }
+      await esperar(400);
     }
-    // o Avançar só libera depois que o Studio grava a classificação ("Saving…")
-    const fim = Date.now() + 15000;
-    while (!botao(/^(Avançar|Próxima|Next)$/i) && Date.now() < fim) await esperar(400);
-    estado.trabalhando = "";
-    const livre = !!botao(/^(Avançar|Próxima|Next)$/i);
+    const livre = !!botao(AVANCAR_LIVRE);
     if (!enviou && !livre) {
       return recado("Não achei o \"Enviar classificação\" (Submit rating): clique você e depois Avançar.", true);
     }

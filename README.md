@@ -1931,3 +1931,17 @@ também coloque o valor mais ou menos esperado" (painel novo de estatísticas, `
   `measure` vem em milésimos da moeda da página) ÷ views do mesmo dia (gráfico do cartão Views). Passar o mouse
   na linha mostra o RPM usado. É estimativa: o valor real aparece no Studio 2 ou 3 dias depois.
 - Para usar: dê ↻ na extensão em `chrome://extensions` e recarregue o Studio.
+
+
+## Extensão 0.49.2: "Responder nada disso" não trava mais (2026-11-14)
+
+Pedido do usuário: "o responder nada disso às vezes trava" (tela "Ad suitability", com o "Saving…" no topo).
+
+- A janelinha de confirmação do Submit rating era procurada uma vez só, 1 s depois do clique, e só fora do
+  diálogo do envio. Quando ela demorava ou abria dentro dele, ninguém confirmava: o Avançar não liberava e o botão
+  ficava 15 s em "Respondendo…" até dar erro.
+- Agora, enquanto espera o Avançar (até 20 s), a extensão confirma a janelinha quando ela aparecer, onde estiver,
+  e aperta o Submit rating de novo se o primeiro clique não pegou.
+- Um erro no meio deixava o botão em "Respondendo…" para sempre; agora ele sempre volta e diz o que fazer.
+  Apertar duas vezes seguidas não roda a tarefa em dobro.
+- Para usar: dê ↻ na extensão em `chrome://extensions` e recarregue o Studio.
