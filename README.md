@@ -2053,6 +2053,13 @@ sem o canal certo".
   1 minuto) e a aba do YouTube que abre faz a troca para a conta de treino.
 - Para usar: dê ↻ na extensão em `chrome://extensions` (o Radar não precisa religar).
 
+## Extensão 0.52.3: "procurar ideia" troca de conta em qualquer idioma (2026-11-15)
+
+O "procurar ideia" do Meu dia funcionou uma vez e depois abriu o YouTube sem trocar de conta. A conta aberta estava
+com o YouTube em português europeu, onde o item do menu do avatar é "Mudar de conta", e a extensão só procurava
+"Trocar de conta" / "Alternar conta" / "Switch account". Agora reconhece também "Mudar de conta" e o item em
+espanhol, francês, alemão e italiano.
+
 ## Extensão 0.52.2: "visualizações ontem" igual ao do YouTube (2026-11-15)
 
 O usuário viu no cartão Visualizações do Studio "35.936 visualizações ontem · 14 de nov" do Radar enquanto o gráfico

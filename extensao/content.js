@@ -2247,6 +2247,9 @@
     const arroba = (solto.match(/@[\w.\-]+/) || [])[0];
     return arroba ? { handle: arroba.toLowerCase(), nome: "" } : { handle: "", nome: normal(t) };
   }
+  // o nome do item muda com o idioma de cada conta: 2026-11-15, o "procurar ideia" funcionou uma vez e depois parou
+  // porque a conta aberta estava em português europeu, onde o item é "Mudar de conta"
+  const TROCAR_CONTA = /Switch account|Alternar conta|Trocar (de )?conta|Mudar de conta|Cambiar (de )?cuenta|Changer de compte|Konto wechseln|Cambia account/i;
   const contaBate = (alvo, nome, texto) => alvo.handle ? normal(texto).includes(alvo.handle) : normal(nome) === alvo.nome;
 
   // soLer: só lê as contas do menu e guarda (o "Ler as contas do YouTube" do Meu dia), sem trocar de conta
@@ -2266,7 +2269,7 @@
     const fecharMenu = () => document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
     const itens = () => [...document.querySelectorAll("ytd-popup-container ytd-account-item-renderer")].filter((i) => i.offsetWidth > 0);
     const linkTrocar = () => [...(menu() ? menu().querySelectorAll("ytd-compact-link-renderer") : [])]
-      .find((e) => e.offsetWidth > 0 && /Switch account|Alternar conta|Trocar (de )?conta|Cambiar de cuenta/i.test(e.textContent));
+      .find((e) => e.offsetWidth > 0 && TROCAR_CONTA.test(e.textContent));
     // o menu abre carregando (só a rodinha), e o YouTube às vezes o reabre já na lista de contas da última vez
     await esperarAte(() => linkTrocar() || itens().length, 8000);
     if (!itens().length) {
