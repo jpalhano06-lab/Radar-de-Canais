@@ -2052,3 +2052,16 @@ sem o canal certo".
   abria na conta que estivesse aberta, sem aviso. Agora o pedido de troca vai pelo storage (`diaTrocarConta`, vale
   1 minuto) e a aba do YouTube que abre faz a troca para a conta de treino.
 - Para usar: dê ↻ na extensão em `chrome://extensions` (o Radar não precisa religar).
+
+## Extensão 0.52.2: "visualizações ontem" igual ao do YouTube (2026-11-15)
+
+O usuário viu no cartão Visualizações do Studio "35.936 visualizações ontem · 14 de nov" do Radar enquanto o gráfico
+do YouTube mostrava 43.170 para o mesmo 14/11.
+
+- **Causa**: o Radar somava as barras de 48 h de meia-noite a meia-noite no horário do computador (Brasil). O YouTube
+  fecha o dia no horário do Pacífico (5 h depois, UTC-8; UTC-7 no verão de lá). Eram duas janelas de 24 h diferentes,
+  e as barras de tempo real ainda são preliminares.
+- **Agora**: o "ontem" é o dia do YouTube (Pacífico). Quando o gráfico diário do Studio já tem esse dia, o número é o
+  dele, o mesmo da dica ao passar o mouse; senão, soma as barras de 48 h dentro do dia do Pacífico. A dica da linha
+  diz de onde veio. O "hoje (desde a meia-noite)" do cartão de 48 h continua no horário do Brasil.
+- Para usar: dê ↻ na extensão em `chrome://extensions` e recarregue o Studio.

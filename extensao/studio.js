@@ -255,16 +255,37 @@
   // As views de ontem saem das barras de 48 h (de meia-noite a meia-noite, no fuso do computador) e ficam guardadas
   // no localStorage do Studio, por canal, para continuarem lá quando as 48 h passarem. O valor esperado é ontem ×
   // RPM dos últimos 7 dias que já têm receita no Studio (receita do dia ÷ views do mesmo dia, do cartão Views).
-  const chaveDia = (ms) => { const d = new Date(ms); return `${d.getFullYear()}-${dois(d.getMonth() + 1)}-${dois(d.getDate())}`; };
+  //
+  // 2026-11-15: o "ontem" do Radar dava 35.936 e o gráfico do Studio, 43.170 para o mesmo 14 de nov. O Radar somava as
+  // barras de meia-noite a meia-noite no horário do Brasil, e o YouTube fecha o dia no horário do Pacífico (5 h
+  // depois): eram duas janelas de 24 h diferentes. Agora o dia é o do Pacífico, e quando o gráfico do Studio já tem
+  // esse dia, o número é o dele (o mesmo que a pessoa vê passando o mouse); as barras de 48 h ficam de reserva.
+  const FUSO_YT = "America/Los_Angeles";
+  const partesPT = (ms) => Object.fromEntries(new Intl.DateTimeFormat("en-CA", { timeZone: FUSO_YT, year: "numeric", month: "2-digit",
+    day: "2-digit", hour: "2-digit", hourCycle: "h23" }).formatToParts(ms).map((x) => [x.type, x.value]));
+  const chaveDia = (ms) => { const p = partesPT(ms); return `${p.year}-${p.month}-${p.day}`; };
+  // a meia-noite do Pacífico do dia `chave` (UTC-8 no inverno, UTC-7 no verão)
+  function inicioDoDiaPT(chave) {
+    const [a, m, d] = chave.split("-").map(Number);
+    for (const h of [7, 8]) { const t = Date.UTC(a, m - 1, d, h); if (partesPT(t).hour === "00") return t; }
+    return Date.UTC(a, m - 1, d, 8);
+  }
+  const ontemPT = () => chaveDia(inicioDoDiaPT(chaveDia(Date.now())) - 12 * 36e5);
   const lerGuardado = (canal) => { try { return JSON.parse(localStorage.getItem(`radar-views-dia:${canal}`) || "{}"); } catch { return {}; } };
+  // o número do gráfico diário do Studio para o dia `chave` (o domínio do ponto é a meia-noite UTC do dia)
+  function viewsDoGrafico(canal, chave) {
+    if (!viewsPorDia || viewsPorDia.canal !== canal) return null;
+    const p = viewsPorDia.dias.find(([t]) => new Date(t).toISOString().slice(0, 10) === chave);
+    return p && p[1] > 0 ? p[1] : null;
+  }
 
   function guardarOntem(canal, horas) {
-    const fim = meiaNoite(), inicio = fim - 864e5;
+    const chave = ontemPT(), inicio = inicioDoDiaPT(chave), fim = inicioDoDiaPT(chaveDia(Date.now()));
     // só vale se as barras cobrem o dia inteiro de ontem
     if (!horas.length || horas[0][0] > inicio) return;
-    const views = horas.filter(([t]) => t >= inicio && t < fim).reduce((s, [, v]) => s + v, 0);
+    const views = viewsDoGrafico(canal, chave) ?? horas.filter(([t]) => t >= inicio && t < fim).reduce((s, [, v]) => s + v, 0);
     const salvo = lerGuardado(canal);
-    salvo[chaveDia(inicio)] = views;
+    salvo[chave] = views;
     const dias = Object.keys(salvo).sort().slice(-90);   // três meses bastam
     try { localStorage.setItem(`radar-views-dia:${canal}`, JSON.stringify(Object.fromEntries(dias.map((k) => [k, salvo[k]])))); } catch { /* sem espaço: só não guarda */ }
   }
@@ -285,19 +306,22 @@
     const canal = canalDaPagina();
     const cartao = cartaoDaTela(tituloViews);
     if (!canal || !cartao) return;
-    const ontem = meiaNoite() - 864e5;
-    const views = lerGuardado(canal)[chaveDia(ontem)];
+    const chave = ontemPT();
+    const doStudio = viewsDoGrafico(canal, chave);
+    const views = doStudio ?? lerGuardado(canal)[chave];
     if (views == null) return;
-    const dia = new Date(ontem).toLocaleDateString("pt-BR", { day: "numeric", month: "short" }).replace(/\./g, "");
+    const dia = new Date(`${chave}T12:00:00Z`).toLocaleDateString("pt-BR", { day: "numeric", month: "short", timeZone: "UTC" }).replace(/\./g, "");
     const taxa = rpm(canal);
     const esperado = taxa ? ` · ≈ ${dinheiro(receita.moeda, (views * taxa.valor) / 1000)} esperado` : "";
     const texto = `${views.toLocaleString("pt-BR")}|${esperado}`;
     const caixa = cartao.querySelector(".radar-ontem");
     if (caixa && caixa.dataset.de === texto) return;
     porLinha(cartao, "radar-ontem", views.toLocaleString("pt-BR"), `visualizações ontem · ${dia}${esperado} · Radar`,
-      taxa ? `Views de ontem (meia-noite a meia-noite) × RPM de ${dinheiro(receita.moeda, taxa.valor)} por mil views, `
+      (doStudio != null ? "Views de ontem do gráfico do Studio (o dia do YouTube, no horário do Pacífico). "
+        : "Views de ontem somadas das barras de 48 h, no dia do YouTube (horário do Pacífico); o gráfico do Studio ainda não tinha esse dia. ")
+      + (taxa ? `Valor esperado: views × RPM de ${dinheiro(receita.moeda, taxa.valor)} por mil views, `
         + `a média dos últimos ${taxa.dias} dias que já têm receita no Studio. É uma estimativa: o valor real aparece em 2 ou 3 dias.`
-        : "Views de ontem, de meia-noite a meia-noite. O valor esperado aparece quando a receita dos últimos dias carregar.");
+        : "O valor esperado aparece quando a receita dos últimos dias carregar."));
     cartao.querySelector(".radar-ontem").dataset.de = texto;
   }
 
