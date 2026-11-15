@@ -2260,11 +2260,29 @@
     }
     if (!alvo.handle && !alvo.nome) return;
     const rotulo = alvo.handle || textoAlvo;
-    const avatar = await esperarAte(() => document.querySelector("ytd-masthead #avatar-btn"), 15000);
-    if (!avatar) return avisoRapido("Entre numa conta do YouTube para a extensão trocar para a conta de treino.");
-    await esperarMs(1200);   // logo depois de carregar, o clique no avatar ainda não abre o menu
+    // 2026-11-15, segunda volta do bug: o avatar aparece bem antes de a página aceitar o clique. Com 1,2 s de espera
+    // e 3 cliques a cada 2,5 s, numa página lenta os cliques caíam no vazio, ou o segundo fechava o menu que o
+    // primeiro tinha aberto, e a aba ficava na conta errada. Agora: espera a aba estar na frente, a página terminar
+    // de carregar e a foto do avatar; só clica de novo se o menu não estiver aberto (nem carregando)
+    await esperarAte(() => !document.hidden, 120000);
+    const avatarPronto = () => {
+      const b = document.querySelector("ytd-masthead #avatar-btn");
+      return b && document.readyState === "complete" && b.querySelector("img[src]") ? b : null;
+    };
+    if (!await esperarAte(avatarPronto, 30000)) {
+      return avisoRapido(document.querySelector("ytd-masthead #avatar-btn")
+        ? `O YouTube demorou para carregar. Troque para ${rotulo} pelo avatar.`
+        : "Entre numa conta do YouTube para a extensão trocar para a conta de treino.");
+    }
+    avisoRapido(`Abrindo o menu da conta para trocar para ${rotulo}…`);
+    await esperarMs(2000);   // logo depois de carregar, o clique no avatar ainda não abre o menu
     const menu = () => [...document.querySelectorAll("ytd-popup-container ytd-multi-page-menu-renderer")].find((m) => m.offsetWidth > 0);
-    for (let i = 0; i < 3 && !menu(); i++) { avatar.click(); await esperarAte(menu, 2500); }
+    const caixaAberta = () => [...document.querySelectorAll("ytd-popup-container tp-yt-iron-dropdown")]
+      .some((d) => d.style.display !== "none" && d.offsetWidth > 0);
+    for (let i = 0; i < 6 && !menu(); i++) {
+      if (!caixaAberta()) (avatarPronto() || document.querySelector("ytd-masthead #avatar-btn")).click();
+      await esperarAte(menu, 3000);
+    }
     if (!menu()) return avisoRapido(`Não consegui abrir o menu da conta. Troque para ${rotulo} pelo avatar.`);
     const fecharMenu = () => document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
     const itens = () => [...document.querySelectorAll("ytd-popup-container ytd-account-item-renderer")].filter((i) => i.offsetWidth > 0);

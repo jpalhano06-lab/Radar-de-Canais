@@ -2053,6 +2053,13 @@ sem o canal certo".
   1 minuto) e a aba do YouTube que abre faz a troca para a conta de treino.
 - Para usar: dê ↻ na extensão em `chrome://extensions` (o Radar não precisa religar).
 
+## Extensão 0.52.4: "procurar ideia" espera o YouTube carregar antes de abrir o menu da conta (2026-11-15)
+
+Depois da 0.52.3 o "procurar ideia" ainda abria na conta errada. O avatar aparece bem antes de a página aceitar o
+clique: com 1,2 s de espera e três cliques a cada 2,5 s, numa página lenta os cliques caíam no vazio, ou o segundo
+fechava o menu que o primeiro abriu. Agora a extensão espera a aba estar na frente, a página terminar de carregar e
+a foto do avatar; só clica de novo se o menu não estiver aberto, e avisa na tela "Abrindo o menu da conta…".
+
 ## Extensão 0.52.3: "procurar ideia" troca de conta em qualquer idioma (2026-11-15)
 
 O "procurar ideia" do Meu dia funcionou uma vez e depois abriu o YouTube sem trocar de conta. A conta aberta estava
