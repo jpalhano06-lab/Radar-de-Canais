@@ -2010,3 +2010,26 @@ Pedido do usuário: "coloca só os nomes dos canais, sem o @, e deixa mais bonit
 - "↻ Ler as contas de novo" fica embaixo, discreto. Conferido no navegador com contas de exemplo: abre, escolhe,
   guarda e o "procurar ideia" passa a abrir a conta escolhida.
 - Para usar: dê ↻ na extensão em `chrome://extensions`.
+
+## Extensão 0.52.0: Meu dia com cores, Postar no Studio e uso de IA sempre Sim (2026-11-15)
+
+Pedido do usuário: "sempre a extensão tem que colocar que tem uso de IA", copiar a thumbnail de referência só pelo
+nome, cores vermelho/amarelo/verde, o Meu dia abrir no YouTube Studio com a opção de postar.
+
+- **Uso de IA**: o Studio em português de Portugal chama a pergunta de "Utilização de IA" / "Foi usada IA para
+  gerar ou editar…", que a extensão não reconhecia. Agora reconhece e marca **Sim sozinha** assim que a pergunta
+  aparece sem resposta, sem precisar apertar nada. Se a pessoa escolher Não, a escolha fica.
+- **Thumbnail de referência**: o pedido da Nova produção leva o link e o título do vídeo de referência para o Meu dia.
+  Cada vídeo mostra "Ref.: <título>" e o botão **Copiar thumbnail de referência**, que põe a imagem (PNG) na área de
+  transferência para colar com Ctrl+V. A imagem não aparece no painel. Só vale para pedidos feitos a partir de agora.
+- **Cores**: vermelho = nada feito; amarelo = meio caminho (um vídeo postado de 2, vídeo sem thumbnail, thumbnail
+  sem postar); verde = meta do dia batida com todos os vídeos com thumbnail e postados. Vale para o cartão do canal,
+  para cada vídeo e para as pílulas do topo. Os vermelhos ficam em cima, os verdes embaixo.
+- **Meu dia no Studio**: a abinha "Meu dia" também aparece no `studio.youtube.com`. Cada vídeo não postado tem
+  **Postar**: o Meu dia acha o projeto na fábrica pelo título (`/api/ext/postar`), baixa o vídeo pronto
+  (`/api/ext/postar/<projeto>/video`: o .mp4 da entrega no PC ou o `final.mp4`), abre Criar > Carregar vídeos e põe
+  o vídeo e a thumbnail do Meu dia nos campos do Studio. A capa com mais de 2 MB é comprimida antes. Fora do Studio
+  o botão é "Postar ↗": abre o Studio e começa sozinho lá.
+- **Postou, fica verde**: quando o Studio mostra "Vídeo publicado" / "Vídeo agendado", o vídeo do Meu dia fica como
+  postado, pelo id (botão Postar) ou pelo título (quem subiu sem o botão).
+- Para usar: dê ↻ na extensão em `chrome://extensions` e religue o Radar (rota nova).

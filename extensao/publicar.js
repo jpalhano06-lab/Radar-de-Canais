@@ -223,13 +223,26 @@
   // os dois nomes estão aqui porque a tela muda de uma conta para a outra.
   // O "Sim" é exato: o da promoção paga e o das crianças são frases inteiras ("Sim, meu vídeo inclui promoção
   // paga"), e sem o casamento exato a extensão marcaria a resposta errada numa pergunta que não é dela.
-  const IA_PERGUNTA = /Uso de IA|A IA foi usada|Conteúdo alterado ou sintético|conteúdo sintético|Altered or synthetic|AI (was )?used|Use of AI/i;
+  // Em 2026-11-15 o Studio em português de Portugal trouxe "Utilização de IA" / "Foi usada IA para gerar ou editar
+  // o seu conteúdo…", que nenhum dos nomes de antes casava: a extensão não marcava e o Sim ficava para a pessoa.
+  const IA_PERGUNTA = /Uso de IA|Utilização de IA|Utilizou IA|A IA foi usada|Foi usada IA|Conteúdo alterado ou sintético|conteúdo sintético|Altered or synthetic|AI (was )?used|Use of AI|Was AI used/i;
+
+  const opcoesDaSecao = (p) => [...p.querySelectorAll("tp-yt-paper-radio-button, ytcp-checkbox-lit, tp-yt-paper-checkbox, ytcp-checkbox")]
+    .filter((r) => visivel(r) && /^(Sim|Yes|Não|No)$/i.test(limpo(r)));
+  const simDaSecao = (p) => opcoesDaSecao(p).find((r) => /^(Sim|Yes)$/i.test(limpo(r)));
+  const estaMarcado = (r) => (r.checked != null ? !!r.checked : r.getAttribute("aria-checked") === "true" || r.hasAttribute("checked"));
 
   function marcarIA() {
-    const simDaSecao = (p) => [...p.querySelectorAll("tp-yt-paper-radio-button, ytcp-checkbox-lit, tp-yt-paper-checkbox, ytcp-checkbox")]
-      .find((r) => visivel(r) && /^(Sim|Yes)$/i.test(limpo(r)));
     const secao = secaoDe(IA_PERGUNTA, simDaSecao);
     return secao ? marcar(simDaSecao(secao), true) : false;
+  }
+
+  // Sem apertar nada (pedido do usuário em 2026-11-15: "aqui sempre a extensão tem que colocar que tem uso de IA"):
+  // a pergunta apareceu sem resposta → Sim. Se a pessoa já escolheu (até o Não), a escolha dela fica.
+  function marcarIASozinho() {
+    const secao = secaoDe(IA_PERGUNTA, simDaSecao);
+    if (!secao || opcoesDaSecao(secao).some(estaMarcado)) return false;
+    return marcarIA();
   }
 
   // ------------------------------------------------------------ 2. Monetização: ligar e marcar todos os anúncios
@@ -938,13 +951,98 @@
     barra.replaceChildren(el("div", { className: "acima" }, corpo), el("div", { className: "botoes" }, principal));
   }
 
+  // ------------------------------------------------------------ o "Postar" do Meu dia
+  // Pedido do usuário em 2026-11-15: o Meu dia abre no Studio e cada vídeo tem "Postar", que já abre o upload com o
+  // vídeo da fábrica e a thumbnail; publicou, o vídeo fica verde no Meu dia sozinho. O quadro do Meu dia (dia.js,
+  // página da extensão) baixa o vídeo do Radar e manda o arquivo para cá pelo postMessage; aqui ele entra no campo de
+  // arquivo do Studio, como se a pessoa tivesse escolhido.
+  const ORIGEM_DA_EXTENSAO = new URL(chrome.runtime.getURL("")).origin;
+  const POSTANDO = "radar-dia-postando";
+
+  function colocarArquivo(campo, arquivo) {
+    const dt = new DataTransfer();
+    dt.items.add(arquivo);
+    campo.files = dt.files;
+    campo.dispatchEvent(new Event("change", { bubbles: true }));
+  }
+
+  async function esperarPor(achar, ate) {
+    const fim = Date.now() + ate;
+    for (;;) {
+      const x = achar();
+      if (x || Date.now() >= fim) return x || null;
+      await esperar(300);
+    }
+  }
+
+  const campoDoVideo = () => document.querySelector("ytcp-uploads-file-picker input[type=file], ytcp-uploads-dialog input[type=file][name=Filedata]");
+  const campoDaCapa = () => [...document.querySelectorAll("ytcp-uploads-dialog input[type=file], #file-loader")]
+    .find((i) => /image/i.test(i.accept || "") || i.id === "file-loader") || null;
+  const dialogoAberto = () => [...document.querySelectorAll("ytcp-uploads-dialog tp-yt-paper-dialog")].some(visivel);
+
+  async function postarDoDia({ id, titulo, video, capa }) {
+    sessionStorage.setItem(POSTANDO, JSON.stringify({ id, titulo, desde: Date.now() }));
+    ultimoTitulo = ""; avisouPostado = "";
+    recado("Meu dia: abrindo o upload com o vídeo da fábrica…");
+    if (!dialogoAberto()) {
+      const criar = await esperarPor(() => document.querySelector("#create-icon") || botao(/^(Criar|Create)$/i, document.body), 15000);
+      if (criar) { criar.click(); await esperar(700); }
+      clicar(/^(Carregar vídeos|Enviar vídeos|Upload videos)$/i, document.body);
+    }
+    const campo = await esperarPor(campoDoVideo, 15000);
+    if (!campo) return recado("Meu dia: não achei o botão de enviar vídeo do Studio. Abra Criar > Carregar vídeos e aperte Postar de novo.", true);
+    colocarArquivo(campo, video);
+    if (!capa) return recado("Meu dia: o vídeo está subindo. Este vídeo ainda não tem thumbnail no Meu dia: escolha a capa aqui.");
+    // a capa só aparece nos Detalhes, depois que o upload começa
+    const campoCapa = await esperarPor(campoDaCapa, 60000);
+    if (!campoCapa) return recado("Meu dia: o vídeo está subindo, mas o campo da capa não apareceu: coloque a thumbnail na mão.", true);
+    let arquivo = capa;
+    if (capa.size > CAPA_LIMITE) {
+      try { const { bloco } = await encolher(capa); arquivo = new File([bloco], capa.name.replace(/\.[^.]+$/, "") + ".jpg", { type: "image/jpeg" }); }
+      catch { /* vai a original: o cartão de comprimir aparece */ }
+    }
+    aplicandoCapa = arquivo !== capa;
+    try { colocarArquivo(campoCapa, arquivo); } finally { aplicandoCapa = false; }
+    recado("Meu dia: vídeo e thumbnail no Studio. Confira e siga as etapas — publicou, ele fica verde no Meu dia.");
+  }
+
+  window.addEventListener("message", (e) => {
+    if (e.origin !== ORIGEM_DA_EXTENSAO || !e.data || e.data.tipo !== "radar-postar") return;
+    const v = e.data.video;   // o arquivo vem de outro mundo (a página da extensão): confere pelo jeito, não pelo instanceof
+    if (!v || typeof v.size !== "number" || typeof v.arrayBuffer !== "function") return;
+    postarDoDia(e.data).catch((erro) => recado(`Meu dia: ${erro && erro.message || erro}`, true));
+  });
+
+  // publicou (ou agendou): o vídeo do Meu dia fica como postado. Vale também para quem subiu sem o botão Postar:
+  // aí o vídeo é achado pelo título
+  let ultimoTitulo = "", avisouPostado = "";
+  const PUBLICADO = /^(V[íi]deo (publicado|agendado|programado)|Estreia (agendada|programada)|Video (published|scheduled)|Premiere scheduled)/i;
+  function conferirPublicado() {
+    const t = campoTitulo();
+    if (t) ultimoTitulo = oQueTem(t).trim() || ultimoTitulo;
+    // só dentro das janelas do Studio (a de compartilhar e a de "ainda processando"): varrer a página toda a cada
+    // segundo pesava
+    const janelas = [...document.querySelectorAll("ytcp-video-share-dialog, ytcp-uploads-still-processing-dialog, tp-yt-paper-dialog")].filter(visivel);
+    if (!janelas.some((j) => folhas(PUBLICADO, j).length)) return;
+    let postando = {};
+    try { postando = JSON.parse(sessionStorage.getItem(POSTANDO) || "{}"); } catch { /* nada */ }
+    const titulo = ultimoTitulo || (estado.kit && estado.kit.titulo) || postando.titulo || "";
+    const chave = `${postando.id || ""}|${titulo}`;
+    if (!titulo && !postando.id || chave === avisouPostado) return;
+    avisouPostado = chave;
+    sessionStorage.removeItem(POSTANDO);
+    pedir({ tipo: "dia-postado", id: postando.id || "", titulo, titulos: [titulo, postando.titulo, estado.kit && estado.kit.titulo].filter(Boolean) });
+  }
+
   (document.body || document.documentElement).append(host);
   // o Studio troca de tela sem recarregar: confere a cada segundo a etapa e o nome do arquivo
   let ultimo = "", ultimoVideo = "", ultimaEtapa = "";
   setInterval(() => {
+    try { conferirPublicado(); } catch { /* a tela mudou no meio */ }
+    if (telaDePublicar() && !estado.trabalhando) try { marcarIASozinho(); } catch { /* idem */ }
     const video = (location.pathname.match(/\/video\/([\w-]{11})/) || location.search.match(/[?&]udvid=([\w-]{11})/) || [])[1] || "";
     if (video && ultimoVideo && video !== ultimoVideo) {
-      estado.arquivo = ""; estado.kit = null; estado.jaPreencheu = ""; estado.recado = ""; desenhar();
+      estado.arquivo = ""; estado.kit = null; estado.jaPreencheu = ""; estado.recado = ""; ultimoTitulo = ""; desenhar();
     }
     if (video) ultimoVideo = video;
     const agora = telaDePublicar();

@@ -12,6 +12,7 @@ import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 from urllib.parse import quote_plus
 
 from starlette.concurrency import run_in_threadpool
@@ -836,6 +837,39 @@ def ext_publicar_legenda(nome: str, u: dict = Depends(exigir("extensao"))):
     if not arquivo:
         raise HTTPException(404, "Este vídeo não tem legenda.")
     return FileResponse(arquivo, media_type="application/x-subrip", filename=f"{nome}.srt")
+
+
+def _video_final(pasta: Path) -> Path | None:
+    """O .mp4 pronto do projeto: o da entrega no PC (com o título no nome) ou o final.mp4 da pasta."""
+    entrega = publicar._ler(pasta / "entrega_pc.json").get("video")
+    for arquivo in ([Path(str(entrega))] if entrega else []) + [pasta / "final.mp4"]:
+        try:
+            if arquivo.is_file() and arquivo.stat().st_size > 0:
+                return arquivo
+        except OSError:
+            continue
+    return None
+
+
+@app.get("/api/ext/postar")
+def ext_postar(titulo: str = "", u: dict = Depends(exigir("extensao"))):
+    """O botão Postar do Meu dia (pedido do usuário em 2026-11-15): acha na fábrica o projeto do vídeo pelo título e
+    diz se o vídeo já está pronto para subir."""
+    raiz = roteiro_claude.FABRICA / "projetos"
+    nome = publicar.achar(raiz, titulo[:300])
+    if not nome:
+        return {"nome": None, "pronto": False}
+    video = _video_final(raiz / nome)
+    return {"nome": nome, "pronto": bool(video), "titulo": publicar._titulo(raiz / nome),
+            "tamanho": video.stat().st_size if video else 0}
+
+
+@app.get("/api/ext/postar/{nome}/video")
+def ext_postar_video(nome: str, u: dict = Depends(exigir("extensao"))):
+    video = _video_final(_projeto_fabrica(nome))
+    if not video:
+        raise HTTPException(404, "A fábrica ainda não terminou este vídeo.")
+    return FileResponse(video, media_type="video/mp4")
 
 
 @app.post("/api/ext/escrever")

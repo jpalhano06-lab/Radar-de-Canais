@@ -60,3 +60,19 @@ async function diaGuardarThumb(dados, { origem = "", nome = "", video = null, ca
     return v || null;
   });
 }
+
+/** Publicou no Studio (publicar.js): o vídeo do Meu dia fica como postado. Acha pelo id (o botão Postar) ou, para
+ *  quem subiu sem o botão, pelo título. Devolve o id marcado, ou null. */
+function diaMarcarPostado({ id = "", titulos = [] } = {}) {
+  const limpo = (t) => String(t || "").normalize("NFKD").replace(/[̀-ͯ]/g, "").toLowerCase()
+    .replace(/[^\p{L}\p{N}]+/gu, " ").trim();
+  const alvos = titulos.map(limpo).filter((t) => t.length >= 6);
+  return mudarDia((d) => {
+    const v = (id && d.videos.find((x) => x.id === id))
+      || d.videos.find((x) => !x.postado && alvos.includes(limpo(x.titulo)));
+    if (!v) return null;
+    v.postado = true;
+    v.postadoHora = Date.now();
+    return v.id;
+  });
+}

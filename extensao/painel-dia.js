@@ -4,6 +4,8 @@
 (() => {
   const INTERVALO = 450;           // ms entre os dois cliques direitos
   let ultimo = 0, painel = null, abinha = null;
+  const NO_STUDIO = location.hostname === "studio.youtube.com";
+  let pendente = "";
 
   function montar() {
     painel = document.createElement("div");
@@ -23,8 +25,12 @@
     fechar.onclick = () => alternar(false);
     cab.append(titulo, aba, fechar);
     const quadro = document.createElement("iframe");
-    quadro.src = chrome.runtime.getURL("dia.html") + "?embutido=1";
+    // no Studio o Meu dia tem o "Postar" de cada vídeo (pedido do usuário em 2026-11-15); o `pendente` vem do Postar
+    // apertado no YouTube (dia.js guarda diaPostar e abre o Studio) e já começa o upload daquele vídeo
+    const postar = pendente; pendente = "";
+    quadro.src = chrome.runtime.getURL("dia.html") + "?embutido=1" + (NO_STUDIO ? "&studio=1" : "") + (postar ? `&postar=${postar}` : "");
     quadro.title = "Meu dia";
+    quadro.allow = "clipboard-write";
     painel.append(cab, quadro);
     painel.addEventListener("contextmenu", (e) => e.stopPropagation(), true);
     document.body.append(painel);
@@ -63,4 +69,16 @@
   }, true);
 
   chrome.runtime.onMessage.addListener((msg) => { if (msg && msg.tipo === "painel-dia") alternar(); });
+  // o Meu dia pediu para postar: o painel sai da frente do upload
+  window.addEventListener("message", (e) => {
+    if (e.origin === new URL(chrome.runtime.getURL("")).origin && e.data && e.data.tipo === "radar-postar" && painel) alternar(false);
+  });
+  // o Studio redireciona a página inicial e o #endereço se perde no caminho: o pedido vem pelo storage
+  if (NO_STUDIO) chrome.storage.local.get("diaPostar").then(({ diaPostar }) => {
+    if (!diaPostar || Date.now() - diaPostar.quando > 3 * 60 * 1000) return;
+    chrome.storage.local.remove("diaPostar");
+    pendente = diaPostar.id;
+    if (painel) { painel.remove(); painel = null; }   // já aberto: monta de novo, com o pedido
+    alternar(true);
+  }).catch(() => {});
 })();

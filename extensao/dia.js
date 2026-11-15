@@ -23,6 +23,9 @@ let colarEm = null;          // o canal sob o mouse: o Ctrl+V cai nele
 // dentro da aba Meu dia do site do Radar (o quadro leva ?site=1): o "+ Adicionar thumbnail" de cada canal fica só na
 // extensão (pedido do usuário em 2026-11-14)
 const NO_SITE = new URLSearchParams(location.search).has("site");
+// dentro do painel do YouTube Studio (painel-dia.js leva ?studio=1): o Postar sobe o vídeo ali mesmo
+const NO_STUDIO = new URLSearchParams(location.search).has("studio");
+let postarAoAbrir = new URLSearchParams(location.search).get("postar") || "";
 
 const hora = (t) => new Date(t).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
 const plural = (n, um, varios) => `${n} ${n === 1 ? um : varios}`;
@@ -112,6 +115,118 @@ function mostrarErro(texto) {
 const baixar = (thumb, titulo) => h("a", { class: "botao", href: imagens[thumb.id] || "#",
   download: `${(titulo || thumb.nome || "thumbnail").replace(/[\\/:*?"<>|]+/g, " ").slice(0, 80)}.${((imagens[thumb.id] || "").match(/^data:image\/(\w+)/) || [, "png"])[1].replace("jpeg", "jpg")}` }, "Baixar");
 
+// ------------------------------------------------------------ as cores (pedido do usuário em 2026-11-15)
+// vermelho: nada feito · amarelo: meio caminho (um vídeo postado de 2, o vídeo sem a thumbnail) · verde: tudo certo
+const videoCompleto = (v) => !!(v.thumb && v.postado);
+function corDoCanal(meta, videos, thumbFeita) {
+  const completos = videos.filter(videoCompleto).length;
+  if (!meta) {                       // sem meta ou "não posto todo dia": só ganha cor quando tem o que mostrar
+    if (!videos.length) return thumbFeita ? "meio" : "";
+    return completos === videos.length ? "ok" : "meio";
+  }
+  if (!videos.length && !thumbFeita) return "falta";
+  return videos.length >= meta && completos === videos.length ? "ok" : "meio";
+}
+const corDaConta = (feito, total) => (!total ? "" : feito >= total ? "ok" : feito > 0 ? "meio" : "falta");
+
+// ------------------------------------------------------------ a thumbnail de referência
+// Pedido do usuário em 2026-11-15: copiar a thumbnail do vídeo de referência (o da Nova produção) para colar no
+// ChatGPT/Canva. Só o nome do vídeo aparece; a imagem vai direto para a área de transferência.
+const idDoYoutube = (link) => (String(link || "").match(/(?:[?&]v=|youtu\.be\/|shorts\/|embed\/|live\/)([\w-]{11})/) || [])[1] || "";
+
+async function capaDaReferencia(id) {
+  for (const tamanho of ["maxresdefault", "sddefault", "hqdefault"]) {
+    try {
+      const r = await fetch(`https://i.ytimg.com/vi/${id}/${tamanho}.jpg`);
+      if (!r.ok) continue;
+      // a área de transferência só aceita PNG
+      const img = await createImageBitmap(await r.blob());
+      const tela = new OffscreenCanvas(img.width, img.height);
+      tela.getContext("2d").drawImage(img, 0, 0);
+      return await tela.convertToBlob({ type: "image/png" });
+    } catch { /* tenta o próximo tamanho */ }
+  }
+  throw new Error("Não consegui baixar a thumbnail do vídeo de referência.");
+}
+
+const COPIAR_REF = "Copiar thumbnail de referência";
+async function copiarReferencia(v, botao) {
+  const id = idDoYoutube(v.referencia);
+  if (!id) return mostrarErro("O link de referência deste vídeo não é de um vídeo do YouTube.");
+  botao.disabled = true; botao.textContent = "Copiando…";
+  try {
+    // a promessa entra direto no ClipboardItem: assim o clique ainda vale quando a imagem chega
+    await navigator.clipboard.write([new ClipboardItem({ "image/png": capaDaReferencia(id) })]);
+    botao.textContent = "✓ Copiada";
+  } catch (e) {
+    botao.textContent = COPIAR_REF;
+    mostrarErro(`Não copiei a thumbnail de referência: ${(e && e.message) || e}`);
+  } finally {
+    botao.disabled = false;
+    setTimeout(() => { if (botao.textContent === "✓ Copiada") botao.textContent = COPIAR_REF; }, 4000);
+  }
+}
+
+function linhaDaReferencia(v) {
+  if (!v.referencia) return null;
+  const botao = h("button", { type: "button", class: "ref-copiar", title: "Copia a thumbnail do vídeo de referência (cole com Ctrl+V)" }, COPIAR_REF);
+  botao.onclick = () => copiarReferencia(v, botao);
+  return h("div", { class: "ref" }, h("span", { class: "ref-nome", title: v.referencia }, `Ref.: ${v.referenciaTitulo || v.referencia}`), botao);
+}
+
+// ------------------------------------------------------------ o Postar (pedido do usuário em 2026-11-15)
+// No Studio, sobe o vídeo da fábrica e a thumbnail do Meu dia de uma vez (publicar.js recebe e põe nos campos). Fora
+// dele, abre o Studio com o pedido guardado: o Meu dia de lá começa sozinho.
+const pedirAoFundo = (msg) => new Promise((ok) => { try { chrome.runtime.sendMessage(msg, (r) => ok(r || {})); } catch { ok({}); } });
+const nomeDeArquivo = (t) => (t || "video").replace(/[\\/:*?"<>|]+/g, " ").replace(/\s+/g, " ").trim().slice(0, 120) || "video";
+let postando = "";
+
+async function postar(v, botao) {
+  if (!NO_STUDIO) {
+    window.open("https://studio.youtube.com/", "_blank");
+    await chrome.storage.local.set({ diaPostar: { id: v.id, quando: Date.now() } });
+    return;
+  }
+  if (postando) return;
+  postando = v.id;
+  if (!botao) desenhar();             // começou sozinho: o botão do vídeo mostra "Baixando…"
+  const texto = (t) => { if (botao) botao.textContent = t; };
+  try {
+    texto("Procurando na fábrica…");
+    const r = await api(`/api/ext/postar?titulo=${encodeURIComponent(v.titulo || "")}`);
+    if (r.erro) throw new Error(`O Radar não respondeu (${r.erro}).`);
+    if (!r.dados.nome) throw new Error(`Não achei "${v.titulo}" na fábrica. Suba o vídeo pelo Criar do Studio.`);
+    if (!r.dados.pronto) throw new Error("A fábrica ainda não terminou este vídeo.");
+    const { servidor, token } = await pedirAoFundo({ tipo: "radar-endereco" });
+    const resp = await fetch(`${servidor}/api/ext/postar/${encodeURIComponent(r.dados.nome)}/video`,
+      { headers: token ? { Authorization: `Bearer ${token}` } : {} });
+    if (!resp.ok) throw new Error(`O Radar não entregou o vídeo (erro ${resp.status}).`);
+    const total = Number(resp.headers.get("content-length")) || r.dados.tamanho || 0;
+    const leitor = resp.body.getReader(), pedacos = [];
+    let veio = 0;
+    for (;;) {
+      const { done, value } = await leitor.read();
+      if (done) break;
+      pedacos.push(value); veio += value.length;
+      texto(total ? `Baixando ${Math.round((veio / total) * 100)}%` : `Baixando ${Math.round(veio / 1048576)} MB`);
+    }
+    const video = new File(pedacos, `${nomeDeArquivo(r.dados.titulo || v.titulo)}.mp4`, { type: "video/mp4" });
+    const thumb = v.thumb && imagens[v.thumb];
+    let capa = null;
+    if (thumb) {
+      const bloco = await (await fetch(thumb)).blob();
+      capa = new File([bloco], `${nomeDeArquivo(v.titulo)}.${(bloco.type.split("/")[1] || "png").replace("jpeg", "jpg")}`, { type: bloco.type || "image/png" });
+    }
+    texto("Abrindo o upload…");
+    window.parent.postMessage({ tipo: "radar-postar", id: v.id, titulo: v.titulo, video, capa }, "https://studio.youtube.com");
+  } catch (e) {
+    mostrarErro((e && e.message) || String(e));
+  } finally {
+    postando = "";
+    setTimeout(desenhar, 1500);
+  }
+}
+
 // ------------------------------------------------------------ desenho
 function cartaoDoVideo(v) {
   const thumb = v.thumb && dia.thumbs.find((t) => t.id === v.thumb);
@@ -121,12 +236,20 @@ function cartaoDoVideo(v) {
   zonaDeImagem(slot, v.id);
   const postado = h("input", { type: "checkbox" }); postado.checked = !!v.postado;
   postado.onchange = () => mudarDia((d) => { const x = d.videos.find((y) => y.id === v.id); if (x) x.postado = postado.checked; });
-  return h("div", { class: "video" }, slot,
+  const estadoTexto = v.postado && thumb ? "✓ Vídeo · ✓ thumbnail · ✓ postado"
+    : thumb ? "✓ Vídeo pedido · ✓ thumbnail feita · falta postar"
+      : `✓ Vídeo pedido${v.entrada ? " (na Entrada)" : ""} · falta a thumbnail${v.postado ? " · ✓ postado" : ""}`;
+  const botaoPostar = v.postado ? null : h("button", { type: "button", class: "vermelho postar",
+    title: NO_STUDIO ? "Sobe o vídeo da fábrica e a thumbnail no Studio" : "Abre o YouTube Studio já com o vídeo e a thumbnail" },
+  postando === v.id ? "Baixando…" : NO_STUDIO ? "Postar" : "Postar ↗");
+  if (botaoPostar) botaoPostar.onclick = () => postar(v, botaoPostar);
+  return h("div", { class: `video ${videoCompleto(v) ? "ok" : "meio"}` }, slot,
     h("div", {},
       h("b", {}, v.titulo || "vídeo sem título"),
-      h("div", { class: `estado ${thumb ? "ok" : "falta"}` },
-        thumb ? "✓ Vídeo pedido · ✓ thumbnail feita" : `✓ Vídeo pedido${v.entrada ? " (na Entrada)" : ""} · falta a thumbnail`),
+      h("div", { class: `estado ${videoCompleto(v) ? "ok" : "falta"}` }, estadoTexto),
+      linhaDaReferencia(v),
       h("div", { class: "acoes" },
+        botaoPostar,
         h("label", { class: "check" }, postado, "Postado"),
         h("span", { class: "fraco" }, hora(v.hora)),
         thumb ? baixar(thumb, v.titulo) : null,
@@ -154,7 +277,6 @@ function cartaoDoCanal(c, videos) {
   const meta = cfg.porDia;
   const feitos = videos.length, postados = videos.filter((v) => v.postado).length;
   const falta = meta ? Math.max(0, meta - feitos) : 0;
-  const estado = meta == null ? "" : meta === 0 ? "" : falta ? "falta" : "ok";
 
   const escolherMeta = (n) => guardarConfig(c.id, { porDia: n });
   const pergunta = h("div", { class: "pergunta" },
@@ -213,6 +335,7 @@ function cartaoDoCanal(c, videos) {
   const usadas = new Set(dia.videos.map((v) => v.thumb).filter(Boolean));
   const doCanal = dia.thumbs.filter((t) => t.canal === c.id && !usadas.has(t.id) && imagens[t.id]);
   const thumbFeita = doCanal.length || videos.some((v) => v.thumb);
+  const estado = corDoCanal(meta, videos, thumbFeita);
   const cartaoThumb = (t) => h("div", { class: "video" },
     h("div", { class: "slot cheio" }, h("img", { src: imagens[t.id], alt: "" })),
     h("div", {},
@@ -260,8 +383,11 @@ function desenhar() {
   const lista = [...canais];
   for (const v of dia.videos) if (!lista.some((c) => c.id === v.canal)) lista.push({ id: v.canal || "", titulo: v.canalNome || "Sem canal" });
   const doCanal = (id) => dia.videos.filter((v) => (v.canal || "") === id);
-  // primeiro os que faltam, depois os sem meta, depois os em dia
-  const peso = (c) => { const m = (config[c.id] || {}).porDia; return m == null ? 1 : m && doCanal(c.id).length < m ? 0 : 2; };
+  // primeiro o vermelho, depois o amarelo, os sem cor e por fim os verdes
+  const peso = (c) => {
+    const m = (config[c.id] || {}).porDia, cor = corDoCanal(m, doCanal(c.id), dia.thumbs.some((t) => t.canal === c.id));
+    return { falta: 0, meio: 1, "": 2, ok: 3 }[cor];
+  };
   lista.sort((a, b) => peso(a) - peso(b));
   $("canais").replaceChildren(...(lista.length ? lista.map((c) => cartaoDoCanal(c, doCanal(c.id)))
     : [h("div", { class: "vazio" }, "Nenhum canal ainda. Ligue o Radar e cadastre seus canais.")]));
@@ -269,10 +395,11 @@ function desenhar() {
   const metaTotal = canais.reduce((s, c) => s + ((config[c.id] || {}).porDia || 0), 0);
   const feitosMeta = canais.reduce((s, c) => s + Math.min(doCanal(c.id).length, (config[c.id] || {}).porDia || 0), 0);
   const semThumb = dia.videos.filter((v) => !v.thumb).length, postados = dia.videos.filter((v) => v.postado).length;
+  const n = dia.videos.length;
   $("resumo").replaceChildren(...[
-    metaTotal ? h("span", { class: `pilula ${feitosMeta >= metaTotal ? "ok" : "falta"}` }, `Vídeos ${feitosMeta}/${metaTotal}`) : null,
-    dia.videos.length ? h("span", { class: `pilula ${semThumb ? "falta" : "ok"}` }, semThumb ? `${plural(semThumb, "thumbnail falta", "thumbnails faltam")}` : "Thumbnails em dia") : null,
-    dia.videos.length ? h("span", { class: "pilula" }, `${postados}/${dia.videos.length} postados`) : null,
+    metaTotal ? h("span", { class: `pilula ${corDaConta(feitosMeta, metaTotal)}` }, `Vídeos ${feitosMeta}/${metaTotal}`) : null,
+    n ? h("span", { class: `pilula ${corDaConta(n - semThumb, n)}` }, semThumb ? `${plural(semThumb, "thumbnail falta", "thumbnails faltam")}` : "Thumbnails em dia") : null,
+    n ? h("span", { class: `pilula ${corDaConta(postados, n)}` }, `${postados}/${n} postados`) : null,
     !metaTotal && !dia.videos.length ? h("span", { class: "pilula" }, "Nada pedido hoje") : null].filter(Boolean));
 
   const usadas = new Set(dia.videos.map((v) => v.thumb).filter(Boolean));
@@ -317,4 +444,9 @@ setInterval(() => { if (dia.data !== hojeLocal()) recarregar(); }, 60 * 1000);
 document.addEventListener("visibilitychange", () => { if (!document.hidden && dia.data !== hojeLocal()) recarregar(); });
 
 if (new URLSearchParams(location.search).has("embutido")) document.body.classList.add("embutido");
-lerContasYoutube().then(() => recarregar()).then(lerCanais);
+lerContasYoutube().then(() => recarregar()).then(() => {
+  // veio do Postar apertado fora do Studio: começa sozinho
+  const v = postarAoAbrir && dia.videos.find((x) => x.id === postarAoAbrir);
+  postarAoAbrir = "";
+  if (v && NO_STUDIO) postar(v, null);
+}).then(lerCanais);

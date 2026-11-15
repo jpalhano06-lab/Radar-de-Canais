@@ -58,6 +58,14 @@ chrome.runtime.onMessage.addListener((msg, _remetente, responder) => {
     chrome.tabs.create({ url: msg.url });
   }
   if (msg && msg.tipo === "abrir-dia") abrirDia();       // o "Abrir em aba" do painel do YouTube e o ícone (popup)
+  if (msg && msg.tipo === "dia-postado") {               // publicou no Studio: fica verde no Meu dia (publicar.js)
+    diaMarcarPostado(msg).then((id) => responder({ ok: true, id }), (e) => responder({ erro: String(e) }));
+    return true;
+  }
+  if (msg && msg.tipo === "radar-endereco") {            // o Meu dia baixa o vídeo da fábrica direto do Radar (dia.js)
+    config().then(responder);
+    return true;
+  }
   if (msg && msg.tipo === "dia-video") {                 // um pedido da Nova produção entra no Meu dia (content.js)
     diaNovoVideo(msg.video).then(() => responder({ ok: true }), (e) => responder({ erro: String(e) }));
     return true;
@@ -98,7 +106,7 @@ chrome.commands.onCommand.addListener(async (comando) => {
   const tipo = { "salvar-canal": "salvar-canal", "abrir-claude": "painel-dia" }[comando];
   if (!tipo) return;
   const [aba] = await chrome.tabs.query({ active: true, currentWindow: true });
-  if (aba && /^https:\/\/www\.youtube\.com\//.test(aba.url || "")) chrome.tabs.sendMessage(aba.id, { tipo }).catch(() => {});
+  if (aba && /^https:\/\/(www|studio)\.youtube\.com\//.test(aba.url || "")) chrome.tabs.sendMessage(aba.id, { tipo }).catch(() => {});
 });
 
 // Os projetos do claude.ai viram os agentes do Radar (claude-projetos.js): ao abrir o Chrome e a cada meia hora.

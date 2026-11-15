@@ -19,6 +19,7 @@
   .pilula { background: var(--caixa); border: 1px solid var(--linha); border-radius: 999px; padding: 6px 12px; font-weight: 600; font-size: 13px; }
   .pilula.ok { border-color: rgba(46,204,113,.6); color: var(--verde); }
   .pilula.falta { border-color: rgba(255,0,0,.6); color: #ff6b6b; }
+  .pilula.meio { border-color: rgba(245,179,1,.6); color: var(--amarelo); }
   button, .botao { background: var(--campo); color: var(--texto); border: 1px solid var(--linha); border-radius: 999px; padding: 6px 12px;
     font: 600 12.5px system-ui, "Segoe UI", sans-serif; cursor: pointer; text-decoration: none; display: inline-flex; gap: 6px; align-items: center; }
   button:hover, .botao:hover { border-color: #3a4150; }
@@ -26,12 +27,15 @@
   input, select { background: var(--campo); color: var(--texto); border: 1px solid var(--linha); border-radius: 8px; padding: 7px 9px; font: inherit; min-width: 0; }
   .canais { display: grid; grid-template-columns: repeat(auto-fill, minmax(330px, 1fr)); gap: 14px; }
   .canal { background: var(--caixa); border: 1px solid var(--linha); border-radius: 14px; padding: 14px; display: grid; gap: 10px; align-content: start; }
-  .canal.falta { border-color: rgba(255,0,0,.55); }
-  .canal.ok { border-color: rgba(46,204,113,.45); }
+  /* vermelho nada feito, amarelo meio caminho, verde tudo certo (2026-11-15) */
+  .canal { border-left-width: 4px; }
+  .canal.falta { border-color: rgba(255,0,0,.55); border-left-color: var(--vermelho); background: linear-gradient(90deg, rgba(255,0,0,.06), var(--caixa) 40%); }
+  .canal.meio { border-color: rgba(245,179,1,.5); border-left-color: var(--amarelo); background: linear-gradient(90deg, rgba(245,179,1,.07), var(--caixa) 40%); }
+  .canal.ok { border-color: rgba(46,204,113,.45); border-left-color: var(--verde); background: linear-gradient(90deg, rgba(46,204,113,.07), var(--caixa) 40%); }
   .canal-cab { display: flex; justify-content: space-between; gap: 8px; align-items: baseline; }
   .canal-cab b { font-size: 15.5px; }
   .meta { font-size: 12.5px; font-weight: 700; white-space: nowrap; }
-  .meta.ok { color: var(--verde); } .meta.falta { color: #ff6b6b; }
+  .meta.ok { color: var(--verde); } .meta.falta { color: #ff6b6b; } .meta.meio { color: var(--amarelo); }
   .pergunta { border: 1px dashed rgba(255,0,0,.6); border-radius: 10px; padding: 10px; display: grid; gap: 8px; background: rgba(255,0,0,.05); }
   .pergunta b { font-size: 13.5px; }
   .linha { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
@@ -46,6 +50,12 @@
   .solta-zona.canal-thumb { min-height: 0; width: fit-content; padding: 4px 12px; margin-top: 8px; font-size: 12px; border-radius: 8px; }
   .solta-zona.canal-thumb:hover, .solta-zona.canal-thumb:focus { border-color: rgba(245,179,1,.9); color: var(--texto); outline: none; }
   .slot.sobre, .solta-zona.sobre { border-color: var(--vermelho); background: rgba(255,0,0,.1); }
+  .video.meio { border-color: rgba(245,179,1,.35); }
+  .video.ok { border-color: rgba(46,204,113,.45); }
+  .ref { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-top: 5px; }
+  .video > div { min-width: 0; }
+  .ref-nome { flex: 1 1 100%; min-width: 0; font-size: 11.5px; color: var(--fraco); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .ref-copiar { padding: 4px 10px; font-size: 11.5px; }
   .video b { display: block; font-size: 13px; overflow-wrap: anywhere; }
   .estado { font-size: 12px; font-weight: 600; }
   .estado.falta { color: var(--amarelo); } .estado.ok { color: var(--verde); }
