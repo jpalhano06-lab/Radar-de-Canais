@@ -75,6 +75,39 @@ def test_voltar_para_a_chave_devolve_o_provedor_de_antes(tmp_path, monkeypatch):
     assert "  provedor: kie" in texto and "provedor_reserva" not in texto
 
 
+COM_BLOCO_DEPOIS = """base: documentario.yaml
+nome: 한국의 미래
+
+imagens:
+  provedor: assinatura
+  provedor_reserva: openrouter
+
+# País do público
+lugar:
+  pais: South Korea
+  moeda: "₩ (Korean won)"
+"""
+
+
+def test_trocar_nao_leva_o_provedor_para_o_bloco_de_baixo(tmp_path, monkeypatch):
+    """O bug de 2026-11-15: o regex com flag s pegava até o fim do arquivo, e imagens.provedor ia parar em lugar:."""
+    arquivo = _perfil(tmp_path, monkeypatch, COM_BLOCO_DEPOIS)
+    producao.salvar_imagens_quem("canal-teste", "api")
+    texto = arquivo.read_text(encoding="utf-8")
+    assert texto.endswith('lugar:\n  pais: South Korea\n  moeda: "₩ (Korean won)"\n')
+    assert "imagens:\n  provedor: openrouter\n" in texto
+    producao.salvar_imagens_quem("canal-teste", "assinatura")
+    assert producao.imagens_do_perfil("canal-teste")["provedor"] == "assinatura"
+    assert arquivo.read_text(encoding="utf-8").endswith('lugar:\n  pais: South Korea\n  moeda: "₩ (Korean won)"\n')
+
+
+def test_salvar_o_rodape_nao_apaga_o_que_vem_depois(tmp_path, monkeypatch):
+    arquivo = _perfil(tmp_path, monkeypatch, SEM_IMAGENS + "\nlugar:\n  pais: Canada\n")
+    producao.salvar_rodape("canal-teste", "Rodapé novo.")
+    texto = arquivo.read_text(encoding="utf-8")
+    assert "lugar:\n  pais: Canada" in texto and "Rodapé novo." in texto and "O rodapé do canal." not in texto
+
+
 def test_so_aceita_as_duas_escolhas(tmp_path, monkeypatch):
     _perfil(tmp_path, monkeypatch, SEM_IMAGENS)
     with pytest.raises(ValueError):

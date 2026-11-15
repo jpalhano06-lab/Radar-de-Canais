@@ -49,6 +49,11 @@ def _perfil(nome: str) -> dict:
 # (pedido do usuário em 2026-10-24: "quero algo já automático direto na fábrica").
 RODAPE_MAXIMO = 3000
 _MARCA_RODAPE = "  rodape: |"
+# Um bloco de primeiro nível do perfil (imagens:, publicacao:): a linha do nome e as linhas indentadas logo abaixo.
+# Sem o flag s de propósito: com (?ms) o `.*` atravessava as quebras de linha e o "bloco" ia até o fim do arquivo, então
+# trocar quem gera as imagens jogava imagens.provedor dentro de lugar: e o bloco imagens: ficava vazio. Sem provedor, a
+# fábrica caiu no Google grátis e o pedido 116 ficou 7 h em "falta de cota" (2026-11-15)
+_BLOCO = r"(?m)^{nome}:[ \t]*\n((?:[ \t].*(?:\n|\Z)|\n(?=[ \t]))*)"
 
 
 def _arquivo_do_perfil(nome: str):
@@ -79,7 +84,7 @@ def salvar_rodape(nome: str, texto: str) -> str:
         raise ValueError("Este canal não tem perfil na fábrica.")
     texto = (texto or "").strip()[:RODAPE_MAXIMO]
     atual = arquivo.read_text(encoding="utf-8", errors="ignore")
-    sem_bloco = re.sub(r"(?ms)^publicacao:\n(?:[ \t].*\n|\n(?=[ \t]))*", "", atual).rstrip("\n")
+    sem_bloco = re.sub(_BLOCO.format(nome="publicacao"), "", atual).rstrip("\n")
     if not texto:
         arquivo.write_text(sem_bloco + "\n", encoding="utf-8")
         return ""
@@ -99,7 +104,7 @@ RESERVA_PADRAO = "openrouter"
 
 
 def _bloco_imagens(texto: str):
-    return re.search(r"(?ms)^imagens:\n((?:[ \t].*\n|\n(?=[ \t]))*)", texto)
+    return re.search(_BLOCO.format(nome="imagens"), texto)
 
 
 def _campo(bloco: str, campo: str) -> str:

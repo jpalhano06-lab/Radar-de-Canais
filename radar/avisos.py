@@ -33,7 +33,10 @@ MINUTOS_DE_VOZ = 35           # um vídeo de 30 min, com folga: abaixo disso a n
 TENTATIVAS_TRAVADO = 3         # a fábrica tenta de novo sozinha; a partir da 3ª é problema que não passa sozinho
 # o pedido 83 ficou 3 h tentando narrar com "Not enough credit" da GenAIPro, 46 vezes, e ninguém soube (2026-11-07)
 SEM_SALDO = re.compile(r"not enough credit|insufficient (credit|balance|funds)|out of credit|sem saldo|saldo insuficiente"
-                       r"|cr[eé]ditos? insuficientes?|payment required|\b402\b", re.I)
+                       r"|cr[eé]ditos? insuficientes?|payment required|\b402\b"
+                       # a cota do Google acabou (pedido 116, 7 h em "O Google recusou as imagens por falta de cota" e
+                       # o celular só recebeu um aviso com outro motivo; pedido do usuário em 2026-11-15)
+                       r"|falta de cota|exceeded your current quota|resource_exhausted|sem cota", re.I)
 HORAS_SEM_BACKUP = 8 * 24     # a cópia sai de 7 em 7 dias: um dia de folga antes de avisar
 
 _atuais: list = []
@@ -104,7 +107,7 @@ def parada(d: dict | None) -> dict | None:
     if not sem_saldo and tentativas < TENTATIVAS_TRAVADO:
         return None
     motivo = sem_saldo or next((l for l in reversed(logs) if re.search(r"falhou|recusou|erro", l, re.I)), d.get("mensagem") or "")
-    servico = next((s for s in ("GenAIPro", "OpenRouter", "Kie", "Gemini", "Groq") if s.lower() in sem_saldo.lower()), "um serviço") if sem_saldo else ""
+    servico = next((s for s in ("GenAIPro", "OpenRouter", "Kie", "Gemini", "Google", "Groq") if s.lower() in sem_saldo.lower()), "um serviço") if sem_saldo else ""
     return {"tipo": "saldo" if sem_saldo else "repetindo", "motivo": " ".join(motivo.split())[:180],
             "tentativas": tentativas, "servico": servico}
 
