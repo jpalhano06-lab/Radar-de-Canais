@@ -2053,6 +2053,13 @@ sem o canal certo".
   1 minuto) e a aba do YouTube que abre faz a troca para a conta de treino.
 - Para usar: dê ↻ na extensão em `chrome://extensions` (o Radar não precisa religar).
 
+## Extensão 0.52.8: o avatar é clicado mesmo com outra caixa aberta (2026-11-15)
+
+Pelo botão, a troca parava em "Abrindo o menu da conta…". Na 0.52.4 a extensão só clicava no avatar se nenhuma caixa
+estivesse aberta, para não fechar o menu com um segundo clique; uma aba nova do YouTube pode ter outras caixinhas
+abertas. Agora olha só a caixa do menu da conta. O registro (`diaTrocaLog`) grava cada clique e passa a ser escrito
+pelo background, em fila: várias abas gravando juntas apagavam as linhas umas das outras.
+
 ## Extensão 0.52.7: troca de conta conferida e repetida (2026-11-15)
 
 O registro (`diaTrocaLog`, 0.52.6) mostrou o caminho do "procurar ideia" inteiro funcionando, até o clique na conta,
