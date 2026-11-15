@@ -270,14 +270,16 @@ function cartaoDoVideo(v) {
           onclick: () => { if (confirm(`Tirar "${v.titulo}" do Meu dia?`)) mudarDia((d) => { d.videos = d.videos.filter((y) => y.id !== v.id); }); } }, "×"))));
 }
 
-// o "procurar ideia": abre o YouTube e a extensão troca para a conta de treino (content.js). O pedido vai pelo storage
-// (diaTrocarConta): pelo #radar-conta= do link, o YouTube perdia o endereço no carregamento e abria na conta errada.
+// o "procurar ideia": abre o YouTube e a extensão troca para a conta de treino (content.js). Pelo #radar-conta= do
+// link, o YouTube perdia o endereço no carregamento; pelo storage (diaTrocarConta), outra aba do YouTube podia pegar o
+// pedido. Agora o background abre a aba e entrega o pedido só para ela (procurar-ideia / troca-pendente).
 // `quando` ("hoje" ou "amanha", pedido do usuário em 2026-11-15) diz para que dia vai o próximo pedido deste canal
 async function procurarIdeia(c, treino, quando) {
   const { [DIA_DESTINO]: destinos = {} } = await chrome.storage.local.get(DIA_DESTINO);
   destinos[c.id] = { dia: quando, quando: Date.now() };
-  await chrome.storage.local.set({ diaTrocarConta: { alvo: treino, quando: Date.now() }, [DIA_DESTINO]: destinos });
-  window.open("https://www.youtube.com/", "_blank");
+  await chrome.storage.local.set({ [DIA_DESTINO]: destinos });
+  // o background abre a aba e entrega o pedido só para ela (antes ia pelo storage e outra aba do YouTube podia pegar)
+  chrome.runtime.sendMessage({ tipo: "procurar-ideia", alvo: treino });
 }
 
 // as contas do "Trocar de conta" do YouTube (pedido do usuário em 2026-11-15: "deixe lá todas as opções que tem no

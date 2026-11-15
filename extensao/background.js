@@ -62,6 +62,27 @@ chrome.runtime.onMessage.addListener((msg, _remetente, responder) => {
     diaMarcarPostado(msg).then((id) => responder({ ok: true, id }), (e) => responder({ erro: String(e) }));
     return true;
   }
+  // o "procurar ideia" do Meu dia (2026-11-15, terceira volta do bug): o pedido de troca de conta ia para o storage e a
+  // primeira aba do YouTube que carregasse levava, que nem sempre era a aba aberta pelo botão. Agora o background abre
+  // a aba e guarda o pedido pelo id dela: só ela pega (content.js pede com "troca-pendente")
+  if (msg && msg.tipo === "procurar-ideia") {
+    chrome.tabs.create({ url: "https://www.youtube.com/", active: true }).then(async (aba) => {
+      const { trocasPorAba = {} } = await chrome.storage.session.get("trocasPorAba");
+      trocasPorAba[aba.id] = { alvo: msg.alvo, quando: Date.now() };
+      await chrome.storage.session.set({ trocasPorAba });
+      responder({ ok: true });
+    }, (e) => responder({ erro: String(e) }));
+    return true;
+  }
+  if (msg && msg.tipo === "troca-pendente") {
+    const id = _remetente.tab && _remetente.tab.id;
+    chrome.storage.session.get("trocasPorAba").then(async ({ trocasPorAba = {} }) => {
+      const p = trocasPorAba[id];
+      if (p) { delete trocasPorAba[id]; await chrome.storage.session.set({ trocasPorAba }); }
+      responder(p && Date.now() - p.quando < 2 * 60 * 1000 ? { alvo: p.alvo } : {});
+    });
+    return true;
+  }
   if (msg && msg.tipo === "radar-endereco") {            // o Meu dia baixa o vídeo da fábrica direto do Radar (dia.js)
     config().then(responder);
     return true;

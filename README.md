@@ -2053,6 +2053,13 @@ sem o canal certo".
   1 minuto) e a aba do YouTube que abre faz a troca para a conta de treino.
 - Para usar: dê ↻ na extensão em `chrome://extensions` (o Radar não precisa religar).
 
+## Extensão 0.52.5: "procurar ideia" entrega a troca de conta só para a aba que abriu (2026-11-15)
+
+Mesmo com a 0.52.4, o "procurar ideia" abria o YouTube na conta que já estava aberta. A troca em si funcionava
+(testada no Chrome, inclusive pelo `#radar-conta=`), mas o pedido ia pelo storage e a primeira aba do YouTube que
+carregasse levava, nem sempre a aba aberta pelo botão. Agora o Meu dia manda `procurar-ideia` ao background, que abre
+a aba e guarda o pedido pelo id dela (`storage.session`); o content.js pergunta `troca-pendente` e só essa aba recebe.
+
 ## Extensão 0.52.4: "procurar ideia" espera o YouTube carregar antes de abrir o menu da conta (2026-11-15)
 
 Depois da 0.52.3 o "procurar ideia" ainda abria na conta errada. O avatar aparece bem antes de a página aceitar o
