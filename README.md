@@ -1987,3 +1987,15 @@ muitas contas são no mesmo email".
 - Conferido no Chrome sem trocar de conta: acha a conta aberta, Canada Insight (mesmo e-mail), British Tech e
   한국의 미래 (outros e-mails) e avisa quando não acha. O clique final na conta não foi testado.
 - Para usar: dê ↻ na extensão em `chrome://extensions`, recarregue o YouTube e escreva a conta de treino de cada canal.
+
+
+## Extensão 0.51.1: a conta de treino é escolhida numa lista (2026-11-15)
+
+Pedido do usuário: "deixe lá todas as opções que tem no YouTube, aí só seleciono".
+
+- Em **Ajustes do canal** do Meu dia, a conta de treino virou uma lista com todas as contas do "Trocar de conta" do
+  YouTube, agrupadas por e-mail. Guarda o @ do canal, ou o nome nos canais de outros e-mails (o menu não mostra o @).
+- **Ler as contas do YouTube** (ou **Ler de novo**) abre `youtube.com/#radar-contas-ler`: a extensão abre o menu
+  do avatar, lê a lista, guarda em `contasYoutube` e fecha o menu, sem trocar de conta. O Meu dia se atualiza sozinho.
+- Para usar: dê ↻ na extensão em `chrome://extensions`, clique em "Ler as contas do YouTube" uma vez e escolha a
+  conta de cada canal.

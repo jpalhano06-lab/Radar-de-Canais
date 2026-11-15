@@ -2249,8 +2249,9 @@
   }
   const contaBate = (alvo, nome, texto) => alvo.handle ? normal(texto).includes(alvo.handle) : normal(nome) === alvo.nome;
 
-  async function trocarDeConta(textoAlvo) {
-    const alvo = alvoDaConta(textoAlvo);
+  // soLer: só lê as contas do menu e guarda (o "Ler as contas do YouTube" do Meu dia), sem trocar de conta
+  async function trocarDeConta(textoAlvo, soLer = false) {
+    const alvo = soLer ? { handle: "", nome: "-" } : alvoDaConta(textoAlvo);
     if (!alvo.handle && /^https?:\/\//i.test(String(textoAlvo).trim())) {
       return avisoRapido("O link guardado no Meu dia não diz qual conta abrir: em Ajustes do canal, troque pelo @ ou pelo nome da conta de treino.");
     }
@@ -2281,6 +2282,11 @@
       return { el: i, nome, handle: (i.textContent.match(/@[\w.\-]+/) || [""])[0], email: email ? email[0] : "" };
     });
     if (lista.length) chrome.storage.local.set({ contasYoutube: lista.map(({ nome, handle, email }) => ({ nome, handle, email })) });
+    if (soLer) {
+      fecharMenu();
+      return avisoRapido(lista.length ? `Li ${lista.length} contas do YouTube: escolha a conta de treino de cada canal no Meu dia.`
+        : "Não consegui ler as contas do menu. Abra o avatar > Trocar de conta e tente de novo.");
+    }
     const certo = lista.find((c) => contaBate(alvo, c.nome, c.el.textContent));
     if (!certo) {
       fecharMenu();
@@ -2292,6 +2298,10 @@
     (certo.el.querySelector("tp-yt-paper-icon-item") || certo.el).click();   // o YouTube recarrega já na conta nova
   }
 
+  if (location.hash === "#radar-contas-ler") {
+    history.replaceState(null, "", location.pathname + location.search);
+    trocarDeConta("", true);
+  }
   if (location.hash.startsWith("#radar-conta=")) {
     const alvo = decodeURIComponent(location.hash.slice("#radar-conta=".length));
     history.replaceState(null, "", location.pathname + location.search);

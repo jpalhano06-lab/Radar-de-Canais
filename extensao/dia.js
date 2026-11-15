@@ -141,13 +141,13 @@ function linkDaContaDeTreino(treino) {
   return `https://www.youtube.com/#radar-conta=${encodeURIComponent(treino || "")}`;
 }
 
-// as contas que a extensão viu no "Trocar de conta" do YouTube, sugeridas no campo da conta de treino
-async function desenharContasYoutube() {
-  const { contasYoutube = [] } = await chrome.storage.local.get("contasYoutube");
-  let lista = document.getElementById("contas-youtube");
-  if (!lista) { lista = h("datalist", { id: "contas-youtube" }); document.body.append(lista); }
-  lista.replaceChildren(...contasYoutube.map((c) => h("option", { value: c.handle || c.nome }, [c.nome, c.email].filter(Boolean).join(" · "))));
+// as contas do "Trocar de conta" do YouTube (pedido do usuário em 2026-11-15: "deixe lá todas as opções que tem no
+// YouTube, aí só seleciono"). A extensão lê a lista no menu do avatar (content.js) e guarda em contasYoutube
+let contasYoutube = [];
+async function lerContasYoutube() {
+  ({ contasYoutube = [] } = await chrome.storage.local.get("contasYoutube"));
 }
+const LER_CONTAS = "https://www.youtube.com/#radar-contas-ler";
 
 function cartaoDoCanal(c, videos) {
   const cfg = config[c.id] || {};
@@ -162,19 +162,27 @@ function cartaoDoCanal(c, videos) {
     h("div", { class: "linha" }, ...[1, 2, 3, 4].map((n) => h("button", { onclick: () => escolherMeta(n) }, String(n))),
       h("button", { onclick: () => escolherMeta(0), title: "O canal não aparece como pendente" }, "Não posto todo dia")));
 
+  // a conta de treino é escolhida na lista das contas do YouTube, agrupada por e-mail. O valor guardado é o @ do canal
+  // (ou o nome, nos canais de outros e-mails, que o menu mostra sem @): é com ele que a extensão acha a conta
   const linkTreino = (() => {
-    // a conta de treino é o @ do canal, o nome dele como aparece no "Trocar de conta" do YouTube, ou um link com o @
-    // (2026-11-15: o link sozinho abria o YouTube na conta que estivesse aberta). A lista vem das contas que a
-    // extensão já viu no menu do YouTube
-    const input = h("input", { placeholder: "Conta de treino: @ do canal ou o nome dele no Trocar de conta", value: cfg.treino || "", list: "contas-youtube" });
-    const salvar = () => {
-      const v = input.value.trim();
-      if (v && /^https?:\/\//i.test(v) && !/@[\w.\-]+/.test(v)) return mostrarErro("Use o @ do canal de treino (ex.: @CanadaInsightTV) ou o nome dele: o link sem @ não diz qual conta abrir.");
-      input.blur();
-      guardarConfig(c.id, { treino: v });
-    };
-    input.addEventListener("keydown", (e) => { if (e.key === "Enter") salvar(); });
-    return h("div", { class: "linha" }, input, h("button", { onclick: salvar }, "Salvar"));
+    const valorDe = (conta) => conta.handle || conta.nome;
+    const atual = cfg.treino || "";
+    const conhecida = contasYoutube.some((conta) => valorDe(conta) === atual);
+    const porEmail = new Map();
+    for (const conta of contasYoutube) {
+      if (!porEmail.has(conta.email)) porEmail.set(conta.email, []);
+      porEmail.get(conta.email).push(conta);
+    }
+    const opcao = (valor, texto) => { const o = h("option", { value: valor }, texto); if (valor === atual) o.selected = true; return o; };
+    const escolha = h("select", {},
+      opcao("", contasYoutube.length ? "— escolha a conta de treino —" : "— leia as contas do YouTube primeiro —"),
+      atual && !conhecida ? opcao(atual, `${atual} (guardada antes)`) : null,
+      ...[...porEmail].map(([email, contas]) => h("optgroup", { label: email || "Conta do YouTube" },
+        ...contas.map((conta) => opcao(valorDe(conta), conta.handle ? `${conta.nome} · ${conta.handle}` : conta.nome)))));
+    escolha.addEventListener("change", () => guardarConfig(c.id, { treino: escolha.value }));
+    return h("div", { class: "linha" }, h("span", { class: "fraco" }, "Conta de treino:"), escolha,
+      h("a", { class: "botao", href: LER_CONTAS, target: "_blank", rel: "noopener",
+        title: "Abre o YouTube e lê todas as contas do menu Trocar de conta" }, contasYoutube.length ? "Ler de novo" : "Ler as contas do YouTube"));
   })();
 
   const novoTitulo = h("input", { placeholder: "Título de um vídeo feito fora da Nova produção" });
@@ -277,7 +285,7 @@ function desenhar() {
 
 // ------------------------------------------------------------ começo e atualizações
 chrome.storage.onChanged.addListener((mudou, area) => {
-  if (area === "local" && mudou.contasYoutube) desenharContasYoutube();
+  if (area === "local" && mudou.contasYoutube) lerContasYoutube().then(desenhar);
   if (area !== "local" || !(mudou[DIA_CHAVE] || mudou[DIA_CONFIG])) return;
   // não redesenha no meio de quem está digitando um link ou título
   const digitando = () => document.activeElement && document.activeElement.tagName === "INPUT" && document.activeElement.type !== "checkbox";
@@ -289,5 +297,4 @@ setInterval(() => { if (dia.data !== hojeLocal()) recarregar(); }, 60 * 1000);
 document.addEventListener("visibilitychange", () => { if (!document.hidden && dia.data !== hojeLocal()) recarregar(); });
 
 if (new URLSearchParams(location.search).has("embutido")) document.body.classList.add("embutido");
-recarregar().then(lerCanais);
-desenharContasYoutube();
+lerContasYoutube().then(() => recarregar()).then(lerCanais);
