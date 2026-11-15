@@ -19,7 +19,7 @@ import httpx
 
 from . import backup, banco, config, fabrica_api, integracoes, studio
 
-VOLTA = 600
+VOLTA = 300   # era 600: o vídeo parado avisa aos 20 min e repete de 10 em 10 (REPETIR_PARADO)
 FABRICA_URL = "http://127.0.0.1:8080/api/saude"
 LIMITE_DA_CHAVE_MINIMO = 3.0   # US$: cada imagem reserva bem mais do que custa, e abaixo de 0,50 nenhuma passa
 SALDO_MINIMO = 5.0             # US$
@@ -116,24 +116,42 @@ def parada(d: dict | None) -> dict | None:
 # função por mais de uma hora tem que ter notificação"). A fábrica não grava quando a etapa começou, então o Radar marca
 # a hora em que viu cada etapa pela primeira vez. Fica na memória: religar o Radar zera o relógio (avisa mais tarde,
 # nunca à toa). A chave leva a etapa: a próxima etapa que também emperrar avisa de novo.
-MINUTOS_NA_MESMA_ETAPA = 60
-_etapas: dict = {}   # id do pedido -> (etapa, time.time() em que o Radar a viu primeiro)
+# Regra de todo vídeo (pedido do usuário em 2026-11-15: "se acontecer algo que fique parado mais de 20 min, começa a
+# enviar notificação a cada 10 min"): era uma hora na mesma etapa; agora são 20 min SEM ANDAR. Andar é mudar a etapa, a
+# porcentagem, a última linha do log (sem contar as de "tentando de novo") ou ter mais uma chamada com sucesso no
+# chamadas.jsonl (as imagens de uma etapa longa saem uma a uma sem mexer na porcentagem). A repetição de 10 em 10 min
+# fica em _uma_volta (REPETIR_PARADO).
+MINUTOS_NA_MESMA_ETAPA = 20
+_etapas: dict = {}   # id do pedido -> ((etapa, marca do andamento), time.time() em que o Radar a viu primeiro)
+_TENTANDO = re.compile(r"tentando de novo|tentativa \d+", re.I)
 
 
-def _na_mesma_etapa(fid: int, d: dict, agora: float) -> dict | None:
+def _andamento(d: dict, pasta) -> tuple:
+    """O que muda quando o vídeo anda. Igual por MINUTOS_NA_MESMA_ETAPA, o vídeo está parado."""
+    ultima = next((str(l).strip() for l in reversed(d.get("logs") or []) if not _TENTANDO.search(str(l))), "")
+    try:
+        with open(pasta / "chamadas.jsonl", "rb") as f:
+            certas = sum(1 for linha in f if b'"ok": true' in linha)
+    except OSError:
+        certas = 0
+    return d.get("progresso_pct"), ultima, certas
+
+
+def _na_mesma_etapa(fid: int, d: dict, agora: float, pasta=None) -> dict | None:
     etapa = str(d.get("etapa") or d.get("passo_atual") or "").strip()
     if not etapa:
         return None
+    marca = (etapa, _andamento(d, pasta) if pasta is not None else ())
     vista = _etapas.get(fid)
-    if not vista or vista[0] != etapa:
-        _etapas[fid] = (etapa, agora)
+    if not vista or vista[0] != marca:
+        _etapas[fid] = (marca, agora)
         return None
     minutos = (agora - vista[1]) / 60
     if minutos < MINUTOS_NA_MESMA_ETAPA:
         return None
     mensagem = " ".join(str(d.get("mensagem") or "").split())[:160]
     tempo = f"{int(minutos // 60)} h {int(minutos % 60):02d} min" if minutos >= 60 else f"{int(minutos)} min"
-    return _aviso(f"travado-etapa-{fid}-{etapa}", "erro", f"O pedido {fid} está há {tempo} na etapa {etapa}",
+    return _aviso(f"travado-etapa-{fid}-{etapa}", "erro", f"O pedido {fid} está há {tempo} parado na etapa {etapa}",
                   (f"{mensagem}. " if mensagem else "") + "Veja no Acompanhar se ele está andando.", "#/acompanhar")
 
 
@@ -151,7 +169,7 @@ def travados() -> list:
         vistos.add(r["id"])
         p = parada(d)
         if not p:
-            if not d.get("concluido") and (lento := _na_mesma_etapa(r["id"], d, agora)):
+            if not d.get("concluido") and (lento := _na_mesma_etapa(r["id"], d, agora, config.FABRICA / "projetos" / r["projeto"])):
                 saida.append(lento)
             continue
         motivo, tentativas = p["motivo"], p["tentativas"]
@@ -307,6 +325,18 @@ def vai_ao_celular(aviso: dict) -> bool:
     return aviso["chave"].startswith(DE_VIDEO_PARADO)
 
 
+# O vídeo em produção parado (parado-, travado-) volta ao celular a cada 10 min enquanto não andar (pedido do usuário
+# em 2026-11-15). A volta dos avisos roda a cada VOLTA (5 min), então a folga de 1 min faz o aviso sair de 10 em 10 e
+# não de 15 em 15. O pedido que já virou erro na fila (fila-erro-) fica parado até alguém mexer, às vezes por dias:
+# esse continua de 12 em 12 horas, para não tocar o celular de 10 em 10 min por um pedido abandonado.
+REPETIR_PARADO = 10 * 60 - 60
+REPETIR_ERRO_NA_FILA = 12 * 3600
+
+
+def _intervalo(aviso: dict) -> int:
+    return REPETIR_ERRO_NA_FILA if aviso["chave"].startswith("fila-erro-") else REPETIR_PARADO
+
+
 # O andamento no celular (pedido do usuário em 2026-11-09: "ver a porcentagem do vídeo como uma barra no pc e no
 # celular"): o Radar só aceita o próprio computador, então o celular recebe pelo ntfy um aviso quieto (prioridade 2)
 # a cada MARCO, com a barra desenhada em texto. Uma vez por pedido e marco; na primeira volta depois de ligar, o que
@@ -350,8 +380,8 @@ def _uma_volta(usuario_id: int) -> None:
     with _trava:
         _atuais = novos
     agora = time.time()
-    for a in novos:  # o mesmo problema só volta ao celular depois de 12 horas
-        if vai_ao_celular(a) and agora - _enviados.get(a["chave"], 0) > 12 * 3600:
+    for a in novos:
+        if vai_ao_celular(a) and agora - _enviados.get(a["chave"], 0) > _intervalo(a):
             _enviados[a["chave"]] = agora
             _no_celular(a)
     # o andamento (progresso_no_celular) não vai mais ao celular: só parado e pronto (pedido do usuário em 2026-11-12)
