@@ -420,6 +420,25 @@ def texto_do_por_que(leitura: dict) -> str:
             "o fim fecha. Use só dados que estejam na transcrição, e nunca copie as frases:\n" + "\n".join(linhas) + "\n")
 
 
+# Pedido do usuário em 2026-11-15: canal com menos de 1000 inscritos (ainda sem monetizar) tem de ter pelo menos 2
+# CTAs no roteiro. Vai como observação no pedido ao Claude. Sem o número de inscritos guardado, não pede nada.
+CTA_ATE_INSCRITOS = 1000
+CTA_MINIMO = 2
+
+
+def pedido_de_ctas(canal_id: str) -> str:
+    if not canal_id:
+        return ""
+    linha = banco.um("SELECT inscritos FROM canais WHERE id=?", canal_id)
+    inscritos = linha and linha["inscritos"]
+    if inscritos is None or inscritos >= CTA_ATE_INSCRITOS:
+        return ""
+    return (f"Observação obrigatória: este canal tem menos de {CTA_ATE_INSCRITOS} inscritos. O roteiro tem de ter no "
+            f"mínimo {CTA_MINIMO} CTAs (chamadas para a pessoa se inscrever no canal), em pontos diferentes do vídeo: "
+            "um logo depois do gancho do começo e outro no meio ou no fim. Cada CTA é uma frase curta e natural, "
+            "falada pela voz, ligada ao assunto, sem interromper a história.\n")
+
+
 def gerar(usuario_id: int, titulo: str, link: str, minutos: int, lingua: str, projeto_id: int | None,
           observacoes: str, perfil: str = "", canal: dict | None = None, projeto_descricao_id: int | None = None,
           aviso=lambda _t: None, transcricao_pronta: str = "") -> dict:
@@ -476,6 +495,7 @@ def gerar(usuario_id: int, titulo: str, link: str, minutos: int, lingua: str, pr
     pedido = f"Título do vídeo: {titulo}\nLíngua do roteiro: {lingua}\n" + tamanho_no_pedido(palavras, minutos, lingua)
     if observacoes:
         pedido += f"Observações de quem pediu: {observacoes}\n"
+    pedido += pedido_de_ctas((canal or {}).get("id", ""))
     # o que os vídeos anteriores deste canal ensinaram (retencao.py). Sem Studio conectado, fica vazio
     from . import retencao
     aviso("Vendo o que segurou o público neste canal…")

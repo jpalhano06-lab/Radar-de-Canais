@@ -1945,3 +1945,15 @@ Pedido do usuário: "o responder nada disso às vezes trava" (tela "Ad suitabili
 - Um erro no meio deixava o botão em "Respondendo…" para sempre; agora ele sempre volta e diz o que fazer.
   Apertar duas vezes seguidas não roda a tarefa em dobro.
 - Para usar: dê ↻ na extensão em `chrome://extensions` e recarregue o Studio.
+
+
+## Roteiro: canal com menos de 1000 inscritos pede no mínimo 2 CTAs (2026-11-15)
+
+Pedido do usuário: "sempre que o canal tiver menos de 1000 inscritos tem que ter no mínimo 2 CTAs no roteiro,
+deixe como observação ou pedido".
+
+- `roteiro_claude.pedido_de_ctas` lê os inscritos do canal (tabela `canais`) e, abaixo de 1000, junta ao pedido do
+  Claude uma "Observação obrigatória": no mínimo 2 chamadas para se inscrever, uma logo depois do gancho e outra no
+  meio ou no fim, curtas e ligadas ao assunto.
+- Vale para o roteiro pedido na tela e para o da fila. Sem canal escolhido ou sem o número de inscritos, nada muda.
+- Para usar: religue o Radar.
