@@ -2255,9 +2255,9 @@
   // soLer: só lê as contas do menu e guarda (o "Ler as contas do YouTube" do Meu dia), sem trocar de conta
   // o registro da troca de conta (2026-11-15): o "procurar ideia" falhou três vezes sem dar para ver onde; cada passo
   // fica em diaTrocaLog (os últimos 40), para conferir depois
+  // grava pelo background, em fila: várias abas gravando juntas apagavam as linhas umas das outras
   function registrarTroca(passo) {
-    chrome.storage.local.get("diaTrocaLog").then(({ diaTrocaLog = [] }) => chrome.storage.local.set({
-      diaTrocaLog: [...diaTrocaLog.slice(-39), { t: new Date().toISOString(), url: location.href, passo }] })).catch(() => {});
+    chrome.runtime.sendMessage({ tipo: "troca-log", url: location.href, passo }).catch(() => {});
   }
 
   async function trocarDeConta(textoAlvo, soLer = false, tentativa = 1) {

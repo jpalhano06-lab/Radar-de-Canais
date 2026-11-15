@@ -35,9 +35,14 @@ async function pedir({ caminho, metodo = "GET", corpo }) {
 }
 
 // o registro da troca de conta do "procurar ideia" (o mesmo diaTrocaLog do content.js)
-function registrarTrocaBg(passo) {
-  chrome.storage.local.get("diaTrocaLog").then(({ diaTrocaLog = [] }) => chrome.storage.local.set({
-    diaTrocaLog: [...diaTrocaLog.slice(-39), { t: new Date().toISOString(), url: "background", passo }] })).catch(() => {});
+// em fila (filaTrocaLog): várias abas gravando juntas apagavam as linhas umas das outras
+let filaTrocaLog = Promise.resolve();
+function registrarTrocaBg(passo, url = "background") {
+  const linha = { t: new Date().toISOString(), url, passo };
+  filaTrocaLog = filaTrocaLog.then(async () => {
+    const { diaTrocaLog = [] } = await chrome.storage.local.get("diaTrocaLog");
+    await chrome.storage.local.set({ diaTrocaLog: [...diaTrocaLog.slice(-59), linha] });
+  }).catch(() => {});
 }
 
 chrome.runtime.onMessage.addListener((msg, _remetente, responder) => {
@@ -81,6 +86,7 @@ chrome.runtime.onMessage.addListener((msg, _remetente, responder) => {
     }, (e) => responder({ erro: String(e) }));
     return true;
   }
+  if (msg && msg.tipo === "troca-log") { registrarTrocaBg(msg.passo, `aba ${_remetente.tab ? _remetente.tab.id : "?"} ${msg.url || ""}`); return; }
   if (msg && msg.tipo === "troca-pendente") {
     const id = _remetente.tab && _remetente.tab.id;
     chrome.storage.session.get("trocasPorAba").then(async ({ trocasPorAba = {} }) => {
