@@ -34,6 +34,13 @@
   .canal.ok { border-color: rgba(46,204,113,.45); border-left-color: var(--verde); background: linear-gradient(90deg, rgba(46,204,113,.07), var(--caixa) 40%); }
   .canal-cab { display: flex; justify-content: space-between; gap: 8px; align-items: baseline; }
   .canal-cab b { font-size: 15.5px; }
+  /* canal com tudo postado: só o nome em verde e o procurar ideia */
+  .canal.fechado { gap: 8px; padding: 10px 14px; }
+  .canal.fechado .canal-cab, .canal.ok .canal-cab[title] { cursor: pointer; }
+  .canal.fechado .canal-cab b { color: var(--verde); }
+  .amanha { display: grid; gap: 4px; }
+  .amanha-item { display: flex; gap: 6px; align-items: center; font-size: 12.5px; min-width: 0; }
+  .amanha-titulo { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .meta { font-size: 12.5px; font-weight: 700; white-space: nowrap; }
   .meta.ok { color: var(--verde); } .meta.falta { color: #ff6b6b; } .meta.meio { color: var(--amarelo); }
   .pergunta { border: 1px dashed rgba(255,0,0,.6); border-radius: 10px; padding: 10px; display: grid; gap: 8px; background: rgba(255,0,0,.05); }

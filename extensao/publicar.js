@@ -980,15 +980,18 @@
     .find((i) => /image/i.test(i.accept || "") || i.id === "file-loader") || null;
   const dialogoAberto = () => [...document.querySelectorAll("ytcp-uploads-dialog tp-yt-paper-dialog")].some(visivel);
 
+  async function abrirUpload() {
+    if (dialogoAberto()) return;
+    const criar = await esperarPor(() => document.querySelector("#create-icon") || botao(/^(Criar|Create)$/i, document.body), 15000);
+    if (criar) { criar.click(); await esperar(700); }
+    clicar(/^(Carregar vídeos|Enviar vídeos|Upload videos)$/i, document.body);
+  }
+
   async function postarDoDia({ id, titulo, video, capa }) {
     sessionStorage.setItem(POSTANDO, JSON.stringify({ id, titulo, desde: Date.now() }));
     ultimoTitulo = ""; avisouPostado = "";
     recado("Meu dia: abrindo o upload com o vídeo da fábrica…");
-    if (!dialogoAberto()) {
-      const criar = await esperarPor(() => document.querySelector("#create-icon") || botao(/^(Criar|Create)$/i, document.body), 15000);
-      if (criar) { criar.click(); await esperar(700); }
-      clicar(/^(Carregar vídeos|Enviar vídeos|Upload videos)$/i, document.body);
-    }
+    await abrirUpload();
     const campo = await esperarPor(campoDoVideo, 15000);
     if (!campo) return recado("Meu dia: não achei o botão de enviar vídeo do Studio. Abra Criar > Carregar vídeos e aperte Postar de novo.", true);
     colocarArquivo(campo, video);
@@ -1007,7 +1010,9 @@
   }
 
   window.addEventListener("message", (e) => {
-    if (e.origin !== ORIGEM_DA_EXTENSAO || !e.data || e.data.tipo !== "radar-postar") return;
+    if (e.origin !== ORIGEM_DA_EXTENSAO || !e.data) return;
+    if (e.data.tipo === "radar-abrir-upload") return void abrirUpload();   // o Postar do canal sem vídeo pedido
+    if (e.data.tipo !== "radar-postar") return;
     const v = e.data.video;   // o arquivo vem de outro mundo (a página da extensão): confere pelo jeito, não pelo instanceof
     if (!v || typeof v.size !== "number" || typeof v.arrayBuffer !== "function") return;
     postarDoDia(e.data).catch((erro) => recado(`Meu dia: ${erro && erro.message || erro}`, true));
@@ -1033,6 +1038,13 @@
     sessionStorage.removeItem(POSTANDO);
     pedir({ tipo: "dia-postado", id: postando.id || "", titulo, titulos: [titulo, postando.titulo, estado.kit && estado.kit.titulo].filter(Boolean) });
   }
+
+  // o Postar do canal sem vídeo pedido, apertado fora do Studio: o Meu dia abriu esta aba e guardou o pedido
+  chrome.storage.local.get("diaAbrirUpload").then(({ diaAbrirUpload: quando }) => {
+    if (!quando || Date.now() - quando > 3 * 60 * 1000) return;
+    chrome.storage.local.remove("diaAbrirUpload");
+    abrirUpload();
+  }).catch(() => {});
 
   (document.body || document.documentElement).append(host);
   // o Studio troca de tela sem recarregar: confere a cada segundo a etapa e o nome do arquivo

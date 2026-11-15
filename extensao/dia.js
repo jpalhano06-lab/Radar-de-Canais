@@ -18,6 +18,8 @@ function h(tag, attrs = {}, ...filhos) {
 }
 
 let canais = [], config = {}, dia = { data: hojeLocal(), videos: [], thumbs: [] }, imagens = {}, erroRadar = "";
+let amanha = [];                      // os pedidos guardados para amanhã (dia-dados.js, diaAmanha)
+const abertos = new Set();            // os cartões verdes que a pessoa abriu de novo clicando no nome
 let destinoArquivo = null;   // quem recebe o arquivo escolhido: o vídeo, { canal } ou null (fica solta)
 let colarEm = null;          // o canal sob o mouse: o Ctrl+V cai nele
 // dentro da aba Meu dia do site do Radar (o quadro leva ?site=1): o "+ Adicionar thumbnail" de cada canal fica só na
@@ -45,8 +47,9 @@ async function carregarImagens() {
 
 async function recarregar() {
   dia = await lerDia();
-  const g = await chrome.storage.local.get([DIA_CONFIG, "diaCanais"]);
+  const g = await chrome.storage.local.get([DIA_CONFIG, "diaCanais", DIA_AMANHA]);
   config = g[DIA_CONFIG] || {};
+  amanha = g[DIA_AMANHA] || [];
   if (!canais.length) canais = g.diaCanais || [];
   for (const id of Object.keys(imagens)) if (!dia.thumbs.some((t) => t.id === id)) delete imagens[id];
   await carregarImagens();
@@ -181,7 +184,15 @@ const pedirAoFundo = (msg) => new Promise((ok) => { try { chrome.runtime.sendMes
 const nomeDeArquivo = (t) => (t || "video").replace(/[\\/:*?"<>|]+/g, " ").replace(/\s+/g, " ").trim().slice(0, 120) || "video";
 let postando = "";
 
+// o Postar do canal que ainda não tem vídeo pedido: só abre o upload do Studio
+async function abrirUpload() {
+  if (NO_STUDIO) return window.parent.postMessage({ tipo: "radar-abrir-upload" }, "https://studio.youtube.com");
+  window.open("https://studio.youtube.com/", "_blank");
+  await chrome.storage.local.set({ diaAbrirUpload: Date.now() });
+}
+
 async function postar(v, botao) {
+  if (!v) return abrirUpload();
   if (!NO_STUDIO) {
     window.open("https://studio.youtube.com/", "_blank");
     await chrome.storage.local.set({ diaPostar: { id: v.id, quando: Date.now() } });
@@ -259,9 +270,14 @@ function cartaoDoVideo(v) {
           onclick: () => { if (confirm(`Tirar "${v.titulo}" do Meu dia?`)) mudarDia((d) => { d.videos = d.videos.filter((y) => y.id !== v.id); }); } }, "×"))));
 }
 
-// o link do "procurar ideia": abre o YouTube e a extensão troca para a conta de treino (content.js, #radar-conta=)
-function linkDaContaDeTreino(treino) {
-  return `https://www.youtube.com/#radar-conta=${encodeURIComponent(treino || "")}`;
+// o "procurar ideia": abre o YouTube e a extensão troca para a conta de treino (content.js). O pedido vai pelo storage
+// (diaTrocarConta): pelo #radar-conta= do link, o YouTube perdia o endereço no carregamento e abria na conta errada.
+// `quando` ("hoje" ou "amanha", pedido do usuário em 2026-11-15) diz para que dia vai o próximo pedido deste canal
+async function procurarIdeia(c, treino, quando) {
+  const { [DIA_DESTINO]: destinos = {} } = await chrome.storage.local.get(DIA_DESTINO);
+  destinos[c.id] = { dia: quando, quando: Date.now() };
+  await chrome.storage.local.set({ diaTrocarConta: { alvo: treino, quando: Date.now() }, [DIA_DESTINO]: destinos });
+  window.open("https://www.youtube.com/", "_blank");
 }
 
 // as contas do "Trocar de conta" do YouTube (pedido do usuário em 2026-11-15: "deixe lá todas as opções que tem no
@@ -354,16 +370,53 @@ function cartaoDoCanal(c, videos) {
   novaThumb.addEventListener("mouseenter", () => { colarEm = { canal: c.id, canalNome: c.titulo }; });
   novaThumb.addEventListener("mouseleave", () => { colarEm = null; });
 
+  // procurar ideia para hoje ou para amanhã (o próximo pedido deste canal entra no dia escolhido)
+  const procurar = cfg.treino
+    ? h("div", { class: "linha procurar" }, h("span", { class: "fraco" }, "Procurar ideia:"),
+      h("button", { type: "button", title: `Abre o YouTube na conta ${cfg.treino}; o próximo pedido deste canal fica para hoje`,
+        onclick: () => procurarIdeia(c, cfg.treino, "hoje") }, "Para hoje ↗"),
+      h("button", { type: "button", title: `Abre o YouTube na conta ${cfg.treino}; o próximo pedido deste canal fica para amanhã`,
+        onclick: () => procurarIdeia(c, cfg.treino, "amanha") }, "Para amanhã ↗"))
+    : null;
+  const deAmanha = amanha.filter((v) => v.canal === c.id);
+  const listaAmanha = deAmanha.length ? h("div", { class: "amanha" }, ...deAmanha.map((v) => h("div", { class: "amanha-item" },
+    h("span", { class: "fraco" }, "Amanhã:"), h("span", { class: "amanha-titulo" }, v.titulo || "vídeo sem título"),
+    h("button", { class: "x", title: "Tirar este pedido de amanhã", onclick: async () => {
+      const { [DIA_AMANHA]: fila = [] } = await chrome.storage.local.get(DIA_AMANHA);
+      await chrome.storage.local.set({ [DIA_AMANHA]: fila.filter((x) => x.id !== v.id) });
+      recarregar();
+    } }, "×")))) : null;
+
+  // tudo postado (pedido do usuário em 2026-11-15): fica só o nome em verde e o procurar ideia. Clicar no nome abre
+  const tudoPostado = estado === "ok" && videos.length > 0;
+  if (tudoPostado && !abertos.has(c.id)) {
+    return h("article", { class: "canal ok fechado" },
+      h("div", { class: "canal-cab", title: "Clique para ver os vídeos de hoje", onclick: () => { abertos.add(c.id); desenhar(); } },
+        h("b", {}, `✓ ${c.titulo}`), h("span", { class: "meta ok" }, `${plural(postados, "postado", "postados")} ▸`)),
+      procurar || h("span", { class: "fraco" }, "Escolha a conta de treino em Ajustes do canal (clique no nome) para procurar ideia."),
+      listaAmanha);
+  }
+
+  // no lugar da Nova produção, o Postar (pedido do usuário em 2026-11-15): sobe o próximo vídeo não postado do canal;
+  // sem vídeo pedido, abre o upload do Studio
+  const naoPostados = videos.filter((v) => !v.postado);
+  const avisos = [naoPostados.length ? `Falta postar ${plural(naoPostados.length, "vídeo", "vídeos")}` : "",
+    falta ? `falta pedir ${plural(falta, "vídeo", "vídeos")} hoje` : ""].filter(Boolean).join(" · ");
+  const postarCanal = h("button", { type: "button", class: "vermelho",
+    title: naoPostados.length ? `Postar "${naoPostados[0].titulo}"` : "Abre o upload do YouTube Studio" },
+  NO_STUDIO ? "Postar" : "Postar ↗");
+  postarCanal.onclick = () => postar(naoPostados[0], postarCanal);
+
   return h("article", { class: `canal ${estado}` },
-    h("div", { class: "canal-cab" }, h("b", {}, c.titulo),
+    h("div", { class: "canal-cab", ...(tudoPostado ? { title: "Clique para recolher", onclick: () => { abertos.delete(c.id); desenhar(); } } : {}) },
+      h("b", {}, c.titulo),
       meta == null ? null : h("span", { class: `meta ${estado}` },
         meta === 0 ? plural(feitos, "vídeo hoje", "vídeos hoje") : `${feitos}/${meta} hoje${postados ? ` · ${postados} postado${postados > 1 ? "s" : ""}` : ""}`)),
     thumbFeita ? h("div", { class: "estado ok" }, "Thumbnail feita") : null,
     meta == null ? pergunta : null,
-    falta ? h("div", { class: "linha" }, h("span", { class: "aviso" }, `Falta pedir ${plural(falta, "vídeo", "vídeos")} hoje`),
-      h("a", { class: "botao vermelho", href: "https://www.youtube.com/#radar-nova-producao", target: "_blank" }, "Nova produção")) : null,
-    cfg.treino ? h("div", { class: "linha" },
-      h("a", { class: "botao", href: linkDaContaDeTreino(cfg.treino), target: "_blank", rel: "noopener", title: `Abre o YouTube na conta ${cfg.treino}` }, "Canal de treino: procurar ideia ↗")) : null,
+    avisos ? h("div", { class: "linha" }, h("span", { class: "aviso" }, avisos[0].toUpperCase() + avisos.slice(1)), postarCanal) : null,
+    procurar,
+    listaAmanha,
     videos.length || doCanal.length ? h("div", { class: "videos" }, ...videos.map(cartaoDoVideo), ...doCanal.map(cartaoThumb)) : null,
     c.id && !NO_SITE ? novaThumb : null,
     h("details", {}, h("summary", {}, !cfg.treino ? "Ajustes do canal · falta a conta de treino"
@@ -433,7 +486,7 @@ function desenhar() {
 // ------------------------------------------------------------ começo e atualizações
 chrome.storage.onChanged.addListener((mudou, area) => {
   if (area === "local" && mudou.contasYoutube) lerContasYoutube().then(desenhar);
-  if (area !== "local" || !(mudou[DIA_CHAVE] || mudou[DIA_CONFIG])) return;
+  if (area !== "local" || !(mudou[DIA_CHAVE] || mudou[DIA_CONFIG] || mudou[DIA_AMANHA])) return;
   // não redesenha no meio de quem está digitando um link ou título
   const digitando = () => document.activeElement && document.activeElement.tagName === "INPUT" && document.activeElement.type !== "checkbox";
   const tentar = () => (digitando() ? setTimeout(tentar, 1500) : recarregar());

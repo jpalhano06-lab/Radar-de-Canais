@@ -2033,3 +2033,22 @@ nome, cores vermelho/amarelo/verde, o Meu dia abrir no YouTube Studio com a opç
 - **Postou, fica verde**: quando o Studio mostra "Vídeo publicado" / "Vídeo agendado", o vídeo do Meu dia fica como
   postado, pelo id (botão Postar) ou pelo título (quem subiu sem o botão).
 - Para usar: dê ↻ na extensão em `chrome://extensions` e religue o Radar (rota nova).
+
+## Extensão 0.52.1: Postar no lugar da Nova produção, canal verde recolhido, procurar ideia para hoje ou amanhã (2026-11-15)
+
+Pedido do usuário: "tire o botão de nova produção e coloque de postar, e quando tudo tiver postado fica só o nome do
+canal verde e procurar ideia… para outro dia ou para o mesmo", e o procurar ideia "só redirecionando para o YouTube
+sem o canal certo".
+
+- O botão vermelho do cartão do canal agora é **Postar**: sobe o próximo vídeo não postado do canal (o mesmo Postar
+  de cada vídeo). Sem vídeo pedido, abre o Criar > Carregar vídeos do Studio. O aviso diz "Falta postar N" e/ou
+  "falta pedir N hoje".
+- **Tudo postado**: o cartão recolhe e fica só "✓ <canal>" em verde, o procurar ideia e os pedidos de amanhã.
+  Clicar no nome abre o cartão inteiro (e clicar de novo recolhe).
+- **Procurar ideia: Para hoje ↗ / Para amanhã ↗**. Com "para amanhã", o próximo pedido da Nova produção desse canal
+  (em até 20 h) não entra no dia de hoje: fica em "Amanhã: <título>" no cartão e entra sozinho no Meu dia quando o
+  dia virar (`diaAmanha` / `diaDestino` no storage da extensão).
+- **Bug do procurar ideia**: o link `youtube.com/#radar-conta=…` perdia o `#` no carregamento do YouTube e a página
+  abria na conta que estivesse aberta, sem aviso. Agora o pedido de troca vai pelo storage (`diaTrocarConta`, vale
+  1 minuto) e a aba do YouTube que abre faz a troca para a conta de treino.
+- Para usar: dê ↻ na extensão em `chrome://extensions` (o Radar não precisa religar).

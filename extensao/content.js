@@ -2306,6 +2306,14 @@
     const alvo = decodeURIComponent(location.hash.slice("#radar-conta=".length));
     history.replaceState(null, "", location.pathname + location.search);
     trocarDeConta(alvo);
+  } else {
+    // o "procurar ideia" do Meu dia (2026-11-15): o YouTube perdia o #radar-conta= no carregamento e a página abria na
+    // conta que estivesse aberta, sem aviso. Agora o pedido vem pelo storage; a primeira aba que abre leva
+    chrome.storage.local.get("diaTrocarConta").then(({ diaTrocarConta: p }) => {
+      if (!p || Date.now() - p.quando > 60 * 1000) return;
+      chrome.storage.local.remove("diaTrocarConta");
+      trocarDeConta(p.alvo);
+    }).catch(() => {});
   }
 
   function botaoNovaProducao() {
