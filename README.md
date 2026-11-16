@@ -2053,6 +2053,14 @@ sem o canal certo".
   1 minuto) e a aba do YouTube que abre faz a troca para a conta de treino.
 - Para usar: dê ↻ na extensão em `chrome://extensions` (o Radar não precisa religar).
 
+## Extensão 0.53.5: cada vídeo na sua cor, com número (2026-11-16)
+
+A faixa dividida na borda do canal (0.53.4) ficava difícil de ler: os pedaços não batiam com as caixinhas dos vídeos.
+Agora cada caixinha de vídeo tem a cor dela (borda, fundo e um número no canto): vermelho = ainda não pedido,
+amarelo = falta a thumbnail, azul = só falta postar, verde = postado. No alto do canal, uma barrinha com um pedaço
+numerado por vídeo do dia, na mesma cor e com o mesmo número da caixinha. Com meta de 2 ou mais, cada vídeo que
+ainda não foi pedido aparece como uma caixinha vermelha tracejada ("Vídeo 2 · Ainda não pedido").
+
 ## Extensão 0.53.4: "Hoje não vou postar", o azul e a faixa dividida por vídeo (2026-11-16)
 
 - **Hoje não vou postar:** botão em cada canal; o canal fica verde e recolhido ("hoje sem postar", com "Desfazer"),

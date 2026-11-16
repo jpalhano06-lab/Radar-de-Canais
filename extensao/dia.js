@@ -320,7 +320,10 @@ function linhaDoTesteAB(v, thumb) {
 }
 
 // ------------------------------------------------------------ desenho
-function cartaoDoVideo(v) {
+// 2026-11-16 (pedido do usuário: "deixe a caixinha de dentro na cor, deixe mais claro que cada um é de cada cor"):
+// cada caixinha de vídeo tem a cor dela e o número dela (1, 2…), o mesmo dos pedacinhos no alto do canal
+const NOME_DA_COR = { falta: "ainda não pedido", meio: "falta a thumbnail", azul: "só falta postar", ok: "postado" };
+function cartaoDoVideo(v, numero) {
   const thumb = v.thumb && dia.thumbs.find((t) => t.id === v.thumb);
   const slot = thumb && imagens[thumb.id]
     ? h("div", { class: "slot cheio", title: "Arraste outra imagem para trocar" }, h("img", { src: imagens[thumb.id], alt: "" }))
@@ -337,7 +340,7 @@ function cartaoDoVideo(v) {
     title: NO_STUDIO ? "Sobe o vídeo da fábrica e a thumbnail no Studio" : "Abre o YouTube Studio já com o vídeo e a thumbnail" },
   postando === v.id ? "Baixando…" : NO_STUDIO ? "Postar" : "Postar ↗");
   if (botaoPostar) botaoPostar.onclick = () => postar(v, botaoPostar);
-  return h("div", { class: `video ${videoCompleto(v) ? "ok" : "meio"}` }, slot,
+  return h("div", { class: `video ${corDoVideo(v)}` }, numero ? h("span", { class: "num", title: NOME_DA_COR[corDoVideo(v)] }, String(numero)) : null, slot,
     h("div", {},
       h("b", {}, v.titulo || "vídeo sem título"),
       h("div", { class: `estado ${videoCompleto(v) ? "ok" : "falta"}` }, estadoTexto),
@@ -442,8 +445,14 @@ function cartaoDoCanal(c, videos) {
   const semPostar = semPostarHoje(c.id);
   const estado = corDoCanal(meta, videos, thumbFeita, semPostar);
   const faixa = faixaDoCanal(meta, videos, semPostar);
-  const pedacos = faixa.length ? h("div", { class: "faixa", title: faixa.length > 1 ? "Um pedaço por vídeo do dia" : "" },
-    ...faixa.map((cor) => h("span", { class: cor }))) : null;
+  const pedacos = faixa.length > 1 || (faixa.length === 1 && !semPostar) ? h("div", { class: "pedacos" },
+    ...faixa.map((cor, i) => h("span", { class: `pedaco ${cor}`, title: `Vídeo ${i + 1}: ${NOME_DA_COR[cor]}` }, String(i + 1)))) : null;
+  const ordem = [...videos].sort((a, b) => (a.hora || 0) - (b.hora || 0));
+  const numeroDe = (v) => ordem.indexOf(v) + 1;
+  // os vídeos da meta que ainda não foram pedidos: uma caixinha vermelha para cada
+  const naoPedidos = Array.from({ length: Math.max(0, (meta || 0) - videos.length) }, (_, i) => h("div", { class: "video falta vazio-pedido" },
+    h("span", { class: "num" }, String(videos.length + i + 1)), h("div", {}, h("b", {}, `Vídeo ${videos.length + i + 1}`),
+      h("div", { class: "estado falta" }, "Ainda não pedido: procure a ideia e faça a Nova produção"))));
   const alternarSemPostar = () => mudarDia((d) => {
     const lista = new Set(d.semPostar || []);
     if (lista.has(c.id)) lista.delete(c.id); else lista.add(c.id);
@@ -486,7 +495,7 @@ function cartaoDoCanal(c, videos) {
 
   // tudo postado (pedido do usuário em 2026-11-15): fica só o nome em verde e o procurar ideia. Clicar no nome abre
   if (semPostar && !abertos.has(c.id)) {
-    return h("article", { class: "canal ok fechado com-faixa" }, pedacos,
+    return h("article", { class: "canal ok fechado" },
       h("div", { class: "canal-cab", title: "Clique para abrir o canal", onclick: () => { abertos.add(c.id); desenhar(); } },
         h("b", {}, `✓ ${c.titulo}`), h("span", { class: "meta ok" }, "hoje sem postar ▸")),
       h("div", { class: "linha" }, h("button", { type: "button", onclick: alternarSemPostar }, "Desfazer: vou postar hoje"), procurar),
@@ -494,7 +503,7 @@ function cartaoDoCanal(c, videos) {
   }
   const tudoPostado = estado === "ok" && videos.length > 0;
   if (tudoPostado && !abertos.has(c.id)) {
-    return h("article", { class: "canal ok fechado com-faixa" }, pedacos,
+    return h("article", { class: "canal ok fechado" },
       h("div", { class: "canal-cab", title: "Clique para ver os vídeos de hoje", onclick: () => { abertos.add(c.id); desenhar(); } },
         h("b", {}, `✓ ${c.titulo}`), h("span", { class: "meta ok" }, `${plural(postados, "postado", "postados")} ▸`)),
       procurar || h("span", { class: "fraco" }, "Escolha a conta de treino em Ajustes do canal (clique no nome) para procurar ideia."),
@@ -513,18 +522,21 @@ function cartaoDoCanal(c, videos) {
   const botaoSemPostar = h("button", { type: "button", class: "sem-postar", title: semPostar ? "Volta a contar este canal hoje" : "O canal fica verde hoje e sai da conta do dia",
     onclick: alternarSemPostar }, semPostar ? "Desfazer: vou postar hoje" : "Hoje não vou postar");
 
-  return h("article", { class: `canal ${estado}${pedacos ? " com-faixa" : ""}` }, pedacos,
+  return h("article", { class: `canal ${estado}` },
     h("div", { class: "canal-cab", ...(tudoPostado || semPostar ? { title: "Clique para recolher", onclick: () => { abertos.delete(c.id); desenhar(); } } : {}) },
       h("b", {}, c.titulo),
       meta == null ? null : h("span", { class: `meta ${estado}` },
         meta === 0 ? plural(feitos, "vídeo hoje", "vídeos hoje") : `${feitos}/${meta} hoje${postados ? ` · ${postados} postado${postados > 1 ? "s" : ""}` : ""}`)),
+    pedacos,
     thumbFeita ? h("div", { class: "estado ok" }, "Thumbnail feita") : null,
     meta == null ? pergunta : null,
     avisos && !semPostar ? h("div", { class: "linha" }, h("span", { class: "aviso" }, avisos[0].toUpperCase() + avisos.slice(1)), postarCanal, botaoSemPostar)
       : !tudoPostado ? h("div", { class: "linha" }, botaoSemPostar) : null,
     procurar,
     listaAmanha,
-    videos.length || doCanal.length ? h("div", { class: "videos" }, ...videos.map(cartaoDoVideo), ...doCanal.map(cartaoThumb)) : null,
+    videos.length || doCanal.length || naoPedidos.length ? h("div", { class: "videos" },
+      ...videos.map((v) => cartaoDoVideo(v, (meta || 0) > 1 || videos.length > 1 ? numeroDe(v) : 0)),
+      ...(semPostar || (meta || 0) < 2 ? [] : naoPedidos), ...doCanal.map(cartaoThumb)) : null,
     c.id && !NO_SITE ? novaThumb : null,
     h("details", {}, h("summary", {}, !cfg.treino ? "Ajustes do canal · falta a conta de treino"
       : /^https?:\/\//i.test(cfg.treino) && !/@[\w.\-]+/.test(cfg.treino) ? "Ajustes do canal · troque o link pelo @ da conta de treino" : "Ajustes do canal"),
