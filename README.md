@@ -2053,6 +2053,17 @@ sem o canal certo".
   1 minuto) e a aba do YouTube que abre faz a troca para a conta de treino.
 - Para usar: dê ↻ na extensão em `chrome://extensions` (o Radar não precisa religar).
 
+## Extensão 0.53.6: pegar de volta o vídeo tirado e a legenda das cores (2026-11-16)
+
+O usuário tirou sem querer um vídeo pedido do Meu dia. Agora:
+
+- **Tirados hoje:** o × não apaga mais. O vídeo (com a thumbnail e o teste A/B dele) vai para `dia.tirados`, aparece
+  "Desfazer" por 10 s no alto e, depois, a lista "Tirados hoje" no fim da página com "Voltar".
+- **Pedido hoje na fábrica, fora do Meu dia:** cada canal mostra os pedidos de hoje da Nova produção que não estão no
+  Meu dia (nem no "para amanhã"), com "Pôr de volta". A lista vem do `GET /api/ext/pedidos-recentes` (a
+  `producoes_fila` das últimas 36 h: título, canal, link de referência).
+- **Legenda:** no alto do Meu dia, o que cada cor quer dizer (vermelho, amarelo, azul, verde).
+
 ## Extensão 0.53.5: cada vídeo na sua cor, com número (2026-11-16)
 
 A faixa dividida na borda do canal (0.53.4) ficava difícil de ler: os pedaços não batiam com as caixinhas dos vídeos.

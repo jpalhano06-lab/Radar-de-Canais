@@ -319,6 +319,56 @@ function linhaDoTesteAB(v, thumb) {
       mini("B", ab[0]), mini("C", ab[1])));
 }
 
+// ------------------------------------------------------------ tirar e pegar de volta (2026-11-16)
+// "Sem querer eu excluí o vídeo que pedi": o × leva o vídeo para "Tirados hoje" (com Desfazer na hora), e cada canal
+// mostra os pedidos de hoje da fábrica que não estão no Meu dia, com "Pôr de volta"
+let desfazer = null;   // { id, titulo, ate }
+async function tirarVideo(v) {
+  await diaTirarVideo(v.id);
+  desfazer = { id: v.id, titulo: v.titulo, ate: Date.now() + 10000 };
+  setTimeout(() => { if (desfazer && Date.now() >= desfazer.ate) { desfazer = null; desenhar(); } }, 10100);
+}
+function avisoDesfazer() {
+  if (!desfazer || Date.now() >= desfazer.ate) return null;
+  const id = desfazer.id;
+  return h("div", { class: "desfazer" }, h("span", {}, `Tirei "${desfazer.titulo}".`),
+    h("button", { type: "button", onclick: () => { desfazer = null; diaVoltarVideo(id); } }, "Desfazer"));
+}
+let pedidosFabrica = [], pedidosLidos = 0;
+function lerPedidosDaFabrica() {
+  if (Date.now() - pedidosLidos < 60 * 1000) return;
+  pedidosLidos = Date.now();
+  api("/api/ext/pedidos-recentes?horas=36").then((r) => {
+    if (r && r.dados && Array.isArray(r.dados.pedidos)) { pedidosFabrica = r.dados.pedidos; desenhar(); }
+  }, () => {});
+}
+const meiaNoiteLocal = () => { const d = new Date(); d.setHours(0, 0, 0, 0); return d.getTime(); };
+function foraDoMeuDia(c) {
+  const no = new Set([...dia.videos, ...amanha].map((v) => tituloNormal(v.titulo)));
+  return pedidosFabrica.filter((p) => p.canal_id === c.id && Date.parse(p.criado) >= meiaNoiteLocal() && !no.has(tituloNormal(p.titulo)));
+}
+function linhaForaDoMeuDia(c) {
+  const fora = foraDoMeuDia(c);
+  if (!fora.length) return null;
+  return h("div", { class: "fora" }, h("b", {}, "Pedido hoje na fábrica, fora do Meu dia:"),
+    ...fora.map((p) => h("div", { class: "fora-item" }, h("span", { class: "fora-titulo", title: p.titulo }, p.titulo),
+      h("button", { type: "button", title: "Volta para o Meu dia de hoje", onclick: () => diaVoltarDaFabrica({ canal: c.id, canalNome: c.titulo,
+        titulo: p.titulo, link: p.link, fila: p.id }) }, "Pôr de volta"))));
+}
+function secaoTirados() {
+  const lista = [...(dia.tirados || [])].reverse();
+  if (!lista.length) return [];
+  return [h("h2", {}, "Tirados hoje"),
+    h("section", { class: "tirados" }, ...lista.map((v) => h("div", { class: "tirado" },
+      h("span", { class: "fraco" }, v.canalNome || ""), h("span", { class: "fora-titulo", title: v.titulo }, v.titulo || "vídeo sem título"),
+      h("button", { type: "button", onclick: () => diaVoltarVideo(v.id) }, "Voltar"))))];
+}
+// a legenda das cores (pedido do usuário em 2026-11-16: "dentro do Meu dia coloque as cores e explique o que cada uma
+// significa")
+const legenda = () => h("div", { class: "legenda" },
+  ...[["falta", "Vídeo ainda não pedido"], ["meio", "Pedido, falta a thumbnail"], ["azul", "Pedido e thumbnail: só falta postar"],
+    ["ok", "Postado (ou hoje sem postar)"]].map(([cor, texto]) => h("span", { class: "leg" }, h("i", { class: `pedaco ${cor}` }), texto)));
+
 // ------------------------------------------------------------ desenho
 // 2026-11-16 (pedido do usuário: "deixe a caixinha de dentro na cor, deixe mais claro que cada um é de cada cor"):
 // cada caixinha de vídeo tem a cor dela e o número dela (1, 2…), o mesmo dos pedacinhos no alto do canal
@@ -354,8 +404,8 @@ function cartaoDoVideo(v, numero) {
         thumb ? baixar(thumb, v.titulo) : null,
         thumb ? h("button", { class: "x", title: "Tirar a thumbnail deste vídeo (ela fica nas soltas)",
           onclick: () => mudarDia((d) => { const x = d.videos.find((y) => y.id === v.id); if (x) x.thumb = null; }) }, "↺") : null,
-        h("button", { class: "x", title: "Tirar este vídeo do dia",
-          onclick: () => { if (confirm(`Tirar "${v.titulo}" do Meu dia?`)) mudarDia((d) => { d.videos = d.videos.filter((y) => y.id !== v.id); }); } }, "×"))));
+        h("button", { class: "x", title: "Tirar este vídeo do dia (fica em Tirados hoje, dá para voltar)",
+          onclick: () => tirarVideo(v) }, "×"))));
 }
 
 // o "procurar ideia": abre o YouTube e a extensão troca para a conta de treino (content.js). Pelo #radar-conta= do
@@ -507,6 +557,7 @@ function cartaoDoCanal(c, videos) {
       h("div", { class: "canal-cab", title: "Clique para ver os vídeos de hoje", onclick: () => { abertos.add(c.id); desenhar(); } },
         h("b", {}, `✓ ${c.titulo}`), h("span", { class: "meta ok" }, `${plural(postados, "postado", "postados")} ▸`)),
       procurar || h("span", { class: "fraco" }, "Escolha a conta de treino em Ajustes do canal (clique no nome) para procurar ideia."),
+      linhaForaDoMeuDia(c),
       listaAmanha);
   }
 
@@ -533,6 +584,7 @@ function cartaoDoCanal(c, videos) {
     avisos && !semPostar ? h("div", { class: "linha" }, h("span", { class: "aviso" }, avisos[0].toUpperCase() + avisos.slice(1)), postarCanal, botaoSemPostar)
       : !tudoPostado ? h("div", { class: "linha" }, botaoSemPostar) : null,
     procurar,
+    linhaForaDoMeuDia(c),
     listaAmanha,
     videos.length || doCanal.length || naoPedidos.length ? h("div", { class: "videos" },
       ...videos.map((v) => cartaoDoVideo(v, (meta || 0) > 1 || videos.length > 1 ? numeroDe(v) : 0)),
@@ -575,6 +627,9 @@ function desenhar() {
     n ? h("span", { class: `pilula ${corDaConta(n - semThumb, n)}` }, semThumb ? `${plural(semThumb, "thumbnail falta", "thumbnails faltam")}` : "Thumbnails em dia") : null,
     n ? h("span", { class: `pilula ${corDaConta(postados, n)}` }, `${postados}/${n} postados`) : null,
     !metaTotal && !dia.videos.length ? h("span", { class: "pilula" }, "Nada pedido hoje") : null].filter(Boolean));
+  $("legenda").replaceChildren(legenda(), ...[avisoDesfazer()].filter(Boolean));
+  $("tirados").replaceChildren(...secaoTirados());
+  lerPedidosDaFabrica();
 
   const usadas = thumbsUsadas();
   const soltas = dia.thumbs.filter((t) => !usadas.has(t.id) && !t.canal && imagens[t.id]);

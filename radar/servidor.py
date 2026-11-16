@@ -864,6 +864,26 @@ def ext_postar(titulo: str = "", u: dict = Depends(exigir("extensao"))):
             "tamanho": video.stat().st_size if video else 0}
 
 
+@app.get("/api/ext/pedidos-recentes")
+def ext_pedidos_recentes(horas: int = 36, u: dict = Depends(exigir("extensao"))):
+    """Os pedidos da Nova produção das últimas horas (pedido do usuário em 2026-11-16: apagou sem querer um vídeo
+    do Meu dia e precisava pegá-lo de volta). O Meu dia mostra, em cada canal, os de hoje que não estão nele."""
+    desde = (datetime.now(timezone.utc) - timedelta(hours=max(1, min(horas, 24 * 7)))).isoformat()
+    linhas = banco.todos("SELECT id, criado, estado, projeto, pedido FROM producoes_fila WHERE usuario_id=? AND criado>=? "
+                         "ORDER BY id DESC LIMIT 200", u["id"], desde)
+    pedidos = []
+    for linha in linhas:
+        try:
+            p = json.loads(linha["pedido"] or "{}")
+        except ValueError:
+            continue
+        if not p.get("titulo"):
+            continue
+        pedidos.append({"id": linha["id"], "criado": linha["criado"], "estado": linha["estado"], "projeto": linha["projeto"],
+                        "titulo": p["titulo"], "canal_id": p.get("canal_id") or "", "link": p.get("link") or ""})
+    return {"pedidos": pedidos}
+
+
 @app.get("/api/ext/postar/{nome}/video")
 def ext_postar_video(nome: str, u: dict = Depends(exigir("extensao"))):
     video = _video_final(_projeto_fabrica(nome))

@@ -42,3 +42,16 @@ def test_a_entrega_no_pc_ganha_do_final(tmp_path):
     assert servidor._video_final(pasta) == entrega
     entrega.unlink()                                    # a entrega sumiu: volta ao final.mp4 da pasta
     assert servidor._video_final(pasta) == pasta / "final.mp4"
+
+
+def test_pedidos_recentes_para_pegar_de_volta(monkeypatch):
+    """O Meu dia pega de volta um vídeo tirado sem querer (2026-11-16): a lista dos pedidos recentes da fila."""
+    linhas = [{"id": 123, "criado": "2026-11-16T15:00:00+00:00", "estado": "produzindo", "projeto": "as-8-criaturas",
+               "pedido": json.dumps({"titulo": "As 8 Criaturas", "canal_id": "UCx", "link": "https://youtu.be/abc"})},
+              {"id": 124, "criado": "2026-11-16T16:00:00+00:00", "estado": "na_fila", "projeto": "", "pedido": "{}"}]
+    pedidos = []
+    monkeypatch.setattr(servidor.banco, "todos", lambda sql, *a: pedidos.append(a) or linhas)
+    r = servidor.ext_pedidos_recentes(horas=36, u={"id": 7})
+    assert r == {"pedidos": [{"id": 123, "criado": "2026-11-16T15:00:00+00:00", "estado": "produzindo", "projeto": "as-8-criaturas",
+                              "titulo": "As 8 Criaturas", "canal_id": "UCx", "link": "https://youtu.be/abc"}]}
+    assert pedidos[0][0] == 7

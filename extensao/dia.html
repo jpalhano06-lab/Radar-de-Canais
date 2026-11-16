@@ -149,6 +149,17 @@
   /* no alto do canal: um pedacinho numerado por vídeo do dia */
   .pedacos { display: flex; gap: 4px; }
   .pedaco { flex: 1; height: 18px; border-radius: 5px; font-size: 11px; font-weight: 800; display: flex; align-items: center; justify-content: center; color: #000; }
+  /* legenda, desfazer, tirados e pedidos fora do Meu dia (2026-11-16) */
+  #legenda { display: grid; gap: 8px; margin: 2px 0 10px; }
+  .legenda { display: flex; flex-wrap: wrap; gap: 6px 12px; font-size: 11.5px; color: #c9ced6; }
+  .leg { display: inline-flex; align-items: center; gap: 5px; }
+  .leg .pedaco { display: inline-block; width: 16px; height: 9px; flex: none; border-radius: 3px; }
+  .desfazer { display: flex; align-items: center; gap: 10px; background: #2a2f3a; border: 1px solid #444; border-radius: 10px; padding: 7px 10px; font-size: 12.5px; }
+  .desfazer span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .fora { display: grid; gap: 5px; border: 1px dashed #666; border-radius: 10px; padding: 8px; font-size: 12px; }
+  .fora-item, .tirado { display: flex; align-items: center; gap: 8px; min-width: 0; }
+  .fora-titulo { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .tirados { display: grid; gap: 6px; font-size: 12.5px; }
 </style>
 </head>
 <body>
@@ -161,11 +172,13 @@
     </div>
     <div class="resumo" id="resumo"></div>
   </header>
+  <div id="legenda"></div>
   <div class="erro" id="erro" hidden></div>
   <section class="canais" id="canais"></section>
   <h2>Thumbnails sem canal</h2>
   <p class="fraco" style="margin-top:-4px">O jeito mais rápido é o <b>+ Adicionar thumbnail</b> de cada canal, ou o botão direito numa imagem (Canva, Drive, qualquer site) > <b>Salvar no Meu dia</b> > o canal. Aqui ficam só as que entraram sem canal.</p>
   <section class="soltas" id="soltas"></section>
+  <div id="tirados"></div>
   <input type="file" id="arquivo" accept="image/*" hidden>
 </main>
 <script src="dia-dados.js"></script>

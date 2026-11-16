@@ -52,6 +52,38 @@ function mudarDia(fn) {
 
 const novoIdDia = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
 
+/** Tirar um vídeo do dia (o ×) não apaga mais (pedido do usuário em 2026-11-16: "sem querer eu excluí o vídeo que
+ *  pedi"): ele vai para `d.tirados` (com a thumbnail dele, até 20) e volta com diaVoltarVideo. Some quando vira o dia. */
+function diaTirarVideo(id) {
+  return mudarDia((d) => {
+    const v = d.videos.find((x) => x.id === id);
+    if (!v) return null;
+    d.videos = d.videos.filter((x) => x.id !== id);
+    d.tirados = [...(d.tirados || []).filter((x) => x.id !== id), { ...v, tiradoHora: Date.now() }].slice(-20);
+    return v;
+  });
+}
+function diaVoltarVideo(id) {
+  return mudarDia((d) => {
+    const v = (d.tirados || []).find((x) => x.id === id);
+    if (!v) return null;
+    d.tirados = d.tirados.filter((x) => x.id !== id);
+    const { tiradoHora, ...volta } = v;
+    d.videos.push(volta);
+    return volta;
+  });
+}
+/** Um pedido da fábrica que não está no Meu dia volta para hoje (o "Pôr de volta" do canal). Não passa pelo destino
+ *  "para amanhã": é um vídeo que já era de hoje. */
+function diaVoltarDaFabrica({ canal, canalNome, titulo, link = "", fila = null }) {
+  return mudarDia((d) => {
+    const novo = { id: novoIdDia(), hora: Date.now(), postado: false, thumb: null, canal, canalNome, titulo,
+      ...(link ? { referencia: link } : {}), ...(fila ? { fila } : {}) };
+    d.videos.push(novo);
+    return novo;
+  });
+}
+
 /** Um vídeo pedido hoje (da Nova produção ou marcado à mão): { canal, canalNome, titulo }. */
 async function diaNovoVideo(v) {
   const { [DIA_DESTINO]: destinos = {} } = await chrome.storage.local.get(DIA_DESTINO);
