@@ -91,6 +91,10 @@ chrome.runtime.onMessage.addListener((msg, _remetente, responder) => {
     }, (e) => responder({ erro: String(e) }));
     return true;
   }
+  if (msg && msg.tipo === "canva-canal") {             // a caixinha do Canva: o canal escolhido para o PNG baixado
+    mandarDoCanva(_remetente.tab && _remetente.tab.id, msg.canal).then(responder, (e) => responder({ erro: String(e) }));
+    return true;
+  }
   if (msg && msg.tipo === "troca-log") { registrarTrocaBg(msg.passo, `aba ${_remetente.tab ? _remetente.tab.id : "?"} ${msg.url || ""}`); return; }
   if (msg && msg.tipo === "troca-pendente") {
     const id = _remetente.tab && _remetente.tab.id;
@@ -303,6 +307,98 @@ async function baixarImagemDoMenu(info, tab) {
     if (resp.ok && tipo.startsWith("image/")) return paraDataUrl(new Uint8Array(await resp.arrayBuffer()), tipo);
   } catch (e) { /* o site não deixou */ }
   return null;
+}
+
+// ------------------------------------------------------------ Canva: baixou o design, escolhe o canal
+// Pedido do usuário em 2026-11-16: "no Canva eu não consigo usar a extensão, não consigo mandar direto para o canal
+// correto". No Canva o design não é uma imagem (são camadas na página), então o clique direito não tem o "Salvar no
+// Meu dia". Agora, quando um PNG/JPG baixado do Canva termina, aparece no próprio Canva uma caixinha com os canais;
+// o clique manda a imagem para o canal no Meu dia, como thumbnail feita.
+const canvaPendentes = new Map();   // aba do Canva -> { url, nome }
+const ehDoCanva = (u) => { try { return /(^|\.)canva\.com$/i.test(new URL(String(u).replace(/^blob:/, "")).hostname); } catch (e) { return false; } };
+chrome.downloads.onChanged.addListener(async (mudou) => {
+  if (!mudou.state || mudou.state.current !== "complete") return;
+  const [item] = await chrome.downloads.search({ id: mudou.id });
+  if (!item) return;
+  const url = item.finalUrl || item.url || "";
+  const nome = (item.filename || "").split(/[\\/]/).pop();
+  const imagem = /^image\/(png|jpe?g|webp)/i.test(item.mime || "") || /\.(png|jpe?g|webp)$/i.test(nome);
+  if (!imagem || !(ehDoCanva(url) || ehDoCanva(item.referrer || ""))) return;
+  const abas = await chrome.tabs.query({ url: "https://*.canva.com/*" });
+  const aba = abas.find((a) => a.active) || abas[0];
+  if (!aba) return;
+  canvaPendentes.set(aba.id, { url, nome });
+  const [dia, canais] = await Promise.all([lerDia(), canaisDoDia()]);
+  const lista = canais.map((c) => ({ id: c.id, titulo: c.titulo,
+    falta: dia.videos.some((v) => v.canal === c.id && !v.thumb),
+    feita: dia.thumbs.some((t) => t.canal === c.id) || dia.videos.some((v) => v.canal === c.id && v.thumb) }));
+  try {
+    await chrome.scripting.executeScript({ target: { tabId: aba.id }, func: escolherCanalNoCanva, args: [lista, nome] });
+  } catch (e) {
+    notificar("dia-thumb-erro", "Não consegui abrir a escolha do canal no Canva", "Arraste o arquivo baixado para o Meu dia.");
+  }
+});
+
+// roda dentro da aba do Canva (chrome.scripting): a caixinha com os canais
+function escolherCanalNoCanva(canais, nome) {
+  document.getElementById("radar-canva-canal")?.remove();
+  const caixa = document.createElement("div");
+  caixa.id = "radar-canva-canal";
+  caixa.style.cssText = "position:fixed;top:72px;right:16px;z-index:2147483647;width:300px;max-height:70vh;overflow:auto;"
+    + "background:#16181d;color:#fff;border:1px solid #333;border-radius:12px;box-shadow:0 10px 30px rgba(0,0,0,.45);"
+    + "font:13px/1.35 system-ui,sans-serif;padding:12px";
+  const titulo = document.createElement("div");
+  titulo.style.cssText = "font-weight:700;margin-bottom:4px";
+  titulo.textContent = "Mandar para o Meu dia";
+  const sub = document.createElement("div");
+  sub.style.cssText = "color:#9aa0a6;font-size:12px;margin-bottom:8px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap";
+  sub.textContent = nome || "imagem baixada";
+  caixa.append(titulo, sub);
+  const fechar = () => caixa.remove();
+  const botao = (texto, extra, cor, acao) => {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.style.cssText = "display:flex;justify-content:space-between;gap:8px;width:100%;text-align:left;margin:4px 0;padding:8px 10px;"
+      + `border-radius:8px;border:1px solid ${cor};background:#1f232b;color:#fff;cursor:pointer;font:inherit`;
+    const a = document.createElement("span"); a.textContent = texto;
+    b.append(a);
+    if (extra) { const e = document.createElement("span"); e.textContent = extra; e.style.cssText = `color:${cor};font-size:11px;white-space:nowrap`; b.append(e); }
+    b.onclick = acao;
+    return b;
+  };
+  const mandar = (canal) => {
+    caixa.querySelectorAll("button").forEach((b) => { b.disabled = true; });
+    sub.textContent = "Mandando…";
+    chrome.runtime.sendMessage({ tipo: "canva-canal", canal }).then((r) => {
+      sub.textContent = r && r.ok ? `✓ ${r.texto}` : `Não deu: ${(r && r.erro) || "tente arrastar o arquivo para o Meu dia"}`;
+      setTimeout(fechar, r && r.ok ? 2500 : 6000);
+    }).catch(() => { sub.textContent = "A extensão foi recarregada: baixe de novo."; setTimeout(fechar, 5000); });
+  };
+  const ordem = [...canais].sort((a, b) => (b.falta - a.falta) || (a.feita - b.feita));
+  for (const c of ordem) {
+    caixa.append(botao(c.titulo, c.falta ? "falta a thumbnail" : c.feita ? "já tem" : "", c.falta ? "#f5b301" : c.feita ? "#2ecc71" : "#333", () => mandar(c.id)));
+  }
+  caixa.append(botao("Sem canal (escolho depois)", "", "#333", () => mandar(null)));
+  caixa.append(botao("Não mandar", "", "#333", fechar));
+  document.body.append(caixa);
+  setTimeout(() => { if (caixa.isConnected && !caixa.querySelector("button:disabled")) fechar(); }, 2 * 60 * 1000);
+}
+
+async function mandarDoCanva(abaId, canal) {
+  const p = canvaPendentes.get(abaId);
+  if (!p) return { erro: "não achei o download: baixe de novo" };
+  let dados = null;
+  try {
+    const resp = await fetch(p.url);
+    const tipo = resp.headers.get("content-type") || (/\.jpe?g$/i.test(p.nome) ? "image/jpeg" : "image/png");
+    if (resp.ok) dados = paraDataUrl(new Uint8Array(await resp.arrayBuffer()), tipo.startsWith("image/") ? tipo : "image/png");
+  } catch (e) { /* o endereço do download expirou: tenta pela página */ }
+  if (!dados) dados = await baixarImagemDoMenu({ srcUrl: p.url, frameId: 0 }, { id: abaId });
+  if (!dados) return { erro: "o Canva não deixou pegar a imagem: arraste o arquivo baixado para o Meu dia" };
+  canvaPendentes.delete(abaId);
+  const canalNome = canal ? ((await canaisDoDia()).find((c) => c.id === canal) || {}).titulo || "" : "";
+  const v = await diaGuardarThumb(dados, { origem: "www.canva.com", nome: p.nome, canal, canalNome });
+  return { ok: true, texto: canal ? (v ? `Thumbnail feita: ${canalNome} · "${v.titulo}"` : `Thumbnail feita: ${canalNome}`) : "Guardada no Meu dia, sem canal" };
 }
 
 chrome.contextMenus.onClicked.addListener(async (info, tab) => {

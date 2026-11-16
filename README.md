@@ -2053,6 +2053,13 @@ sem o canal certo".
   1 minuto) e a aba do YouTube que abre faz a troca para a conta de treino.
 - Para usar: dê ↻ na extensão em `chrome://extensions` (o Radar não precisa religar).
 
+## Extensão 0.53.2: do Canva direto para o canal (2026-11-16)
+
+No Canva o design não é uma imagem (são camadas na página), então o clique direito não tinha o "Salvar no Meu dia".
+Agora, quando um PNG/JPG baixado do Canva (Partilhar > Transferir) termina, aparece no próprio Canva uma caixinha com
+os canais, com os que estão sem thumbnail em cima; o clique manda a imagem para o canal no Meu dia, como thumbnail
+feita (a mesma `diaGuardarThumb` do clique direito). Permissões novas: `downloads` e `https://*.canva.com/*`.
+
 ## Extensão 0.53.1: postado pelo botão final do Studio e quanto falta na fábrica (2026-11-15)
 
 - **Fica verde sozinho:** um vídeo postado pelo Postar do Meu dia não ficou verde (foi marcado na mão), porque o
