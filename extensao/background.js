@@ -94,9 +94,10 @@ chrome.runtime.onMessage.addListener((msg, _remetente, responder) => {
   // ideia com a conta do próprio canal e, depois da troca, o Studio dele; o pedido de postar (diaPostar) ou de só abrir
   // o upload (diaAbrirUpload) espera lá
   if (msg && msg.tipo === "postar-no-canal") {
-    const pedido = msg.id ? { diaPostar: { id: msg.id, quando: Date.now() } } : msg.soAbrir ? {} : { diaAbrirUpload: Date.now() };
-    chrome.storage.local.set(pedido).then(() => abrirParaTrocar(_remetente.tab, msg.canalNome,
-      /^UC[\w-]{22}$/.test(msg.canalId || "") ? `https://studio.youtube.com/channel/${msg.canalId}` : "https://studio.youtube.com/"))
+    // vai para a raiz do Studio, que abre o canal da conta da aba: o endereço /channel/<id> direto, logo depois da
+    // troca, deu "Oops" no teste com João o Lobo (2026-11-16). O painel do Studio confere o canal antes de subir
+    const pedido = msg.id ? { diaPostar: { id: msg.id, quando: Date.now(), canal: msg.canalId || "" } } : msg.soAbrir ? {} : { diaAbrirUpload: Date.now() };
+    chrome.storage.local.set(pedido).then(() => abrirParaTrocar(_remetente.tab, msg.canalNome, "https://studio.youtube.com/"))
       .then(() => responder({ ok: true }), (e) => responder({ erro: String(e) }));
     return true;
   }

@@ -77,8 +77,24 @@
     if (e.origin === new URL(chrome.runtime.getURL("")).origin && e.data && e.data.tipo === "radar-postar" && painel) alternar(false);
   });
   // o Studio redireciona a página inicial e o #endereço se perde no caminho: o pedido vem pelo storage
-  if (NO_STUDIO) chrome.storage.local.get("diaPostar").then(({ diaPostar }) => {
+  const canalAqui = () => (location.pathname.match(/\/channel\/(UC[\w-]{22})/) || [])[1] || "";
+  function avisoNoStudio(texto) {
+    const a = document.createElement("div");
+    a.textContent = texto;
+    a.style.cssText = "position:fixed;top:70px;left:50%;transform:translateX(-50%);z-index:2147483647;background:#b00020;color:#fff;"
+      + "padding:10px 16px;border-radius:10px;font:600 13px system-ui,sans-serif;box-shadow:0 6px 20px rgba(0,0,0,.4);max-width:520px";
+    document.body.append(a);
+    setTimeout(() => a.remove(), 12000);
+  }
+  if (NO_STUDIO) chrome.storage.local.get("diaPostar").then(async ({ diaPostar }) => {
     if (!diaPostar || Date.now() - diaPostar.quando > 5 * 60 * 1000) return;   // a troca de conta antes pode levar um tempo
+    // a raiz do Studio leva ao canal da conta: espera o endereço com o canal e confere se é o do vídeo (2026-11-16)
+    const fim = Date.now() + 15000;
+    while (!canalAqui() && Date.now() < fim) await new Promise((r) => setTimeout(r, 500));
+    if (diaPostar.canal && canalAqui() && canalAqui() !== diaPostar.canal) {
+      avisoNoStudio("Meu dia: este Studio é de outro canal. Troque de conta e aperte Postar de novo (o vídeo não foi enviado).");
+      return;
+    }
     chrome.storage.local.remove("diaPostar");
     pendente = diaPostar.id;
     if (painel) { painel.remove(); painel = null; }   // já aberto: monta de novo, com o pedido

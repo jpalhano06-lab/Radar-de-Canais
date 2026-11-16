@@ -2057,9 +2057,9 @@ sem o canal certo".
 
 O Postar abria o Studio na conta que estivesse aberta. Agora segue o caminho do "procurar ideia": o background abre
 uma aba ao lado, troca para a conta do canal do vídeo (pelo nome do canal) e, depois da troca (ou se já estava nela),
-a aba vai para `studio.youtube.com/channel/<id>`, onde o pedido espera (`diaPostar` para o vídeo, `diaAbrirUpload`
+a aba vai para a raiz do Studio (que abre o canal da conta da aba; o `/channel/<id>` direto, logo depois da troca, deu "Oops" no teste com João o Lobo), onde o pedido espera (`diaPostar` para o vídeo, `diaAbrirUpload`
 para o Postar do canal sem vídeo; os dois valem 5 min). Dentro do Studio, o painel diz ao Meu dia de qual canal é o
-Studio aberto (`canalStudio`): vídeo de outro canal vai pelo mesmo caminho. Teste: `#radar-postar-canal=<nome>|<UC…>`.
+Studio aberto (`canalStudio`): vídeo de outro canal vai pelo mesmo caminho. Antes de subir, o painel confere se o Studio aberto é do canal do vídeo (`diaPostar.canal`); se não for, avisa e não sobe (0.53.8). Teste: `#radar-postar-canal=<nome>|<UC…>`.
 
 ## Extensão 0.53.6: pegar de volta o vídeo tirado e a legenda das cores (2026-11-16)
 
