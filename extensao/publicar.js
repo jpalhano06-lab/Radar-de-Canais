@@ -987,7 +987,36 @@
     clicar(/^(Carregar vídeos|Enviar vídeos|Upload videos)$/i, document.body);
   }
 
-  async function postarDoDia({ id, titulo, video, capa }) {
+  // o teste A/B do Meu dia (2026-11-16): o "Testar e comparar" do Studio (ytcp-button#ab-test-button) abre a janela
+  // ytcp-creator-experiment-create-dialog; o chip "Thumbnail only" (#chip-1) mostra 3 ytcp-thumbnail-uploader, cada
+  // um com o seu input#file-loader, e o "Set test" (#set-test-button) fecha. Visto no Studio do UK CartWatch.
+  async function montarTesteAB(capas) {
+    const botaoAB = await esperarPor(() => [...document.querySelectorAll("ytcp-uploads-dialog ytcp-button#ab-test-button, ytcp-button#ab-test-button")].find(visivel), 30000);
+    if (!botaoAB) return recado("Meu dia: não achei o Testar e comparar do Studio. Monte o teste A/B na mão com as thumbnails do Meu dia.", true);
+    (botaoAB.querySelector("button") || botaoAB).click();
+    const janela = await esperarPor(() => [...document.querySelectorAll("ytcp-creator-experiment-create-dialog tp-yt-paper-dialog")].find(visivel), 10000);
+    if (!janela) return recado("Meu dia: o Testar e comparar não abriu. Monte o teste A/B na mão.", true);
+    const chip = janela.querySelector("ytcp-chip#chip-1");
+    if (chip) { chip.click(); await esperar(1200); }
+    const lugares = await esperarPor(() => { const u = [...janela.querySelectorAll("ytcp-thumbnail-uploader input#file-loader")]; return u.length >= capas.length ? u : null; }, 8000);
+    if (!lugares) return recado("Meu dia: não achei os espaços das thumbnails no Testar e comparar. Coloque na mão.", true);
+    for (const [i, capa] of capas.entries()) {
+      let arquivo = capa;
+      if (capa.size > CAPA_LIMITE) {
+        try { const { bloco } = await encolher(capa); arquivo = new File([bloco], capa.name.replace(/\.[^.]+$/, "") + ".jpg", { type: "image/jpeg" }); }
+        catch { /* vai a original */ }
+      }
+      aplicandoCapa = arquivo !== capa;
+      try { colocarArquivo(lugares[i], arquivo); } finally { aplicandoCapa = false; }
+      await esperar(1500);
+    }
+    const definir = await esperarPor(() => { const b = janela.querySelector("ytcp-button#set-test-button"); return b && !b.hasAttribute("disabled") && b.getAttribute("aria-disabled") !== "true" ? b : null; }, 30000);
+    if (!definir) return recado("Meu dia: as thumbnails estão no Testar e comparar, mas o Set test não liberou: confira e aperte.", true);
+    (definir.querySelector("button") || definir).click();
+    recado(`Meu dia: teste A/B montado com ${capas.length} thumbnails. Confira e siga as etapas — publicou, ele fica verde no Meu dia.`);
+  }
+
+  async function postarDoDia({ id, titulo, video, capa, capasAB = [] }) {
     sessionStorage.setItem(POSTANDO, JSON.stringify({ id, titulo, desde: Date.now() }));
     ultimoTitulo = ""; avisouPostado = "";
     recado("Meu dia: abrindo o upload com o vídeo da fábrica…");
@@ -1006,6 +1035,8 @@
     }
     aplicandoCapa = arquivo !== capa;
     try { colocarArquivo(campoCapa, arquivo); } finally { aplicandoCapa = false; }
+    const extras = (capasAB || []).filter((f) => f && typeof f.size === "number");
+    if (extras.length) { await esperar(2500); return montarTesteAB([capa, ...extras]); }
     recado("Meu dia: vídeo e thumbnail no Studio. Confira e siga as etapas — publicou, ele fica verde no Meu dia.");
   }
 

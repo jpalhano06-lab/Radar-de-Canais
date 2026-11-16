@@ -72,6 +72,9 @@ const lerArquivo = (arquivo) => new Promise((ok) => {
 
 // `alvo`: { video } para o vídeo, { canal, canalNome } para o canal (fica como feita nele) ou {} para as soltas
 const alvoDe = (alvo) => (alvo && typeof alvo === "object" ? alvo : { video: alvo || null });
+// as thumbnails que já estão num vídeo: a principal (A) e as do teste A/B (B e C)
+const thumbsUsadas = () => new Set(dia.videos.flatMap((v) => [v.thumb, ...(v.ab || [])]).filter(Boolean));
+const abAbertos = new Set();   // os vídeos com o teste A/B aberto no cartão
 
 async function guardarDeTransferencia(dt, alvo) {
   alvo = alvoDe(alvo);
@@ -228,8 +231,15 @@ async function postar(v, botao) {
       const bloco = await (await fetch(thumb)).blob();
       capa = new File([bloco], `${nomeDeArquivo(v.titulo)}.${(bloco.type.split("/")[1] || "png").replace("jpeg", "jpg")}`, { type: bloco.type || "image/png" });
     }
+    // o teste A/B (2026-11-16): com as thumbnails B e C, o Studio monta o "Testar e comparar" sozinho
+    const capasAB = [];
+    for (const [i, idAB] of (v.ab || []).entries()) {
+      if (!imagens[idAB]) continue;
+      const b = await (await fetch(imagens[idAB])).blob();
+      capasAB.push(new File([b], `${nomeDeArquivo(v.titulo)} ${"BC"[i]}.${(b.type.split("/")[1] || "png").replace("jpeg", "jpg")}`, { type: b.type || "image/png" }));
+    }
     texto("Abrindo o upload…");
-    window.parent.postMessage({ tipo: "radar-postar", id: v.id, titulo: v.titulo, video, capa }, "https://studio.youtube.com");
+    window.parent.postMessage({ tipo: "radar-postar", id: v.id, titulo: v.titulo, video, capa, capasAB }, "https://studio.youtube.com");
   } catch (e) {
     mostrarErro((e && e.message) || String(e));
   } finally {
@@ -270,6 +280,32 @@ function linhaDaFabrica(v) {
   return null;
 }
 
+// ------------------------------------------------------------ teste A/B
+// Pedido do usuário em 2026-11-16: "coloque na extensão a opção de teste A/B e quando for pedido para postar faça
+// automático". A thumbnail do vídeo é a A; aqui entram a B e a C. No Postar, o Studio abre o "Testar e comparar"
+// (Thumbnail only) e põe as três (publicar.js)
+function linhaDoTesteAB(v, thumb) {
+  const ab = (v.ab || []).filter((id) => imagens[id]);
+  if (!ab.length && !abAbertos.has(v.id)) {
+    return h("button", { type: "button", class: "ab-abrir", title: "Testar 2 ou 3 thumbnails no Studio (Testar e comparar)",
+      onclick: () => { abAbertos.add(v.id); desenhar(); } }, "+ Teste A/B");
+  }
+  const tirar = (id) => mudarDia((d) => { const x = d.videos.find((y) => y.id === v.id); if (x) x.ab = (x.ab || []).filter((y) => y !== id); });
+  const mini = (letra, id) => id
+    ? h("div", { class: "ab-slot cheio", title: `Thumbnail ${letra}` }, h("img", { src: imagens[id], alt: "" }),
+      h("span", { class: "ab-letra" }, letra),
+      h("button", { type: "button", class: "ab-x", title: `Tirar a thumbnail ${letra}`, onclick: (e) => { e.stopPropagation(); tirar(id); } }, "×"))
+    : zonaDeImagem(h("div", { class: "ab-slot", title: `Arraste ou clique para escolher a thumbnail ${letra}` }, h("span", { class: "ab-letra" }, letra), "+"), { ab: v.id });
+  const aviso = !thumb ? "Ponha a thumbnail A (a principal) também."
+    : ab.length ? `No Postar, o Studio monta o teste com ${ab.length + 1} thumbnails sozinho.` : "Arraste a B (e a C, se quiser).";
+  return h("div", { class: "ab" },
+    h("div", { class: "ab-cab" }, h("b", {}, "Teste A/B"), h("span", { class: "fraco" }, aviso),
+      !ab.length ? h("button", { type: "button", class: "x", title: "Fechar o teste A/B", onclick: () => { abAbertos.delete(v.id); desenhar(); } }, "×") : null),
+    h("div", { class: "ab-slots" },
+      thumb ? h("div", { class: "ab-slot cheio a", title: "Thumbnail A (a principal)" }, h("img", { src: imagens[thumb.id], alt: "" }), h("span", { class: "ab-letra" }, "A")) : null,
+      mini("B", ab[0]), mini("C", ab[1])));
+}
+
 // ------------------------------------------------------------ desenho
 function cartaoDoVideo(v) {
   const thumb = v.thumb && dia.thumbs.find((t) => t.id === v.thumb);
@@ -283,6 +319,7 @@ function cartaoDoVideo(v) {
     : thumb ? "✓ Vídeo pedido · ✓ thumbnail feita · falta postar"
       : `✓ Vídeo pedido${v.entrada ? " (na Entrada)" : ""} · falta a thumbnail${v.postado ? " · ✓ postado" : ""}`;
   const fabrica = v.postado ? null : linhaDaFabrica(v);
+  const testeAB = v.postado ? null : linhaDoTesteAB(v, thumb);
   const botaoPostar = v.postado ? null : h("button", { type: "button", class: "vermelho postar",
     title: NO_STUDIO ? "Sobe o vídeo da fábrica e a thumbnail no Studio" : "Abre o YouTube Studio já com o vídeo e a thumbnail" },
   postando === v.id ? "Baixando…" : NO_STUDIO ? "Postar" : "Postar ↗");
@@ -293,6 +330,7 @@ function cartaoDoVideo(v) {
       h("div", { class: `estado ${videoCompleto(v) ? "ok" : "falta"}` }, estadoTexto),
       fabrica,
       linhaDaReferencia(v),
+      testeAB,
       h("div", { class: "acoes" },
         botaoPostar,
         h("label", { class: "check" }, postado, "Postado"),
@@ -385,7 +423,7 @@ function cartaoDoCanal(c, videos) {
   novoTitulo.addEventListener("keydown", (e) => { if (e.key === "Enter") marcar(); });
 
   // as thumbnails salvas para o canal pelo botão direito que não entraram num vídeo: ficam aqui, como feitas
-  const usadas = new Set(dia.videos.map((v) => v.thumb).filter(Boolean));
+  const usadas = thumbsUsadas();
   const doCanal = dia.thumbs.filter((t) => t.canal === c.id && !usadas.has(t.id) && imagens[t.id]);
   const thumbFeita = doCanal.length || videos.some((v) => v.thumb);
   const estado = corDoCanal(meta, videos, thumbFeita);
@@ -492,7 +530,7 @@ function desenhar() {
     n ? h("span", { class: `pilula ${corDaConta(postados, n)}` }, `${postados}/${n} postados`) : null,
     !metaTotal && !dia.videos.length ? h("span", { class: "pilula" }, "Nada pedido hoje") : null].filter(Boolean));
 
-  const usadas = new Set(dia.videos.map((v) => v.thumb).filter(Boolean));
+  const usadas = thumbsUsadas();
   const soltas = dia.thumbs.filter((t) => !usadas.has(t.id) && !t.canal && imagens[t.id]);
   const semThumbVideos = dia.videos.filter((v) => !v.thumb);
   $("soltas").replaceChildren(

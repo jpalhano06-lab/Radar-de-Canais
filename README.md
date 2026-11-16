@@ -2053,6 +2053,14 @@ sem o canal certo".
   1 minuto) e a aba do YouTube que abre faz a troca para a conta de treino.
 - Para usar: dê ↻ na extensão em `chrome://extensions` (o Radar não precisa religar).
 
+## Extensão 0.53.3: teste A/B de thumbnails, montado sozinho no Postar (2026-11-16)
+
+Cada vídeo do Meu dia tem o "+ Teste A/B": a thumbnail do vídeo é a A, e entram a B e a C (arrastar, clicar ou colar,
+como as outras; ficam em `v.ab`). No Postar, depois de pôr o vídeo e a thumbnail A, o Studio abre o "Testar e
+comparar" (`ytcp-button#ab-test-button`), escolhe "Thumbnail only" (`#chip-1`), põe as thumbnails nos 3 espaços
+(`ytcp-thumbnail-uploader input#file-loader`, comprimindo as de mais de 2 MB) e aperta o "Set test". A janela foi lida
+no Studio do UK CartWatch (vídeo já publicado); no upload em si ainda não foi visto.
+
 ## Extensão 0.53.2: do Canva direto para o canal (2026-11-16)
 
 No Canva o design não é uma imagem (são camadas na página), então o clique direito não tinha o "Salvar no Meu dia".

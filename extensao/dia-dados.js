@@ -70,11 +70,17 @@ async function diaNovoVideo(v) {
 /** Guarda uma imagem (data URL). Com `video`, ela já vira a thumbnail desse vídeo. Com `canal` (o botão direito >
  *  Salvar no Meu dia > o canal), ela vira a thumbnail feita desse canal: entra no primeiro vídeo de hoje dele que
  *  ainda não tem thumbnail, ou fica no cartão do canal como feita. Devolve o vídeo que recebeu, se houver. */
-async function diaGuardarThumb(dados, { origem = "", nome = "", video = null, canal = null, canalNome = "" } = {}) {
+async function diaGuardarThumb(dados, { origem = "", nome = "", video = null, canal = null, canalNome = "", ab = null } = {}) {
   const id = novoIdDia();
   await chrome.storage.local.set({ [DIA_THUMB + id]: dados });
   return mudarDia((d) => {
     d.thumbs.push({ id, origem, nome, hora: Date.now(), ...(canal ? { canal, canalNome } : {}) });
+    // `ab`: o vídeo do teste A/B (2026-11-16): a imagem vira a thumbnail B ou C dele (v.ab, até 2), a A é v.thumb
+    if (ab) {
+      const alvo = d.videos.find((x) => x.id === ab);
+      if (alvo) alvo.ab = [...(alvo.ab || []), id].slice(-2);
+      return alvo || null;
+    }
     const v = video ? d.videos.find((x) => x.id === video)
       : canal ? d.videos.find((x) => x.canal === canal && !x.thumb) : null;
     if (v) v.thumb = id;
