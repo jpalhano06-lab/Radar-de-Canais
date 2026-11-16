@@ -1823,10 +1823,10 @@ function anel(pct) {
 // você, produzindo, na fila, entrada, parados); à direita o vídeo escolhido com as abas Acompanhamento, Diagnóstico
 // (de onde vieram as cenas: real × IA, e o log), Arquivos e Tags e descrição. O vídeo aberto atualiza a cada 5 s, a
 // lista a cada 20 s.
-const BLOCOS_AC = [["precisa_voce", "Precisa de você"], ["produzindo", "Produzindo"], ["na_fila", "Na fila"],
+const BLOCOS_AC = [["precisa_voce", "Precisa de você"], ["produzindo", "Produzindo"], ["pausados", "Pausados"], ["na_fila", "Na fila"],
   ["entrada", "Entrada"], ["parados", "Parados na fábrica"]];
 const ESTADO_FILA = { entrada: "Na Entrada", na_fila: "Na fila", escrevendo: "Escrevendo o roteiro", sua_vez: "Esperando sua revisão",
-  enviando: "Enviando para a fábrica", produzindo: "Produzindo", erro: "Parou com erro", precisa_voce: "Precisa de você", parado: "Parado" };
+  enviando: "Enviando para a fábrica", produzindo: "Produzindo", pausado: "Pausado", erro: "Parou com erro", precisa_voce: "Precisa de você", parado: "Parado" };
 
 async function acompanhar() {
   const A = { dados: null, escolhido: guardado("ac-escolhido", ""), aba: "acompanhamento", busca: "", canal: "", tipoLog: "todos" };
@@ -1839,7 +1839,7 @@ async function acompanhar() {
   const cartao = (x) => {
     const pct = Math.round(x.progresso || 0);
     return `<button class="acn-item ${x.chave === A.escolhido ? "escolhido" : ""}" data-chave="${esc(x.chave)}">
-      <span class="acn-item-topo"><span class="acn-estado e-${esc(x.estado)}">${esc(ESTADO_FILA[x.estado] || x.estado)}</span><small>${x.criado ? esc(ha(x.criado)) : ""}</small></span>
+      <span class="acn-item-topo"><span class="acn-estado e-${esc(x.estado)}">${esc(ESTADO_FILA[x.estado] || x.estado)}</span><small>${x.prioridade ? '<span class="acn-prio">⚡ Prioridade</span> ' : ""}${x.criado ? esc(ha(x.criado)) : ""}</small></span>
       <b>${esc(x.titulo)}</b><small>${esc(x.canal || "")}${x.passo && x.tipo === "fila" ? ` · ${esc(x.passo)}` : ""}</small>
       ${pct && x.estado !== "entrada" ? `<span class="acn-barra"><i style="width:${pct}%"></i></span>` : ""}</button>`;
   };
@@ -1883,6 +1883,18 @@ async function acompanhar() {
   };
 
   const acao = (texto, classe, attr) => EU.admin ? `<button class="botao ${classe}" ${attr}>${texto}</button>` : "";
+  // Pausar, Continuar e Prioridade (pedido do usuário em 2026-11-16), nos pedidos da fila
+  const PAUSAVEIS = ["entrada", "na_fila", "sua_vez", "produzindo", "erro"];
+  const PRIORIZAVEIS = ["entrada", "na_fila", "escrevendo", "sua_vez", "erro", "pausado"];
+  const acoesFila = (x) => x.tipo !== "fila" ? "" :
+    (x.estado === "pausado" ? acao("▶ Continuar", "", 'data-fila="continuar"') : PAUSAVEIS.includes(x.estado) ? acao("⏸ Pausar", "contorno", 'data-fila="pausar"') : "") +
+    (!x.prioridade && PRIORIZAVEIS.includes(x.estado) ? acao("⚡ Prioridade", "", 'data-fila="prioridade"') : "");
+  const ligarAcoesFila = (caixa, x) => caixa.querySelectorAll("[data-fila]").forEach((b) => (b.onclick = () => carregando(b, "…", async () => {
+    await api(`/api/fila/${x.id}/${b.dataset.fila}`, { method: "POST" });
+    aviso({ pausar: "Pausado: ele segura na próxima etapa e libera a vaga.", continuar: "Continuando de onde parou.",
+      prioridade: "Prioridade: vai na frente da fila e começa mesmo com as vagas cheias." }[b.dataset.fila]);
+    await carregarLista();
+  })));
 
   // o vídeo parado na fábrica (avisos.parada): o motivo e o botão Retomar
   const paradaHtml = (p) => {
@@ -1904,9 +1916,11 @@ async function acompanhar() {
         ${x.erro ? `<div class="chamada aviso">${esc(x.erro)}</div>` : ""}
         <p class="acn-explica">${{ entrada: "Guardado na Entrada: não começa sozinho e não gasta nada.", na_fila: "Esperando a vez: começa quando a fábrica tiver vaga.",
           escrevendo: `O Claude está escrevendo o roteiro. ${esc(x.passo || "")}`, sua_vez: "O roteiro está pronto. Leia, ajuste se quiser e aprove para ir para a fábrica.",
-          enviando: "Criando o projeto na fábrica…", erro: "Corrija o que o aviso diz e tente de novo." }[x.estado] || ""}</p>
+          enviando: "Criando o projeto na fábrica…", erro: "Corrija o que o aviso diz e tente de novo.",
+          pausado: "Pausado: não começa até você clicar em Continuar." }[x.estado] || ""}</p>
         <div class="acn-acoes">${x.estado === "entrada" ? acao("▶ Começar", "", 'data-a="comecar"') : ""}
           ${x.estado === "erro" ? acao("↻ Tentar de novo", "", 'data-a="tentar"') : ""}
+          ${acoesFila(x)}
           ${acao("Excluir pedido", "contorno", 'data-a="excluir"')}</div>
         <div id="acn-revisao"></div>`;
       if (x.estado === "sua_vez") {
@@ -1929,6 +1943,7 @@ async function acompanhar() {
         if (b.dataset.a === "excluir") return confirmar(b, "Excluir este pedido?", async () => { await api(`/api/fila/${x.id}`, { method: "DELETE" }); await carregarLista(); });
         carregando(b, "…", async () => { await api(`/api/fila/${x.id}/${b.dataset.a}`, { method: "POST" }); await carregarLista(); });
       }));
+      ligarAcoesFila(caixa, x);
       return;
     }
     // vídeo na fábrica: cabeçalho ao vivo e as quatro abas
@@ -1947,6 +1962,7 @@ async function acompanhar() {
         .map(([id, n]) => `<button data-aba="${id}" class="${A.aba === id ? "ativa" : ""}">${n}</button>`).join("")}</nav>
       <div class="acn-aba"></div>
       <div class="acn-acoes acn-rodape">${x.tipo === "fila" && x.estado === "erro" ? acao("↻ Tentar de novo", "", 'data-a="tentar"') : ""}
+        ${acoesFila(x)}
         ${x.tipo === "fabrica" && x.estado !== "produzindo" ? acao(x.progresso ? "↻ Continuar" : "▶ Produzir", "", 'id="acn-produzir"') : ""}
         ${acao("Parar e apagar", "contorno perigo", 'id="acn-apagar"')}</div>`;
     caixa.querySelectorAll(".acn-abas button").forEach((b) => (b.onclick = () => { A.aba = b.dataset.aba; caixa.querySelectorAll(".acn-abas button").forEach((o) => o.classList.toggle("ativa", o === b)); desenharAba(v, x); }));
@@ -1958,6 +1974,7 @@ async function acompanhar() {
     }));
     caixa.querySelector("#acn-pago")?.addEventListener("click", (e) => carregando(e.currentTarget, "Liberando…", async () => { await api(`/api/acompanhar/${encodeURIComponent(x.projeto)}/pago`, { method: "POST" }); desenharVideo(); }));
     caixa.querySelector("[data-a=tentar]")?.addEventListener("click", (e) => carregando(e.currentTarget, "…", async () => { await api(`/api/fila/${x.id}/tentar`, { method: "POST" }); await carregarLista(); }));
+    ligarAcoesFila(caixa, x);
     caixa.querySelector("#acn-produzir")?.addEventListener("click", (e) => carregando(e.currentTarget, "Consultando a fábrica…", async () => { if (await produzirNaFabrica(x.projeto, x.titulo)) await carregarLista(); }));
     caixa.querySelector("#acn-apagar")?.addEventListener("click", (e) => confirmar(e.currentTarget, "Parar a produção e apagar o projeto da fábrica?", async () => {
       await api(`/api/acompanhar/${encodeURIComponent(x.projeto)}`, { method: "DELETE" }); A.escolhido = ""; await carregarLista();

@@ -1251,6 +1251,8 @@ nav .subs a.ativo { transform: none; }
 .acn-estado { font-size: 11px; font-weight: 700; border-radius: 999px; padding: 2px 8px; background: var(--painel2); color: var(--fraco); justify-self: start; }
 .acn-estado.e-produzindo, .acn-estado.e-escrevendo, .acn-estado.e-enviando { color: var(--verde); }
 .acn-estado.e-sua_vez, .acn-estado.e-erro, .acn-estado.e-precisa_voce { color: var(--detalhe); }
+.acn-estado.e-pausado { color: var(--fraco); }
+.acn-prio { color: var(--detalhe); font-weight: 700; }
 .acn-barra { height: 4px; background: var(--painel2); border-radius: 4px; overflow: hidden; }
 .acn-barra i { display: block; height: 100%; background: var(--acento); transition: width .6s; }
 .acn-video { background: var(--painel); border: 1px solid var(--linha); border-radius: var(--raio); padding: 18px; display: grid; gap: 14px; min-height: 300px; align-content: start; }

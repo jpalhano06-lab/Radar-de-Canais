@@ -97,7 +97,8 @@ def _publicado(nome: str) -> dict | None:
 
 def producoes() -> dict:
     """Tudo da fábrica, separado em andamento e prontos, os mais recentes primeiro."""
-    lista = _pedir("GET", "/api/projetos")["projetos"]
+    # com dois vídeos pesados andando a lista levou 37 s (2026-11-16), e com 20 s o vigia achava a fábrica desligada
+    lista = _pedir("GET", "/api/projetos", tempo=90)["projetos"]
     do_radar = _do_radar()
     andamento, prontos = [], []
     for p in sorted(lista, key=lambda x: x.get("criado") or "", reverse=True):
@@ -278,3 +279,8 @@ def salvar_animacoes_do_canal(perfil: str, ajustes: dict) -> dict:
 def definir_animacoes(projeto: str, ajustes: dict) -> dict:
     """O estilo só deste vídeo, por cima do canal."""
     return _pedir("POST", f"/api/projetos/{projeto}/animacoes", {"ajustes": ajustes})
+
+
+def pausar(projeto: str, pausado: bool) -> dict:
+    """O Pausar/Continuar da fila (2026-11-16): a fábrica segura a criação do vídeo na próxima etapa."""
+    return _pedir("POST", f"/api/projetos/{projeto}/pausar", {"pausado": pausado})

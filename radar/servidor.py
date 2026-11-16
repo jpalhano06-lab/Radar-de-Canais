@@ -2613,6 +2613,21 @@ def fila_tentar(fid: int, u: dict = Depends(dono_da_fabrica)):
     return _na_fila(fila.tentar, u["id"], fid)
 
 
+@app.post("/api/fila/{fid}/pausar")
+def fila_pausar(fid: int, u: dict = Depends(dono_da_fabrica)):
+    return _da_fabrica(_na_fila, fila.pausar, u["id"], fid)
+
+
+@app.post("/api/fila/{fid}/continuar")
+def fila_continuar(fid: int, u: dict = Depends(dono_da_fabrica)):
+    return _da_fabrica(_na_fila, fila.continuar, u["id"], fid)
+
+
+@app.post("/api/fila/{fid}/prioridade")
+def fila_prioridade(fid: int, u: dict = Depends(dono_da_fabrica)):
+    return _na_fila(fila.priorizar, u["id"], fid)
+
+
 @app.delete("/api/fila/{fid}")
 def fila_excluir(fid: int, u: dict = Depends(dono_da_fabrica)):
     projeto = _na_fila(fila.excluir, u["id"], fid)
@@ -2635,7 +2650,7 @@ async def acompanhar_lista(u: dict = Depends(usuario)):
         prod, ligada = {"andamento": [], "prontos": []}, False
     nomes = {c["id"]: c["titulo"] for c in banco.todos("SELECT c.id, c.titulo FROM meus_canais m JOIN canais c ON c.id=m.canal_id WHERE m.usuario_id=?", u["id"])}
     b = diagnostico.blocos(fila.listar(u["id"]), prod)
-    for chave in ("precisa_voce", "produzindo", "na_fila", "entrada"):
+    for chave in ("precisa_voce", "produzindo", "pausados", "na_fila", "entrada"):
         for item in b[chave]:
             item["canal"] = item.get("canal") or nomes.get(item.get("canal_id", ""), "")
     return b | {"limite": fila.limite(), "fabrica_ligada": ligada, "prontos_hoje": sum(

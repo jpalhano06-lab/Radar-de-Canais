@@ -11,7 +11,9 @@ import time
 from . import banco, fabrica_api
 from .config import FABRICA
 
-ESTADOS = ("entrada", "na_fila", "escrevendo", "sua_vez", "enviando", "produzindo", "entregue", "erro", "cancelado")
+ESTADOS = ("entrada", "na_fila", "escrevendo", "sua_vez", "enviando", "produzindo", "pausado", "entregue", "erro",
+           "cancelado")
+PAUSAVEIS = ("entrada", "na_fila", "sua_vez", "produzindo", "erro")   # escrevendo e enviando terminam em segundos
 CARACTERES_POR_PALAVRA = 5.9      # média do inglês e do português narrados, com o espaço
 MIN_CARACTERES, MAX_CARACTERES = 1000, 80000
 LIMITES = (1, 2, 3, 4, 6, 8)
@@ -187,6 +189,39 @@ def tentar(usuario_id: int, fid: int) -> dict:
     return item(usuario_id, fid)
 
 
+def pausar(usuario_id: int, fid: int, fabrica=None) -> dict:
+    """O botão Pausar (pedido do usuário em 2026-11-16). Na fila, o vigia pula o pedido. Produzindo, a fábrica segura a
+    criação na próxima etapa e o vídeo deixa de ocupar vaga, para outro (um prioritário) passar."""
+    atual = _de(usuario_id, fid, *PAUSAVEIS)
+    if atual["estado"] == "produzindo":
+        if atual.get("maquina_id"):
+            raise ValueError("Esse vídeo está em outra máquina: lá não dá para pausar.")
+        (fabrica or fabrica_api).pausar(atual["projeto"], True)
+    if not mudar(fid, "pausado", de=(atual["estado"],), antes_pausa=atual["estado"]):
+        raise ValueError("O pedido mudou agora há pouco. Tente de novo.")
+    return item(usuario_id, fid)
+
+
+def continuar(usuario_id: int, fid: int, fabrica=None) -> dict:
+    atual = _de(usuario_id, fid, "pausado")
+    antes = atual.get("antes_pausa") or "na_fila"
+    if antes == "produzindo" and atual["projeto"]:
+        (fabrica or fabrica_api).pausar(atual["projeto"], False)
+    mudar(fid, antes if antes in ESTADOS else "na_fila", de=("pausado",), antes_pausa="")
+    return item(usuario_id, fid)
+
+
+def priorizar(usuario_id: int, fid: int) -> dict:
+    """O botão Prioridade: o pedido vai para o topo da fila, o roteiro começa sem esperar a vez e ele vai para a fábrica
+    mesmo com as vagas cheias (o limite ganha uma a mais para ele). Guardado (entrada), já começa."""
+    atual = _de(usuario_id, fid, "entrada", "na_fila", "escrevendo", "sua_vez", "erro", "pausado")
+    topo = (banco.um("SELECT MIN(ordem) AS m FROM producoes_fila")["m"] or 0) - 1
+    banco.executar("UPDATE producoes_fila SET prioridade=1, ordem=?, atualizado=? WHERE id=?", topo, banco.agora(), fid)
+    if atual["estado"] == "entrada":
+        mudar(fid, "na_fila", de=("entrada",))
+    return item(usuario_id, fid)
+
+
 def excluir(usuario_id: int, fid: int) -> str:
     """Cancela o pedido e devolve o projeto da fábrica, se já existir (quem chama apaga lá)."""
     atual = _de(usuario_id, fid)
@@ -300,52 +335,21 @@ def passo(fabrica=None, roteirista=None, em_thread: bool = True, config_canal=No
         try:
             prod = fabrica.producoes()
         except fabrica_api.SemFabrica:
-            return []
-        prontos = {p["nome"] for p in prod["prontos"]}
-        andamento = {p["nome"]: p for p in prod["andamento"]}
-        # 1. o que estava produzindo: ficou pronto, deu erro, parou no meio ou sumiu da fábrica
-        # o que está em outra máquina não passa por aqui: a fábrica daqui não conhece esse projeto
-        for linha in banco.todos("SELECT * FROM producoes_fila WHERE estado='produzindo' AND maquina_id IS NULL"):
-            p = andamento.get(linha["projeto"])
-            if linha["projeto"] in prontos:
-                mudou = mudar(linha["id"], "entregue", de=("produzindo",))
-            elif p is None:
-                mudou = mudar(linha["id"], "erro", de=("produzindo",), erro="O vídeo sumiu da fábrica.")
-            elif p.get("status") == "erro":
-                mudou = mudar(linha["id"], "erro", de=("produzindo",), erro=(p.get("mensagem") or "A fábrica parou com erro.")[:500])
-            elif not p.get("rodando") and p.get("status") == "parado":
-                # a fábrica morta no meio religa sem o andamento (ele mora na memória dela): o projeto volta parado,
-                # sem erro nenhum, e o pedido ficava "produzindo" para sempre, segurando uma vaga (o vídeo do João o
-                # Lobo, 2026-11-04). Vira erro só depois de VOLTAS_PARADO voltas paradas, para não confundir com o
-                # instante entre o "produzir" e a fábrica começar de verdade.
-                _PARADOS[linha["id"]] = _PARADOS.get(linha["id"], 0) + 1
-                if _PARADOS[linha["id"]] < VOLTAS_PARADO:
-                    continue
-                mudou = mudar(linha["id"], "erro", de=("produzindo",), passo="",
-                              erro="A fábrica parou no meio deste vídeo (ela foi desligada ou caiu). "
-                                   "O \"Tentar de novo\" retoma de onde ela parou.")
-            else:
-                _PARADOS.pop(linha["id"], None)
-                continue
-            _PARADOS.pop(linha["id"], None)
-            if mudou:
-                mudaram.append(linha["id"])
-        # 1b. o que parou com erro e foi retomado na fábrica por fora do Radar volta a produzindo (12-animais, 2026-10-27:
-        # retomado depois do crédito do OpenRouter, o pedido seguia "Parou com erro" com a fábrica andando)
-        for linha in banco.todos("SELECT * FROM producoes_fila WHERE estado='erro' AND projeto IS NOT NULL AND projeto != ''"):
-            p = andamento.get(linha["projeto"])
-            if p and p.get("rodando") and p.get("status") != "erro" and mudar(linha["id"], "produzindo", de=("erro",), erro=""):
-                mudaram.append(linha["id"])
-        # 2. as vagas: o limite menos o que a fila mandou e os vídeos da fábrica feitos fora dela
-        da_fila = {l["projeto"] for l in banco.todos("SELECT projeto FROM producoes_fila WHERE estado IN ('enviando', 'produzindo') "
-                                                     "AND maquina_id IS NULL")}
-        fora = [n for n, p in andamento.items() if p.get("rodando") and n not in da_fila]
-        vagas = limite() - len(da_fila) - len(fora)
-        # 3. a fila, na ordem: primeiro o roteiro (não ocupa vaga, até ESCRITAS_AO_MESMO_TEMPO), depois o envio (ocupa)
+            # desligada ou lenta (2026-11-16: a lista levou 37 s e o pedido 128 nem o roteiro começava): o roteiro
+            # não precisa da fábrica, então ele anda; só o envio espera
+            prod = None
+        if prod is not None:
+            mudaram += _acompanhar(prod)
+            vagas = _vagas(prod)
+        else:
+            vagas = None
+        # 3. a fila, na ordem (o prioritário antes): primeiro o roteiro (não ocupa vaga, até ESCRITAS_AO_MESMO_TEMPO),
+        # depois o envio (ocupa). O prioritário passa por cima dos dois limites
         escrevendo = banco.um("SELECT COUNT(*) AS n FROM producoes_fila WHERE estado='escrevendo'")["n"]
-        for linha in banco.todos("SELECT * FROM producoes_fila WHERE estado='na_fila' ORDER BY ordem"):
+        for linha in banco.todos("SELECT * FROM producoes_fila WHERE estado='na_fila' ORDER BY prioridade DESC, ordem"):
             if not linha["roteiro"]:
-                if escrevendo >= ESCRITAS_AO_MESMO_TEMPO or not mudar(linha["id"], "escrevendo", de=("na_fila",), passo="Começando…"):
+                if (escrevendo >= ESCRITAS_AO_MESMO_TEMPO and not linha["prioridade"]) or \
+                        not mudar(linha["id"], "escrevendo", de=("na_fila",), passo="Começando…"):
                     continue
                 escrevendo += 1
                 mudaram.append(linha["id"])
@@ -359,7 +363,9 @@ def passo(fabrica=None, roteirista=None, em_thread: bool = True, config_canal=No
                     continue
             if json.loads(linha["pedido"]).get("destino") == "robo":
                 continue  # com o roteiro pronto, espera uma máquina reivindicar (maquinas.py)
-            if vagas <= 0:
+            if vagas is None:
+                continue  # a fábrica não respondeu nesta volta
+            if vagas <= 0 and not linha["prioridade"]:
                 continue
             # cada passo só segue se o pedido ainda estiver onde estava: excluído no meio, para ali e não gasta
             if not mudar(linha["id"], "enviando", de=("na_fila",), passo="Enviando para a fábrica…"):
@@ -396,6 +402,57 @@ def passo(fabrica=None, roteirista=None, em_thread: bool = True, config_canal=No
         return mudaram
     finally:
         _TRAVA.release()
+
+
+def _acompanhar(prod: dict) -> list[int]:
+    """Os passos 1 e 1b da volta: o que a fábrica terminou, perdeu ou retomou por fora."""
+    mudaram = []
+    prontos = {p["nome"] for p in prod["prontos"]}
+    andamento = {p["nome"]: p for p in prod["andamento"]}
+    # 1. o que estava produzindo: ficou pronto, deu erro, parou no meio ou sumiu da fábrica
+    # o que está em outra máquina não passa por aqui: a fábrica daqui não conhece esse projeto
+    for linha in banco.todos("SELECT * FROM producoes_fila WHERE estado='produzindo' AND maquina_id IS NULL"):
+        p = andamento.get(linha["projeto"])
+        if linha["projeto"] in prontos:
+            mudou = mudar(linha["id"], "entregue", de=("produzindo",))
+        elif p is None:
+            mudou = mudar(linha["id"], "erro", de=("produzindo",), erro="O vídeo sumiu da fábrica.")
+        elif p.get("status") == "erro":
+            mudou = mudar(linha["id"], "erro", de=("produzindo",), erro=(p.get("mensagem") or "A fábrica parou com erro.")[:500])
+        elif not p.get("rodando") and p.get("status") == "parado":
+            # a fábrica morta no meio religa sem o andamento (ele mora na memória dela): o projeto volta parado,
+            # sem erro nenhum, e o pedido ficava "produzindo" para sempre, segurando uma vaga (o vídeo do João o
+            # Lobo, 2026-11-04). Vira erro só depois de VOLTAS_PARADO voltas paradas, para não confundir com o
+            # instante entre o "produzir" e a fábrica começar de verdade.
+            _PARADOS[linha["id"]] = _PARADOS.get(linha["id"], 0) + 1
+            if _PARADOS[linha["id"]] < VOLTAS_PARADO:
+                continue
+            mudou = mudar(linha["id"], "erro", de=("produzindo",), passo="",
+                          erro="A fábrica parou no meio deste vídeo (ela foi desligada ou caiu). "
+                               "O \"Tentar de novo\" retoma de onde ela parou.")
+        else:
+            _PARADOS.pop(linha["id"], None)
+            continue
+        _PARADOS.pop(linha["id"], None)
+        if mudou:
+            mudaram.append(linha["id"])
+    # 1b. o que parou com erro e foi retomado na fábrica por fora do Radar volta a produzindo (12-animais, 2026-10-27:
+    # retomado depois do crédito do OpenRouter, o pedido seguia "Parou com erro" com a fábrica andando)
+    for linha in banco.todos("SELECT * FROM producoes_fila WHERE estado='erro' AND projeto IS NOT NULL AND projeto != ''"):
+        p = andamento.get(linha["projeto"])
+        if p and p.get("rodando") and p.get("status") != "erro" and mudar(linha["id"], "produzindo", de=("erro",), erro=""):
+            mudaram.append(linha["id"])
+    return mudaram
+
+
+def _vagas(prod: dict) -> int:
+    """2. as vagas: o limite menos o que a fila mandou e os vídeos da fábrica feitos fora dela. O pausado não conta: a
+    fábrica ainda o mostra rodando, mas ele está parado esperando o Continuar."""
+    da_fila = {l["projeto"] for l in banco.todos("SELECT projeto FROM producoes_fila WHERE estado IN ('enviando', 'produzindo') "
+                                                 "AND maquina_id IS NULL")}
+    pausados = {l["projeto"] for l in banco.todos("SELECT projeto FROM producoes_fila WHERE estado='pausado' AND projeto != ''")}
+    fora = [p["nome"] for p in prod["andamento"] if p.get("rodando") and p["nome"] not in da_fila | pausados]
+    return limite() - len(da_fila) - len(fora)
 
 
 def iniciar_vigia(intervalo: int = 20) -> None:

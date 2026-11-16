@@ -102,7 +102,7 @@ def blocos(fila_itens: list[dict], producoes: dict) -> dict:
     """Os blocos da esquerda do Acompanhar, cada vídeo num só: precisa de você, produzindo, na fila, entrada e os
     projetos da fábrica parados fora da fila. O pedido da fila que já está na fábrica leva o andamento de lá."""
     andamento = {p["nome"]: p for p in producoes.get("andamento", [])}
-    saida = {k: [] for k in ("precisa_voce", "produzindo", "na_fila", "entrada", "parados")}
+    saida = {k: [] for k in ("precisa_voce", "produzindo", "pausados", "na_fila", "entrada", "parados")}
     da_fila = set()
     for f in fila_itens:
         if f["estado"] in ("entregue", "cancelado"):
@@ -114,8 +114,10 @@ def blocos(fila_itens: list[dict], producoes: dict) -> dict:
                 "titulo": f["pedido"].get("titulo", ""), "canal_id": f["pedido"].get("canal_id", ""), "estado": f["estado"],
                 "passo": f.get("passo", ""), "erro": f.get("erro", ""), "criado": f.get("criado", ""),
                 "progresso": (p or {}).get("progresso") or 0, "mensagem": (p or {}).get("mensagem") or f.get("passo", ""),
-                "capa": (p or {}).get("capa", ""), "canal": (p or {}).get("canal", "")}
-        if f["estado"] in ("sua_vez", "erro") or (p and p.get("precisa_voce")):
+                "capa": (p or {}).get("capa", ""), "canal": (p or {}).get("canal", ""), "prioridade": bool(f.get("prioridade"))}
+        if f["estado"] == "pausado":   # o botão Pausar (2026-11-16): fica num bloco seu, mesmo se a fábrica pedir algo
+            saida["pausados"].append(item)
+        elif f["estado"] in ("sua_vez", "erro") or (p and p.get("precisa_voce")):
             saida["precisa_voce"].append(item)
         elif f["estado"] in ("escrevendo", "enviando", "produzindo"):
             saida["produzindo"].append(item)

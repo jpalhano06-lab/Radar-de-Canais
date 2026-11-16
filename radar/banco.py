@@ -334,7 +334,9 @@ COLUNAS_NOVAS = {
     "modelar": {"canal_id": "TEXT NOT NULL DEFAULT ''"},   # para qual canal seu é esse vídeo da fila (a extensão pergunta)
     # o vídeo feito em outra máquina (maquinas.py): quem está com ele, até quando, e a prova da entrega
     "producoes_fila": {"maquina_id": "INTEGER", "lease": "TEXT NOT NULL DEFAULT ''", "lease_ate": "REAL NOT NULL DEFAULT 0",
-                       "eventos": "TEXT NOT NULL DEFAULT '[]'", "prova": "TEXT NOT NULL DEFAULT ''"},
+                       "eventos": "TEXT NOT NULL DEFAULT '[]'", "prova": "TEXT NOT NULL DEFAULT ''",
+                       # o Pausar guarda o estado de antes para o Continuar; o Prioridade passa na frente (2026-11-16)
+                       "antes_pausa": "TEXT NOT NULL DEFAULT ''", "prioridade": "INTEGER NOT NULL DEFAULT 0"},
     "canais": {"subnicho": "TEXT NOT NULL DEFAULT ''", "velocidade": "REAL", "ganho_7d": "INTEGER",
                "anuncios": "INTEGER", "membros": "INTEGER",   # monetização vista pela extensão (1, 0 ou sem saber)
                # por onde o canal entrou, o que o dono cadastrou e a última repescagem (descoberta.py, 2026-11-07)

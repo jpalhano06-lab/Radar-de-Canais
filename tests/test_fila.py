@@ -586,3 +586,72 @@ def test_transcricao_da_extensao_chega_ao_roteirista_e_fica_fora_da_lista(db):
     assert fila.item(1, fid)["pedido"]["com_transcricao_ref"] is True
     _volta(Fabrica(), rot)
     assert rot.pedidos[0]["transcricao_pronta"] == "a fala do vídeo"
+
+
+# ---------------------------------------------------------------- Pausar, Continuar e Prioridade (2026-11-16)
+
+class FabricaPausa(Fabrica):
+    def __init__(self, *a, **k):
+        super().__init__(*a, **k)
+        self.pausas = []
+
+    def pausar(self, nome, pausado):
+        self.pausas.append((nome, pausado))
+
+
+def test_pausado_na_fila_nao_sai_e_continua(db):
+    a = fila.criar(1, {"titulo": "A", "roteiro_manual": "x"}, True)
+    fila.pausar(1, a["id"])
+    fab = FabricaPausa()
+    _volta(fab)
+    assert fila.item(1, a["id"])["estado"] == "pausado" and fab.produzidos == []
+    fila.continuar(1, a["id"])
+    assert fila.item(1, a["id"])["estado"] == "na_fila"
+    _volta(fab)
+    assert fila.item(1, a["id"])["estado"] == "produzindo"
+
+
+def test_pausar_o_que_produz_pausa_na_fabrica_e_libera_a_vaga(db):
+    fila.definir_limite(1)
+    a = fila.criar(1, {"titulo": "A", "roteiro_manual": "x"}, True)
+    b = fila.criar(1, {"titulo": "B", "roteiro_manual": "x"}, True)
+    fab = FabricaPausa()
+    _volta(fab)
+    assert [fila.item(1, i["id"])["estado"] for i in (a, b)] == ["produzindo", "na_fila"]
+    fila.pausar(1, a["id"], fabrica=fab)
+    assert fab.pausas == [("p-m-A", True)]
+    _volta(fab)      # a fábrica ainda mostra o A rodando, mas pausado ele não ocupa a vaga
+    assert fila.item(1, b["id"])["estado"] == "produzindo"
+    fila.continuar(1, a["id"], fabrica=fab)
+    assert fab.pausas[-1] == ("p-m-A", False)
+    assert fila.item(1, a["id"])["estado"] == "produzindo"
+
+
+def test_prioridade_passa_na_frente_e_ignora_o_limite(db):
+    fila.definir_limite(1)
+    ids = [fila.criar(1, {"titulo": f"T{i}", "roteiro_manual": "x"}, True)["id"] for i in range(3)]
+    fab = FabricaPausa()
+    _volta(fab)
+    assert fila.item(1, ids[0])["estado"] == "produzindo"
+    fila.priorizar(1, ids[2])
+    assert fila.listar(1)[0]["id"] == ids[2]
+    _volta(fab)
+    assert fila.item(1, ids[2])["estado"] == "produzindo"     # entrou com as vagas cheias
+    assert fila.item(1, ids[1])["estado"] == "na_fila"        # o de trás continua esperando a vaga
+
+
+def test_prioridade_escreve_o_roteiro_sem_esperar_a_vez(db):
+    ids = [fila.criar(1, {"titulo": f"T{i}", "caracteres": 5000}, True)["id"] for i in range(fila.ESCRITAS_AO_MESMO_TEMPO + 1)]
+    banco.executar("UPDATE producoes_fila SET estado='escrevendo' WHERE id IN (?, ?)", ids[0], ids[1])
+    fila.priorizar(1, ids[-1])
+    _volta(FabricaPausa(desligada=True))
+    assert fila.item(1, ids[-1])["roteiro"]
+
+
+def test_fabrica_desligada_ou_lenta_nao_segura_o_roteiro(db):
+    """A lista da fábrica levou 37 s e o vigia achava a fábrica desligada: o pedido nem o roteiro começava."""
+    a = fila.criar(1, {"titulo": "A", "caracteres": 5000}, True)
+    fab = FabricaPausa(desligada=True)
+    _volta(fab)
+    atual = fila.item(1, a["id"])
+    assert atual["roteiro"] and atual["estado"] == "na_fila" and fab.produzidos == []
