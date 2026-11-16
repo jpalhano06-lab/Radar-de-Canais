@@ -124,8 +124,21 @@ const baixar = (thumb, titulo) => h("a", { class: "botao", href: imagens[thumb.i
 // ------------------------------------------------------------ as cores (pedido do usuário em 2026-11-15)
 // vermelho: nada feito · amarelo: meio caminho (um vídeo postado de 2, o vídeo sem a thumbnail) · verde: tudo certo
 const videoCompleto = (v) => !!(v.thumb && v.postado);
-function corDoCanal(meta, videos, thumbFeita) {
+// 2026-11-16 (pedido do usuário): "não vou postar nada hoje" deixa o canal verde; azul é quando os vídeos do dia já
+// têm pedido e thumbnail e só falta postar; a faixa do canto do cartão se divide em um pedaço por vídeo do dia
+const semPostarHoje = (id) => (dia.semPostar || []).includes(id);
+const corDoVideo = (v) => (!v ? "falta" : v.postado ? "ok" : v.thumb ? "azul" : "meio");
+function faixaDoCanal(meta, videos, semPostar) {
+  if (semPostar) return ["ok"];
+  const ordem = [...videos].sort((a, b) => (a.hora || 0) - (b.hora || 0));
+  const n = Math.max(meta || 0, ordem.length);
+  return Array.from({ length: n }, (_, i) => corDoVideo(ordem[i]));
+}
+function corDoCanal(meta, videos, thumbFeita, semPostar = false) {
+  if (semPostar) return "ok";
   const completos = videos.filter(videoCompleto).length;
+  const faixa = faixaDoCanal(meta, videos, false);
+  if (faixa.length && faixa.every((x) => x === "ok" || x === "azul") && faixa.includes("azul")) return "azul";
   if (!meta) {                       // sem meta ou "não posto todo dia": só ganha cor quando tem o que mostrar
     if (!videos.length) return thumbFeita ? "meio" : "";
     return completos === videos.length ? "ok" : "meio";
@@ -426,7 +439,16 @@ function cartaoDoCanal(c, videos) {
   const usadas = thumbsUsadas();
   const doCanal = dia.thumbs.filter((t) => t.canal === c.id && !usadas.has(t.id) && imagens[t.id]);
   const thumbFeita = doCanal.length || videos.some((v) => v.thumb);
-  const estado = corDoCanal(meta, videos, thumbFeita);
+  const semPostar = semPostarHoje(c.id);
+  const estado = corDoCanal(meta, videos, thumbFeita, semPostar);
+  const faixa = faixaDoCanal(meta, videos, semPostar);
+  const pedacos = faixa.length ? h("div", { class: "faixa", title: faixa.length > 1 ? "Um pedaço por vídeo do dia" : "" },
+    ...faixa.map((cor) => h("span", { class: cor }))) : null;
+  const alternarSemPostar = () => mudarDia((d) => {
+    const lista = new Set(d.semPostar || []);
+    if (lista.has(c.id)) lista.delete(c.id); else lista.add(c.id);
+    d.semPostar = [...lista];
+  });
   const cartaoThumb = (t) => h("div", { class: "video" },
     h("div", { class: "slot cheio" }, h("img", { src: imagens[t.id], alt: "" })),
     h("div", {},
@@ -463,9 +485,16 @@ function cartaoDoCanal(c, videos) {
     } }, "×")))) : null;
 
   // tudo postado (pedido do usuário em 2026-11-15): fica só o nome em verde e o procurar ideia. Clicar no nome abre
+  if (semPostar && !abertos.has(c.id)) {
+    return h("article", { class: "canal ok fechado com-faixa" }, pedacos,
+      h("div", { class: "canal-cab", title: "Clique para abrir o canal", onclick: () => { abertos.add(c.id); desenhar(); } },
+        h("b", {}, `✓ ${c.titulo}`), h("span", { class: "meta ok" }, "hoje sem postar ▸")),
+      h("div", { class: "linha" }, h("button", { type: "button", onclick: alternarSemPostar }, "Desfazer: vou postar hoje"), procurar),
+      listaAmanha);
+  }
   const tudoPostado = estado === "ok" && videos.length > 0;
   if (tudoPostado && !abertos.has(c.id)) {
-    return h("article", { class: "canal ok fechado" },
+    return h("article", { class: "canal ok fechado com-faixa" }, pedacos,
       h("div", { class: "canal-cab", title: "Clique para ver os vídeos de hoje", onclick: () => { abertos.add(c.id); desenhar(); } },
         h("b", {}, `✓ ${c.titulo}`), h("span", { class: "meta ok" }, `${plural(postados, "postado", "postados")} ▸`)),
       procurar || h("span", { class: "fraco" }, "Escolha a conta de treino em Ajustes do canal (clique no nome) para procurar ideia."),
@@ -481,15 +510,18 @@ function cartaoDoCanal(c, videos) {
     title: naoPostados.length ? `Postar "${naoPostados[0].titulo}"` : "Abre o upload do YouTube Studio" },
   NO_STUDIO ? "Postar" : "Postar ↗");
   postarCanal.onclick = () => postar(naoPostados[0], postarCanal);
+  const botaoSemPostar = h("button", { type: "button", class: "sem-postar", title: semPostar ? "Volta a contar este canal hoje" : "O canal fica verde hoje e sai da conta do dia",
+    onclick: alternarSemPostar }, semPostar ? "Desfazer: vou postar hoje" : "Hoje não vou postar");
 
-  return h("article", { class: `canal ${estado}` },
-    h("div", { class: "canal-cab", ...(tudoPostado ? { title: "Clique para recolher", onclick: () => { abertos.delete(c.id); desenhar(); } } : {}) },
+  return h("article", { class: `canal ${estado}${pedacos ? " com-faixa" : ""}` }, pedacos,
+    h("div", { class: "canal-cab", ...(tudoPostado || semPostar ? { title: "Clique para recolher", onclick: () => { abertos.delete(c.id); desenhar(); } } : {}) },
       h("b", {}, c.titulo),
       meta == null ? null : h("span", { class: `meta ${estado}` },
         meta === 0 ? plural(feitos, "vídeo hoje", "vídeos hoje") : `${feitos}/${meta} hoje${postados ? ` · ${postados} postado${postados > 1 ? "s" : ""}` : ""}`)),
     thumbFeita ? h("div", { class: "estado ok" }, "Thumbnail feita") : null,
     meta == null ? pergunta : null,
-    avisos ? h("div", { class: "linha" }, h("span", { class: "aviso" }, avisos[0].toUpperCase() + avisos.slice(1)), postarCanal) : null,
+    avisos && !semPostar ? h("div", { class: "linha" }, h("span", { class: "aviso" }, avisos[0].toUpperCase() + avisos.slice(1)), postarCanal, botaoSemPostar)
+      : !tudoPostado ? h("div", { class: "linha" }, botaoSemPostar) : null,
     procurar,
     listaAmanha,
     videos.length || doCanal.length ? h("div", { class: "videos" }, ...videos.map(cartaoDoVideo), ...doCanal.map(cartaoThumb)) : null,
@@ -513,15 +545,17 @@ function desenhar() {
   const doCanal = (id) => dia.videos.filter((v) => (v.canal || "") === id);
   // primeiro o vermelho, depois o amarelo, os sem cor e por fim os verdes
   const peso = (c) => {
-    const m = (config[c.id] || {}).porDia, cor = corDoCanal(m, doCanal(c.id), dia.thumbs.some((t) => t.canal === c.id));
-    return { falta: 0, meio: 1, "": 2, ok: 3 }[cor];
+    const m = (config[c.id] || {}).porDia, cor = corDoCanal(m, doCanal(c.id), dia.thumbs.some((t) => t.canal === c.id), semPostarHoje(c.id));
+    return { falta: 0, meio: 1, azul: 2, "": 3, ok: 4 }[cor];
   };
   lista.sort((a, b) => peso(a) - peso(b));
   $("canais").replaceChildren(...(lista.length ? lista.map((c) => cartaoDoCanal(c, doCanal(c.id)))
     : [h("div", { class: "vazio" }, "Nenhum canal ainda. Ligue o Radar e cadastre seus canais.")]));
 
-  const metaTotal = canais.reduce((s, c) => s + ((config[c.id] || {}).porDia || 0), 0);
-  const feitosMeta = canais.reduce((s, c) => s + Math.min(doCanal(c.id).length, (config[c.id] || {}).porDia || 0), 0);
+  // os canais de "hoje não vou postar" saem da conta do dia
+  const contam = canais.filter((c) => !semPostarHoje(c.id));
+  const metaTotal = contam.reduce((s, c) => s + ((config[c.id] || {}).porDia || 0), 0);
+  const feitosMeta = contam.reduce((s, c) => s + Math.min(doCanal(c.id).length, (config[c.id] || {}).porDia || 0), 0);
   const semThumb = dia.videos.filter((v) => !v.thumb).length, postados = dia.videos.filter((v) => v.postado).length;
   const n = dia.videos.length;
   $("resumo").replaceChildren(...[

@@ -2053,6 +2053,16 @@ sem o canal certo".
   1 minuto) e a aba do YouTube que abre faz a troca para a conta de treino.
 - Para usar: dê ↻ na extensão em `chrome://extensions` (o Radar não precisa religar).
 
+## Extensão 0.53.4: "Hoje não vou postar", o azul e a faixa dividida por vídeo (2026-11-16)
+
+- **Hoje não vou postar:** botão em cada canal; o canal fica verde e recolhido ("hoje sem postar", com "Desfazer"),
+  e sai da conta do resumo do dia. Fica em `dia.semPostar` (vale só para o dia).
+- **Azul:** o vídeo que já tem pedido e thumbnail e só falta postar. O cartão do canal fica azul quando todos os vídeos
+  do dia estão assim (ou já postados).
+- **Faixa dividida:** a faixa da esquerda do cartão tem um pedaço por vídeo do dia (o maior entre a meta e os vídeos
+  pedidos), em ordem de pedido: vermelho = ainda não pedido, amarelo = pedido sem thumbnail, azul = só falta postar,
+  verde = postado. Com 2 por dia e um postado, fica metade verde.
+
 ## Extensão 0.53.3: teste A/B de thumbnails, montado sozinho no Postar (2026-11-16)
 
 Cada vídeo do Meu dia tem o "+ Teste A/B": a thumbnail do vídeo é a A, e entram a B e a C (arrastar, clicar ou colar,
