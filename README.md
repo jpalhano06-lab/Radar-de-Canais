@@ -2053,6 +2053,14 @@ sem o canal certo".
   1 minuto) e a aba do YouTube que abre faz a troca para a conta de treino.
 - Para usar: dê ↻ na extensão em `chrome://extensions` (o Radar não precisa religar).
 
+## Extensão 0.53.7: o Postar abre o Studio do canal certo (2026-11-16)
+
+O Postar abria o Studio na conta que estivesse aberta. Agora segue o caminho do "procurar ideia": o background abre
+uma aba ao lado, troca para a conta do canal do vídeo (pelo nome do canal) e, depois da troca (ou se já estava nela),
+a aba vai para `studio.youtube.com/channel/<id>`, onde o pedido espera (`diaPostar` para o vídeo, `diaAbrirUpload`
+para o Postar do canal sem vídeo; os dois valem 5 min). Dentro do Studio, o painel diz ao Meu dia de qual canal é o
+Studio aberto (`canalStudio`): vídeo de outro canal vai pelo mesmo caminho. Teste: `#radar-postar-canal=<nome>|<UC…>`.
+
 ## Extensão 0.53.6: pegar de volta o vídeo tirado e a legenda das cores (2026-11-16)
 
 O usuário tirou sem querer um vídeo pedido do Meu dia. Agora:

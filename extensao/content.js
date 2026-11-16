@@ -2252,6 +2252,16 @@
   const TROCAR_CONTA = /Switch account|Alternar conta|Trocar (de )?conta|Mudar de conta|Cambiar (de )?cuenta|Changer de compte|Konto wechseln|Cambia account/i;
   const contaBate = (alvo, nome, texto) => alvo.handle ? normal(texto).includes(alvo.handle) : normal(nome) === alvo.nome;
 
+  // o Postar do Meu dia (2026-11-16: "na hora de postar abre no canal que já está, temos que abrir sempre no canal
+  // certo"): depois de trocar para a conta do canal, a aba segue para o Studio dele (o endereço vem do background)
+  let depoisDaTroca = "";
+  const seguirDepois = (motivo) => {
+    if (!depoisDaTroca) return false;
+    registrarTroca(`${motivo}: indo para ${depoisDaTroca}`);
+    location.href = depoisDaTroca;
+    return true;
+  };
+
   // soLer: só lê as contas do menu e guarda (o "Ler as contas do YouTube" do Meu dia), sem trocar de conta
   // o registro da troca de conta (2026-11-15): o "procurar ideia" falhou três vezes sem dar para ver onde; cada passo
   // fica em diaTrocaLog (os últimos 40), para conferir depois
@@ -2359,7 +2369,11 @@
       return aviso(`Não achei ${rotulo} entre as contas deste navegador. Entre no e-mail dessa conta ("Adicionar conta") e tente de novo.`);
     }
     // a conta aberta tem o anel e o ✓ na lista: clicar nela não faz nada
-    if (certo.el.hasAttribute("enable-ring-for-active-account")) { fecharMenu(); return aviso(`Você já está em ${certo.nome}.`); }
+    if (certo.el.hasAttribute("enable-ring-for-active-account")) {
+      fecharMenu();
+      if (seguirDepois(`já estava em ${certo.nome}`)) return;
+      return aviso(`Você já está em ${certo.nome}.`);
+    }
     aviso(`Trocando para ${certo.nome}${certo.email ? ` (${certo.email})` : ""}…`);
     // 2026-11-15: o registro mostrou o clique em PALHANO e a conta não trocou. A lista aparece antes de aceitar o
     // clique (às vezes é a lista velha, reaberta da última vez). Agora espera a lista firmar, clica de novo no item
@@ -2371,7 +2385,7 @@
     const saiu = new Promise((r) => { window.addEventListener("pagehide", () => r(true), { once: true }); setTimeout(() => r(false), 6000); });
     // a foto do avatar de antes: depois de recarregar, se ela for a mesma, a conta não trocou e tenta de novo
     const fotoAntes = (document.querySelector("ytd-masthead #avatar-btn img") || {}).src || "";
-    try { sessionStorage.setItem("radar-troca", JSON.stringify({ alvo: textoAlvo, fotoAntes, tentativa, quando: Date.now() })); } catch { /* sem sessionStorage */ }
+    try { sessionStorage.setItem("radar-troca", JSON.stringify({ alvo: textoAlvo, fotoAntes, tentativa, quando: Date.now(), depois: depoisDaTroca })); } catch { /* sem sessionStorage */ }
     (agora.querySelector("tp-yt-paper-icon-item") || agora).click();   // o YouTube recarrega já na conta nova
     if (await saiu) return;
     try { sessionStorage.removeItem("radar-troca"); } catch { /* sem sessionStorage */ }
@@ -2389,7 +2403,8 @@
     const img = await esperarAte(() => { const i = document.querySelector("ytd-masthead #avatar-btn img[src]"); return i && i.src ? i : null; }, 20000);
     await esperarMs(2500);   // a foto pode trocar de um marcador para a de verdade logo depois de carregar
     const foto = ((document.querySelector("ytd-masthead #avatar-btn img") || img || {}).src) || "";
-    if (foto && foto !== p.fotoAntes) return registrarTroca(`conta trocou (tentativa ${p.tentativa})`);
+    depoisDaTroca = p.depois || "";
+    if (foto && foto !== p.fotoAntes) { registrarTroca(`conta trocou (tentativa ${p.tentativa})`); seguirDepois("conta trocou"); return; }
     registrarTroca(`recarregou mas a conta não trocou (tentativa ${p.tentativa})`);
     if (p.tentativa < 3) trocarDeConta(p.alvo, false, p.tentativa + 1);
     else avisoRapido("O YouTube não trocou de conta. Troque pelo avatar > Mudar de conta.");
@@ -2406,6 +2421,13 @@
     registrarTroca(`teste procurar-ideia ${alvo}`);
     chrome.runtime.sendMessage({ tipo: "procurar-ideia", alvo }).catch((e) => registrarTroca(`procurar-ideia falhou: ${e}`));
   }
+  // o mesmo caminho do Postar do Meu dia, para testar: #radar-postar-canal=<nome do canal>|<UC…>
+  if (location.hash.startsWith("#radar-postar-canal=")) {
+    const [canalNome, canalId] = decodeURIComponent(location.hash.slice("#radar-postar-canal=".length)).split("|");
+    history.replaceState(null, "", location.pathname + location.search);
+    registrarTroca(`teste postar-no-canal ${canalNome} ${canalId}`);
+    chrome.runtime.sendMessage({ tipo: "postar-no-canal", canalNome, canalId, id: "", soAbrir: true }).catch((e) => registrarTroca(`postar-no-canal falhou: ${e}`));
+  }
   if (location.hash.startsWith("#radar-conta=")) {
     const alvo = decodeURIComponent(location.hash.slice("#radar-conta=".length));
     history.replaceState(null, "", location.pathname + location.search);
@@ -2419,7 +2441,11 @@
       for (let i = 0; i < 3; i++) {
         const p = await chrome.runtime.sendMessage({ tipo: "troca-pendente" }).catch((e) => ({ erro: String(e) }));
         if (p && p.erro) registrarTroca(`troca-pendente falhou: ${p.erro}`);
-        if (p && p.alvo) { registrarTroca(`pedido recebido: ${p.alvo}`); return trocarDeConta(p.alvo); }
+        if (p && p.alvo) {
+          depoisDaTroca = p.depois || "";
+          registrarTroca(`pedido recebido: ${p.alvo}${p.depois ? ` (depois: ${p.depois})` : ""}`);
+          return trocarDeConta(p.alvo);
+        }
         await esperarMs(1000);
       }
     })();

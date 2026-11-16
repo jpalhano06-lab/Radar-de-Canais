@@ -45,6 +45,19 @@ function registrarTrocaBg(passo, url = "background") {
   }).catch(() => {});
 }
 
+// abre o YouTube ao lado da aba do clique (na mesma janela: sem windowId ia para a última janela em foco, às vezes
+// escondida atrás, onde o YouTube não desenha o menu) e guarda pelo id da aba a conta para trocar e, se houver, para
+// onde ir depois (content.js pede com "troca-pendente")
+async function abrirParaTrocar(de, alvo, depois) {
+  const aba = await chrome.tabs.create({ url: "https://www.youtube.com/", active: true,
+    ...(de && de.windowId >= 0 ? { windowId: de.windowId, index: de.index + 1 } : {}) });
+  const { trocasPorAba = {} } = await chrome.storage.session.get("trocasPorAba");
+  trocasPorAba[aba.id] = { alvo, depois, quando: Date.now() };
+  await chrome.storage.session.set({ trocasPorAba });
+  registrarTrocaBg(`aba ${aba.id} aberta para ${alvo}${depois ? ` (depois: ${depois})` : ""}`);
+  return aba;
+}
+
 chrome.runtime.onMessage.addListener((msg, _remetente, responder) => {
   if (msg && msg.tipo === "api") {
     pedir(msg).then(responder);
@@ -77,18 +90,18 @@ chrome.runtime.onMessage.addListener((msg, _remetente, responder) => {
   // o "procurar ideia" do Meu dia (2026-11-15, terceira volta do bug): o pedido de troca de conta ia para o storage e a
   // primeira aba do YouTube que carregasse levava, que nem sempre era a aba aberta pelo botão. Agora o background abre
   // a aba e guarda o pedido pelo id dela: só ela pega (content.js pede com "troca-pendente")
+  // o Postar do Meu dia (2026-11-16): abria o Studio na conta que estivesse aberta. Agora é o caminho do procurar
+  // ideia com a conta do próprio canal e, depois da troca, o Studio dele; o pedido de postar (diaPostar) ou de só abrir
+  // o upload (diaAbrirUpload) espera lá
+  if (msg && msg.tipo === "postar-no-canal") {
+    const pedido = msg.id ? { diaPostar: { id: msg.id, quando: Date.now() } } : msg.soAbrir ? {} : { diaAbrirUpload: Date.now() };
+    chrome.storage.local.set(pedido).then(() => abrirParaTrocar(_remetente.tab, msg.canalNome,
+      /^UC[\w-]{22}$/.test(msg.canalId || "") ? `https://studio.youtube.com/channel/${msg.canalId}` : "https://studio.youtube.com/"))
+      .then(() => responder({ ok: true }), (e) => responder({ erro: String(e) }));
+    return true;
+  }
   if (msg && msg.tipo === "procurar-ideia") {
-    // na mesma janela do clique, ao lado (2026-11-15: sem windowId ia para a última janela em foco, às vezes uma
-    // janela escondida atrás, onde o YouTube não desenha o menu e a troca não andava)
-    const de = _remetente.tab;
-    chrome.tabs.create({ url: "https://www.youtube.com/", active: true,
-      ...(de && de.windowId >= 0 ? { windowId: de.windowId, index: de.index + 1 } : {}) }).then(async (aba) => {
-      const { trocasPorAba = {} } = await chrome.storage.session.get("trocasPorAba");
-      trocasPorAba[aba.id] = { alvo: msg.alvo, quando: Date.now() };
-      await chrome.storage.session.set({ trocasPorAba });
-      registrarTrocaBg(`aba ${aba.id} aberta para ${msg.alvo}`);
-      responder({ ok: true });
-    }, (e) => responder({ erro: String(e) }));
+    abrirParaTrocar(_remetente.tab, msg.alvo, "").then(() => responder({ ok: true }), (e) => responder({ erro: String(e) }));
     return true;
   }
   if (msg && msg.tipo === "canva-canal") {             // a caixinha do Canva: o canal escolhido para o PNG baixado
@@ -102,7 +115,7 @@ chrome.runtime.onMessage.addListener((msg, _remetente, responder) => {
       const p = trocasPorAba[id];
       if (p) { delete trocasPorAba[id]; await chrome.storage.session.set({ trocasPorAba }); }
       if (p) registrarTrocaBg(`aba ${id} pegou o pedido ${p.alvo}`);
-      responder(p && Date.now() - p.quando < 2 * 60 * 1000 ? { alvo: p.alvo } : {});
+      responder(p && Date.now() - p.quando < 2 * 60 * 1000 ? { alvo: p.alvo, depois: p.depois || "" } : {});
     });
     return true;
   }

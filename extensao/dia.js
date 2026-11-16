@@ -201,15 +201,25 @@ const nomeDeArquivo = (t) => (t || "video").replace(/[\\/:*?"<>|]+/g, " ").repla
 let postando = "";
 
 // o Postar do canal que ainda não tem vídeo pedido: só abre o upload do Studio
-async function abrirUpload() {
-  if (NO_STUDIO) return window.parent.postMessage({ tipo: "radar-abrir-upload" }, "https://studio.youtube.com");
+// o Studio do canal certo (2026-11-16): fora do Studio, ou no Studio de outro canal, o background abre uma aba, troca
+// para a conta do canal e segue para o Studio dele, onde o pedido (postar este vídeo ou só abrir o upload) espera
+const CANAL_DO_STUDIO = new URLSearchParams(location.search).get("canalStudio") || "";
+const noStudioDoCanal = (canal) => NO_STUDIO && (!canal || !CANAL_DO_STUDIO || CANAL_DO_STUDIO === canal);
+function abrirNoCanal(canal, canalNome, id) {
+  return pedirAoFundo({ tipo: "postar-no-canal", canalId: canal || "", canalNome: canalNome || "", id: id || "" });
+}
+
+async function abrirUpload(canal, canalNome) {
+  if (noStudioDoCanal(canal)) return window.parent.postMessage({ tipo: "radar-abrir-upload" }, "https://studio.youtube.com");
+  if (canal && canalNome) return abrirNoCanal(canal, canalNome, "");
   window.open("https://studio.youtube.com/", "_blank");
   await chrome.storage.local.set({ diaAbrirUpload: Date.now() });
 }
 
-async function postar(v, botao) {
-  if (!v) return abrirUpload();
-  if (!NO_STUDIO) {
+async function postar(v, botao, canal) {
+  if (!v) return abrirUpload(canal && canal.id, canal && canal.titulo);
+  if (!noStudioDoCanal(v.canal)) {
+    if (v.canal && v.canalNome) return abrirNoCanal(v.canal, v.canalNome, v.id);
     window.open("https://studio.youtube.com/", "_blank");
     await chrome.storage.local.set({ diaPostar: { id: v.id, quando: Date.now() } });
     return;
@@ -569,7 +579,7 @@ function cartaoDoCanal(c, videos) {
   const postarCanal = h("button", { type: "button", class: "vermelho",
     title: naoPostados.length ? `Postar "${naoPostados[0].titulo}"` : "Abre o upload do YouTube Studio" },
   NO_STUDIO ? "Postar" : "Postar ↗");
-  postarCanal.onclick = () => postar(naoPostados[0], postarCanal);
+  postarCanal.onclick = () => postar(naoPostados[0], postarCanal, c);
   const botaoSemPostar = h("button", { type: "button", class: "sem-postar", title: semPostar ? "Volta a contar este canal hoje" : "O canal fica verde hoje e sai da conta do dia",
     onclick: alternarSemPostar }, semPostar ? "Desfazer: vou postar hoje" : "Hoje não vou postar");
 

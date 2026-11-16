@@ -28,7 +28,10 @@
     // no Studio o Meu dia tem o "Postar" de cada vídeo (pedido do usuário em 2026-11-15); o `pendente` vem do Postar
     // apertado no YouTube (dia.js guarda diaPostar e abre o Studio) e já começa o upload daquele vídeo
     const postar = pendente; pendente = "";
-    quadro.src = chrome.runtime.getURL("dia.html") + "?embutido=1" + (NO_STUDIO ? "&studio=1" : "") + (postar ? `&postar=${postar}` : "");
+    // o canal do Studio aberto (2026-11-16): o Postar de um vídeo de outro canal abre o Studio do canal certo
+    const canalStudio = NO_STUDIO ? ((location.pathname.match(/\/channel\/(UC[\w-]{22})/) || [])[1] || "") : "";
+    quadro.src = chrome.runtime.getURL("dia.html") + "?embutido=1" + (NO_STUDIO ? "&studio=1" : "") + (postar ? `&postar=${postar}` : "")
+      + (canalStudio ? `&canalStudio=${canalStudio}` : "");
     quadro.title = "Meu dia";
     quadro.allow = "clipboard-write";
     painel.append(cab, quadro);
@@ -75,7 +78,7 @@
   });
   // o Studio redireciona a página inicial e o #endereço se perde no caminho: o pedido vem pelo storage
   if (NO_STUDIO) chrome.storage.local.get("diaPostar").then(({ diaPostar }) => {
-    if (!diaPostar || Date.now() - diaPostar.quando > 3 * 60 * 1000) return;
+    if (!diaPostar || Date.now() - diaPostar.quando > 5 * 60 * 1000) return;   // a troca de conta antes pode levar um tempo
     chrome.storage.local.remove("diaPostar");
     pendente = diaPostar.id;
     if (painel) { painel.remove(); painel = null; }   // já aberto: monta de novo, com o pedido

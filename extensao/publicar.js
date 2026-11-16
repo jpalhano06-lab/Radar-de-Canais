@@ -1093,7 +1093,7 @@
 
   // o Postar do canal sem vídeo pedido, apertado fora do Studio: o Meu dia abriu esta aba e guardou o pedido
   chrome.storage.local.get("diaAbrirUpload").then(({ diaAbrirUpload: quando }) => {
-    if (!quando || Date.now() - quando > 3 * 60 * 1000) return;
+    if (!quando || Date.now() - quando > 5 * 60 * 1000) return;   // a troca de conta antes pode levar um tempo
     chrome.storage.local.remove("diaAbrirUpload");
     abrirUpload();
   }).catch(() => {});
