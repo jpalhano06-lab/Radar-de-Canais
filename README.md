@@ -2053,6 +2053,16 @@ sem o canal certo".
   1 minuto) e a aba do YouTube que abre faz a troca para a conta de treino.
 - Para usar: dê ↻ na extensão em `chrome://extensions` (o Radar não precisa religar).
 
+## Extensão 0.53.1: postado pelo botão final do Studio e quanto falta na fábrica (2026-11-15)
+
+- **Fica verde sozinho:** um vídeo postado pelo Postar do Meu dia não ficou verde (foi marcado na mão), porque o
+  texto "Vídeo publicado" não foi achado na tela do Studio. Agora vale também o clique no botão final do upload
+  (Publicar / Guardar / Agendar, `#done-button`), que não depende do idioma: depois dele, quando a janela de upload
+  fecha ou aparece a de compartilhar, o vídeo é marcado como postado. O resultado vai para o registro `diaTrocaLog`.
+- **Quanto falta:** cada vídeo pedido mostra a fábrica: "Fábrica: 65% · falta 35% · etapa", com uma barrinha;
+  "Fábrica parada em 40%: precisa de você"; "✓ Vídeo pronto na fábrica: é só postar"; ou "na fila, ainda não
+  começou". Vem do `progresso` que o background lê a cada minuto e, fora dele, do `/api/ext/postar`.
+
 ## Extensão 0.53.0: a aba do "procurar ideia" abre na mesma janela (2026-11-15)
 
 Testando todas as contas, a aba aberta pelo background ia para a última janela do Chrome em foco, que podia estar

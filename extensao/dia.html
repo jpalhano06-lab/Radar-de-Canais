@@ -107,6 +107,13 @@
   body.embutido h1, body.embutido .so-aba { display: none; }
   body.embutido header { margin-bottom: 12px; }
   @media (max-width: 420px) { .canais { grid-template-columns: 1fr; } .video { grid-template-columns: 90px 1fr; } .slot { width: 90px; } }
+  /* quanto falta na fábrica (2026-11-15) */
+  .fabrica{display:flex;align-items:center;gap:6px;font-size:11px;color:#f5b301;margin:2px 0;min-width:0}
+  .fabrica.ok{color:#2ecc71}
+  .fabrica.parado{color:#ff5a5a;font-weight:600}
+  .fabrica-barra{flex:0 0 54px;height:5px;border-radius:3px;background:rgba(255,255,255,.12);overflow:hidden}
+  .fabrica-barra span{display:block;height:100%;background:currentColor}
+  .fabrica-texto{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 </style>
 </head>
 <body>

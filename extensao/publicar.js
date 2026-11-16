@@ -1032,12 +1032,33 @@
     let postando = {};
     try { postando = JSON.parse(sessionStorage.getItem(POSTANDO) || "{}"); } catch { /* nada */ }
     const titulo = ultimoTitulo || (estado.kit && estado.kit.titulo) || postando.titulo || "";
+    avisarPostado(titulo, postando);
+  }
+  function avisarPostado(titulo, postando) {
     const chave = `${postando.id || ""}|${titulo}`;
     if (!titulo && !postando.id || chave === avisouPostado) return;
     avisouPostado = chave;
     sessionStorage.removeItem(POSTANDO);
     pedir({ tipo: "dia-postado", id: postando.id || "", titulo, titulos: [titulo, postando.titulo, estado.kit && estado.kit.titulo].filter(Boolean) });
   }
+  // 2026-11-15: um vídeo postado pelo Postar do Meu dia não ficou verde (a pessoa marcou na mão): o texto "Vídeo
+  // publicado" não foi achado. Agora vale também o clique no botão final do upload (Publicar / Guardar / Agendar,
+  // #done-button), que não depende do idioma: depois dele, se a janela de upload fecha ou aparece a de compartilhar,
+  // o vídeo está postado
+  document.addEventListener("click", (e) => {
+    const botaoFinal = e.target && e.target.closest && e.target.closest("ytcp-uploads-dialog #done-button");
+    if (!botaoFinal) return;
+    const t = campoTitulo();
+    const titulo = (t && oQueTem(t).trim()) || ultimoTitulo || (estado.kit && estado.kit.titulo) || "";
+    let postando = {};
+    try { postando = JSON.parse(sessionStorage.getItem(POSTANDO) || "{}"); } catch { /* nada */ }
+    const fim = Date.now() + 2 * 60 * 1000;
+    const olhar = setInterval(() => {
+      const compartilhar = [...document.querySelectorAll("ytcp-video-share-dialog, ytcp-uploads-still-processing-dialog")].some(visivel);
+      if (compartilhar || !dialogoAberto()) { clearInterval(olhar); avisarPostado(titulo || postando.titulo || "", postando); }
+      else if (Date.now() > fim) clearInterval(olhar);
+    }, 1000);
+  }, true);
 
   // o Postar do canal sem vídeo pedido, apertado fora do Studio: o Meu dia abriu esta aba e guardou o pedido
   chrome.storage.local.get("diaAbrirUpload").then(({ diaAbrirUpload: quando }) => {

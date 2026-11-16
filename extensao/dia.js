@@ -238,6 +238,38 @@ async function postar(v, botao) {
   }
 }
 
+// ------------------------------------------------------------ quanto falta na fábrica
+// Pedido do usuário em 2026-11-15: "sempre tem que avisar quanto falta do vídeo para ficar pronto". O background lê o
+// progresso da fábrica a cada minuto (progresso, /api/ext/progresso); o vídeo é achado pelo título. Fora da lista
+// (terminou ou nem começou), o Radar diz se o vídeo já está pronto (/api/ext/postar), uma vez por minuto no máximo
+let progresso = [];
+const prontoNaFabrica = {};   // id do vídeo -> { pronto, achou, quando, buscando }
+async function lerProgresso() { ({ progresso = [] } = await chrome.storage.local.get("progresso")); }
+const tituloNormal = (t) => String(t || "").normalize("NFKC").toLowerCase().replace(/[^\p{L}\p{N}]+/gu, " ").trim();
+function linhaDaFabrica(v) {
+  const p = progresso.find((x) => tituloNormal(x.titulo) === tituloNormal(v.titulo));
+  if (p) {
+    const pct = Math.max(0, Math.min(100, Math.round(p.pct || 0)));
+    const parado = p.estado === "precisa_voce";
+    return h("div", { class: `fabrica${parado ? " parado" : ""}`, title: p.mensagem || "" },
+      h("div", { class: "fabrica-barra" }, h("span", { style: `width:${pct}%` })),
+      h("span", { class: "fabrica-texto" }, parado ? `Fábrica parada em ${pct}%: precisa de você` : `Fábrica: ${pct}% · falta ${100 - pct}%`,
+        p.mensagem && !parado ? h("span", { class: "fraco" }, ` · ${p.mensagem.replace(/(\.{3}|…)$/, "")}`) : null));
+  }
+  const r = prontoNaFabrica[v.id];
+  if ((!r || Date.now() - r.quando > 60 * 1000) && !(r && r.buscando)) {
+    prontoNaFabrica[v.id] = { ...(r || {}), buscando: true, quando: (r && r.quando) || 0 };
+    api(`/api/ext/postar?titulo=${encodeURIComponent(v.titulo || "")}`).then((x) => {
+      prontoNaFabrica[v.id] = { pronto: !!(x.dados && x.dados.pronto), achou: !!(x.dados && x.dados.nome), quando: Date.now() };
+      desenhar();
+    }, () => { prontoNaFabrica[v.id] = { quando: Date.now() }; });
+  }
+  if (!r || r.pronto == null) return null;
+  if (r.pronto) return h("div", { class: "fabrica ok" }, "✓ Vídeo pronto na fábrica: é só postar");
+  if (r.achou) return h("div", { class: "fabrica" }, "Fábrica: na fila, ainda não começou");
+  return null;
+}
+
 // ------------------------------------------------------------ desenho
 function cartaoDoVideo(v) {
   const thumb = v.thumb && dia.thumbs.find((t) => t.id === v.thumb);
@@ -250,6 +282,7 @@ function cartaoDoVideo(v) {
   const estadoTexto = v.postado && thumb ? "✓ Vídeo · ✓ thumbnail · ✓ postado"
     : thumb ? "✓ Vídeo pedido · ✓ thumbnail feita · falta postar"
       : `✓ Vídeo pedido${v.entrada ? " (na Entrada)" : ""} · falta a thumbnail${v.postado ? " · ✓ postado" : ""}`;
+  const fabrica = v.postado ? null : linhaDaFabrica(v);
   const botaoPostar = v.postado ? null : h("button", { type: "button", class: "vermelho postar",
     title: NO_STUDIO ? "Sobe o vídeo da fábrica e a thumbnail no Studio" : "Abre o YouTube Studio já com o vídeo e a thumbnail" },
   postando === v.id ? "Baixando…" : NO_STUDIO ? "Postar" : "Postar ↗");
@@ -258,6 +291,7 @@ function cartaoDoVideo(v) {
     h("div", {},
       h("b", {}, v.titulo || "vídeo sem título"),
       h("div", { class: `estado ${videoCompleto(v) ? "ok" : "falta"}` }, estadoTexto),
+      fabrica,
       linhaDaReferencia(v),
       h("div", { class: "acoes" },
         botaoPostar,
@@ -489,6 +523,11 @@ function desenhar() {
 // ------------------------------------------------------------ começo e atualizações
 chrome.storage.onChanged.addListener((mudou, area) => {
   if (area === "local" && mudou.contasYoutube) lerContasYoutube().then(desenhar);
+  if (area === "local" && mudou.progresso) {
+    // saiu da lista (terminou): pergunta de novo se ficou pronto
+    for (const id of Object.keys(prontoNaFabrica)) delete prontoNaFabrica[id];
+    lerProgresso().then(() => { const a = document.activeElement; if (!(a && a.tagName === "INPUT" && a.type !== "checkbox")) desenhar(); });
+  }
   if (area !== "local" || !(mudou[DIA_CHAVE] || mudou[DIA_CONFIG] || mudou[DIA_AMANHA])) return;
   // não redesenha no meio de quem está digitando um link ou título
   const digitando = () => document.activeElement && document.activeElement.tagName === "INPUT" && document.activeElement.type !== "checkbox";
@@ -500,7 +539,7 @@ setInterval(() => { if (dia.data !== hojeLocal()) recarregar(); }, 60 * 1000);
 document.addEventListener("visibilitychange", () => { if (!document.hidden && dia.data !== hojeLocal()) recarregar(); });
 
 if (new URLSearchParams(location.search).has("embutido")) document.body.classList.add("embutido");
-lerContasYoutube().then(() => recarregar()).then(() => {
+Promise.all([lerContasYoutube(), lerProgresso()]).then(() => recarregar()).then(() => {
   // veio do Postar apertado fora do Studio: começa sozinho
   const v = postarAoAbrir && dia.videos.find((x) => x.id === postarAoAbrir);
   postarAoAbrir = "";

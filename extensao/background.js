@@ -70,7 +70,8 @@ chrome.runtime.onMessage.addListener((msg, _remetente, responder) => {
   }
   if (msg && msg.tipo === "abrir-dia") abrirDia();       // o "Abrir em aba" do painel do YouTube e o ícone (popup)
   if (msg && msg.tipo === "dia-postado") {               // publicou no Studio: fica verde no Meu dia (publicar.js)
-    diaMarcarPostado(msg).then((id) => responder({ ok: true, id }), (e) => responder({ erro: String(e) }));
+    diaMarcarPostado(msg).then((id) => { registrarTrocaBg(`postado no Studio: "${msg.titulo}" → ${id || "não achei no Meu dia"}`); responder({ ok: true, id }); },
+      (e) => responder({ erro: String(e) }));
     return true;
   }
   // o "procurar ideia" do Meu dia (2026-11-15, terceira volta do bug): o pedido de troca de conta ia para o storage e a
