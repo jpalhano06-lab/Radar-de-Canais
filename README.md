@@ -2053,6 +2053,12 @@ sem o canal certo".
   1 minuto) e a aba do YouTube que abre faz a troca para a conta de treino.
 - Para usar: dê ↻ na extensão em `chrome://extensions` (o Radar não precisa religar).
 
+## Extensão 0.53.9: o que não foi postado passa para o dia seguinte (2026-11-17)
+
+Quando vira o dia, os vídeos não postados passam para o dia novo, com a thumbnail e o teste A/B deles, e ganham a
+etiqueta "↪ de 16/11" (`veioDe`, o dia de origem, que se mantém se passar de novo). O resto do dia velho (postados,
+thumbnails soltas, tirados, "hoje sem postar") e as imagens dele se apagam, como antes.
+
 ## Extensão 0.53.7: o Postar abre o Studio do canal certo (2026-11-16)
 
 O Postar abria o Studio na conta que estivesse aberta. Agora segue o caminho do "procurar ideia": o background abre

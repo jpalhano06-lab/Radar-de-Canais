@@ -24,15 +24,21 @@ function amanhaLocal() {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
 
-/** O dia de hoje. Se o guardado é de outro dia, apaga ele (e as imagens dele) e começa um com os pedidos que foram
- *  guardados para hoje (o "para amanhã" de ontem). */
+/** O dia de hoje. Se o guardado é de outro dia, começa um novo com os pedidos guardados para hoje (o "para amanhã"
+ *  de ontem) e os vídeos que não foram postados (pedido do usuário em 2026-11-16: "se o vídeo não for postado ele
+ *  fica direto para o outro dia"), com a thumbnail e o teste A/B deles; `veioDe` diz de que dia vieram. O resto do
+ *  dia velho (postados, thumbnails soltas, tirados) e as imagens dele são apagados. */
 async function lerDia() {
   const { dia, [DIA_AMANHA]: fila = [] } = await chrome.storage.local.get([DIA_CHAVE, DIA_AMANHA]);
   const hoje = hojeLocal();
   if (dia && dia.data === hoje) return dia;
-  if (dia && dia.thumbs && dia.thumbs.length) await chrome.storage.local.remove(dia.thumbs.map((t) => DIA_THUMB + t.id));
+  const ficam = ((dia && dia.videos) || []).filter((v) => !v.postado).map((v) => ({ ...v, veioDe: v.veioDe || dia.data }));
+  const imagensQueFicam = new Set(ficam.flatMap((v) => [v.thumb, ...(v.ab || [])]).filter(Boolean));
+  const thumbsQueFicam = ((dia && dia.thumbs) || []).filter((t) => imagensQueFicam.has(t.id));
+  const apagar = ((dia && dia.thumbs) || []).filter((t) => !imagensQueFicam.has(t.id));
+  if (apagar.length) await chrome.storage.local.remove(apagar.map((t) => DIA_THUMB + t.id));
   const entram = fila.filter((v) => (v.para || "") <= hoje);
-  const novo = { data: hoje, videos: entram.map(({ para, ...v }) => v), thumbs: [] };
+  const novo = { data: hoje, videos: [...ficam, ...entram.map(({ para, ...v }) => v)], thumbs: thumbsQueFicam };
   await chrome.storage.local.set({ [DIA_CHAVE]: novo, [DIA_AMANHA]: fila.filter((v) => !entram.includes(v)) });
   return novo;
 }

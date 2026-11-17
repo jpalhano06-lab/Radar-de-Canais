@@ -402,6 +402,8 @@ function cartaoDoVideo(v, numero) {
   if (botaoPostar) botaoPostar.onclick = () => postar(v, botaoPostar);
   return h("div", { class: `video ${corDoVideo(v)}` }, numero ? h("span", { class: "num", title: NOME_DA_COR[corDoVideo(v)] }, String(numero)) : null, slot,
     h("div", {},
+      v.veioDe && v.veioDe !== dia.data ? h("span", { class: "veio-de", title: "Não foi postado no dia dele: passou para hoje" },
+        `↪ de ${v.veioDe.slice(8, 10)}/${v.veioDe.slice(5, 7)}`) : null,
       h("b", {}, v.titulo || "vídeo sem título"),
       h("div", { class: `estado ${videoCompleto(v) ? "ok" : "falta"}` }, estadoTexto),
       fabrica,
