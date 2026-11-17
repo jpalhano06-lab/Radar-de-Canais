@@ -2752,6 +2752,8 @@ async function testeDoCanal(caixa, id) {
     <p class="sub">O Radar faz ${t.quantos} vídeos de ${t.minutos} min sobre o espaço, sem narração (só música, nenhum
     crédito de voz) e sem thumbnail, e agenda um para um dia e o outro para o seguinte. Nada é escrito, produzido ou
     postado sem este clique.</p>
+    ${t.estoque ? `<p class="sub"><b>${t.estoque} ${t.estoque === 1 ? "vídeo pronto" : "vídeos prontos"} no estoque</b>
+      em ${esc(t.lingua_padrao)}: nessa língua o teste já sai agendado, sem esperar produção.</p>` : ""}
     <div style="display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap;margin:10px 0">
       <label>Língua dos textos na tela<br>
         <select id="teste-lingua">${t.linguas.map((l) =>

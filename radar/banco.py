@@ -289,6 +289,15 @@ CREATE TABLE IF NOT EXISTS canais_teste (
     liberado TEXT NOT NULL DEFAULT '',
     PRIMARY KEY (usuario_id, canal_id)
 );
+CREATE TABLE IF NOT EXISTS estoque_teste (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    usuario_id INTEGER NOT NULL,
+    tema TEXT NOT NULL,
+    lingua TEXT NOT NULL,
+    fid INTEGER NOT NULL,
+    usado TEXT NOT NULL DEFAULT '',
+    criado TEXT NOT NULL
+);
 CREATE TABLE IF NOT EXISTS convites (
     codigo_hash TEXT PRIMARY KEY,
     nota TEXT NOT NULL DEFAULT '',

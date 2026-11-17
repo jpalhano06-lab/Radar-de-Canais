@@ -134,3 +134,69 @@ def test_o_erro_do_envio_fica_no_cartao_e_tenta_de_novo_depois(db, monkeypatch):
 def test_andar_nao_levanta_quando_algo_falha(db, monkeypatch):
     monkeypatch.setattr(teste_canal, "_fila_parada", lambda: (_ for _ in ()).throw(RuntimeError("banco caiu")))
     assert teste_canal.andar() == []
+
+
+# ---------------------------------------------------------------- o estoque de vídeos prontos (2026-11-17)
+
+def _encher(quantos):
+    """Enche o estoque com `quantos` vídeos já entregues, um de cada vez, como o vigia faz."""
+    feitos = []
+    for _ in range(quantos):
+        feitos += teste_canal._encher_estoque()
+        _entregues(*feitos)
+    return feitos
+
+
+def test_o_estoque_enche_um_por_volta_com_a_fila_parada(db, monkeypatch):
+    monkeypatch.setattr(teste_canal, "ESTOQUE", 2)
+    primeiro = teste_canal._encher_estoque()
+    assert len(primeiro) == 1
+    assert fila.item(1, primeiro[0])["estado"] == "na_fila"     # a fila estava parada: já começa
+    assert teste_canal._encher_estoque() == []                  # agora ela trabalha: nada de um segundo
+    _entregues(*primeiro)
+    segundo = teste_canal._encher_estoque()
+    assert len(segundo) == 1
+    _entregues(*primeiro, *segundo)
+    assert teste_canal._encher_estoque() == []                  # cheio
+
+
+def test_o_video_do_estoque_sai_em_ingles_e_sem_narracao(db, monkeypatch):
+    monkeypatch.setattr(teste_canal, "ESTOQUE", 1)
+    pedido = fila.item(1, teste_canal._encher_estoque()[0])["pedido"]
+    assert pedido["sem_narracao"] and pedido["lingua"] == teste_canal.LINGUA_PADRAO
+    assert pedido["titulo"] in teste_canal.TEMAS
+
+
+def test_liberar_leva_os_prontos_do_estoque(db, monkeypatch):
+    monkeypatch.setattr(teste_canal, "ESTOQUE", 2)
+    guardados = _encher(2)
+    teste_canal.oferecer(1, "UC1")
+    assert teste_canal.do_canal(1, "UC1")["estoque"] == 2
+    cartao = teste_canal.liberar(1, "UC1")                      # em inglês, a língua do estoque
+    assert [v["fid"] for v in cartao["videos"]] == guardados
+    assert all(v["estado"] == "entregue" for v in cartao["videos"])   # nada a produzir: já estão prontos
+    assert teste_canal._estoque(1) == []                        # saíram do estoque
+
+
+def test_outra_lingua_nao_usa_o_estoque_em_ingles(db, monkeypatch):
+    monkeypatch.setattr(teste_canal, "ESTOQUE", 2)
+    guardados = _encher(2)
+    teste_canal.oferecer(1, "UC1")
+    cartao = teste_canal.liberar(1, "UC1", "português")
+    assert not {v["fid"] for v in cartao["videos"]} & set(guardados)
+    assert all(v["estado"] == "entrada" for v in cartao["videos"])
+    assert len(teste_canal._estoque(1)) == 2                    # o estoque em inglês continua lá
+    assert not {v["tema"] for v in cartao["videos"]} & {l["tema"] for l in teste_canal._estoque(1)}
+
+
+def test_o_estoque_esquece_o_video_jogado_fora_na_fila(db, monkeypatch):
+    monkeypatch.setattr(teste_canal, "ESTOQUE", 1)
+    fila.excluir(1, teste_canal._encher_estoque()[0])
+    assert teste_canal._estoque(1) == []
+    assert len(teste_canal._encher_estoque()) == 1              # e pede outro no lugar
+
+
+def test_o_estoque_so_e_feito_para_quem_tem_canal(db, monkeypatch):
+    monkeypatch.setattr(teste_canal, "ESTOQUE", 1)
+    banco.executar("DELETE FROM meus_canais")
+    assert teste_canal._encher_estoque() == []
