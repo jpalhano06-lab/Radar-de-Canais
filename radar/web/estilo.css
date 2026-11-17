@@ -2402,3 +2402,50 @@ nav .subs a:hover:not(.ativo):not(#_) { background: var(--painel2); color: var(-
 .pergunta-passos i { height: 5px; border-radius: 999px; background: color-mix(in srgb, var(--texto) 10%, transparent); transition: all .2s; }
 .pergunta-passos i.feito { background: color-mix(in srgb, var(--verde) 70%, transparent); }
 .pergunta-passos i.atual { flex: 1.6; background: var(--acento); box-shadow: 0 0 0 1px color-mix(in srgb, var(--acento) 35%, transparent); }
+
+/* ================================================================= as barras do Radar inteiro (2026-11-17)
+   Varrida tela por tela: os campos nasciam de seis tamanhos diferentes (21, 27, 33, 35, 41 e 50 px de altura), uns
+   sem estilo nenhum (a senha, o "quem paga" das integrações) e TODOS os select com a setinha e a pele do Windows.
+   Aqui eles viram a mesma barra: duas alturas só (a de sempre e a miúda das listas), a seta desenhada no tom do
+   tema e a rolagem fina no lugar da cinza do sistema. O raio continua 8, como manda a hierarquia de cantos acima. */
+:root { --campo-h: 42px; --campo-h-mini: 34px; }
+
+/* 1. o campo que ninguém vestiu: fundo, borda e letra do Radar em vez do cinza do navegador */
+input:not([type=checkbox]):not([type=radio]):not([type=range]):not([type=color]):not([type=file]),
+select, textarea { background: var(--painel2); color: var(--texto); border: 1px solid var(--linha); padding: 8px 11px; font: inherit; }
+
+/* 2. a seta do select desenhada (dois triângulos no tom do tema), no lugar da do sistema.
+      Só longhands de background: a cor de fundo de cada tela continua sendo a dela. */
+select:not([multiple]):not([size]):not(#_) {
+  -webkit-appearance: none; appearance: none; cursor: pointer; padding-right: 32px;
+  background-image: linear-gradient(45deg, transparent 50%, var(--fraco) 50%), linear-gradient(135deg, var(--fraco) 50%, transparent 50%);
+  background-position: right 17px center, right 12px center; background-size: 5px 5px, 5px 5px; background-repeat: no-repeat; }
+select:not([multiple]):not([size]):not(#_):hover { border-color: color-mix(in srgb, var(--fraco) 60%, var(--linha)); }
+
+/* 3. a mesma altura na mesma linha: campo, select e botão param de dançar */
+.filtros, .barra, .linha, .selects, .acn-filtros, .cu-lista-cab, .procura, .conectar, .gpt-canal { align-items: center; }
+.filtros > input, .filtros > select, .barra > input, .barra > select, .selects > select, .selects > .limpar,
+.linha > input:not([type=checkbox]), .linha > select, .procura > input, .conectar > input, .form > input, .form > select {
+  height: var(--campo-h); min-height: var(--campo-h); padding-top: 0; padding-bottom: 0; }
+.filtros > .botao, .barra > .botao, .linha > .botao, .selects > .botao, .procura > .botao, .conectar > .botao {
+  height: var(--campo-h); padding-top: 0; padding-bottom: 0; }
+form > input:not([type=checkbox]):not([type=radio]), form > select, form > .botao {
+  height: var(--campo-h); min-height: var(--campo-h); padding-top: 0; padding-bottom: 0; }
+.campo > input:not([type=checkbox]):not([type=radio]), .campo > select, .np-campos > input, .np-campos > select {
+  height: var(--campo-h); min-height: var(--campo-h); padding-top: 0; padding-bottom: 0; }
+/* as listas miúdas (custos, acompanhar, integrações) ficam miúdas, mas todas no mesmo miúdo */
+.cu-lista-cab input, .cu-lista-cab select, .acn-filtros input, .acn-filtros select, .acn-limite select, .gpt-canal select,
+.cu-lista-cab .botao, .acn-filtros .botao {
+  height: var(--campo-h-mini); min-height: var(--campo-h-mini); padding-top: 0; padding-bottom: 0; font-size: 13px; }
+.gpt-canal select { padding-left: 10px; }
+/* os campinhos de número (a porcentagem do garimpo, o % da barra de IA) seguem o miúdo, não um tamanho próprio */
+.pct input, .barra-ia-num input, .menu-pasta .pasta-nova input {
+  height: var(--campo-h-mini); min-height: var(--campo-h-mini); padding-top: 0; padding-bottom: 0; }
+
+/* 4. a rolagem: fina e no tom do painel, em vez da barra cinza do Windows */
+* { scrollbar-width: thin; scrollbar-color: var(--linha) transparent; }
+*::-webkit-scrollbar { width: 10px; height: 10px; }
+*::-webkit-scrollbar-track { background: transparent; }
+*::-webkit-scrollbar-thumb { background: var(--linha); border: 3px solid transparent; background-clip: content-box; border-radius: 999px; }
+*::-webkit-scrollbar-thumb:hover { background: var(--fraco); border: 3px solid transparent; background-clip: content-box; }
+*::-webkit-scrollbar-corner { background: transparent; }
