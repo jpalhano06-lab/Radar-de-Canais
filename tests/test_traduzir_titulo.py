@@ -33,3 +33,10 @@ def test_traduz_e_guarda(db, monkeypatch):
 def test_modelo_fora_do_ar_devolve_vazio(db, monkeypatch):
     monkeypatch.setattr(ia, "_perguntar", lambda *a, **k: None)
     assert ia.para_portugues(["한국 열차"]) == [""]
+
+
+def test_tira_o_numero_da_linha_mas_nao_o_do_titulo(db, monkeypatch):
+    """O pedido vai numerado; quando o modelo devolve o número junto ele sai, mas o título que é mesmo
+    "10) ..." continua inteiro."""
+    monkeypatch.setattr(ia, "_perguntar", lambda *a, **k: {"traducoes": ["1. O trem sumiu", "2) Dez pontes", "10) Os segredos"]})
+    assert ia.para_portugues(["列車", "橋", "10) 秘密"]) == ["O trem sumiu", "Dez pontes", "10) Os segredos"]

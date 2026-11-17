@@ -2360,3 +2360,9 @@ nav .subs a:hover:not(.ativo):not(#_) { background: var(--painel2); color: var(-
 .pc-uso.alto .pc-uso-barra i { background: #e0a020; }
 @media (max-width: 900px) { .pc-grade { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 @media (max-width: 520px) { .pc-grade, .pc-usos { grid-template-columns: 1fr; } }
+/* o botão Traduzir do título e a linha com o título em português (2026-11-17) */
+.bt-traduzir { justify-self: start; flex: none; padding: 3px 9px; font-size: 11px; font-weight: 600; border-radius: 980px;
+  background: transparent; color: var(--fraco); border: 1px solid var(--linha); box-shadow: none; }
+.bt-traduzir:hover, .bt-traduzir.ligado { color: var(--acento) !important; border-color: var(--acento) !important; }
+.traducao-titulo { font-size: 12px; line-height: 1.35; color: var(--acento); background: var(--painel2);
+  border: 1px solid var(--linha); border-radius: 8px; padding: 6px 8px; }

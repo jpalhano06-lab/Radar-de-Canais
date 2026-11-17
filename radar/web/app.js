@@ -421,10 +421,34 @@ function capaDoVideo(v) {
     ${v.duracao_s ? `<span class="dur">${duracao(v.duracao_s)}</span>` : ""}</a>`;
 }
 
+// ---------------------------------------------------------------- traduzir o título
+// O mesmo botão da extensão, agora nas telas do site (pedido do usuário em 2026-11-17, olhando a página do canal):
+// os títulos em japonês e coreano aparecem em português sem sair daqui. Quem traduz é o Radar, e a tradução fica
+// guardada lá: o mesmo título nunca é pedido duas vezes ao modelo. Clicar de novo tira a tradução da tela.
+const botaoTraduzir = (titulo) => `<button class="botao sec bt-traduzir" type="button" data-traduzir="${esc(titulo)}" title="Ver o título em português">Traduzir</button>`;
+
+document.addEventListener("click", async (e) => {
+  const b = e.target.closest("[data-traduzir]");
+  if (!b) return;
+  e.preventDefault();
+  // a tradução entra embaixo da linha de botões (ou do próprio botão, nos cartões que não têm linha)
+  const depois = b.closest(".video-acoes") || b;
+  const ja = depois.parentElement && depois.parentElement.querySelector(":scope > .traducao-titulo");
+  if (ja) { ja.remove(); b.classList.remove("ligado"); return; }
+  await carregando(b, "Traduzindo…", async () => {
+    const r = await api("/api/traduzir", { method: "POST", body: { textos: [b.dataset.traduzir] } });
+    const texto = (r.traducoes || [])[0] || "";
+    if (!texto) return aviso("Não consegui traduzir agora.");
+    depois.insertAdjacentHTML("afterend", `<div class="traducao-titulo">${esc(texto)}</div>`);
+    b.classList.add("ligado");
+  });
+});
+
 function cartaoVideo(v, { canal = true, roteiro = true, bloquear = true } = {}) {
   return `<div class="video" data-video="${esc(v.id)}" data-canal="${esc(v.canal_id || "")}" data-nomecanal="${esc(v.canal || "")}" data-nicho="${esc(v.subnicho || v.nicho || "")}" data-titulo="${esc(v.titulo)}">
     ${capaDoVideo(v)}<div class="icones-capa">${canal && v.canal ? "" : botaoAlvo(v)}${bloquear && v.canal_id ? '<button class="bloq" data-dica="Não mostrar mais este vídeo nem este canal">⊘</button>' : ""}</div>
     <a class="titulo" href="${linkVideo(esc(v.id))}" target="_blank" rel="noopener">${esc(v.titulo)}</a>
+    ${botaoTraduzir(v.titulo)}
     <div class="meta">${num(v.views)} views · ${ha(v.publicado)}${v.por_hora ? ` · ${num(v.por_hora)}/h` : ""}</div>
     ${canal && v.canal ? `<a class="dono" href="#/canal/${esc(v.canal_id)}"><img src="${esc(v.foto)}" alt="" referrerpolicy="no-referrer">
       <span>${esc(v.canal)}${v.inscritos != null ? " · " + num(v.inscritos) + " inscritos" : ""}</span><span class="dono-acoes">${botaoAlvo(v)}${v.canal_id ? botaoInscrever(v.canal_id) : ""}</span></a>` : ""}
@@ -1699,7 +1723,8 @@ async function painelCanal(caixa, canalId) {
             </div>
             <div class="cp-post-info"><b>${esc(v.titulo)}</b><small>${minSeg(v.duracao)} · pronto em ${v.criado ? new Date(v.criado).toLocaleDateString("pt-BR") : "—"} · ${v.shorts.length} ${v.shorts.length === 1 ? "short" : "shorts"}</small>
               <div class="video-acoes"><button class="botao sec" data-assistir-p="${i}">▶ Assistir</button><button class="botao sec" data-copiar="titulo" data-i="${i}">Copiar título</button>
-                <button class="botao sec" data-copiar="descricao" data-i="${i}">Copiar descrição</button></div></div>
+                <button class="botao sec" data-copiar="descricao" data-i="${i}">Copiar descrição</button>
+                ${botaoTraduzir(v.titulo)}</div></div>
             <div class="cp-post-acoes"><button class="botao cp-postei" data-ja="${i}" title="Marca o vídeo e os shorts como postados">✓ Postei tudo</button>
               <div class="cp-itens">${[["video", "Vídeo"], ...v.shorts.map((s, k) => [s.id, `Short ${k + 1}`])].map(([id, nomeItem]) => {
                 const feito = v.postados.includes(id);
