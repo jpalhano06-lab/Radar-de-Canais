@@ -416,6 +416,8 @@ function cartaoDoVideo(v, numero) {
         thumb ? baixar(thumb, v.titulo) : null,
         thumb ? h("button", { class: "x", title: "Tirar a thumbnail deste vídeo (ela fica nas soltas)",
           onclick: () => mudarDia((d) => { const x = d.videos.find((y) => y.id === v.id); if (x) x.thumb = null; }) }, "↺") : null,
+        v.postado ? null : h("button", { type: "button", class: "mudar-dia", title: "Passa este vídeo para amanhã (com a thumbnail)",
+          onclick: () => diaHojeParaAmanha(v.id).then(recarregar) }, "Para amanhã"),
         h("button", { class: "x", title: "Tirar este vídeo do dia (fica em Tirados hoje, dá para voltar)",
           onclick: () => tirarVideo(v) }, "×"))));
 }
@@ -549,6 +551,7 @@ function cartaoDoCanal(c, videos) {
   const deAmanha = amanha.filter((v) => v.canal === c.id);
   const listaAmanha = deAmanha.length ? h("div", { class: "amanha" }, ...deAmanha.map((v) => h("div", { class: "amanha-item" },
     h("span", { class: "fraco" }, "Amanhã:"), h("span", { class: "amanha-titulo" }, v.titulo || "vídeo sem título"),
+    h("button", { type: "button", class: "mudar-dia", title: "Este pedido é para hoje", onclick: () => diaAmanhaParaHoje(v.id).then(recarregar) }, "Passar para hoje"),
     h("button", { class: "x", title: "Tirar este pedido de amanhã", onclick: async () => {
       const { [DIA_AMANHA]: fila = [] } = await chrome.storage.local.get(DIA_AMANHA);
       await chrome.storage.local.set({ [DIA_AMANHA]: fila.filter((x) => x.id !== v.id) });

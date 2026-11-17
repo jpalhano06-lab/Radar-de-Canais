@@ -35,10 +35,12 @@ async function lerDia() {
   const ficam = ((dia && dia.videos) || []).filter((v) => !v.postado).map((v) => ({ ...v, veioDe: v.veioDe || dia.data }));
   const imagensQueFicam = new Set(ficam.flatMap((v) => [v.thumb, ...(v.ab || [])]).filter(Boolean));
   const thumbsQueFicam = ((dia && dia.thumbs) || []).filter((t) => imagensQueFicam.has(t.id));
+  for (const v of fila) for (const t of v.thumbsGuardadas || []) imagensQueFicam.add(t.id);
   const apagar = ((dia && dia.thumbs) || []).filter((t) => !imagensQueFicam.has(t.id));
   if (apagar.length) await chrome.storage.local.remove(apagar.map((t) => DIA_THUMB + t.id));
   const entram = fila.filter((v) => (v.para || "") <= hoje);
-  const novo = { data: hoje, videos: [...ficam, ...entram.map(({ para, ...v }) => v)], thumbs: thumbsQueFicam };
+  const novo = { data: hoje, videos: [...ficam, ...entram.map(({ para, thumbsGuardadas, ...v }) => v)],
+    thumbs: [...thumbsQueFicam, ...entram.flatMap((v) => v.thumbsGuardadas || [])] };
   await chrome.storage.local.set({ [DIA_CHAVE]: novo, [DIA_AMANHA]: fila.filter((v) => !entram.includes(v)) });
   return novo;
 }
@@ -88,6 +90,39 @@ function diaVoltarDaFabrica({ canal, canalNome, titulo, link = "", fila = null }
     d.videos.push(novo);
     return novo;
   });
+}
+
+/** Trocar o dia de um pedido (pedido do usuário em 2026-11-17: "sem querer eu coloquei pra amanhã, tem que ter a
+ *  opção de mudar pra hoje ou amanhã"). O de amanhã vem para hoje; o de hoje vai para amanhã, com a thumbnail (a
+ *  imagem fica guardada enquanto ele estiver na fila). */
+async function diaAmanhaParaHoje(id) {
+  const { [DIA_AMANHA]: fila = [] } = await chrome.storage.local.get(DIA_AMANHA);
+  const v = fila.find((x) => x.id === id);
+  if (!v) return null;
+  await chrome.storage.local.set({ [DIA_AMANHA]: fila.filter((x) => x.id !== id) });
+  const { para, ...volta } = v;
+  return mudarDia((d) => {
+    d.videos.push(volta);
+    for (const t of v.thumbsGuardadas || []) if (!d.thumbs.some((x) => x.id === t.id)) d.thumbs.push(t);
+    delete volta.thumbsGuardadas;
+    return volta;
+  });
+}
+async function diaHojeParaAmanha(id) {
+  const v = await mudarDia((d) => {
+    const x = d.videos.find((y) => y.id === id);
+    if (!x) return null;
+    d.videos = d.videos.filter((y) => y.id !== id);
+    const ids = new Set([x.thumb, ...(x.ab || [])].filter(Boolean));
+    const thumbsGuardadas = d.thumbs.filter((t) => ids.has(t.id));
+    d.thumbs = d.thumbs.filter((t) => !ids.has(t.id));
+    return { ...x, thumbsGuardadas };
+  });
+  if (!v) return null;
+  const { [DIA_AMANHA]: fila = [] } = await chrome.storage.local.get(DIA_AMANHA);
+  fila.push({ ...v, para: amanhaLocal() });
+  await chrome.storage.local.set({ [DIA_AMANHA]: fila });
+  return v;
 }
 
 /** Um vídeo pedido hoje (da Nova produção ou marcado à mão): { canal, canalNome, titulo }. */

@@ -2053,6 +2053,12 @@ sem o canal certo".
   1 minuto) e a aba do YouTube que abre faz a troca para a conta de treino.
 - Para usar: dê ↻ na extensão em `chrome://extensions` (o Radar não precisa religar).
 
+## Extensão 0.54.0: trocar o pedido entre hoje e amanhã (2026-11-17)
+
+Cada pedido da lista "Amanhã:" do canal tem "Passar para hoje", e cada vídeo de hoje ainda não postado tem "Para
+amanhã". O que vai para amanhã leva a thumbnail e o teste A/B (`thumbsGuardadas` na `diaAmanha`; as imagens não se
+apagam na virada) e volta com elas, seja pelo "Passar para hoje", seja quando o dia vira.
+
 ## Extensão 0.53.9: o que não foi postado passa para o dia seguinte (2026-11-17)
 
 Quando vira o dia, os vídeos não postados passam para o dia novo, com a thumbnail e o teste A/B deles, e ganham a
