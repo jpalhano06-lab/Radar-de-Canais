@@ -188,12 +188,15 @@ def travados() -> list:
 
 
 def voz() -> list:
-    """O saldo da GenAIPro, que narra os vídeos: avisa antes de um vídeo parar no meio da narração."""
+    """O saldo do narrador pago: avisa antes de um vídeo parar no meio da narração.
+
+    Desde 2026-11-17 quem narra é o OpenSpeaker. A GenAI Pro ficou de reserva e não é vigiada: nenhum canal
+    aponta mais para ela, então o saldo dela parado não para vídeo nenhum."""
     if not banco.um("SELECT 1 FROM producoes_fila WHERE estado IN ('na_fila','escrevendo','enviando','produzindo') LIMIT 1")             and not banco.um("SELECT 1 FROM producoes_fila WHERE atualizado>=? LIMIT 1",
                              (datetime.now(timezone.utc) - timedelta(days=2)).isoformat()):
         return []
     try:
-        d = fabrica_api._pedir("GET", "/api/genaipro/creditos", tempo=20)
+        d = fabrica_api._pedir("GET", "/api/openspeaker/creditos", tempo=20)
     except Exception:  # fábrica desligada: o aviso da fábrica fora já cobre
         return []
     if not d.get("configurada") or d.get("minutos_de_narracao") is None:
@@ -201,9 +204,9 @@ def voz() -> list:
     minutos = d.get("minutos_de_narracao") or 0
     if minutos >= MINUTOS_DE_VOZ:
         return []
-    return [_aviso("genaipro-saldo", "erro" if minutos < 10 else "atencao", "Saldo da GenAIPro acabando",
-                   f"Restam {d.get('creditos', 0):,.0f} créditos".replace(",", ".") + f", uns {minutos} min de narração. Um vídeo de 30 min precisa de uns 36 mil. "
-                   "Recarregue em genaipro.vn.", "#/integracoes")]
+    return [_aviso("openspeaker-saldo", "erro" if minutos < 10 else "atencao", "Saldo do OpenSpeaker acabando",
+                   f"Restam {d.get('creditos', 0):,.0f} créditos".replace(",", ".") + f", uns {minutos} min de narração. Um vídeo de 30 min precisa de uns 35 mil. "
+                   "Recarregue em ai33.pro/app/buy-credits.", "#/integracoes")]
 
 
 def openrouter() -> list:

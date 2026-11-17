@@ -39,7 +39,7 @@ def linhas(pasta: Path) -> list[dict]:
 def combinar(fabrica: dict | None, reais: list[dict]) -> list[dict]:
     """As linhas de gasto com o total da fábrica (a rota /custos, a mesma dos Resultados). O custos_reais.json só tem a
     narração e as imagens; texto, visão e o juiz a fábrica calcula à parte e lista em modelos_de_texto. Cada tipo de
-    gasto é repartido entre os provedores do arquivo (narração → genaipro) ou, sem nenhum, entre os modelos de texto."""
+    gasto é repartido entre os provedores do arquivo (narração → openspeaker) ou, sem nenhum, entre os modelos de texto."""
     if not fabrica or not fabrica.get("por_categoria"):
         return reais
     modelos: dict[str, float] = {}

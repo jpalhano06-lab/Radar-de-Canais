@@ -28,8 +28,14 @@ SERVICOS = [
      "obrigatoria": True, "para_que": "Roteiro em cenas, escolha do material e as imagens de IA da fábrica.",
      "limite": "Gasta o saldo da conta OpenRouter; uma chave atende tudo.",
      "onde": "https://openrouter.ai/settings/keys"},
+    {"id": "openspeaker", "nome": "OpenSpeaker", "dono": "fabrica", "env": "OPENSPEAKER_API", "varias": False,
+     "obrigatoria": True, "para_que": "A narração com as vozes da ElevenLabs, desde 2026-11-17.",
+     "limite": "Gasta 1,29 crédito por caractere narrado (1,12 da fala mais a transcrição); "
+               "refazer a voz gasta de novo.",
+     "onde": "https://ai33.pro/app/api-document"},
     {"id": "genaipro", "nome": "GenAI Pro", "dono": "fabrica", "env": "GENAIPRO_API", "varias": False,
-     "obrigatoria": True, "para_que": "A narração com as vozes da ElevenLabs.",
+     "obrigatoria": False, "para_que": "Narração de reserva: era o narrador até 2026-11-17, "
+                                      "3,1x mais caro que o OpenSpeaker.",
      "limite": "Gasta créditos por caractere narrado; refazer a voz gasta de novo.",
      "onde": "https://genaipro.vn"},
     {"id": "gemini", "nome": "Gemini (Google)", "dono": "fabrica", "env": "GEMINI_API_KEY", "varias": True,
@@ -109,6 +115,9 @@ def arquivo_da_chave(env: str) -> Path | None:
 
 # ---------------------------------------------------------------- estado, saldos e testes
 
+# Os dois narradores pagos: o saldo e o teste da chave saem da fábrica, cada um no seu endpoint.
+NARRADORES = {"openspeaker": "/api/openspeaker/creditos", "genaipro": "/api/genaipro/creditos"}
+
 _TESTES: dict[str, dict] = {}       # env -> {"ok", "erro", "quando", "t"}; vale 1 hora
 _SALDOS: dict[str, tuple] = {}      # servico -> (t, saldo); vale 10 minutos
 UMA_HORA = 3600
@@ -156,13 +165,15 @@ def _saldo(s: dict, fabrica_ligada: bool) -> dict:
         c = youtube.cota_hoje()
         return {"valor": c["livre"], "unidade": "unidades", "informado": False,
                 "texto": f"{c['livre']:,} de {c['total']:,} livres hoje".replace(",", ".")}
-    if s["id"] == "genaipro":
+    if s["id"] in NARRADORES:
         if not fabrica_ligada:
             return {"valor": None, "unidade": "", "informado": False, "texto": "fábrica desligada"}
         try:
-            d = fabrica_api._pedir("GET", "/api/genaipro/creditos", tempo=20)
+            d = fabrica_api._pedir("GET", NARRADORES[s["id"]], tempo=20)
         except fabrica_api.SemFabrica as erro:
             return {"valor": None, "unidade": "", "informado": False, "texto": str(erro)}
+        if not d.get("configurada", True):
+            return {"valor": None, "unidade": "", "informado": False, "texto": "sem chave na fábrica"}
         return {"valor": d.get("creditos"), "unidade": "créditos", "informado": False,
                 "texto": f"{d.get('creditos', 0):,.0f} créditos · ~{d.get('minutos_de_narracao', 0)} min de narração".replace(",", ".")}
     if s["id"] in ("groq", "pexels", "pixabay", "trello", "trello-token"):
@@ -202,9 +213,10 @@ def estado() -> dict:
 
 def _chamar_teste(sid: str, chave: str) -> None:
     """Uma chamada barata que só passa com a chave certa. Levanta RuntimeError com o motivo."""
-    if sid == "genaipro":
-        if not fabrica_api._pedir("GET", "/api/genaipro/creditos", tempo=20).get("configurada"):
-            raise RuntimeError("a fábrica não achou a chave da GenAI Pro")
+    if sid in NARRADORES:
+        if not fabrica_api._pedir("GET", NARRADORES[sid], tempo=20).get("configurada"):
+            nome = "do OpenSpeaker" if sid == "openspeaker" else "da GenAI Pro"
+            raise RuntimeError(f"a fábrica não achou a chave {nome}")
         return
     if sid in ("trello", "trello-token"):
         par = {"key": config.AMBIENTE.get("TRELLO_KEY", ""), "token": config.AMBIENTE.get("TRELLO_TOKEN", "")}
