@@ -1392,25 +1392,41 @@ async function formProducao(caixa, canalId, depois = () => {}, perguntarDeNovo =
   // editar o texto do agente (o que ele sabe sobre o canal) ou criar um, sem sair da página
   const editarAgente = () => {
     const a = projetos.find((x) => String(x.id) === String(p.projeto_roteiro_id)) || { id: "", nome: "", instrucoes: "" };
-    const partesAg = { ia_pct: parteDeIa(a.ia_pct) };
-    caixa.innerHTML = `<div class="pergunta-caixa"><h3>${a.id ? "Editar o agente de roteiro" : "Criar o agente de roteiro"}</h3>
-      <p class="sub">O agente guarda o jeito de escrever do canal: tom, público, como abrir e fechar, o que evitar. Vale para os próximos roteiros${a.id ? " de todos os canais que usam este agente" : ""}.</p>
-      <label class="campo"><span>Nome</span><input id="ag-nome" value="${esc(a.nome)}" placeholder="Ex.: canal de animais em português"></label>
-      <label class="campo"><span>Ideal para (opcional)</span><input id="ag-ideal" value="${esc(a.ideal_para || "")}" placeholder="Ex.: modelar um vídeo que foi muito bem num canal de outro país"></label>
-      ${seletorDeTema("ag-tema", a.tema || "", "Tema dos vídeos deste agente", "A Nova produção já abre com ele.")}
-      <div class="trilhos">${trilho("ia_pct", "Imagem de IA x imagem real", PARTES_DE_IA, partesAg)}</div>
-      <div class="np-duas"><label class="campo"><span>Vídeo do YouTube</span><select id="ag-yt">${opcoesDe([["", "Padrão do canal"], ...PARTES_DE_YOUTUBE], a.footage_real)}</select></label></div>
-      ${a.claude_uuid ? `<p class="sub">${ligadoAoClaude(a)}. As instruções e os arquivos vêm de lá: para mudar, mude o projeto no claude.ai.</p>` : ""}
-      <label class="campo"><span>Instruções</span><textarea id="ag-instr" rows="12" ${a.claude_uuid ? "readonly" : ""} placeholder="Cole aqui as instruções (de um projeto do claude.ai, por exemplo)">${esc(a.instrucoes)}</textarea></label>
-      <div class="linha"><button class="botao" id="ag-salvar">Salvar o agente</button><button class="botao sec" id="ag-cancelar">Cancelar</button></div></div>`;
+    let iaPct = parteDeIa(a.ia_pct);
+    // "0" no agente é o mesmo padrão do canal (15%, só Creative Commons): vira o botão "Padrão do canal"
+    let yt = [15, 25, 40].includes(Number(a.footage_real)) ? String(a.footage_real) : "";
+    const ytOpcoes = [["", "Padrão do canal", "15%, só Creative Commons"], ["15", "15%", "das cenas"], ["25", "25%", "das cenas"], ["40", "40%", "das cenas"]];
+    const secao = (n, titulo, sub, corpo) => `<section class="ag-secao"><header><span class="ag-n">${n}</span><div><h4>${titulo}</h4>${sub ? `<p>${sub}</p>` : ""}</div></header>${corpo}</section>`;
+    caixa.innerHTML = `<div class="pergunta-caixa ag-editor">
+      <div class="ag-topo"><div><small class="ag-kicker">Agente de roteiro</small><h3>${a.id ? "Editar o agente" : "Criar o agente"}</h3>
+        <p class="sub">O agente guarda o jeito de escrever do canal: tom, público, como abrir e fechar, o que evitar. Vale para os próximos roteiros${a.id ? " de todos os canais que usam este agente" : ""}.</p></div></div>
+      ${secao(1, "Quem é", "", `<div class="np-duas">
+        <label class="campo"><span>Nome</span><input id="ag-nome" value="${esc(a.nome)}" placeholder="Ex.: canal de animais em português"></label>
+        <label class="campo"><span>Ideal para <small>(opcional)</small></span><input id="ag-ideal" value="${esc(a.ideal_para || "")}" placeholder="Ex.: modelar um vídeo que foi muito bem lá fora"></label></div>`)}
+      ${secao(2, "Visual dos vídeos", "Cor, letra e moldura das animações e dos textos na tela. A Nova produção já abre com ele.",
+        seletorDeTema("ag-tema", a.tema || "", "Tema"))}
+      ${secao(3, "De onde vêm as imagens", "", `${barraDeIa("ag-ia", iaPct, "Imagem de IA x imagem real")}
+        <div class="campo"><span>Trechos de vídeo do YouTube</span>
+          <div class="segmentos" id="ag-yt" role="radiogroup" aria-label="Trechos de vídeo do YouTube">${ytOpcoes.map(([v, t, s]) => `<button type="button" role="radio"
+            data-v="${v}" aria-checked="${v === yt}"><b>${t}</b><small>${s}</small></button>`).join("")}</div></div>`)}
+      ${secao(4, "Instruções", a.claude_uuid ? `${ligadoAoClaude(a)}. Para mudar, mude o projeto no claude.ai.` : "Tom de voz, público, estrutura, como abrir e fechar, o que evitar.",
+        `<div class="ag-instr-caixa ${a.claude_uuid ? "trancada" : ""}">${a.claude_uuid ? '<span class="ag-selo">vem do claude.ai · só leitura</span>' : ""}
+          <textarea id="ag-instr" rows="14" ${a.claude_uuid ? "readonly" : ""} placeholder="Cole aqui as instruções (de um projeto do claude.ai, por exemplo)">${esc(a.instrucoes)}</textarea></div>`)}
+      <div class="ag-rodape"><button class="botao sec" id="ag-cancelar">Cancelar</button><button class="botao" id="ag-salvar">Salvar o agente</button></div></div>`;
     let tema = a.tema || "";
     ligarTema(caixa.querySelector("#ag-tema"), (v) => { tema = v; });
-    ligarTrilhos(caixa, partesAg, () => PARTES_DE_IA, () => {})();
+    ligarBarraDeIa(caixa.querySelector("#ag-ia"), (v) => { iaPct = v; });
+    caixa.querySelector("#ag-yt").onclick = (e) => {
+      const b = e.target.closest("button");
+      if (!b) return;
+      yt = b.dataset.v;
+      caixa.querySelectorAll("#ag-yt button").forEach((x) => x.setAttribute("aria-checked", String(x === b)));
+    };
     caixa.querySelector("#ag-cancelar").onclick = () => resumo();
     caixa.querySelector("#ag-salvar").onclick = (e) => carregando(e.currentTarget, "Salvando…", async () => {
       const r = await api("/api/projetos", { method: "POST", body: { id: a.id || null, nome: caixa.querySelector("#ag-nome").value,
         instrucoes: caixa.querySelector("#ag-instr").value, ideal_para: caixa.querySelector("#ag-ideal").value, tema,
-        ia_pct: partesAg.ia_pct, footage_real: caixa.querySelector("#ag-yt").value } });
+        ia_pct: iaPct, footage_real: yt } });
       projetos = (await api("/api/projetos")).projetos;
       if (!a.id) {
         await api(`/api/producao/${encodeURIComponent(canalId)}`, { method: "POST", body: { ...p, projeto_roteiro_id: String(r.id) } });
@@ -1420,37 +1436,50 @@ async function formProducao(caixa, canalId, depois = () => {}, perguntarDeNovo =
     });
   };
   const resumo = () => {
-    caixa.innerHTML = `<div class="pergunta-caixa producao-pronta"><div class="producao-pronta-cab"><h3>Configuração de ${esc(p.canal)}</h3>
+    const quemAgora = (p.imagens || {}).quem || "api";
+    const icone = (d) => `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="${d}"/></svg>`;
+    const ICONES = {
+      lingua: "M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18Zm0 0c2.5 2.4 3.8 5.4 3.8 9s-1.3 6.6-3.8 9m0-18c-2.5 2.4-3.8 5.4-3.8 9s1.3 6.6 3.8 9M3.5 9h17M3.5 15h17",
+      voz: "M12 3a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V6a3 3 0 0 0-3-3Zm-6 9a6 6 0 0 0 12 0M12 18v3",
+      agente: "M5 4h10l4 4v12H5zM15 4v4h4M8 12h8M8 16h5",
+      tempo: "M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18Zm0 4v5l3 2",
+      imagem: "M4 5h16v14H4zM4 15l4.5-4.5 4 4 2.5-2.5L20 17M15.5 9.5h.01",
+    };
+    const cartao = (ic, rotulo, valor, extra = "") => `<div class="pc-cartao"><span class="pc-ic">${icone(ICONES[ic])}</span>
+      <div class="pc-txt"><small>${rotulo}</small><b>${valor}</b>${extra}</div></div>`;
+    caixa.innerHTML = `<div class="pergunta-caixa producao-pronta"><div class="producao-pronta-cab"><div><small class="ag-kicker">Canal</small><h3>Configuração de ${esc(p.canal)}</h3></div>
         <button class="botao sec" id="pc-editar">Editar</button></div>
-      <div class="producao-respostas">
-        <div><span class="ic"></span><small>Língua</small><b>${esc(p.lingua)}</b></div>
-        <div><span class="ic"></span><small>Voz</small><b>${esc(p.voz || p.perfil || "sem voz")}</b></div>
-        <div><span class="ic"></span><small>Agente de roteiro</small><b>${esc(agenteDe(p.projeto_roteiro_id))}</b>
-          <button class="link-editar" id="pc-editar-agente" style="margin:4px 0 0">${p.projeto_roteiro_id ? "editar o agente" : "criar um agente"}</button></div>
-        <div><span class="ic"></span><small>Tempo dos vídeos</small><b>${esc(p.minutos)} minutos</b></div>
-        <div><span class="ic"></span><small>Quem gera as imagens de IA</small>
-          <select id="pc-imagens" class="pc-imagens">${Object.entries(p.imagens_quem || { api: "Chave de API" })
-            .map(([v, nome]) => `<option value="${esc(v)}" ${((p.imagens || {}).quem || "api") === v ? "selected" : ""}>${esc(nome)}</option>`).join("")}</select>
-          <small id="pc-imagens-sub" class="pc-imagens-sub">${esc(textoDaAssinatura(p))}</small></div></div></div>`;
+      <div class="pc-grade">
+        ${cartao("lingua", "Língua", esc(p.lingua))}
+        ${cartao("voz", "Voz", esc(p.voz || p.perfil || "sem voz"))}
+        ${cartao("agente", "Agente de roteiro", esc(agenteDe(p.projeto_roteiro_id)),
+          `<button class="pc-link" id="pc-editar-agente">${p.projeto_roteiro_id ? "Editar o agente" : "Criar um agente"} →</button>`)}
+        ${cartao("tempo", "Tempo dos vídeos", `${esc(p.minutos)} minutos`)}
+        <div class="pc-cartao pc-imagens-cartao"><span class="pc-ic">${icone(ICONES.imagem)}</span>
+          <div class="pc-txt"><small>Quem gera as imagens de IA</small>
+            <div class="segmentos pc-quem" id="pc-imagens" role="radiogroup" aria-label="Quem gera as imagens de IA">${Object.entries(p.imagens_quem || { api: "Chave de API" })
+              .map(([v, nome]) => `<button type="button" role="radio" data-v="${esc(v)}" aria-checked="${quemAgora === v}"><b>${esc(nome)}</b></button>`).join("")}</div>
+            <div id="pc-imagens-sub" class="pc-imagens-sub">${htmlDaAssinatura(p)}</div></div></div></div></div>`;
     caixa.querySelector("#pc-editar").onclick = () => perguntas[0]();
     caixa.querySelector("#pc-editar-agente").onclick = () => editarAgente();
-    const quem = caixa.querySelector("#pc-imagens");
-    quem.onchange = async () => {
-      const antes = (p.imagens || {}).quem || "api";
+    caixa.querySelector("#pc-imagens").onclick = async (e) => {
+      const b = e.target.closest("button[data-v]");
+      if (!b || b.dataset.v === quemAgora) return;
+      const valor = b.dataset.v;
       try {
-        const novo = await api(`/api/producao/${encodeURIComponent(canalId)}`, { method: "POST", body: { ...p, imagens_quem: quem.value } });
+        const novo = await api(`/api/producao/${encodeURIComponent(canalId)}`, { method: "POST", body: { ...p, imagens_quem: valor } });
         p.imagens = novo.imagens;
-        aviso(quem.value === "assinatura"
+        aviso(valor === "assinatura"
           ? "As imagens deste canal passam a sair pela assinatura do ChatGPT. Não gasta crédito: gasta o limite dela."
           : "As imagens deste canal voltam a sair pela chave de API da fábrica.");
         resumo();
-      } catch (e) { aviso(porque(e)); quem.value = antes; }
+      } catch (erro) { aviso(porque(erro)); }
     };
     // a conta ligada e quanto já foi usado chegam depois, sem segurar a tela
-    if (((p.imagens || {}).quem || "api") === "assinatura") {
+    if (quemAgora === "assinatura") {
       assinaturaDoChatGPT().then((a) => {
         const alvo = caixa.querySelector("#pc-imagens-sub");
-        if (alvo) alvo.textContent = textoDaAssinatura(p, a);
+        if (alvo) alvo.innerHTML = htmlDaAssinatura(p, a);
       });
     }
   };
@@ -1483,6 +1512,22 @@ function textoDaAssinatura(p, a) {
       : `Sem login do ChatGPT na fábrica: conecte uma conta em Integrações. Até lá as imagens saem pelo ${reserva}.`;
   return `${a.email || "conta ligada"} · ${a.plano || "ChatGPT"}. Janela de 5 horas: ${usoDaJanela(a, "janela")} · `
     + `Semana: ${usoDaJanela(a, "semana")}. Se o limite acabar no meio de um vídeo, as imagens que faltam saem pelo ${reserva}.`;
+}
+
+// o mesmo que textoDaAssinatura, arrumado: a conta numa linha, o uso de cada janela numa barrinha, a reserva embaixo
+function htmlDaAssinatura(p, a) {
+  if (((p.imagens || {}).quem || "api") !== "assinatura" || !a || !a.conectada)
+    return `<p>${esc(textoDaAssinatura(p, a))}</p>`;
+  const reserva = (p.imagens || {}).reserva || "openrouter";
+  const janela = (chave, nome) => {
+    const j = ((a.janelas || {})[chave]) || {};
+    const pct = typeof j.usado_pct === "number" ? Math.max(0, Math.min(100, j.usado_pct)) : null;
+    return `<div class="pc-uso ${pct >= 80 ? "alto" : ""}"><span>${nome}</span><b>${pct === null ? "—" : `${pct}%`}</b>
+      <div class="pc-uso-barra"><i style="width:${pct || 0}%"></i></div></div>`;
+  };
+  return `<div class="pc-conta"><span class="pc-ponto"></span><span>${esc(a.email || "conta ligada")}</span><em>${esc(a.plano || "ChatGPT")}</em></div>
+    <div class="pc-usos">${janela("janela", "Janela de 5 horas")}${janela("semana", "Semana")}</div>
+    <p>Não custa por imagem: gasta o limite. Se acabar no meio de um vídeo, o resto sai pelo ${esc(reserva)}.</p>`;
 }
 
 // O ChatGPT e o Gemini não deixam ser abertos dentro de outro site (bloqueiam o iframe). A lateral é uma janela do
@@ -3465,10 +3510,43 @@ const DICAS_DO_TEMA = {
   reaberto: "Fita de isolamento: fundo escuro com fita amarela e preta inclinada. Bom para true crime pesado e casos reabertos.",
 };
 // quanto do vídeo sai de cada lugar: o resto é foto e vídeo de banco
-// a barra de IA x imagem real (pedido do usuário em 2026-11-14), de 10 em 10. Os 25% e 75% de antes caem no degrau vizinho
-const PARTES_DE_IA = [["", "Padrão do canal"], ["0", "Só imagem real"],
-  ...[10, 20, 30, 40, 50, 60, 70, 80, 90].map((p) => [String(p), `IA ${p}% · real ${100 - p}%`]), ["100", "Só IA"]];
-const parteDeIa = (v) => (v === "" || v == null ? "" : String(Math.min(100, Math.max(0, Math.round(Number(v) / 10) * 10))));
+// a barra de IA x imagem real é livre, de 0 a 100 (pedido do usuário em 2026-11-16): a fábrica mira na parte mais perto
+// que o número de cenas deixa, sem obrigação de bater exato. Vazio é o padrão do canal (quem decide é o agente de cenas)
+const parteDeIa = (v) => (v === "" || v == null ? "" : String(Math.min(100, Math.max(0, Math.round(Number(v))))));
+const textoDaIa = (v) => (v === "" ? "Padrão do canal" : +v === 0 ? "Só imagem real" : +v === 100 ? "Só IA" : `IA ${v}% · real ${100 - v}%`);
+function barraDeIa(id, valor, rotulo) {
+  const padrao = valor === "", n = padrao ? 50 : +valor;
+  return `<div class="barra-ia ${padrao ? "no-padrao" : ""}" id="${id}" style="--ia:${n}%">
+    <div class="barra-ia-cab"><span>${esc(rotulo)}</span><b class="barra-ia-valor">${esc(textoDaIa(valor))}</b></div>
+    <div class="barra-ia-linha">
+      <button type="button" class="barra-ia-padrao" aria-pressed="${padrao}" title="Sem número: o agente de cenas decide quanto de IA, como no canal">Padrão do canal</button>
+      <div class="barra-ia-trilho"><input type="range" min="0" max="100" step="1" value="${n}" aria-label="${esc(rotulo)}"></div>
+      <span class="barra-ia-num"><input type="number" min="0" max="100" step="1" value="${padrao ? "" : n}" placeholder="—" aria-label="Porcentagem de IA">%</span>
+    </div>
+    <div class="barra-ia-pontas"><span><i class="ia"></i>Imagem de IA</span><span>Imagem real<i class="real"></i></span></div>
+    <small class="barra-ia-nota">Arraste até onde quiser. A fábrica chega o mais perto que as cenas do vídeo deixarem.</small></div>`;
+}
+// liga a barra: arrastando, só o desenho e o rótulo andam; ao soltar (ou digitar o número), aoMudar(valor) com "" = padrão
+function ligarBarraDeIa(caixa, aoMudar) {
+  if (!caixa) return;
+  const faixa = caixa.querySelector("input[type=range]"), num = caixa.querySelector("input[type=number]");
+  const padrao = caixa.querySelector(".barra-ia-padrao"), rotulo = caixa.querySelector(".barra-ia-valor");
+  const pintar = (v) => {
+    caixa.classList.toggle("no-padrao", v === "");
+    padrao.setAttribute("aria-pressed", String(v === ""));
+    if (v !== "") { caixa.style.setProperty("--ia", `${v}%`); faixa.value = v; }
+    if (document.activeElement !== num) num.value = v;
+    rotulo.textContent = textoDaIa(v);
+  };
+  faixa.oninput = () => pintar(faixa.value);
+  faixa.onchange = () => aoMudar(parteDeIa(faixa.value));
+  num.oninput = () => { if (num.value !== "") pintar(parteDeIa(num.value)); };
+  num.onchange = () => { const v = num.value === "" ? "" : parteDeIa(num.value); num.value = v; pintar(v); aoMudar(v); };
+  padrao.onclick = () => {
+    const v = padrao.getAttribute("aria-pressed") === "true" ? parteDeIa(faixa.value) : "";
+    pintar(v); aoMudar(v);
+  };
+}
 const PARTES_DE_YOUTUBE = [["0", "Padrão do canal (15%, só Creative Commons)"], ["15", "15% das cenas"], ["25", "25% das cenas"], ["40", "40% das cenas"]];
 const opcoesDe = (lista, valor) => lista.map(([v, r]) => `<option value="${v}" ${v === String(valor ?? "") ? "selected" : ""}>${r}</option>`).join("");
 // os botões do tema, usados na Nova produção e no formulário do agente
@@ -3655,7 +3733,7 @@ async function novaProducao(preset = {}) {
     const opcoesHtml = `<details class="campo np-opcoes" ${N.opcoesAbertas ? "open" : ""}><summary>Mais opções deste vídeo</summary><div class="np-duas">${OPCOES_DO_VIDEO.map(([campo, rotulo, lista]) => `<label class="campo"><span>${rotulo}</span><select class="np-opcao" data-campo="${campo}">${lista.map(([v, r]) => `<option value="${v}" ${v === (N.opcoes[campo] || "") ? "selected" : ""}>${r}</option>`).join("")}</select></label>`).join("")}</div></details>`;
     const passou = Number(N.iaPct || 0) + N.footage > 100;
     const iaHtml = `<div class="campo"><span>Imagem de IA <small>(o resto segue com fotos e vídeos de banco e do YouTube)</small></span>
-      <div class="trilhos" id="np-ia">${trilho("ia_pct", "Quanto de IA", PARTES_DE_IA, { ia_pct: N.iaPct })}</div>
+      ${barraDeIa("np-ia", N.iaPct, "Quanto de IA")}
       ${passou ? '<small class="np-dica alerta">IA e YouTube juntos passam de 100% das cenas.</small>' : ""}
       ${Number(N.iaPct) >= 50 ? '<small class="np-dica">Muitas imagens gastam o limite da assinatura do ChatGPT; acabando, as que faltam saem pela chave de API, pagas.</small>' : ""}</div>`;
     const revisarHtml = footageHtml + iaHtml + temaHtml + destinoHtml + opcoesHtml + revisarSo;
@@ -3728,8 +3806,7 @@ async function novaProducao(preset = {}) {
     $n("np-ver-anim")?.addEventListener("click", () => fechar());
     $n("np-revisar").onchange = (e) => { N.revisar = e.target.checked; desenharPrevia(); };
     $n("np-footage").onchange = (e) => { N.footage = Number(e.target.value) || 0; guardar("np-footage", String(N.footage)); desenhar(); desenharPrevia(); };
-    const partesNp = { ia_pct: N.iaPct };
-    ligarTrilhos($n("np-ia"), partesNp, () => PARTES_DE_IA, () => { N.iaPct = partesNp.ia_pct; guardar("np-ia", N.iaPct); desenhar(); atualizarCusto(); })();
+    ligarBarraDeIa($n("np-ia"), (v) => { N.iaPct = v; guardar("np-ia", N.iaPct); desenhar(); atualizarCusto(); });
     ligarTema($n("np-tema"), (v) => { N.tema = v; guardar("np-tema", v); desenharPrevia(); });
     if ($n("np-destino")) $n("np-destino").onchange = (e) => { N.destino = e.target.value; desenharPrevia(); };
     campos.querySelector(".np-opcoes").ontoggle = (e) => { N.opcoesAbertas = e.target.open; };

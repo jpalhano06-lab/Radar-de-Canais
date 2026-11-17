@@ -28,7 +28,9 @@ MINUTOS_SEM_NARRACAO = 5
 PERFIL_SEM_NARRACAO = {"português": "sem-narracao"}   # as outras línguas: SEM_NARRACAO_OUTRAS
 SEM_NARRACAO_OUTRAS = "sem-narracao-en"
 FOOTAGE_REAL = (0, 15, 25, 40)    # % das cenas com trecho de vídeo real do YouTube (o garimpo da fábrica)
-IA_PCT = (0, 10, 20, 25, 30, 40, 50, 60, 70, 75, 80, 90, 100)  # a barra de IA x real anda de 10 em 10 (2026-11-14); 25 e 75 são de antes. % das cenas com imagem de IA. Sem escolha, quem decide é o agente de cenas, até ia.teto
+# % das cenas com imagem de IA. A barra é livre, de 0 a 100 (pedido do usuário em 2026-11-16): a fábrica mira na parte
+# mais perto que o número de cenas permite, sem obrigação de bater exato. Sem escolha, quem decide é o agente de cenas, até ia.teto
+IA_PCT = tuple(range(101))
 # o que a Nova produção deixa escolher por vídeo. Vazio é o padrão do canal, e aí nada é gravado no projeto
 ESCOLHAS = {
     "tema": ("noticiario", "dossie", "cinema", "jornal", "caderno", "planilha", "hacker", "terror", "colagem", "cinetico",

@@ -2251,3 +2251,112 @@ nav .subs a:hover:not(.ativo):not(#_) { background: var(--painel2); color: var(-
 
 /* sem os emojis (pedido do usuário em 2026-11-14), as caixinhas de ícone que ficaram vazias somem */
 .ic:empty, .mt-ic:empty, .ac-calmo-ic:empty { display: none; }
+
+/* ------------------------------------------------ editor do agente, barra de IA e resumo do canal (2026-11-16) */
+.ag-kicker { display: block; font-size: 11px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--acento); margin-bottom: 4px; }
+.ag-editor { gap: 18px; }
+.ag-editor .ag-topo .sub { max-width: 70ch; margin-top: 6px; }
+.ag-secao { display: grid; gap: 14px; padding: 18px 20px; border: 1px solid var(--linha); border-radius: 16px;
+  background: color-mix(in srgb, var(--painel2) 55%, transparent); }
+.ag-secao > header { display: flex; gap: 12px; align-items: flex-start; }
+.ag-secao > header h4 { margin: 0; font-size: 15px; letter-spacing: -.01em; }
+.ag-secao > header p { margin: 2px 0 0; font-size: 12.5px; color: var(--fraco); line-height: 1.45; }
+.ag-n { flex: none; display: grid; place-items: center; width: 24px; height: 24px; border-radius: 50%; font-size: 12px; font-weight: 700;
+  background: color-mix(in srgb, var(--acento) 16%, transparent); color: var(--acento); }
+.ag-secao .np-dica, .ag-secao #ag-tema-campo > span { display: none; }
+.ag-editor .campo > span small { font-weight: 400; color: var(--fraco); }
+.ag-editor .campo input { padding: 10px 12px; font-size: 14px; border-radius: 10px; }
+.ag-editor .np-duas { gap: 14px; }
+@media (max-width: 640px) { .ag-editor .np-duas { grid-template-columns: 1fr; } .ag-secao { padding: 14px; } }
+
+/* os cartões do tema: maiores, com a marca do escolhido */
+.ag-editor .tema-lista { grid-template-columns: repeat(auto-fill, minmax(124px, 1fr)); gap: 10px; }
+.ag-editor .tema-opcao { position: relative; border-width: 1px; border-radius: 12px; transition: transform .12s, border-color .12s, box-shadow .12s; }
+.ag-editor .tema-opcao:hover { transform: translateY(-2px); box-shadow: 0 6px 18px rgba(0, 0, 0, .25); }
+.ag-editor .tema-opcao span { font-size: 12.5px; font-weight: 600; text-align: left; color: var(--texto); }
+.ag-editor .tema-opcao.escolhido { border-color: var(--acento); box-shadow: 0 0 0 2px var(--acento); }
+.ag-editor .tema-opcao.escolhido::after { content: "✓"; position: absolute; top: 6px; right: 6px; display: grid; place-items: center;
+  width: 20px; height: 20px; border-radius: 50%; font-size: 12px; font-weight: 800; background: var(--acento); color: var(--sobre-acento, #fff); }
+
+/* a barra de IA x real: livre de 0 a 100, com o "padrão do canal" à parte */
+.barra-ia { --ia: 50%; --cor-ia: var(--acento); --cor-real: #2fb39a; display: grid; gap: 10px; }
+.barra-ia-cab { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; font-size: 13px; font-weight: 600; color: var(--texto); }
+.barra-ia-valor { font-size: 15px; font-variant-numeric: tabular-nums; }
+.barra-ia-linha { display: flex; align-items: center; gap: 12px; }
+.barra-ia-padrao { flex: none; padding: 7px 12px; border-radius: 999px; border: 1px solid var(--linha); background: var(--painel2);
+  color: var(--fraco); font-size: 12px; font-weight: 600; cursor: pointer; transition: all .12s; }
+.barra-ia-padrao:hover { color: var(--texto); border-color: var(--fraco); }
+.barra-ia-padrao[aria-pressed="true"] { background: color-mix(in srgb, var(--acento) 16%, transparent); border-color: var(--acento); color: var(--texto); }
+.barra-ia-trilho { flex: 1; min-width: 0; }
+.barra-ia input[type=range] { width: 100%; height: 28px; margin: 0; padding: 0; border: 0; box-shadow: none; background: none; cursor: pointer; -webkit-appearance: none; appearance: none; }
+.barra-ia input[type=range]::-webkit-slider-runnable-track { height: 10px; border-radius: 999px;
+  background: linear-gradient(90deg, var(--cor-ia) 0 var(--ia), var(--cor-real) var(--ia) 100%); }
+.barra-ia input[type=range]::-moz-range-track { height: 10px; border-radius: 999px;
+  background: linear-gradient(90deg, var(--cor-ia) 0 var(--ia), var(--cor-real) var(--ia) 100%); }
+.barra-ia input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; appearance: none; width: 22px; height: 22px; margin-top: -6px;
+  border-radius: 50%; background: #fff; border: 3px solid var(--cor-ia); box-shadow: 0 2px 8px rgba(0, 0, 0, .35); transition: transform .1s; }
+.barra-ia input[type=range]::-moz-range-thumb { width: 16px; height: 16px; border-radius: 50%; background: #fff; border: 3px solid var(--cor-ia);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, .35); }
+.barra-ia input[type=range]:active::-webkit-slider-thumb { transform: scale(1.15); }
+.barra-ia input[type=range]:focus, .barra-ia input[type=range]:focus-visible { outline: none; box-shadow: none; }
+.barra-ia input[type=range]:focus-visible::-webkit-slider-thumb { box-shadow: 0 0 0 5px color-mix(in srgb, var(--acento) 30%, transparent); }
+.barra-ia-num { flex: none; display: flex; align-items: center; gap: 2px; font-size: 13px; color: var(--fraco); }
+.barra-ia-num input { width: 58px; padding: 6px 8px; text-align: right; font: inherit; font-weight: 700; color: var(--texto);
+  background: var(--painel2); border: 1px solid var(--linha); border-radius: 8px; -moz-appearance: textfield; }
+.barra-ia-num input::-webkit-inner-spin-button { opacity: .4; }
+.barra-ia-pontas { display: flex; justify-content: space-between; font-size: 11.5px; color: var(--fraco); }
+.barra-ia-pontas span { display: inline-flex; align-items: center; gap: 6px; }
+.barra-ia-pontas i { width: 8px; height: 8px; border-radius: 2px; }
+.barra-ia-pontas i.ia { background: var(--cor-ia); } .barra-ia-pontas i.real { background: var(--cor-real); }
+.barra-ia-nota { font-size: 11.5px; color: var(--fraco); }
+.barra-ia.no-padrao .barra-ia-trilho, .barra-ia.no-padrao .barra-ia-pontas { opacity: .35; filter: grayscale(1); }
+.barra-ia.no-padrao .barra-ia-trilho:hover { opacity: .7; }
+@media (max-width: 560px) { .barra-ia-linha { flex-wrap: wrap; } .barra-ia-trilho { flex-basis: 100%; order: 3; } }
+
+/* escolha em segmentos, no lugar do select do navegador */
+.segmentos { display: flex; flex-wrap: wrap; gap: 4px; padding: 4px; border-radius: 12px; background: var(--painel2); border: 1px solid var(--linha); width: fit-content; max-width: 100%; box-sizing: border-box; }
+.segmentos button { display: grid; gap: 1px; padding: 7px 14px; border: 0; border-radius: 9px; background: transparent; color: var(--fraco);
+  cursor: pointer; text-align: left; transition: background .12s, color .12s; }
+.segmentos button b { font-size: 13px; color: inherit; }
+.segmentos button small { font-size: 11px; opacity: .8; color: inherit; }
+.segmentos button:hover { color: var(--texto); background: color-mix(in srgb, var(--texto) 6%, transparent); }
+.segmentos button[aria-checked="true"] { background: var(--painel); color: var(--texto); box-shadow: 0 1px 4px rgba(0, 0, 0, .3), inset 0 0 0 1px var(--acento); }
+
+/* as instruções */
+.ag-instr-caixa { position: relative; }
+.ag-instr-caixa textarea { width: 100%; box-sizing: border-box; resize: vertical; min-height: 260px; padding: 14px 16px; font: 13px/1.6 ui-monospace, "Cascadia Code", Consolas, monospace;
+  color: var(--texto); background: var(--fundo); border: 1px solid var(--linha); border-radius: 12px; }
+.ag-instr-caixa.trancada textarea { color: color-mix(in srgb, var(--texto) 80%, transparent); padding-top: 38px; }
+.ag-selo { position: absolute; top: 10px; left: 14px; font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 999px;
+  background: color-mix(in srgb, var(--acento) 16%, transparent); color: var(--acento); }
+.ag-rodape { display: flex; justify-content: flex-end; gap: 10px; padding-top: 4px; }
+.ag-rodape .botao { padding: 10px 20px; }
+
+/* o resumo da configuração do canal */
+.producao-pronta-cab h3 { margin: 0; }
+.pc-grade { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
+.pc-cartao { display: flex; gap: 12px; align-items: flex-start; padding: 16px; border-radius: 14px; background: var(--painel2);
+  border: 1px solid var(--linha); min-width: 0; }
+.pc-ic { flex: none; display: grid; place-items: center; width: 36px; height: 36px; border-radius: 10px;
+  background: color-mix(in srgb, var(--acento) 14%, transparent); color: var(--acento); }
+.pc-ic svg { width: 19px; height: 19px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.pc-txt { display: grid; gap: 3px; min-width: 0; }
+.pc-txt > small { font-size: 12px; color: var(--fraco); }
+.pc-txt > b { font-size: 16px; overflow-wrap: anywhere; }
+.pc-link { justify-self: start; margin-top: 4px; padding: 0; border: 0; background: none; color: var(--acento); font-size: 12.5px; font-weight: 600; cursor: pointer; }
+.pc-link:hover { text-decoration: underline; }
+.pc-imagens-cartao { grid-column: 1 / -1; }
+.pc-imagens-cartao .pc-txt { gap: 8px; width: 100%; }
+.pc-imagens-sub { display: grid; gap: 8px; color: var(--fraco); font-size: 12px; line-height: 1.45; }
+.pc-imagens-sub p { margin: 0; }
+.pc-conta { display: flex; align-items: center; gap: 8px; color: var(--texto); font-size: 13px; }
+.pc-conta em { font-style: normal; font-size: 11px; font-weight: 600; padding: 1px 8px; border-radius: 999px; background: var(--painel); border: 1px solid var(--linha); color: var(--fraco); }
+.pc-ponto { width: 8px; height: 8px; border-radius: 50%; background: #2fb36a; box-shadow: 0 0 0 3px rgba(47, 179, 106, .2); }
+.pc-usos { display: grid; grid-template-columns: repeat(2, minmax(0, 260px)); gap: 16px; }
+.pc-uso { display: grid; grid-template-columns: 1fr auto; gap: 4px 8px; font-size: 12px; }
+.pc-uso b { color: var(--texto); font-variant-numeric: tabular-nums; }
+.pc-uso-barra { grid-column: 1 / -1; height: 6px; border-radius: 999px; background: var(--linha); overflow: hidden; }
+.pc-uso-barra i { display: block; height: 100%; border-radius: inherit; background: #2fb36a; }
+.pc-uso.alto .pc-uso-barra i { background: #e0a020; }
+@media (max-width: 900px) { .pc-grade { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 520px) { .pc-grade, .pc-usos { grid-template-columns: 1fr; } }

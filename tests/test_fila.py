@@ -528,9 +528,15 @@ def test_as_partes_de_ia_e_youtube_vem_do_agente(db):
 def test_recusa_parte_de_ia_que_nao_existe_ou_que_passa_de_100(db):
     banco.um("SELECT 1")
     with pytest.raises(ValueError):
-        fila.criar(1, {"titulo": "T", "caracteres": 10620, "ia_pct": 33}, True)
+        fila.criar(1, {"titulo": "T", "caracteres": 10620, "ia_pct": 101}, True)
     with pytest.raises(ValueError):
         fila.criar(1, {"titulo": "T", "caracteres": 10620, "ia_pct": 75, "footage_real": 40}, True)
+
+
+def test_barra_de_ia_e_livre_de_0_a_100(db):
+    # a barra é livre (pedido do usuário em 2026-11-16): a fábrica mira na parte mais perto que as cenas permitem
+    linha = fila.criar(1, {"titulo": "T", "caracteres": 10620, "ia_pct": 33}, True)
+    assert fila.item(1, linha["id"])["pedido"]["ia_pct"] == 33
 
 
 def test_parte_de_ia_vira_alvo_e_teto_na_fabrica():
