@@ -1306,14 +1306,20 @@ async function formProducao(caixa, canalId, depois = () => {}, perguntarDeNovo =
     async (busca = "", genero = "") => {
       caixa.innerHTML = moldura(1, `<h3>Qual voz narra os vídeos?</h3>
         <p class="sub">As vozes da fábrica (GenAI Pro) em ${esc(escolha.lingua)}. Aperte ▶ para ouvir antes de escolher.${p.voz ? ` Voz de agora: <b>${esc(p.voz)}</b>.` : ""}</p>
-        <div class="linha voz-filtros"><input id="vz-busca" placeholder="Procurar voz (ex.: deep, narrator, calm)" value="${esc(busca)}">
-          <select id="vz-genero"><option value="">Homem e mulher</option><option value="male" ${genero === "male" ? "selected" : ""}>Homem</option><option value="female" ${genero === "female" ? "selected" : ""}>Mulher</option></select>
-          <button class="botao sec" id="vz-procurar">Procurar</button>${p.voz ? '<button class="botao sec" id="vz-manter">Manter a voz de agora</button>' : ""}</div>
+        <div class="voz-filtros">
+          <div class="voz-procura"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M21 21l-5-5"/></svg>
+            <input id="vz-busca" placeholder="Procurar voz (ex.: deep, narrator, calm)" value="${esc(busca)}">
+            <button type="button" id="vz-procurar">Procurar</button></div>
+          <div class="segmentos" id="vz-genero" role="radiogroup" aria-label="Gênero da voz">${[["", "Todas"], ["male", "Homem"], ["female", "Mulher"]]
+            .map(([v, t]) => `<button type="button" role="radio" data-v="${v}" aria-checked="${v === genero}"><b>${t}</b></button>`).join("")}</div>
+          ${p.voz ? '<button class="botao sec vz-manter" id="vz-manter">Manter a voz de agora</button>' : ""}</div>
         <div class="vozes-lista" id="vz-lista"><div class="vazio">Buscando as vozes na fábrica…</div></div>`);
       ligarVoltar(1);
-      const procurar = () => perguntas[1](caixa.querySelector("#vz-busca").value.trim(), caixa.querySelector("#vz-genero").value);
-      caixa.querySelector("#vz-procurar").onclick = procurar;
+      // o gênero virou botões (o select ficava feio ao lado do campo): clicar já procura de novo
+      const procurar = (g = genero) => perguntas[1](caixa.querySelector("#vz-busca").value.trim(), g);
+      caixa.querySelector("#vz-procurar").onclick = () => procurar();
       caixa.querySelector("#vz-busca").onkeydown = (e) => { if (e.key === "Enter") procurar(); };
+      caixa.querySelector("#vz-genero").onclick = (e) => { const b = e.target.closest("button[data-v]"); if (b) procurar(b.dataset.v); };
       const manter = caixa.querySelector("#vz-manter");
       if (manter) manter.onclick = () => { parar(); perguntas[2](); };
       // a fábrica manda umas 60 vozes por vez, só da língua do canal; "Mais vozes" pede a página seguinte

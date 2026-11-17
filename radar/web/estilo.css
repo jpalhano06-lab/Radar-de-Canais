@@ -2366,3 +2366,39 @@ nav .subs a:hover:not(.ativo):not(#_) { background: var(--painel2); color: var(-
 .botao.sec.bt-traduzir:hover, .botao.sec.bt-traduzir.ligado { color: var(--acento) !important; border-color: var(--acento) !important; }
 .traducao-titulo { font-size: 12px; line-height: 1.35; color: var(--acento); background: var(--painel2);
   border: 1px solid var(--linha); border-radius: 8px; padding: 6px 8px; }
+
+/* ------------------------------------------- a escolha da voz: procurar, gênero, lista e os passos (2026-11-17)
+   Antes eram três barras soltas de alturas diferentes (um input cru, um select do sistema e dois botões vermelhos).
+   Agora é um campo de procurar com a lupa e o botão dentro, o gênero em segmentos e a lista com a rolagem fina. */
+.voz-filtros { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin: 2px 0 4px; }
+.voz-procura { display: flex; align-items: center; gap: 8px; flex: 1 1 320px; min-width: 0; height: 44px; padding: 0 6px 0 14px;
+  border-radius: 14px; background: var(--painel2); border: 1px solid var(--linha); transition: border-color .12s, box-shadow .12s; }
+.voz-procura:focus-within { border-color: var(--acento); box-shadow: 0 0 0 4px color-mix(in srgb, var(--acento) 18%, transparent); }
+.voz-procura svg { flex: none; width: 17px; height: 17px; fill: none; stroke: var(--fraco); stroke-width: 2; stroke-linecap: round; }
+.voz-filtros .voz-procura input { flex: 1 1 auto !important; width: auto !important; min-width: 0; height: 100%; margin: 0; padding: 0;
+  border: 0 !important; background: none !important; box-shadow: none !important; color: var(--texto); font: inherit; font-size: 14px; }
+.voz-procura input::placeholder { color: var(--fraco); }
+.voz-procura #vz-procurar { flex: none; height: 32px; padding: 0 14px; border: 1px solid var(--linha); border-radius: 10px; cursor: pointer;
+  background: var(--painel); color: var(--texto); font: inherit; font-size: 13px; font-weight: 600; }
+.voz-procura #vz-procurar:hover { border-color: var(--acento); color: var(--acento); }
+.voz-filtros .segmentos { flex: none; height: 44px; align-items: center; border-radius: 14px; }
+.voz-filtros .segmentos button { padding: 7px 16px; }
+.voz-filtros .vz-manter { margin-left: auto; height: 44px; border-radius: 14px; background: transparent; color: var(--fraco);
+  border: 1px dashed var(--linha); font-weight: 600; }
+.voz-filtros .vz-manter:hover:not(:disabled) { color: var(--texto); border-color: var(--fraco); }
+
+/* a lista: rolagem fina no lugar da barra cinza do sistema, e o cartão que acende ao passar o mouse */
+.vozes-lista { scrollbar-width: thin; scrollbar-color: var(--linha) transparent; padding-right: 6px; }
+.vozes-lista::-webkit-scrollbar { width: 10px; }
+.vozes-lista::-webkit-scrollbar-track { background: transparent; }
+.vozes-lista::-webkit-scrollbar-thumb { background: var(--linha); border: 3px solid transparent; background-clip: content-box; border-radius: 999px; }
+.vozes-lista::-webkit-scrollbar-thumb:hover { background: var(--fraco); border: 3px solid transparent; background-clip: content-box; }
+.voz-cartao { border: 1px solid transparent; transition: border-color .12s, background .12s; }
+.voz-cartao:hover { border-color: color-mix(in srgb, var(--acento) 45%, transparent); background: color-mix(in srgb, var(--acento) 6%, var(--painel2)); }
+.voz-cartao .botao { border-radius: 10px; }
+
+/* os passos da configuração: um trilho só, com o passo de agora mais largo */
+.pergunta-passos { gap: 5px; }
+.pergunta-passos i { height: 5px; border-radius: 999px; background: color-mix(in srgb, var(--texto) 10%, transparent); transition: all .2s; }
+.pergunta-passos i.feito { background: color-mix(in srgb, var(--verde) 70%, transparent); }
+.pergunta-passos i.atual { flex: 1.6; background: var(--acento); box-shadow: 0 0 0 1px color-mix(in srgb, var(--acento) 35%, transparent); }
