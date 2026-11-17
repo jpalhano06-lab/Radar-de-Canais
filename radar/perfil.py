@@ -6,7 +6,7 @@ um botão para procurar de novo de outro jeito quando não acha."""
 import json
 from datetime import datetime, timedelta, timezone
 
-from . import banco, garimpo, gosto, ia, medir, mercado, metricas, youtube
+from . import banco, garimpo, gosto, ia, medir, mercado, metricas, teste_canal, youtube
 
 # ---------------------------------------------------------------- meus canais
 
@@ -27,6 +27,7 @@ def conectar(usuario_id: int, canal_id: str, meu: bool = True) -> dict:
     if meu:
         banco.executar("INSERT OR IGNORE INTO meus_canais (usuario_id, canal_id, criado) VALUES (?,?,?)",
                        usuario_id, canal_id, banco.agora())
+        teste_canal.oferecer(usuario_id, canal_id)   # o convite dos dois vídeos de teste, esperando o sim no perfil
     return banco.um("SELECT * FROM canais WHERE id=?", canal_id)
 
 

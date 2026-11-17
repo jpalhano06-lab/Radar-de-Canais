@@ -21,10 +21,10 @@ ESCRITAS_AO_MESMO_TEMPO = 2       # roteiros pelo Claude ao mesmo tempo (20 pedi
 CAMPOS = ("titulo", "link", "canal_id", "agente_id", "lingua", "caracteres", "roteiro_manual", "nicho", "observacao",
           "revisar", "perfil", "footage_real", "ia_pct", "tema", "escolhido_na_tela", "destino", "ritmo", "edicao", "transicao", "camada", "ia", "acervo",
           "avatar", "musica", "som_textos", "video_ia", "animacoes", "transcricao_ref", "sem_narracao")
-# o Canal de teste de 5 min sem narração (pedido do usuário em 2026-11-12): não narra nada e não usa IA de imagem nem de
+# o Canal de teste sem narração (pedido do usuário em 2026-11-12): não narra nada e não usa IA de imagem nem de
 # vídeo, só banco grátis (Pexels/Pixabay). A língua escolhida vale só para os textos na tela (os motions). O perfil da
 # fábrica é o sem-narracao (voz do computador só para medir o tempo, muda no vídeo final: narracao_no_video: false)
-MINUTOS_SEM_NARRACAO = 5
+MINUTOS_SEM_NARRACAO = 4   # eram 5 até 2026-11-17, quando viraram os dois vídeos de teste de cada canal novo
 PERFIL_SEM_NARRACAO = {"português": "sem-narracao"}   # as outras línguas: SEM_NARRACAO_OUTRAS
 SEM_NARRACAO_OUTRAS = "sem-narracao-en"
 FOOTAGE_REAL = (0, 15, 25, 40)    # % das cenas com trecho de vídeo real do YouTube (o garimpo da fábrica)
@@ -264,8 +264,10 @@ def _padrao():
 def _observacoes(pedido: dict) -> str:
     partes = [f"Nicho: {pedido['nicho']}" if pedido.get("nicho") else "", pedido.get("observacao") or ""]
     if pedido.get("sem_narracao"):
-        partes.insert(0, "MODO SEM NARRAÇÃO (5 min): siga a seção \"Vídeo de 5 min sem narração\" do agente. Ninguém "
-                         "narra: o texto vira só as cenas de banco grátis e os textos curtos na tela (motions).")
+        # o número sai da constante para não discordar dela; a seção é citada sem o número, que mudou de 5 para 4
+        partes.insert(0, f"MODO SEM NARRAÇÃO ({MINUTOS_SEM_NARRACAO} min): siga a seção do vídeo sem narração do "
+                         f"agente, com {MINUTOS_SEM_NARRACAO} min em vez do tamanho que ela diz. Ninguém narra: o "
+                         "texto vira só as cenas de banco grátis e os textos curtos na tela (motions).")
     return "\n".join(p for p in partes if p)[:1000]
 
 
@@ -279,7 +281,7 @@ def minutos_do(pedido: dict, ppm: int) -> int:
     """Os minutos do roteiro pelo tamanho pedido. O Canal de teste (sem canal, com o perfil escolhido) é sempre de 2 a
     3 min (pedido do usuário em 2026-10-29), venha o tamanho que vier."""
     if eh_teste(pedido) and pedido.get("sem_narracao"):
-        return MINUTOS_SEM_NARRACAO       # o de 5 min sem narração (2026-11-12)
+        return MINUTOS_SEM_NARRACAO       # o sem narração (2026-11-12)
     minutos = max(1, round(minutos_de(pedido["caracteres"], ppm)))
     return min(3, max(2, minutos)) if eh_teste(pedido) else minutos
 
@@ -331,9 +333,11 @@ def passo(fabrica=None, roteirista=None, em_thread: bool = True, config_canal=No
     mudaram = []
     try:
         # antes da fábrica: uma máquina de fora que sumiu não depende de a fábrica daqui estar ligada
-        from . import maquinas
+        from . import maquinas, teste_canal   # import tardio: o teste_canal usa esta fila
 
         mudaram += maquinas.expirar()
+        # o teste dos canais novos: solta um pedido quando a fila está parada e agenda os que ficaram prontos
+        teste_canal.andar()
         try:
             prod = fabrica.producoes()
         except fabrica_api.SemFabrica:

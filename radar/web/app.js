@@ -2683,6 +2683,7 @@ async function canal(id, aba) {
   aba = "metricas";
   tela.innerHTML = `<div class="canal-pagina"><div class="canal-centro"><a class="voltar" href="#/inicio">← início</a>
     <article class="canal">${miolo(c)}</article>
+    <section class="cp-bloco" id="teste-do-canal"></section>
     <div class="bloco" style="margin:12px 0"><h3>YouTube Studio</h3><div id="studio-do-canal"></div></div>
     <div id="producao-canal"></div>
     <section class="cp-bloco" id="horarios-canal"></section>
@@ -2690,6 +2691,7 @@ async function canal(id, aba) {
     <div id="painel-canal"></div>
     <div id="aba-corpo"></div>
     <div id="sugestoes-canal"></div></div></div>`;
+  testeDoCanal(document.getElementById("teste-do-canal"), id);
   formProducao(document.getElementById("producao-canal"), id);
   conexoesDoStudio(document.getElementById("studio-do-canal"), id);
   horariosDoCanal(document.getElementById("horarios-canal"), d.horarios);
@@ -2710,6 +2712,71 @@ async function canal(id, aba) {
     corpo.innerHTML = `<div class="secao-tela"><h2>Seus últimos vídeos</h2><p class="linha-sub">A nota é quantas vezes o vídeo fez o normal do canal (${num(c.normal_longos)} por vídeo).</p>
         <div class="grade-videos">${d.ultimos.map((v) => cartaoVideo(v, { canal: false, roteiro: false, bloquear: false })).join("")}</div></div>`;
   }
+}
+
+// ---------------------------------------------------------------- o teste do canal novo (2026-11-17)
+// Dois vídeos do espaço, sem narração (só a música dá o clima) e sem thumbnail, para ver o canal de pé. O Radar não
+// escreve, não produz e não posta nada antes de a pessoa escolher a língua e clicar aqui. Depois de liberado, os dois
+// esperam a fila ficar parada e sobem agendados pelo YouTube: um num dia, o outro no seguinte.
+const ESTADO_TESTE = {
+  entrada: "esperando a fila esvaziar", na_fila: "na fila", escrevendo: "escrevendo o roteiro",
+  sua_vez: "esperando a sua revisão", enviando: "indo para a fábrica", produzindo: "em produção",
+  entregue: "pronto para subir", erro: "deu erro", cancelado: "cancelado", pausado: "pausado", "excluído": "excluído",
+};
+
+function linhaDoTesteDoCanal(v) {
+  const estado = ESTADO_TESTE[v.estado] || v.estado;
+  const quando = v.agendado_para
+    ? ` · agendado para ${new Date(v.agendado_para).toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" })}`
+    : "";
+  const link = v.url ? `<div class="sub"><a href="${esc(v.url)}" target="_blank" rel="noreferrer">ver no YouTube</a></div>` : "";
+  const erro = v.erro ? `<div class="sub aviso">${esc(v.erro)}</div>` : "";
+  return `<li style="margin:6px 0"><b>${esc(v.tema)}</b><div class="sub">${esc(estado)}${quando}</div>${link}${erro}</li>`;
+}
+
+async function testeDoCanal(caixa, id) {
+  if (!caixa) return;
+  const r = await api(`/api/perfil/canais/${encodeURIComponent(id)}/teste`).catch(() => null);
+  const t = r && r.teste;
+  if (!t || t.estado === "dispensado") { caixa.innerHTML = ""; return; }
+
+  if (t.estado !== "pendente") {
+    caixa.innerHTML = `<h3>Teste deste canal</h3>
+      <p class="sub">${t.quantos} vídeos de ${t.minutos} min sobre o espaço, sem narração e sem thumbnail, em
+      ${esc(t.lingua)}. Eles só começam quando a fila estiver parada, e sobem agendados: um num dia, o outro no seguinte.</p>
+      <ul style="list-style:none;padding:0;margin:8px 0">${t.videos.map(linhaDoTesteDoCanal).join("")}</ul>`;
+    return;
+  }
+
+  caixa.innerHTML = `<h3>Testar este canal</h3>
+    <p class="sub">O Radar faz ${t.quantos} vídeos de ${t.minutos} min sobre o espaço, sem narração (só música, nenhum
+    crédito de voz) e sem thumbnail, e agenda um para um dia e o outro para o seguinte. Nada é escrito, produzido ou
+    postado sem este clique.</p>
+    <div style="display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap;margin:10px 0">
+      <label>Língua dos textos na tela<br>
+        <select id="teste-lingua">${t.linguas.map((l) =>
+          `<option value="${esc(l)}"${l === t.lingua ? " selected" : ""}>${esc(l)}</option>`).join("")}</select>
+      </label>
+      <button class="botao" id="teste-liberar">Fazer e postar os ${t.quantos}</button>
+      <button class="botao sec" id="teste-dispensar">Agora não</button>
+    </div>
+    <p class="sub">Para postar, este canal precisa estar conectado na fábrica: o login do Google é um por canal, porque
+    o Google prende a autorização ao canal escolhido na tela de consentimento.</p>`;
+
+  const mandar = async (corpo, botao) => {
+    botao.disabled = true;
+    try {
+      await api(`/api/perfil/canais/${encodeURIComponent(id)}/teste`, { method: "POST", body: corpo });
+      testeDoCanal(caixa, id);
+    } catch (e) {
+      botao.disabled = false;
+      alert(e.message || "Não deu para liberar o teste.");
+    }
+  };
+  const liberar = document.getElementById("teste-liberar");
+  const dispensar = document.getElementById("teste-dispensar");
+  liberar.onclick = () => mandar({ lingua: document.getElementById("teste-lingua").value }, liberar);
+  dispensar.onclick = () => mandar({ dispensar: true }, dispensar);
 }
 
 // de onde tirar ideia deste canal (pedido do usuário em 2026-11-07, depois de ver o Dotti Finder): o que o dono

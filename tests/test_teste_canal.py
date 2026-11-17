@@ -1,0 +1,136 @@
+"""O teste do canal novo (2026-11-17): dois vídeos do espaço, sem narração e sem thumbnail, liberados pela pessoa no
+perfil do canal e agendados um dia depois do outro. Sem rede: a fábrica é de mentira."""
+import sys
+from datetime import datetime
+from pathlib import Path
+
+import pytest
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
+from radar import banco, fabrica_api, fila, tempo, teste_canal  # noqa: E402
+
+
+@pytest.fixture
+def db(tmp_path, monkeypatch):
+    monkeypatch.setattr(banco, "ARQUIVO", tmp_path / "t.db")
+    monkeypatch.setattr(banco, "_CON", None)
+    fila._PARADOS.clear()
+    monkeypatch.setattr(tempo, "ritmo", lambda uid, perfil, lingua: {"ppm": 150})
+    banco.executar("INSERT OR IGNORE INTO meus_canais (usuario_id, canal_id, criado) VALUES (?,?,?)",
+                   1, "UC1", banco.agora())
+    yield
+    banco._CON.close()
+    banco._CON = None
+
+
+def _entregues(*fids):
+    for k, fid in enumerate(fids, 1):
+        banco.executar("UPDATE producoes_fila SET estado='entregue', projeto=? WHERE id=?", f"projeto-{k}", fid)
+
+
+def test_oferecer_abre_o_convite_pendente(db):
+    assert teste_canal.do_canal(1, "UC1") is None
+    teste_canal.oferecer(1, "UC1")
+    cartao = teste_canal.do_canal(1, "UC1")
+    assert cartao["estado"] == "pendente" and cartao["videos"] == []
+    assert cartao["quantos"] == teste_canal.POR_CANAL and cartao["minutos"] == fila.MINUTOS_SEM_NARRACAO
+    assert cartao["lingua"] == teste_canal.LINGUA_PADRAO     # inglês, até a pessoa escolher outra
+
+
+def test_liberar_cria_os_dois_pedidos_sem_narracao(db):
+    teste_canal.oferecer(1, "UC1")
+    cartao = teste_canal.liberar(1, "UC1", "português")
+    assert cartao["estado"] == "liberado" and len(cartao["videos"]) == 2
+    temas = [v["tema"] for v in cartao["videos"]]
+    assert temas == list(teste_canal.TEMAS[:2]) and len(set(temas)) == 2
+    for v in cartao["videos"]:
+        pedido = fila.item(1, v["fid"])["pedido"]
+        # em "entrada": nada começa antes de a fila ficar parada
+        assert v["estado"] == "entrada"
+        assert pedido["sem_narracao"] and pedido["perfil"] == "sem-narracao" and pedido["lingua"] == "português"
+        assert not pedido.get("canal_id")    # a fila só aceita o sem narração fora de um canal
+
+
+def test_liberar_so_o_que_e_seu_e_so_uma_vez(db):
+    teste_canal.oferecer(1, "UC2")           # UC2 não está em meus_canais
+    with pytest.raises(ValueError):
+        teste_canal.liberar(1, "UC2")
+    teste_canal.oferecer(1, "UC1")
+    teste_canal.liberar(1, "UC1")
+    with pytest.raises(ValueError):
+        teste_canal.liberar(1, "UC1")
+
+
+def test_dispensar_tira_o_cartao(db):
+    teste_canal.oferecer(1, "UC1")
+    assert teste_canal.dispensar(1, "UC1")["estado"] == "dispensado"
+
+
+def test_os_temas_nao_se_repetem_entre_canais(db):
+    banco.executar("INSERT INTO meus_canais (usuario_id, canal_id, criado) VALUES (?,?,?)", 1, "UC2", banco.agora())
+    teste_canal.oferecer(1, "UC1")
+    teste_canal.oferecer(1, "UC2")
+    primeiros = [v["tema"] for v in teste_canal.liberar(1, "UC1")["videos"]]
+    segundos = [v["tema"] for v in teste_canal.liberar(1, "UC2")["videos"]]
+    assert not set(primeiros) & set(segundos)
+
+
+def test_so_comeca_com_a_fila_parada(db):
+    teste_canal.oferecer(1, "UC1")
+    teste_canal.liberar(1, "UC1")
+    ocupando = fila.criar(1, {"titulo": "Um vídeo de verdade", "caracteres": 10620}, comecar=True)
+    assert teste_canal._soltar_um_parado() == []          # a fila está trabalhando: o teste espera
+    fila.excluir(1, ocupando["id"])
+    soltos = teste_canal._soltar_um_parado()
+    assert len(soltos) == 1 and fila.item(1, soltos[0])["estado"] == "na_fila"
+    assert teste_canal._soltar_um_parado() == []          # um por volta: o outro espera este terminar
+
+
+def test_agenda_um_num_dia_e_o_outro_no_seguinte(db, monkeypatch):
+    enviados = []
+    monkeypatch.setattr(fabrica_api, "youtube_publicar",
+                        lambda nome, canal, quando="", com_thumbnail=True, **r:
+                        enviados.append((nome, canal, quando, com_thumbnail)) or {"sucesso": True})
+    monkeypatch.setattr(fabrica_api, "youtube_do_projeto", lambda nome: None)
+    teste_canal.oferecer(1, "UC1")
+    cartao = teste_canal.liberar(1, "UC1")
+    _entregues(*[v["fid"] for v in cartao["videos"]])
+
+    teste_canal._publicar_prontos()
+    assert [e[1] for e in enviados] == ["UC1", "UC1"]                  # os dois no canal do teste
+    assert [e[3] for e in enviados] == [False, False]                  # sem thumbnail: o YouTube usa os quadros dele
+    dias = [datetime.fromisoformat(e[2]) for e in enviados]
+    assert (dias[1] - dias[0]).days == 1 and dias[0].hour == teste_canal.HORA_DO_POST
+    assert dias[0].date() > datetime.now().date()                      # o primeiro é do dia seguinte em diante
+    depois = teste_canal.do_canal(1, "UC1")
+    assert depois["estado"] == "feito" and all(v["agendado_para"] for v in depois["videos"])
+
+    teste_canal._publicar_prontos()
+    assert len(enviados) == 2                                          # nada sobe duas vezes
+
+
+def test_o_erro_do_envio_fica_no_cartao_e_tenta_de_novo_depois(db, monkeypatch):
+    def recusar(*a, **k):
+        raise fabrica_api.SemFabrica("Esse canal ainda não foi conectado")
+    monkeypatch.setattr(fabrica_api, "youtube_publicar", recusar)
+    teste_canal.oferecer(1, "UC1")
+    cartao = teste_canal.liberar(1, "UC1")
+    _entregues(cartao["videos"][0]["fid"])
+    teste_canal._publicar_prontos()
+    primeiro = teste_canal.do_canal(1, "UC1")["videos"][0]
+    assert "não foi conectado" in primeiro["erro"] and not primeiro["agendado_para"]
+
+    chamou = []
+    monkeypatch.setattr(fabrica_api, "youtube_publicar",
+                        lambda *a, **k: chamou.append(a) or {"sucesso": True})
+    teste_canal._publicar_prontos()
+    assert chamou == []                                                # espera ESPERA_NOVA_TENTATIVA antes de tentar
+    monkeypatch.setattr(teste_canal, "ESPERA_NOVA_TENTATIVA", 0)
+    teste_canal._publicar_prontos()
+    assert len(chamou) == 1 and not teste_canal.do_canal(1, "UC1")["videos"][0]["erro"]
+
+
+def test_andar_nao_levanta_quando_algo_falha(db, monkeypatch):
+    monkeypatch.setattr(teste_canal, "_fila_parada", lambda: (_ for _ in ()).throw(RuntimeError("banco caiu")))
+    assert teste_canal.andar() == []

@@ -353,9 +353,10 @@ def test_a_rota_do_canal_de_teste(db, monkeypatch):
     assert r["linguas"][0]["perfis"][0]["perfil"] == "canal-jan-de-wolf"
 
 
-def test_canal_de_teste_de_5_min_sem_narracao(db):
-    """O Canal de teste de 5 min sem narração (2026-11-12): sem IA, sem avatar, o perfil sem-narracao da fábrica pela
-    língua (ela só vale para os motions), e na fábrica a voz muda e a IA desligada."""
+def test_canal_de_teste_sem_narracao(db):
+    """O Canal de teste sem narração (2026-11-12): sem IA, sem avatar, o perfil sem-narracao da fábrica pela
+    língua (ela só vale para os motions), e na fábrica a voz muda e a IA desligada. O tamanho é sempre o de
+    fila.MINUTOS_SEM_NARRACAO (4 desde 2026-11-17), venha o tamanho que vier no pedido."""
     from radar import roteiro_claude
     enviados = []
 
@@ -371,7 +372,7 @@ def test_canal_de_teste_de_5_min_sem_narracao(db):
     assert "ia_pct" not in p and "footage_real" not in p
     fila.passo(fabrica=Fabrica(), roteirista=rot, em_thread=False, config_canal=lambda uid, cid: pytest.fail("sem canal"),
                ritmo=lambda uid, perfil, lingua: {"ppm": 150})
-    assert rot.pedidos[0]["minutos"] == 5 and rot.pedidos[0]["lingua"] == "espanhol"
+    assert rot.pedidos[0]["minutos"] == fila.MINUTOS_SEM_NARRACAO and rot.pedidos[0]["lingua"] == "espanhol"
     assert "MODO SEM NARRAÇÃO" in rot.pedidos[0]["observacoes"]
     perfil, opcoes = enviados[0]
     assert perfil == "sem-narracao-en" and opcoes["sem_narracao"]

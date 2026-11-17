@@ -203,6 +203,39 @@ def conta_youtube_apagar(nome: str) -> dict:
     return _pedir("DELETE", f"/api/garimpo/contas/{nome}")
 
 
+# ---------------------------------------------------------------- publicar no YouTube (2026-11-17)
+# As contas de publicação são outras: as de cima são os cookies do garimpo (ler o YouTube), estas são o login OAuth
+# que autoriza a fábrica a postar. Cada canal é conectado uma vez, porque o token do Google fica preso ao canal
+# escolhido na tela de consentimento.
+
+def youtube_contas() -> dict:
+    """As contas conectadas para publicar: {"contas": [...], "conta": a única, "conectado": bool}."""
+    return _pedir("GET", "/api/youtube/status")
+
+
+def youtube_publicar(nome: str, canal: str, quando: str = "", privacidade: str = "public",
+                     com_thumbnail: bool = True, simular: bool = False) -> dict:
+    """Manda a fábrica subir o final.mp4 do projeto no canal (o id do canal do YouTube).
+
+    quando: ISO na hora do canal ("2026-11-20T18:00"). Com ela o vídeo sobe privado com publishAt e o YouTube publica
+    sozinho no dia marcado, sem a fábrica nem o Radar ligados. Sem thumbnail o YouTube usa os quadros automáticos."""
+    corpo = {"canal": canal, "privacidade": privacidade, "com_thumbnail": com_thumbnail,
+             "com_shorts": False, "simular": simular}
+    if quando:
+        corpo["agendado_para"] = quando
+    return _pedir("POST", f"/api/projetos/{nome}/youtube/publicar", corpo, tempo=60)
+
+
+def youtube_publicacao(nome: str, tarefa: str = "") -> dict:
+    """O andamento do envio e o que já foi publicado (o youtube.json do projeto)."""
+    return _pedir("GET", f"/api/projetos/{nome}/youtube/status" + (f"?task_id={tarefa}" if tarefa else ""))
+
+
+def youtube_do_projeto(nome: str) -> dict | None:
+    """O youtube.json do projeto lido direto da pasta: funciona com a fábrica desligada e não gasta um pedido."""
+    return _publicado(nome)
+
+
 def chatgpt_estado() -> dict:
     """A conta ChatGPT logada no computador da fábrica, o plano e quanto já foi usado das janelas de limite. É a
     fábrica quem gera as imagens, então é lá que o login mora (pedido do usuário em 2026-11-01)."""

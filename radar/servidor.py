@@ -23,7 +23,7 @@ from fastapi.staticfiles import StaticFiles
 from starlette.background import BackgroundTask
 
 from . import avisos, backup, descoberta, maquinas
-from . import alvos, banco, canal_painel, capas, lente_ia, molde, pedidos, ponte, chatgpt_conta, claude_projetos, custos, descricao, diagnostico, estilos_animacao, fabrica_api, fila, funcoes, garimpo, gosto, horarios, ia, integracoes, medir, mercado, metricas, nichos, pagina, perfil, producao, publicar, radar_paises, roteiro_claude, studio, tempo, thumb, trabalho, treinamento, trello, youtube
+from . import alvos, banco, canal_painel, capas, lente_ia, molde, pedidos, ponte, chatgpt_conta, claude_projetos, custos, descricao, diagnostico, estilos_animacao, fabrica_api, fila, funcoes, garimpo, gosto, horarios, ia, integracoes, medir, mercado, metricas, nichos, pagina, perfil, producao, publicar, radar_paises, roteiro_claude, studio, tempo, teste_canal, thumb, trabalho, treinamento, trello, youtube
 from .config import DADOS, NOME, PLANOS, RAIZ, pode
 
 WEB = RAIZ / "radar" / "web"
@@ -1599,8 +1599,29 @@ async def conectar_canal(request: Request, u: dict = Depends(usuario)):
 @app.delete("/api/perfil/canais/{canal_id}")
 def desconectar_canal(canal_id: str, u: dict = Depends(usuario)):
     banco.executar("DELETE FROM meus_canais WHERE usuario_id=? AND canal_id=?", u["id"], canal_id)
+    banco.executar("DELETE FROM canais_teste WHERE usuario_id=? AND canal_id=?", u["id"], canal_id)
     studio.desconectar(u["id"], canal_id)
     return {"ok": True}
+
+
+# ---------------------------------------------------------------- o teste do canal novo (2026-11-17)
+
+@app.get("/api/perfil/canais/{canal_id}/teste")
+def teste_do_canal(canal_id: str, u: dict = Depends(usuario)):
+    """O cartão do teste: os dois vídeos do espaço que o Radar oferece para o canal novo, e como eles vão."""
+    return {"teste": teste_canal.do_canal(u["id"], canal_id)}
+
+
+@app.post("/api/perfil/canais/{canal_id}/teste")
+async def liberar_teste_do_canal(canal_id: str, request: Request, u: dict = Depends(usuario)):
+    """O sim da pessoa (com a língua) ou o não. Só aqui o Radar passa a poder produzir e postar neste canal."""
+    corpo = await request.json()
+    if corpo.get("dispensar"):
+        return {"teste": teste_canal.dispensar(u["id"], canal_id)}
+    try:
+        return {"teste": teste_canal.liberar(u["id"], canal_id, str(corpo.get("lingua") or ""))}
+    except ValueError as erro:
+        raise HTTPException(400, str(erro))
 
 
 @app.get("/api/perfil/canal/{canal_id}")

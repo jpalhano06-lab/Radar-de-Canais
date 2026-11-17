@@ -275,6 +275,20 @@ CREATE TABLE IF NOT EXISTS meus_canais (
     criado TEXT NOT NULL,
     PRIMARY KEY (usuario_id, canal_id)
 );
+-- O teste do canal novo (pedido do usuário em 2026-11-17): ao adicionar um canal, o Radar oferece dois vídeos do
+-- espaço, de 4 min e sem narração, para ver o canal de pé. Nada sobe antes de a pessoa escolher a língua e liberar.
+-- estado: "pendente" (esperando a pessoa), "liberado" (os dois pedidos foram para a fila), "feito" (os dois foram
+-- publicados ou agendados) ou "dispensado" (a pessoa não quis).
+CREATE TABLE IF NOT EXISTS canais_teste (
+    usuario_id INTEGER NOT NULL,
+    canal_id TEXT NOT NULL,
+    estado TEXT NOT NULL DEFAULT 'pendente',
+    lingua TEXT NOT NULL DEFAULT '',
+    pedidos TEXT NOT NULL DEFAULT '[]',
+    criado TEXT NOT NULL,
+    liberado TEXT NOT NULL DEFAULT '',
+    PRIMARY KEY (usuario_id, canal_id)
+);
 CREATE TABLE IF NOT EXISTS convites (
     codigo_hash TEXT PRIMARY KEY,
     nota TEXT NOT NULL DEFAULT '',
