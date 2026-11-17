@@ -398,8 +398,15 @@ def para_portugues(textos: list[str]) -> list[str]:
             "ordem e com a mesma quantidade.",
             "\n".join(f"{i + 1}. {t}" for i, t in enumerate(faltam)), esperar=20) or {}
         lista = resposta.get("traducoes") if isinstance(resposta.get("traducoes"), list) else []
-        for t, traduzido in zip(faltam, lista):
-            traduzido = " ".join(str(traduzido or "").split())[:300]
+        for i, (t, traduzido) in enumerate(zip(faltam, lista)):
+            traduzido = " ".join(str(traduzido or "").split())
+            # o pedido vai numerado ("1. título") e o modelo às vezes devolve o número junto (visto em 2026-11-17).
+            # Só sai o número daquela linha, e só quando o título original não começa com ele: assim um título que é mesmo
+            # "10) os segredos" continua inteiro.
+            marca = re.match(rf"{i + 1}\s*[.)]\s+", traduzido)
+            if marca and not re.match(rf"{i + 1}\s*[.)]", t):
+                traduzido = traduzido[marca.end():]
+            traduzido = traduzido[:300]
             if traduzido:
                 saida[t] = traduzido
                 banco.executar("INSERT OR REPLACE INTO traducoes (chave, dados, criado) VALUES (?,?,?)",

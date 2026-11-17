@@ -775,6 +775,19 @@ async def ext_traduzir(request: Request, u: dict = Depends(exigir("extensao"))):
     return {"traducoes": ia.para_portugues([str(x) for x in textos[:50]])}
 
 
+@app.post("/api/traduzir")
+async def traduzir(request: Request, u: dict = Depends(usuario)):
+    """Os títulos em português para o botão Traduzir das telas do site (a página do canal, pedido de 2026-11-17).
+
+    O mesmo da extensão, sem o portão do plano: aqui quem olha o canal já está dentro, e a tradução sai da mesma
+    guarda, então o título que a extensão já traduziu não volta ao modelo.
+    """
+    textos = (await request.json()).get("textos") or []
+    if not isinstance(textos, list) or not textos:
+        raise HTTPException(400, "Mande os títulos em textos.")
+    return {"traducoes": ia.para_portugues([str(x) for x in textos[:50]])}
+
+
 @app.post("/api/ext/radar/julgar")
 async def ext_radar_julgar(request: Request, u: dict = Depends(usuario)):
     d = await request.json()

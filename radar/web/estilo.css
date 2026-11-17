@@ -2251,3 +2251,10 @@ nav .subs a:hover:not(.ativo):not(#_) { background: var(--painel2); color: var(-
 
 /* sem os emojis (pedido do usuário em 2026-11-14), as caixinhas de ícone que ficaram vazias somem */
 .ic:empty, .mt-ic:empty, .ac-calmo-ic:empty { display: none; }
+
+/* o botão Traduzir do título e a linha com o título em português (2026-11-17) */
+.bt-traduzir { justify-self: start; flex: none; padding: 3px 9px; font-size: 11px; font-weight: 600; border-radius: 980px;
+  background: transparent; color: var(--fraco); border: 1px solid var(--linha); box-shadow: none; }
+.bt-traduzir:hover, .bt-traduzir.ligado { color: var(--acento) !important; border-color: var(--acento) !important; }
+.traducao-titulo { font-size: 12px; line-height: 1.35; color: var(--acento); background: var(--painel2);
+  border: 1px solid var(--linha); border-radius: 8px; padding: 6px 8px; }
