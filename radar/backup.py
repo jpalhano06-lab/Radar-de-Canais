@@ -57,7 +57,8 @@ def _copiar_codigo(raiz: Path, destino: Path) -> bool:
 
 def _copiar_perfis(destino: Path) -> Path:
     with zipfile.ZipFile(destino, "w", zipfile.ZIP_DEFLATED) as z:
-        for arquivo in [*sorted((FABRICA / "perfis").glob("*")), FABRICA / "config.yaml", FABRICA / "genaipro_vozes.json"]:
+        for arquivo in [*sorted((FABRICA / "perfis").glob("*")), FABRICA / "config.yaml", FABRICA / "genaipro_vozes.json",
+                        FABRICA / "openspeaker_vozes.json"]:
             if arquivo.is_file():
                 z.write(arquivo, arquivo.relative_to(FABRICA))
     return destino

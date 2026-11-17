@@ -329,7 +329,7 @@ const AJUDA = {
   "ideias-canal": "Ideias para <b>cada canal seu</b> (uma aba por canal): vídeos que estouraram falando do mesmo assunto. <b>Salvar ideia</b> guarda no painel da direita, e de lá <b>Levar para o trabalho</b> abre o roteiro com o vídeo de referência.",
   bloqueados: "Tudo o que você escondeu pelo <b>⊘</b> em cima dos vídeos: vídeos, canais e tipos de vídeo. Desbloqueie para voltar a ver.",
   animacoes: "Escolha o <b>estilo das animações</b> antes de produzir. Se quiser, abra o <b>Personalizar</b> para mudar cores, fundo, letras e quais animações podem entrar. Guarde com um nome para escolher na Nova produção, ou deixe como padrão de um canal. Olhar e testar não gasta nada.",
-  custos: "Quanto a fábrica gastou: o <b>total do período</b>, a média por vídeo e por minuto, e onde foi o dinheiro: <b>por provedor</b> (GenAI Pro, OpenRouter, Kie...), por tipo de gasto (narração, imagens de IA...) e <b>por canal</b>. Clique num vídeo para ver o detalhe.",
+  custos: "Quanto a fábrica gastou: o <b>total do período</b>, a média por vídeo e por minuto, e onde foi o dinheiro: <b>por provedor</b> (OpenSpeaker, OpenRouter, Kie...), por tipo de gasto (narração, imagens de IA...) e <b>por canal</b>. Clique num vídeo para ver o detalhe.",
   integracoes: "Os serviços que o Radar e a fábrica usam: o <b>saldo</b> de cada um e as <b>chaves de API</b>, para testar, trocar, acrescentar e remover sem abrir o arquivo .env. A chave inteira nunca aparece, só o fim dela.",
   acompanhar: "A fila da fábrica: à esquerda o que <b>precisa de você</b>, o que está produzindo, o que espera a vez e a <b>Entrada</b> (guardados, não gastam). Escolha um vídeo para ver as etapas, o <b>Diagnóstico</b> (quantas cenas são reais e quantas são de IA, e o log), os arquivos e as tags. Em cima, quantos vídeos a fábrica faz ao mesmo tempo: o resto espera e começa sozinho.",
   resultados: "Os vídeos prontos com o <b>custo real</b> de cada um (narração, imagens, visão), o custo por minuto e o total. Assista aqui ou abra a pasta da entrega.",
@@ -1264,8 +1264,8 @@ async function aplicarProducao(canalId, caixa, campos) {
 }
 
 const bandeiraImg = (c) => `<img src="https://flagcdn.com/w40/${c}.png" alt="" style="width:28px;height:20px;object-fit:cover;border-radius:3px">`;
-// as línguas além das três de sempre que as vozes da GenAI Pro falam (o fabrica_api.IDIOMA tem os códigos)
-const OUTRAS_LINGUAS_GENAIPRO = ["francês", "alemão", "italiano", "holandês", "polonês", "russo", "ucraniano", "turco",
+// as línguas além das três de sempre que as vozes do narrador pago falam (o fabrica_api.IDIOMA tem os códigos)
+const OUTRAS_LINGUAS_VOZ = ["francês", "alemão", "italiano", "holandês", "polonês", "russo", "ucraniano", "turco",
   "árabe", "hindi", "tâmil", "japonês", "chinês", "coreano", "indonésio", "malaio", "filipino", "vietnamita", "sueco",
   "dinamarquês", "norueguês", "finlandês", "grego", "tcheco", "eslovaco", "húngaro", "romeno", "búlgaro", "croata"];
 // a produção do canal: na primeira vez, uma pergunta por vez (língua, voz, agente de roteiro, tempo); depois, uma
@@ -1297,15 +1297,15 @@ async function formProducao(caixa, canalId, depois = () => {}, perguntarDeNovo =
     () => {
       caixa.innerHTML = moldura(0, `<h3>Em que língua são os vídeos deste canal?</h3>` + cartoes([
         ["português", bandeiraImg("br"), "Português"], ["inglês", bandeiraImg("us"), "Inglês"], ["espanhol", bandeiraImg("es"), "Espanhol"]], "lingua")
-        + `<label class="linha">Outra língua das vozes da GenAI Pro: <select id="pg-outra"><option value="">Escolher…</option>
-          ${OUTRAS_LINGUAS_GENAIPRO.map((l) => `<option ${l === escolha.lingua ? "selected" : ""}>${esc(l)}</option>`).join("")}</select></label>`);
+        + `<label class="linha">Outra língua das vozes do OpenSpeaker: <select id="pg-outra"><option value="">Escolher…</option>
+          ${OUTRAS_LINGUAS_VOZ.map((l) => `<option ${l === escolha.lingua ? "selected" : ""}>${esc(l)}</option>`).join("")}</select></label>`);
       opcoes(null, "lingua", () => perguntas[1]());
       caixa.querySelector("#pg-outra").onchange = (e) => { if (e.target.value) { escolha.lingua = e.target.value; perguntas[1](); } };
     },
     // 2. a voz, da biblioteca da fábrica, com a prévia
     async (busca = "", genero = "") => {
       caixa.innerHTML = moldura(1, `<h3>Qual voz narra os vídeos?</h3>
-        <p class="sub">As vozes da fábrica (GenAI Pro) em ${esc(escolha.lingua)}. Aperte ▶ para ouvir antes de escolher.${p.voz ? ` Voz de agora: <b>${esc(p.voz)}</b>.` : ""}</p>
+        <p class="sub">As vozes da fábrica (OpenSpeaker) em ${esc(escolha.lingua)}. Aperte ▶ para ouvir antes de escolher.${p.voz ? ` Voz de agora: <b>${esc(p.voz)}</b>.` : ""}</p>
         <div class="voz-filtros">
           <div class="voz-procura"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M21 21l-5-5"/></svg>
             <input id="vz-busca" placeholder="Procurar voz (ex.: deep, narrator, calm)" value="${esc(busca)}">
@@ -3671,7 +3671,7 @@ async function novaProducao(preset = {}) {
   const palavras = () => Math.round(N.caracteres / CARACTERES_POR_PALAVRA);
   const nomeCanal = () => (canais.find((c) => c.id === N.canal) || {}).titulo || "";
   const sigla = (t) => t.split(/\s+/).filter(Boolean).slice(0, 2).map((p) => p[0]).join("").toUpperCase();
-  const LINGUAS = ["português", "inglês", "espanhol", ...OUTRAS_LINGUAS_GENAIPRO];
+  const LINGUAS = ["português", "inglês", "espanhol", ...OUTRAS_LINGUAS_VOZ];
 
   document.body.insertAdjacentHTML("beforeend", `<div class="modal-fundo" id="nova-producao"><div class="np" role="dialog" aria-label="Nova produção">
     <header class="np-cab"><h2>Nova produção</h2><button class="np-fechar" title="Fechar (Esc)">×</button></header>
