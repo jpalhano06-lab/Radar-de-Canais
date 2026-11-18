@@ -440,6 +440,12 @@ código para quando for vender ou dividir com os sócios.
 - **Produção do canal** (`radar/producao.py`, tabela `canais_config`, card na página do canal): perfil da fábrica (a
   voz), estilo do roteiro, tempo, língua, estilo da thumbnail e IA de imagem. Sem nada salvo, o perfil da fábrica com
   o mesmo `nome:` do canal entra sozinho (João o Lobo → canal-joao-o-lobo, voz Davi Andrei).
+- **A língua do canal é a da voz dele** (`producao.lingua_da_voz` / `conferir_lingua`, 2026-11-17): o `idioma_da_voz`
+  do perfil da fábrica manda, e gravar outra língua no canal ou pedir um vídeo do canal em outra língua dá erro, com
+  o jeito certo no recado (escolher antes uma voz naquela língua). A língua vale por cima das instruções do agente:
+  o Claude escreve nela e o título vem traduzido para ela. Foi assim que o canal japonês 日本の革新, com "inglês"
+  gravado sem querer no passo a passo, fez os dois primeiros vídeos em inglês. Na primeira pergunta do passo a passo
+  a língua de agora virou cartão, para passar dela não exigir clicar em português, inglês ou espanhol.
 - **Roteiro**: escolher o canal preenche estilo, tempo e língua e mostra a voz; o envio à fábrica já marca o perfil dele.
   "Salvar como padrão do canal" guarda as escolhas. A thumbnail saiu daqui para a aba própria (botão 🖼 Fazer a thumbnail).
 - **Thumbnail**: o pedido em cima ("tire o texto"), o canal, o estilo e a IA; o Claude escreve o prompt

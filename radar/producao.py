@@ -213,6 +213,27 @@ def imagens_dos_perfis() -> list[dict]:
             | imagens_do_perfil(p["perfil"]) for p in perfis() if _arquivo_do_perfil(p["perfil"])]
 
 
+def lingua_da_voz(perfil: str) -> str:
+    """A língua que a voz do canal fala, pelo perfil da fábrica ("ja" → "japonês"). Vazio quando o perfil não diz.
+
+    É ela que manda na língua do canal (2026-11-17): o canal japonês 日本の革新 ficou com "inglês" gravado na
+    configuração e os dois primeiros vídeos saíram em inglês, com o título japonês traduzido para inglês, porque o
+    pedido copia a língua do canal e ela vale por cima das instruções do agente."""
+    from .fabrica_api import IDIOMA     # o fabrica_api importa este módulo
+    codigo = str(_perfil(perfil).get("idioma_da_voz") or "").strip().lower()
+    return {c: l for l, c in IDIOMA.items()}.get(codigo, "")
+
+
+def conferir_lingua(perfil: str, lingua: str) -> None:
+    """Não deixa gravar no canal uma língua que não é a da voz dele. Para mudar a língua, muda-se a voz primeiro."""
+    da_voz = lingua_da_voz(perfil)
+    if not lingua or not da_voz or roteiro_claude.codigo_da_lingua(lingua) == roteiro_claude.codigo_da_lingua(da_voz):
+        return
+    raise ValueError(f"A voz deste canal fala {da_voz}, e o pedido veio em {lingua}: o roteiro sairia em {lingua} e o "
+                     f"título seria traduzido para {lingua}. Para mudar a língua do canal, escolha antes uma voz em "
+                     f"{lingua} na configuração do canal.")
+
+
 def _perfil_do_canal(titulo: str) -> str:
     """O perfil da fábrica que tem o mesmo nome do canal ("João o Lobo" → canal-joao-o-lobo)."""
     for p in perfis():
@@ -246,13 +267,15 @@ def config(usuario_id: int, canal_id: str) -> dict:
         dados["perfil"] = _perfil_do_canal(canal.get("titulo", ""))
     p = _perfil(dados["perfil"])
     if not dados["lingua"]:
-        from .fabrica_api import IDIOMA     # o fabrica_api importa este módulo
-        dados["lingua"] = {c: l for l, c in IDIOMA.items()}.get(p.get("idioma_da_voz", ""), "português")
+        dados["lingua"] = lingua_da_voz(dados["perfil"]) or "português"
     return dados | {"voz": p.get("voz", ""), "canal": canal.get("titulo", ""), "salvo": bool(linha)}
 
 
 def salvar(usuario_id: int, canal_id: str, dados: dict) -> dict:
     limpo = {k: dados[k] for k in PADRAO if k in dados}
+    # a língua do canal é a da voz dele: gravar outra fazia o roteiro sair na língua errada em todo vídeo do canal
+    if limpo.get("lingua"):
+        conferir_lingua(limpo.get("perfil") or config(usuario_id, canal_id).get("perfil", ""), limpo["lingua"])
     if "minutos" in limpo:
         limpo["minutos"] = max(1, min(60, int(limpo["minutos"] or 8)))
     if limpo.get("ia_imagem") not in IAS_IMAGEM:

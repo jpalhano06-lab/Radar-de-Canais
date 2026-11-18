@@ -2091,7 +2091,10 @@ def producao_config(canal_id: str, u: dict = Depends(usuario)):
 async def producao_salvar(canal_id: str, request: Request, u: dict = Depends(usuario)):
     _meu_canal(u["id"], canal_id)
     dados = await request.json()
-    cfg = producao.salvar(u["id"], canal_id, dados)
+    try:
+        cfg = producao.salvar(u["id"], canal_id, dados)
+    except ValueError as erro:        # língua diferente da voz do canal
+        raise HTTPException(400, str(erro))
     # o rodapé não é do Radar: vai para o perfil da fábrica, que é quem escreve a descrição de cada vídeo
     if isinstance(dados.get("rodape"), str) and cfg.get("perfil"):
         try:
@@ -2287,7 +2290,10 @@ async def producao_padrao(canal_id: str, request: Request, u: dict = Depends(usu
             novo["minutos"] = round(float(novo["minutos"]))
         except (TypeError, ValueError):
             raise HTTPException(400, "Tempo inválido.")
-    return producao.salvar(u["id"], canal_id, producao.config(u["id"], canal_id) | novo)
+    try:
+        return producao.salvar(u["id"], canal_id, producao.config(u["id"], canal_id) | novo)
+    except ValueError as erro:        # língua diferente da voz do canal
+        raise HTTPException(400, str(erro))
 
 
 @app.post("/api/producao/{canal_id}/voz")
@@ -2302,7 +2308,10 @@ async def producao_voz(canal_id: str, request: Request, u: dict = Depends(dono_d
     except fabrica_api.SemFabrica as erro:
         raise HTTPException(503, str(erro))
     producao.aplicar_regra()   # canal novo nasce na assinatura quando a regra Todos pela conexão está ligada
-    return producao.salvar(u["id"], canal_id, producao.config(u["id"], canal_id) | {"perfil": perfil_novo})
+    # a voz nova manda na língua do canal: escolher uma voz em outra língua é o jeito de trocar a língua do canal
+    novo = producao.config(u["id"], canal_id) | {"perfil": perfil_novo}
+    novo["lingua"] = producao.lingua_da_voz(perfil_novo) or novo.get("lingua", "")
+    return producao.salvar(u["id"], canal_id, novo)
 
 
 @app.get("/api/producoes")
