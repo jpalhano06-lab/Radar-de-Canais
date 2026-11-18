@@ -298,6 +298,24 @@ CREATE TABLE IF NOT EXISTS estoque_teste (
     usado TEXT NOT NULL DEFAULT '',
     criado TEXT NOT NULL
 );
+-- Postar no dia marcado (pedido do usuário em 2026-11-17: "já arruma pra postar um hoje e outro amanhã"): cada
+-- pedido da fila pode ter um dia e uma hora para subir no canal. O Radar espera o vídeo ficar pronto e manda a
+-- fábrica publicar; com `quando` vazio ele sobe assim que fica pronto, e com dia marcado sobe privado com o
+-- publishAt do próprio YouTube, que publica sozinho com o computador desligado. Só o canal conectado na fábrica
+-- (um login do Google por canal) consegue subir: sem isso o erro fica guardado aqui e o Radar tenta de novo.
+CREATE TABLE IF NOT EXISTS agendamentos (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    usuario_id INTEGER NOT NULL,
+    fid INTEGER NOT NULL,
+    canal_id TEXT NOT NULL,
+    quando TEXT NOT NULL DEFAULT '',
+    com_thumbnail INTEGER NOT NULL DEFAULT 1,
+    enviado TEXT NOT NULL DEFAULT '',
+    url TEXT NOT NULL DEFAULT '',
+    erro TEXT NOT NULL DEFAULT '',
+    tentado REAL NOT NULL DEFAULT 0,
+    criado TEXT NOT NULL
+);
 CREATE TABLE IF NOT EXISTS convites (
     codigo_hash TEXT PRIMARY KEY,
     nota TEXT NOT NULL DEFAULT '',
