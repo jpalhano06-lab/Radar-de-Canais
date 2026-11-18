@@ -298,3 +298,36 @@ def test_cada_canal_com_seus_videos_e_a_cor_de_cada_um(db, monkeypatch):
 def test_conferir_so_mexe_em_canal_que_tem_teste(db):
     with pytest.raises(ValueError):
         teste_canal.conferir(1, "UC7", 1)
+
+
+def test_envio_perdido_na_fabrica_vai_de_novo(db, monkeypatch):
+    enviados = []
+    monkeypatch.setattr(fabrica_api, "youtube_publicar", lambda *a, **k: enviados.append(a) or {"sucesso": True})
+    monkeypatch.setattr(fabrica_api, "youtube_do_projeto", lambda nome: None)    # nada publicado
+    monkeypatch.setattr(fabrica_api, "youtube_publicacao", lambda nome, tarefa="": {"tarefa": None, "publicado": None})
+    teste_canal.oferecer(1, "UC1")
+    cartao = teste_canal.liberar(1, "UC1")
+    _entregues(cartao["videos"][0]["fid"])
+    teste_canal._publicar_prontos()
+    assert len(enviados) == 1
+
+    monkeypatch.setattr(teste_canal, "ESPERA_NOVA_TENTATIVA", 0)
+    teste_canal._publicar_prontos()                       # a fábrica não tem tarefa nem publicação: perdeu
+    primeiro = teste_canal.do_canal(1, "UC1")["videos"][0]
+    assert not primeiro["enviado"] and not primeiro["agendado_para"] and "se perdeu" in primeiro["erro"]
+    teste_canal._publicar_prontos()
+    assert len(enviados) == 2                             # foi de novo
+
+
+def test_envio_ainda_andando_na_fabrica_fica_quieto(db, monkeypatch):
+    enviados = []
+    monkeypatch.setattr(fabrica_api, "youtube_publicar", lambda *a, **k: enviados.append(a) or {"sucesso": True})
+    monkeypatch.setattr(fabrica_api, "youtube_do_projeto", lambda nome: None)
+    monkeypatch.setattr(fabrica_api, "youtube_publicacao", lambda nome, tarefa="": {"tarefa": {"estado": "subindo"}})
+    teste_canal.oferecer(1, "UC1")
+    cartao = teste_canal.liberar(1, "UC1")
+    _entregues(cartao["videos"][0]["fid"])
+    teste_canal._publicar_prontos()
+    monkeypatch.setattr(teste_canal, "ESPERA_NOVA_TENTATIVA", 0)
+    teste_canal._publicar_prontos()
+    assert len(enviados) == 1 and teste_canal.do_canal(1, "UC1")["videos"][0]["enviado"]
