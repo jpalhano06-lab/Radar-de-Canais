@@ -373,6 +373,20 @@ def _publicar_prontos() -> list[int]:
                     p["video_id"] = publicado.get("video_id", "")
                     mexeu = True
                     mudaram.append(p["fid"])
+                    continue
+                if agora - float(p.get("tentado") or 0) < ESPERA_NOVA_TENTATIVA:
+                    continue
+                # sem link depois de todo esse tempo: ou a fábrica ainda está subindo, ou ela foi religada no meio e
+                # o envio morreu com ela (a tarefa dela só existe na memória). Sem tarefa e sem publicação, manda de novo
+                try:
+                    andamento = fabrica_api.youtube_publicacao(item["projeto"])
+                except fabrica_api.SemFabrica:
+                    continue
+                if andamento.get("tarefa") or andamento.get("publicado"):
+                    continue
+                p |= {"enviado": False, "agendado_para": "", "erro": "O envio se perdeu na fábrica; mandando de novo."}
+                mexeu = True
+                mudaram.append(p["fid"])
                 continue
             if item["estado"] != "entregue":
                 continue
