@@ -1638,6 +1638,19 @@ def teste_aba(u: dict = Depends(usuario)):
             "quantos": teste_canal.POR_CANAL}
 
 
+@app.get("/api/teste/privados")
+def teste_privados(u: dict = Depends(usuario)):
+    """Os vídeos de teste já mandados que esperam uma olhada no canal, para tirar do privado."""
+    return {"videos": teste_canal.privados(u["id"])}
+
+
+@app.post("/api/teste/privados")
+async def teste_conferir(request: Request, u: dict = Depends(usuario)):
+    corpo = await request.json()
+    return {"videos": _na_fila(teste_canal.conferir, u["id"], str(corpo.get("canal_id") or ""),
+                               int(corpo.get("fid") or 0))}
+
+
 @app.get("/api/teste/contas")
 def teste_contas(u: dict = Depends(usuario)):
     """Os canais que já têm login do Google na fábrica. Pode demorar: a fábrica produzindo responde devagar."""
