@@ -17,6 +17,7 @@ def db(tmp_path, monkeypatch):
     monkeypatch.setattr(banco, "_CON", None)
     fila._PARADOS.clear()
     monkeypatch.setattr(tempo, "ritmo", lambda uid, perfil, lingua: {"ppm": 150})
+    monkeypatch.setattr(teste_canal, "conectados", list)      # sem rede: a fábrica não é chamada nos testes
     banco.executar("INSERT OR IGNORE INTO meus_canais (usuario_id, canal_id, criado) VALUES (?,?,?)",
                    1, "UC1", banco.agora())
     yield
@@ -200,3 +201,37 @@ def test_o_estoque_so_e_feito_para_quem_tem_canal(db, monkeypatch):
     monkeypatch.setattr(teste_canal, "ESTOQUE", 1)
     banco.executar("DELETE FROM meus_canais")
     assert teste_canal._encher_estoque() == []
+
+
+# ---------------------------------------------------------------- a aba Canal de teste (2026-11-17)
+
+def test_comecar_abre_e_libera_de_uma_vez(db):
+    cartao = teste_canal.comecar(1, "UC1", "inglês", "Meu Canal")
+    assert cartao["estado"] == "liberado" and cartao["nome"] == "Meu Canal"
+    assert len(cartao["videos"]) == teste_canal.POR_CANAL
+
+
+def test_o_canal_ligado_na_fabrica_tambem_e_seu(db, monkeypatch):
+    # UC9 não está em meus_canais: quem diz que é dele é o login do Google na fábrica
+    with pytest.raises(ValueError):
+        teste_canal.comecar(1, "UC9", "inglês")
+    monkeypatch.setattr(teste_canal, "conectados", lambda: [{"canal_id": "UC9", "canal_nome": "Nono"}])
+    assert teste_canal.comecar(1, "UC9", "inglês")["estado"] == "liberado"
+
+
+def test_a_aba_lista_os_testes_do_mais_novo_ao_mais_velho(db):
+    banco.executar("INSERT INTO meus_canais (usuario_id, canal_id, criado) VALUES (?,?,?)", 1, "UC2", banco.agora())
+    teste_canal.comecar(1, "UC1", "inglês", "Um")
+    teste_canal.comecar(1, "UC2", "inglês", "Dois")
+    assert [t["canal_id"] for t in teste_canal.todos(1)] == ["UC2", "UC1"]
+    teste_canal.oferecer(1, "UC3")
+    teste_canal.dispensar(1, "UC3")
+    assert "UC3" not in [t["canal_id"] for t in teste_canal.todos(1)]   # o dispensado sai da lista
+
+
+def test_o_estoque_pronto_conta_so_o_que_esta_entregue(db, monkeypatch):
+    monkeypatch.setattr(teste_canal, "ESTOQUE", 2)
+    primeiro = teste_canal._encher_estoque()
+    assert teste_canal.estoque_pronto(1) == 0           # ainda sendo feito
+    _entregues(*primeiro)
+    assert teste_canal.estoque_pronto(1) == 1

@@ -283,6 +283,7 @@ CREATE TABLE IF NOT EXISTS canais_teste (
     usuario_id INTEGER NOT NULL,
     canal_id TEXT NOT NULL,
     estado TEXT NOT NULL DEFAULT 'pendente',
+    nome TEXT NOT NULL DEFAULT '',
     lingua TEXT NOT NULL DEFAULT '',
     pedidos TEXT NOT NULL DEFAULT '[]',
     criado TEXT NOT NULL,
@@ -368,7 +369,8 @@ COLUNAS_NOVAS = {
     # painel: a ordem e as abas escondidas do menu de cada pessoa. Fica fora de `prefs` porque salvar_prefs reescreve
     # aquele JSON inteiro a cada resposta das perguntas, e levaria o menu junto
     "usuarios": {"prefs": "TEXT NOT NULL DEFAULT '{}'", "painel": "TEXT NOT NULL DEFAULT '{}'"},
-    "salvos": {"pasta": "TEXT NOT NULL DEFAULT ''"},          # a pasta em que a pessoa guardou aquele canal
+    "canais_teste": {"nome": "TEXT NOT NULL DEFAULT ''"},     # o nome do canal, para a aba Canal de teste mostrar
+    "salvos": {"pasta": "TEXT NOT NULL DEFAULT ''"},        # a pasta em que a pessoa guardou aquele canal
     # tipo: "roteiro" (o agente que escreve o roteiro) ou "descricao" (o que escreve a sinopse, as tags e as
     # hashtags junto com ele). Os agentes que já existiam são todos de roteiro, por isso o padrão
     # claude_*, arquivos e sincronizado: o projeto do claude.ai ligado ao agente (claude_projetos.py)
