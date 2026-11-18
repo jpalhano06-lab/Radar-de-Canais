@@ -6,8 +6,12 @@ os quadros automáticos dele). Nada é produzido nem postado sozinho: o cartão 
 espera o clique.
 
 Liberado o teste, os dois pedidos entram na fila como "entrada" e só começam quando a fila estiver parada (o Radar
-não tira a vez de nenhum vídeo de verdade). Prontos, cada um é agendado pelo `publishAt` do próprio YouTube: o
-primeiro no dia seguinte, o segundo no outro — o YouTube publica sozinho, com o computador desligado.
+não tira a vez de nenhum vídeo de verdade). O primeiro pronto sobe na hora, que é o que mostra o canal de pé; o
+segundo é agendado pelo `publishAt` do próprio YouTube para o dia seguinte, e sobe sozinho com o computador
+desligado.
+
+Ligar o canal na fábrica pelo login do Google já começa o teste dele sozinho, na língua padrão: entrar na conta e
+escolher o canal é a permissão. Para outra língua, comece o teste na aba antes de ligar o canal.
 
 Para não fazer ninguém esperar a produção, o Radar vai deixando vídeos de teste prontos de antemão (pedido do
 usuário em 2026-11-17): com a fila parada, ele produz um de cada vez até ter `ESTOQUE` guardados, sempre em
@@ -19,6 +23,7 @@ canal escolhido na tela de consentimento). Sem isso o envio falha e o erro fica 
 conectar e o Radar tentar de novo sozinho.
 """
 import json
+import time
 from datetime import datetime, timedelta
 
 from . import banco, fabrica_api, fila
@@ -52,6 +57,7 @@ ESTOQUE = len(TEMAS)          # quantos vídeos deixar prontos de antemão: os v
 LINGUA_PADRAO = "inglês"      # sem narração, o inglês alcança mais gente sem custar nada a mais
 HORA_DO_POST = 18             # na hora do canal (youtube.fuso_horas da fábrica, -3 para Brasília)
 ESPERA_NOVA_TENTATIVA = 15 * 60   # segundos entre duas tentativas de envio depois de um erro
+CACHE_CONECTADOS = 2 * 60         # segundos guardando a lista de canais ligados na fábrica
 # a fila ocupada: enquanto houver um pedido em qualquer um destes estados, o teste espera
 TRABALHANDO = ("na_fila", "escrevendo", "sua_vez", "enviando", "produzindo")
 # o vídeo do estoque que não está mais a caminho: enquanto houver um a caminho, o estoque não pede outro
@@ -84,12 +90,25 @@ def oferecer(usuario_id: int, canal_id: str, nome: str = "") -> None:
                        nome, usuario_id, canal_id)
 
 
+_CONECTADOS: tuple[float, list] = (0.0, [])      # quando perguntei e o que a fábrica respondeu
+
+
 def conectados() -> list[dict]:
-    """Os canais que já têm login do Google na fábrica. Fábrica desligada: lista vazia, não é erro de ninguém."""
+    """Os canais que já têm login do Google na fábrica, guardados por `CACHE_CONECTADOS` segundos.
+
+    A fábrica produzindo leva segundos para responder e o vigia pergunta a toda volta, por isso a resposta fica
+    guardada e o tempo de espera é curto: falhou, vale a de antes e tenta de novo depois. Fábrica desligada no
+    primeiro pedido: lista vazia, não é erro de ninguém."""
+    global _CONECTADOS
+    agora = time.time()
+    if agora - _CONECTADOS[0] < CACHE_CONECTADOS:
+        return _CONECTADOS[1]
     try:
-        return fabrica_api.youtube_contas().get("contas") or []
-    except Exception:  # noqa: BLE001 (a fábrica desligada não pode derrubar a aba)
-        return []
+        lista = fabrica_api.youtube_contas(tempo=8).get("contas") or []
+    except Exception:  # noqa: BLE001 (a fábrica desligada não pode derrubar a aba nem o vigia)
+        return _CONECTADOS[1]
+    _CONECTADOS = (agora, lista)
+    return lista
 
 
 def _e_dono(usuario_id: int, canal_id: str) -> bool:
@@ -227,6 +246,23 @@ def _soltar_um_parado() -> list[int]:
     return []
 
 
+def _ligar_conectados() -> list[int]:
+    """Ligou o canal na fábrica pelo login do Google? O teste dele já começa (pedido do usuário em 2026-11-17).
+
+    O login é a permissão: quem entrou na conta do Google e escolheu o canal já disse que é dele e que pode postar.
+    A língua é a padrão; para outra, o teste é começado na aba antes de ligar o canal."""
+    dono = banco.um("SELECT id FROM usuarios WHERE admin=1 ORDER BY id LIMIT 1")
+    if not dono:
+        return []
+    mudaram = []
+    for c in conectados():
+        canal = c.get("canal_id") or ""
+        if not canal or _linha(dono["id"], canal):
+            continue                       # já tem teste (pendente, liberado, feito ou dispensado): não mexe
+        mudaram += [v["fid"] for v in comecar(dono["id"], canal, LINGUA_PADRAO, c.get("canal_nome") or "")["videos"]]
+    return mudaram
+
+
 def _encher_estoque() -> list[int]:
     """Com a fila parada, prepara mais um vídeo de teste para o estoque. Um por volta, nunca em lote: o Radar nunca
     tira a vez de um vídeo de verdade nem enche a fila de teste de uma vez."""
@@ -250,7 +286,7 @@ def _encher_estoque() -> list[int]:
 
 
 def _proximo_dia(pedidos: list[dict], k: int) -> datetime:
-    """O primeiro vídeo vai para amanhã; cada seguinte, um dia depois do último já agendado."""
+    """Um dia depois do último que já tem hora marcada, sempre às `HORA_DO_POST`."""
     base = datetime.now().replace(hour=HORA_DO_POST, minute=0, second=0, microsecond=0)
     ultimo = base
     for p in pedidos:
@@ -259,7 +295,8 @@ def _proximo_dia(pedidos: list[dict], k: int) -> datetime:
                 ultimo = max(ultimo, datetime.fromisoformat(p["agendado_para"]))
             except ValueError:
                 continue
-    return max(ultimo + timedelta(days=1), base + timedelta(days=1))
+    seguinte = max(ultimo + timedelta(days=1), base + timedelta(days=1))
+    return seguinte.replace(hour=HORA_DO_POST, minute=0, second=0, microsecond=0)
 
 
 def _publicar_prontos() -> list[int]:
@@ -286,12 +323,16 @@ def _publicar_prontos() -> list[int]:
                 continue
             if p.get("erro") and agora - float(p.get("tentado") or 0) < ESPERA_NOVA_TENTATIVA:
                 continue
-            quando = _proximo_dia(pedidos, k)
+            # o primeiro do canal sobe na hora (pedido do usuário em 2026-11-17): é ele que mostra o canal de pé.
+            # O seguinte é agendado para o dia de depois, pelo publishAt do próprio YouTube
+            agendar = any(p2.get("agendado_para") for p2 in pedidos)
+            quando = _proximo_dia(pedidos, k) if agendar else datetime.now()
             p["tentado"] = agora
             try:
                 # sem thumbnail de propósito: o vídeo de teste sobe com os quadros automáticos do YouTube
                 fabrica_api.youtube_publicar(item["projeto"], canal=linha["canal_id"],
-                                             quando=quando.strftime("%Y-%m-%dT%H:%M"), com_thumbnail=False)
+                                             quando=quando.strftime("%Y-%m-%dT%H:%M") if agendar else "",
+                                             com_thumbnail=False)
                 p |= {"agendado_para": quando.isoformat(timespec="minutes"), "erro": "", "enviado": True}
             except fabrica_api.SemFabrica as erro:
                 p["erro"] = str(erro)
@@ -308,7 +349,7 @@ def _publicar_prontos() -> list[int]:
 def andar() -> list[int]:
     """Uma volta do teste dos canais, chamada pelo vigia da fila. Nunca levanta: a fila não pode parar por isto."""
     mudaram = []
-    for passo in (_soltar_um_parado, _publicar_prontos, _encher_estoque):
+    for passo in (_ligar_conectados, _soltar_um_parado, _publicar_prontos, _encher_estoque):
         try:
             mudaram += passo()
         except Exception as erro:  # noqa: BLE001 (o vigia nunca pode parar)

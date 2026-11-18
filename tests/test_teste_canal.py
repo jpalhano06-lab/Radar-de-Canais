@@ -1,7 +1,7 @@
 """O teste do canal novo (2026-11-17): dois vídeos do espaço, sem narração e sem thumbnail, liberados pela pessoa no
 perfil do canal e agendados um dia depois do outro. Sem rede: a fábrica é de mentira."""
 import sys
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 
 import pytest
@@ -88,7 +88,7 @@ def test_so_comeca_com_a_fila_parada(db):
     assert teste_canal._soltar_um_parado() == []          # um por volta: o outro espera este terminar
 
 
-def test_agenda_um_num_dia_e_o_outro_no_seguinte(db, monkeypatch):
+def test_o_primeiro_sobe_na_hora_e_o_outro_no_dia_seguinte(db, monkeypatch):
     enviados = []
     monkeypatch.setattr(fabrica_api, "youtube_publicar",
                         lambda nome, canal, quando="", com_thumbnail=True, **r:
@@ -101,9 +101,10 @@ def test_agenda_um_num_dia_e_o_outro_no_seguinte(db, monkeypatch):
     teste_canal._publicar_prontos()
     assert [e[1] for e in enviados] == ["UC1", "UC1"]                  # os dois no canal do teste
     assert [e[3] for e in enviados] == [False, False]                  # sem thumbnail: o YouTube usa os quadros dele
-    dias = [datetime.fromisoformat(e[2]) for e in enviados]
-    assert (dias[1] - dias[0]).days == 1 and dias[0].hour == teste_canal.HORA_DO_POST
-    assert dias[0].date() > datetime.now().date()                      # o primeiro é do dia seguinte em diante
+    assert enviados[0][2] == ""                                        # o primeiro sobe na hora, sem publishAt
+    segundo = datetime.fromisoformat(enviados[1][2])
+    assert segundo.date() == (datetime.now() + timedelta(days=1)).date()
+    assert segundo.hour == teste_canal.HORA_DO_POST
     depois = teste_canal.do_canal(1, "UC1")
     assert depois["estado"] == "feito" and all(v["agendado_para"] for v in depois["videos"])
 
@@ -235,3 +236,25 @@ def test_o_estoque_pronto_conta_so_o_que_esta_entregue(db, monkeypatch):
     assert teste_canal.estoque_pronto(1) == 0           # ainda sendo feito
     _entregues(*primeiro)
     assert teste_canal.estoque_pronto(1) == 1
+
+
+def test_ligar_o_canal_na_fabrica_ja_comeca_o_teste(db, monkeypatch):
+    banco.executar("INSERT OR IGNORE INTO usuarios (id, email, senha_hash, admin, criado) VALUES (1,'eu','x',1,?)",
+                   banco.agora())
+    monkeypatch.setattr(teste_canal, "conectados",
+                        lambda: [{"canal_id": "UC9", "canal_nome": "Nono"}])
+    soltos = teste_canal._ligar_conectados()
+    assert len(soltos) == teste_canal.POR_CANAL
+    cartao = teste_canal.do_canal(1, "UC9")
+    assert cartao["estado"] == "liberado" and cartao["nome"] == "Nono"
+    assert cartao["lingua"] == teste_canal.LINGUA_PADRAO
+    assert teste_canal._ligar_conectados() == []          # o mesmo canal não começa duas vezes
+
+
+def test_canal_ligado_com_teste_dispensado_fica_quieto(db, monkeypatch):
+    banco.executar("INSERT OR IGNORE INTO usuarios (id, email, senha_hash, admin, criado) VALUES (1,'eu','x',1,?)",
+                   banco.agora())
+    teste_canal.oferecer(1, "UC1")
+    teste_canal.dispensar(1, "UC1")
+    monkeypatch.setattr(teste_canal, "conectados", lambda: [{"canal_id": "UC1", "canal_nome": "Um"}])
+    assert teste_canal._ligar_conectados() == []

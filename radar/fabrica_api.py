@@ -208,9 +208,12 @@ def conta_youtube_apagar(nome: str) -> dict:
 # que autoriza a fábrica a postar. Cada canal é conectado uma vez, porque o token do Google fica preso ao canal
 # escolhido na tela de consentimento.
 
-def youtube_contas() -> dict:
-    """As contas conectadas para publicar: {"contas": [...], "conta": a única, "conectado": bool}."""
-    return _pedir("GET", "/api/youtube/status")
+def youtube_contas(tempo: float = 20) -> dict:
+    """As contas conectadas para publicar: {"contas": [...], "conta": a única, "conectado": bool}.
+
+    A fábrica produzindo demora a responder: quem pergunta de tempos em tempos manda um tempo curto e tenta de novo
+    depois, em vez de ficar esperando."""
+    return _pedir("GET", "/api/youtube/status", tempo=tempo)
 
 
 def youtube_conectar_url() -> str:
