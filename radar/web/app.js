@@ -4995,7 +4995,7 @@ async function desenharCanalDeTeste() {
         ? `<ul style="list-style:none;padding:0;margin:8px 0">${ligados.map((c) =>
             `<li style="margin:4px 0">✓ <b>${esc(c.canal_nome || c.canal_id)}</b> <span class="sub">${esc(c.canal_id)}</span></li>`).join("")}</ul>`
         : `<p class="sub">Nenhum canal ligado ainda.</p>`}
-      <button class="botao sec" id="teste-conectar">Ligar um canal</button>
+      <div><button class="botao sec" id="teste-conectar">Ligar um canal</button></div>
     </div>
 
     <div class="cp-bloco" style="margin-top:12px">
