@@ -202,9 +202,12 @@ def privados(usuario_id: int) -> list[dict]:
         for p in _pedidos(linha):
             if not p.get("enviado") or p.get("conferido"):
                 continue
+            url = p.get("url", "")
             espera.append({"canal_id": linha["canal_id"], "canal": linha["nome"] or linha["canal_id"],
-                           "tema": p.get("tema", ""), "fid": p.get("fid"), "url": p.get("url", ""),
-                           "video_id": p.get("video_id", ""), "agendado_para": p.get("agendado_para", "")})
+                           "tema": p.get("tema", ""), "fid": p.get("fid"), "url": url,
+                           # os primeiros subiram antes de o id ser guardado: ele é o fim do próprio link
+                           "video_id": p.get("video_id") or (url.rstrip("/").rsplit("/", 1)[-1] if url else ""),
+                           "agendado_para": p.get("agendado_para", "")})
     return espera
 
 
