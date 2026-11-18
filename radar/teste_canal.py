@@ -257,8 +257,10 @@ def _ligar_conectados() -> list[int]:
     mudaram = []
     for c in conectados():
         canal = c.get("canal_id") or ""
-        if not canal or _linha(dono["id"], canal):
-            continue                       # já tem teste (pendente, liberado, feito ou dispensado): não mexe
+        linha = _linha(dono["id"], canal)
+        # o convite ainda esperando resposta vira sim; já liberado, feito ou dispensado, ninguém mexe
+        if not canal or (linha and linha["estado"] != "pendente"):
+            continue
         mudaram += [v["fid"] for v in comecar(dono["id"], canal, LINGUA_PADRAO, c.get("canal_nome") or "")["videos"]]
     return mudaram
 
