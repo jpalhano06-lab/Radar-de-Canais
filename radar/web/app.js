@@ -4982,6 +4982,7 @@ function medir() {
 // que o Radar vai fazendo com a fila parada, e sobem agendados, um num dia e o outro no seguinte.
 
 async function canalDeTeste() {
+  TESTE_LIGADOS = null;        // entrando na aba, pergunta de novo quais canais estão ligados
   tela.innerHTML = titulo("Canal de teste", "Conecte o canal, cole o @ e escolha a língua do título. O resto é com o Radar.")
     + `<div id="teste-aba"><p class="sub">Carregando…</p></div>`;
   desenharCanalDeTeste();
@@ -4996,22 +4997,33 @@ function cartaoDoTeste(t) {
     <p class="sub">${esc(t.canal_id)} · ${t.quantos} vídeos de ${t.minutos} min em ${esc(t.lingua)}</p>${feito}</div>`;
 }
 
+// os canais já ligados vêm num pedido à parte: a fábrica produzindo leva segundos para responder, e a tela não
+// espera por isso. Enquanto não chegam, o resto já está na mão da pessoa.
+let TESTE_LIGADOS = null;
+
 async function desenharCanalDeTeste() {
   const caixa = document.getElementById("teste-aba");
   if (!caixa) return;
+  const antes = { arroba: (document.getElementById("teste-arroba") || {}).value || "",
+                  lingua: (document.getElementById("teste-lingua") || {}).value || "" };
   let d;
   try { d = await api("/api/teste"); }
   catch (e) { caixa.innerHTML = `<p class="sub aviso">${esc(porque(e))}</p>`; return; }
+  if (TESTE_LIGADOS === null) {
+    api("/api/teste/contas").then((r) => { TESTE_LIGADOS = r.conectados || []; desenharCanalDeTeste(); })
+      .catch(() => { TESTE_LIGADOS = []; desenharCanalDeTeste(); });
+  }
 
-  const ligados = d.conectados || [];
+  const ligados = TESTE_LIGADOS || [];
   caixa.innerHTML = `
     <div class="cp-bloco">
       <h3>1. Ligar o canal no Google</h3>
       <p class="sub">É um login por canal: o Google prende a autorização ao canal escolhido na tela de consentimento.</p>
-      ${ligados.length
-        ? `<ul style="list-style:none;padding:0;margin:8px 0">${ligados.map((c) =>
-            `<li style="margin:4px 0">✓ <b>${esc(c.canal_nome || c.canal_id)}</b> <span class="sub">${esc(c.canal_id)}</span></li>`).join("")}</ul>`
-        : `<p class="sub">Nenhum canal ligado ainda.</p>`}
+      ${TESTE_LIGADOS === null ? `<p class="sub">Perguntando à fábrica quais canais já estão ligados…</p>`
+        : ligados.length
+          ? `<ul style="list-style:none;padding:0;margin:8px 0">${ligados.map((c) =>
+              `<li style="margin:4px 0">✓ <b>${esc(c.canal_nome || c.canal_id)}</b> <span class="sub">${esc(c.canal_id)}</span></li>`).join("")}</ul>`
+          : `<p class="sub">Nenhum canal ligado ainda.</p>`}
       <div><button class="botao sec" id="teste-conectar">Ligar um canal</button></div>
     </div>
 
@@ -5026,9 +5038,9 @@ async function desenharCanalDeTeste() {
           <option value="">— escrever o @ —</option>
           ${ligados.map((c) => `<option value="${esc(c.canal_id)}" data-nome="${esc(c.canal_nome || "")}">${esc(c.canal_nome || c.canal_id)}</option>`).join("")}
         </select></label>` : ""}
-        <label>@ do canal<br><input id="teste-arroba" placeholder="@meucanal"></label>
+        <label>@ do canal<br><input id="teste-arroba" placeholder="@meucanal" value="${esc(antes.arroba)}"></label>
         <label>Língua do título<br><select id="teste-lingua">${(d.linguas || []).map((l) =>
-          `<option value="${esc(l)}"${l === d.lingua_padrao ? " selected" : ""}>${esc(l)}</option>`).join("")}</select></label>
+          `<option value="${esc(l)}"${l === (antes.lingua || d.lingua_padrao) ? " selected" : ""}>${esc(l)}</option>`).join("")}</select></label>
         <button class="botao" id="teste-comecar">Começar o teste</button>
       </div>
       <p class="sub">Achar o canal pelo @ gasta 1 da cota do YouTube. Escolhendo um canal já ligado, não gasta nada.</p>

@@ -1630,10 +1630,18 @@ async def liberar_teste_do_canal(canal_id: str, request: Request, u: dict = Depe
 
 @app.get("/api/teste")
 def teste_aba(u: dict = Depends(usuario)):
-    return {"conectados": teste_canal.conectados(), "estoque": teste_canal.estoque_pronto(u["id"]),
+    # sem falar com a fábrica: ela leva segundos quando está produzindo, e a tela não pode esperar por isso. Os
+    # canais já ligados vêm depois, em /api/teste/contas
+    return {"estoque": teste_canal.estoque_pronto(u["id"]),
             "testes": teste_canal.todos(u["id"]), "linguas": list(fabrica_api.IDIOMA),
             "lingua_padrao": teste_canal.LINGUA_PADRAO, "minutos": fila.MINUTOS_SEM_NARRACAO,
             "quantos": teste_canal.POR_CANAL}
+
+
+@app.get("/api/teste/contas")
+def teste_contas(u: dict = Depends(usuario)):
+    """Os canais que já têm login do Google na fábrica. Pode demorar: a fábrica produzindo responde devagar."""
+    return {"conectados": teste_canal.conectados()}
 
 
 @app.get("/api/teste/conectar")
