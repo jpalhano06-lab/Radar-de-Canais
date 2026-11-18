@@ -15,6 +15,7 @@ import time
 import unicodedata
 import uuid
 from datetime import datetime
+from pathlib import Path
 
 import httpx
 
@@ -144,6 +145,20 @@ def aviso_da_base(palavras_base: int, palavras: int, lingua: str) -> str:
     return (f"\nA transcrição acima tem cerca de {_tamanho(palavras_base, lingua)}. Ela é só fonte de assunto, "
             f"fatos e ordem das ideias: NÃO siga o tamanho dela. O seu roteiro tem cerca de "
             f"{_tamanho(palavras, lingua)}, nem mais nem menos.\n")
+
+
+def _pasta_nova(titulo: str) -> Path:
+    """A pasta deste roteiro, sempre uma só dele (2026-11-17): o nome é a hora e o título, e dois roteiros do mesmo
+    minuto com o mesmo título ganham -2, -3… Em japonês, coreano e chinês o `_slug` não sobra nada e vira "roteiro",
+    então dois pedidos do mesmo minuto caíam na MESMA pasta: o segundo escrevia por cima do primeiro e os dois
+    viravam o mesmo vídeo (aconteceu com os dois vídeos do canal japonês, 21:06)."""
+    base = f"{datetime.now(banco.BRASILIA).strftime('%Y-%m-%d-%H%M')}-{_slug(titulo)}"
+    pasta, k = PASTA / base, 1
+    while pasta.exists():
+        k += 1
+        pasta = PASTA / f"{base}-{k}"
+    pasta.mkdir(parents=True)
+    return pasta
 
 
 def _slug(texto: str) -> str:
@@ -449,8 +464,7 @@ def gerar(usuario_id: int, titulo: str, link: str, minutos: int, lingua: str, pr
     video_id = id_do_video(link)
     if link and not video_id:
         raise RuntimeError("Não reconheci o link do vídeo de referência.")
-    pasta = PASTA / f"{datetime.now(banco.BRASILIA).strftime('%Y-%m-%d-%H%M')}-{_slug(titulo)}"
-    pasta.mkdir(parents=True, exist_ok=True)
+    pasta = _pasta_nova(titulo)
     base, lingua_base, thumb, base_erro = "", "", False, ""
     if video_id:
         aviso("Lendo a transcrição do vídeo de referência…")
@@ -687,8 +701,7 @@ def manual(usuario_id: int, titulo: str, texto: str, link: str = "", minutos: in
     video_id = id_do_video(link) if link else None
     if link and not video_id:
         raise RuntimeError("Não reconheci o link do vídeo de referência.")
-    pasta = PASTA / f"{datetime.now(banco.BRASILIA).strftime('%Y-%m-%d-%H%M')}-{_slug(titulo)}"
-    pasta.mkdir(parents=True, exist_ok=True)
+    pasta = _pasta_nova(titulo)
     thumb = copiar_thumbnail(video_id, pasta / "thumbnail.jpg") if video_id else False
     (pasta / "roteiro.txt").write_text(texto, encoding="utf-8")
     original, titulo = titulo, traduzir_titulo(titulo, lingua)

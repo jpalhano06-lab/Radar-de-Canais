@@ -175,3 +175,13 @@ def test_a_descricao_tenta_de_novo_quando_o_claude_falha(tmp_path, monkeypatch):
     roteiro_claude._escrever_descricao(1, pasta, None)
     meta = json.loads((pasta / "roteiro.json").read_text(encoding="utf-8"))
     assert len(voltas) == roteiro_claude.TENTATIVAS_DESCRICAO == 3 and meta["descricao_erro"] == ""
+
+
+def test_dois_roteiros_do_mesmo_minuto_nao_dividem_a_pasta(tmp_path, monkeypatch):
+    """Em japonês o slug não sobra nada ("roteiro"): dois pedidos do mesmo minuto caíam na mesma pasta e o segundo
+    escrevia por cima do primeiro (os dois vídeos do canal japonês, 2026-11-17 21:06)."""
+    from radar import roteiro_claude
+    monkeypatch.setattr(roteiro_claude, "PASTA", tmp_path)
+    a = roteiro_claude._pasta_nova("日本の新発明が銅を永久に置き換える可能性")
+    b = roteiro_claude._pasta_nova("日本の新たな石油発見が世界中に衝撃を与えた！")
+    assert a != b and a.exists() and b.exists() and b.name.endswith("-2")
