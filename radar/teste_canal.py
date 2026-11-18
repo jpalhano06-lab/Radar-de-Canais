@@ -190,6 +190,37 @@ def todos(usuario_id: int) -> list[dict]:
     return [c for c in cartoes if c]
 
 
+def privados(usuario_id: int) -> list[dict]:
+    """Os vídeos de teste já mandados que ainda precisam de uma olhada no canal (2026-11-18).
+
+    Enquanto o projeto do Google não passar pela auditoria da YouTube API Services, todo vídeo que a API sobe fica
+    travado em privado, mesmo pedindo público. Quem tira do privado é a pessoa, no Studio do canal — e com vários
+    canais isso se perde. Esta lista é o lembrete, e some quando ela diz que já conferiu."""
+    espera = []
+    for linha in banco.todos("SELECT * FROM canais_teste WHERE usuario_id=? AND estado IN ('liberado','feito')",
+                             usuario_id):
+        for p in _pedidos(linha):
+            if not p.get("enviado") or p.get("conferido"):
+                continue
+            espera.append({"canal_id": linha["canal_id"], "canal": linha["nome"] or linha["canal_id"],
+                           "tema": p.get("tema", ""), "fid": p.get("fid"), "url": p.get("url", ""),
+                           "video_id": p.get("video_id", ""), "agendado_para": p.get("agendado_para", "")})
+    return espera
+
+
+def conferir(usuario_id: int, canal_id: str, fid: int) -> list[dict]:
+    """A pessoa diz que já olhou aquele vídeo no canal: ele sai da lista de lembretes."""
+    linha = _linha(usuario_id, canal_id)
+    if not linha:
+        raise ValueError("Esse canal não tem teste.")
+    pedidos = _pedidos(linha)
+    for p in pedidos:
+        if p.get("fid") == fid:
+            p["conferido"] = True
+    _gravar_pedidos(usuario_id, canal_id, pedidos)
+    return privados(usuario_id)
+
+
 def comecar(usuario_id: int, canal_id: str, lingua: str = "", nome: str = "") -> dict:
     """A aba Canal de teste: dito o @ e a língua, o teste já começa. Sem agente e sem mais nada para preencher."""
     oferecer(usuario_id, canal_id, nome)
@@ -305,7 +336,9 @@ def _publicar_prontos() -> list[int]:
     """Cada vídeo de teste entregue é agendado no canal do teste, um dia depois do outro."""
     mudaram = []
     agora = datetime.now().timestamp()
-    for linha in banco.todos("SELECT * FROM canais_teste WHERE estado='liberado'"):
+    # "feito" entra junto: os dois podem ter sido mandados na mesma volta, e o link de cada um só aparece depois,
+    # quando a fábrica termina o envio e grava o youtube.json
+    for linha in banco.todos("SELECT * FROM canais_teste WHERE estado IN ('liberado','feito')"):
         pedidos, mexeu = _pedidos(linha), False
         for k, p in enumerate(pedidos):
             if p.get("url") or not p.get("fid"):
@@ -318,6 +351,7 @@ def _publicar_prontos() -> list[int]:
                 publicado = fabrica_api.youtube_do_projeto(item["projeto"])
                 if publicado and publicado.get("url"):
                     p["url"] = publicado["url"]
+                    p["video_id"] = publicado.get("video_id", "")
                     mexeu = True
                     mudaram.append(p["fid"])
                 continue

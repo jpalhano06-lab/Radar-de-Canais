@@ -4044,21 +4044,34 @@ async function painel(abrir) {
   // o painel abre nos vídeos mandados fazer: o link da referência e a thumbnail para copiar (pedido do usuário em
   // 2026-10-18); as ideias salvas ficam na segunda aba
   // a lista leve, sem o texto de cada roteiro: o painel é pedido a cada troca de tela e só mostra título, link e capa
-  const [d, { roteiros }, { tarefas }] = await Promise.all([api("/api/ideias-salvas"), api("/api/roteiros?leve=1").catch(() => ({ roteiros: [] })),
-    api("/api/roteiros/tarefas").catch(() => ({ tarefas: [] }))]);
+  const [d, { roteiros }, { tarefas }, { videos: privados }] = await Promise.all([api("/api/ideias-salvas"),
+    api("/api/roteiros?leve=1").catch(() => ({ roteiros: [] })),
+    api("/api/roteiros/tarefas").catch(() => ({ tarefas: [] })),
+    api("/api/teste/privados").catch(() => ({ videos: [] }))]);
   const escrevendo = tarefas.filter((t) => t.estado === "rodando");
   // a aba na borda direita fica sempre à mão, em qualquer página, para abrir e fechar o painel (pedido do usuário em
   // 2026-10-18); com o painel aberto ela encosta nele e vira o "fechar"
   abas.hidden = false;
   abas.classList.toggle("com-painel", !caixa.hidden);
-  abas.innerHTML = `<button class="aba-lateral ${caixa.hidden ? "" : "aberta"}" title="${caixa.hidden ? "Abrir" : "Fechar"} as ideias salvas e os vídeos feitos">
+  // a segunda aba só existe enquanto houver vídeo de teste esperando uma olhada no canal (pedido do usuário em
+  // 2026-11-18): com vários canais, esses lembretes se perdiam
+  abas.innerHTML = `<button class="aba-lateral ${!caixa.hidden && PAINEL_MODO !== "privado" ? "aberta" : ""}" data-painel="ideias"
+      title="${caixa.hidden ? "Abrir" : "Fechar"} as ideias salvas e os vídeos feitos">
     <span class="seta-lat">${caixa.hidden ? "‹" : "›"}</span><span class="txt">Ideias e vídeos</span>
-    ${escrevendo.length ? `<span class="n girando">${escrevendo.length}</span>` : roteiros.length ? `<span class="n">${roteiros.length}</span>` : ""}</button>`;
-  abas.querySelector("button").onclick = () => painel(caixa.hidden);
+    ${escrevendo.length ? `<span class="n girando">${escrevendo.length}</span>` : roteiros.length ? `<span class="n">${roteiros.length}</span>` : ""}</button>
+    ${privados.length ? `<button class="aba-lateral ${!caixa.hidden && PAINEL_MODO === "privado" ? "aberta" : ""}" data-painel="privado"
+      title="Vídeos de teste que estão no ar e precisam sair do privado">
+      <span class="seta-lat">${caixa.hidden ? "‹" : "›"}</span><span class="txt">Tirar do privado</span>
+      <span class="n">${privados.length}</span></button>` : ""}`;
+  abas.querySelectorAll("button").forEach((b) => (b.onclick = () => {
+    const quer = b.dataset.painel === "privado" ? "privado" : (PAINEL_MODO === "privado" ? "ideias" : PAINEL_MODO);
+    if (!caixa.hidden && quer === PAINEL_MODO) return painel(false);      // clicou na aba aberta: fecha
+    PAINEL_MODO = quer; guardar("painel-modo2", PAINEL_MODO); painel(true);
+  }));
   const botaoIdeias = document.getElementById("bt-ideias");
   if (botaoIdeias) botaoIdeias.innerHTML = `Ideias e vídeos${escrevendo.length ? ` <span class="n girando">${escrevendo.length}</span>` : roteiros.length ? ` <span class="n">${roteiros.length}</span>` : ""}`;
   if (caixa.hidden) return;
-  const modo = PAINEL_MODO === "feitos" ? "feitos" : "ideias";
+  const modo = ["feitos", "privado"].includes(PAINEL_MODO) ? PAINEL_MODO : "ideias";
   const thumbDe = (r) => r.thumbnail_url || (idDoVideo(r.link) ? `/api/thumb/imagem/${idDoVideo(r.link)}` : "");
   const feitos = [...escrevendo.map((t) => ({ ...t, escrevendo: true })), ...roteiros];
   const cartaoFeito = (r, i) => {
@@ -4076,12 +4089,30 @@ async function painel(abrir) {
         ${th ? `<button class="botao sec" data-copiar-thumb>Copiar thumbnail</button><a class="botao sec" href="${esc(th)}" download="thumbnail-referencia.jpg" title="Baixar a thumbnail">Baixar</a>` : ""}
       </div></div>`;
   };
-  caixa.innerHTML = `<div class="painel-cab"><b>${modo === "feitos" ? "Vídeos feitos" : "Ideias salvas"}</b><button class="botao sec" id="fechar-painel">×</button></div>
+  const NOME_MODO = { feitos: "Vídeos feitos", privado: "Tirar do privado", ideias: "Ideias salvas" };
+  caixa.innerHTML = `<div class="painel-cab"><b>${NOME_MODO[modo]}</b><button class="botao sec" id="fechar-painel">×</button></div>
     <div class="painel-modos"><button class="${modo === "ideias" ? "ativo" : ""}" data-modo="ideias">Ideias salvas · ${d.total || 0}</button>
-      <button class="${modo === "feitos" ? "ativo" : ""}" data-modo="feitos">Vídeos feitos · ${feitos.length}</button></div>
+      <button class="${modo === "feitos" ? "ativo" : ""}" data-modo="feitos">Vídeos feitos · ${feitos.length}</button>
+      ${privados.length ? `<button class="${modo === "privado" ? "ativo" : ""}" data-modo="privado">Tirar do privado · ${privados.length}</button>` : ""}</div>
     <div id="painel-corpo"></div>`;
   const corpo = document.getElementById("painel-corpo");
-  if (modo === "feitos") {
+  if (modo === "privado") {
+    corpo.innerHTML = `<p class="sub" style="padding:0 12px">Vídeo que a API sobe fica travado em privado até o projeto
+      do Google passar pela auditoria do YouTube. Abra cada um no Studio, troque para público e marque aqui.</p>
+      <div class="painel-lista">${privados.map((v, i) => `<div class="feito" data-i="${i}">
+        <span class="feito-canal">${esc(v.canal)}</span>
+        <b class="feito-titulo">${esc(v.tema)}</b>
+        <div class="feito-link">${v.agendado_para ? `no ar ${new Date(v.agendado_para).toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" })}` : "subindo"}</div>
+        <div class="feito-acoes">
+          ${v.video_id ? `<a class="botao sec" href="https://studio.youtube.com/video/${esc(v.video_id)}/edit" target="_blank" rel="noopener">Abrir no Studio</a>` : ""}
+          ${v.url ? `<a class="botao sec" href="${esc(v.url)}" target="_blank" rel="noopener">Ver no YouTube</a>` : ""}
+          <button class="botao" data-conferir="${v.fid}" data-canal="${esc(v.canal_id)}">Já está público</button>
+        </div></div>`).join("")}</div>`;
+    corpo.querySelectorAll("[data-conferir]").forEach((b) => (b.onclick = () => carregando(b, "Tirando…", async () => {
+      await api("/api/teste/privados", { method: "POST", body: { canal_id: b.dataset.canal, fid: +b.dataset.conferir } });
+      painel();
+    })));
+  } else if (modo === "feitos") {
     corpo.innerHTML = `<div class="painel-lista">${feitos.map(cartaoFeito).join("")
       || '<p class="sub">Nenhum vídeo mandado fazer ainda. Escreva um roteiro em <a href="#/trabalho">Roteiro</a>: ele aparece aqui com o link e a thumbnail da referência.</p>'}</div>`;
     corpo.querySelectorAll(".feito").forEach((el) => {
