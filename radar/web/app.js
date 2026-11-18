@@ -1911,6 +1911,14 @@ const BLOCOS_AC = [["precisa_voce", "Precisa de você"], ["produzindo", "Produzi
 const ESTADO_FILA = { entrada: "Na Entrada", na_fila: "Na fila", escrevendo: "Escrevendo o roteiro", sua_vez: "Esperando sua revisão",
   enviando: "Enviando para a fábrica", produzindo: "Produzindo", pausado: "Pausado", erro: "Parou com erro", precisa_voce: "Precisa de você", parado: "Parado" };
 
+// o dia de o vídeo subir no canal (agendamentos, 2026-11-17): o Radar manda a fábrica publicar quando ele fica
+// pronto, e com dia marcado o YouTube publica sozinho no publishAt
+function quandoSobe(a) {
+  if (a.url) return "no ar";
+  const dia = a.quando ? new Date(a.quando).toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" }) : "";
+  return a.erro ? `não subiu: ${a.erro}` : a.enviado ? (dia ? `agendado para ${dia}` : "subindo") : dia ? `sobe em ${dia}` : "sobe assim que ficar pronto";
+}
+
 async function acompanhar() {
   const A = { dados: null, escolhido: guardado("ac-escolhido", ""), aba: "acompanhamento", busca: "", canal: "", tipoLog: "todos" };
   tela.innerHTML = titulo("Acompanhar", "A fila da fábrica: o que precisa de você, o que está produzindo e o que espera a vez. Atualiza sozinho.", "acompanhar") +
@@ -1923,7 +1931,7 @@ async function acompanhar() {
     const pct = Math.round(x.progresso || 0);
     return `<button class="acn-item ${x.chave === A.escolhido ? "escolhido" : ""}" data-chave="${esc(x.chave)}">
       <span class="acn-item-topo"><span class="acn-estado e-${esc(x.estado)}">${esc(ESTADO_FILA[x.estado] || x.estado)}</span><small>${x.prioridade ? '<span class="acn-prio">⚡ Prioridade</span> ' : ""}${x.criado ? esc(ha(x.criado)) : ""}</small></span>
-      <b>${esc(x.titulo)}</b><small>${esc(x.canal || "")}${x.passo && x.tipo === "fila" ? ` · ${esc(x.passo)}` : ""}</small>
+      <b>${esc(x.titulo)}</b><small>${esc(x.canal || "")}${x.passo && x.tipo === "fila" ? ` · ${esc(x.passo)}` : ""}${x.agendado ? ` · ${esc(quandoSobe(x.agendado))}` : ""}</small>
       ${pct && x.estado !== "entrada" ? `<span class="acn-barra"><i style="width:${pct}%"></i></span>` : ""}</button>`;
   };
 
@@ -1997,6 +2005,8 @@ async function acompanhar() {
       caixa.innerHTML = `<header class="acn-cab"><span class="acn-estado e-${esc(x.estado)}">${esc(ESTADO_FILA[x.estado])}</span>
           <h2>${esc(x.titulo)}</h2><small>${esc(x.canal || "sem canal")} · pedido ${esc(ha(x.criado))}</small></header>
         ${x.erro ? `<div class="chamada aviso">${esc(x.erro)}</div>` : ""}
+        ${x.agendado ? `<p class="acn-explica">Postar no canal: ${esc(quandoSobe(x.agendado))}.${x.agendado.erro
+          ? " Conecte este canal na fábrica (o login do Google é um por canal) e o Radar tenta de novo sozinho." : ""}</p>` : ""}
         <p class="acn-explica">${{ entrada: "Guardado na Entrada: não começa sozinho e não gasta nada.", na_fila: "Esperando a vez: começa quando a fábrica tiver vaga.",
           escrevendo: `O Claude está escrevendo o roteiro. ${esc(x.passo || "")}`, sua_vez: "O roteiro está pronto. Leia, ajuste se quiser e aprove para ir para a fábrica.",
           enviando: "Criando o projeto na fábrica…", erro: "Corrija o que o aviso diz e tente de novo.",

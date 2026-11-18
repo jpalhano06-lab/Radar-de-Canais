@@ -23,7 +23,7 @@ from fastapi.staticfiles import StaticFiles
 from starlette.background import BackgroundTask
 
 from . import avisos, backup, descoberta, maquinas
-from . import alvos, banco, canal_painel, capas, lente_ia, molde, pedidos, ponte, chatgpt_conta, claude_projetos, custos, descricao, diagnostico, estilos_animacao, fabrica_api, fila, funcoes, garimpo, gosto, horarios, ia, integracoes, medir, mercado, metricas, nichos, pagina, perfil, producao, publicar, radar_paises, roteiro_claude, studio, tempo, teste_canal, thumb, trabalho, treinamento, trello, youtube
+from . import agendar, alvos, banco, canal_painel, capas, lente_ia, molde, pedidos, ponte, chatgpt_conta, claude_projetos, custos, descricao, diagnostico, estilos_animacao, fabrica_api, fila, funcoes, garimpo, gosto, horarios, ia, integracoes, medir, mercado, metricas, nichos, pagina, perfil, producao, publicar, radar_paises, roteiro_claude, studio, tempo, teste_canal, thumb, trabalho, treinamento, trello, youtube
 from .config import DADOS, NOME, PLANOS, RAIZ, pode
 
 WEB = RAIZ / "radar" / "web"
@@ -2656,6 +2656,22 @@ def fila_tentar(fid: int, u: dict = Depends(dono_da_fabrica)):
     return _na_fila(fila.tentar, u["id"], fid)
 
 
+@app.post("/api/fila/{fid}/agendar")
+async def fila_agendar(fid: int, request: Request, u: dict = Depends(dono_da_fabrica)):
+    """Marca o dia e a hora de o vídeo subir no canal (ISO na hora do canal; vazio = assim que ficar pronto). Com
+    `{"tirar": true}` desmarca. O canal precisa estar conectado na fábrica (um login do Google por canal)."""
+    d = await request.json()
+    if d.get("tirar"):
+        agendar.desmarcar(u["id"], fid)
+        return {"agendado": None}
+    try:
+        marcado = agendar.marcar(u["id"], fid, str(d.get("canal_id") or ""), str(d.get("quando") or ""),
+                                 com_thumbnail=d.get("com_thumbnail", True))
+    except ValueError as erro:
+        raise HTTPException(400, str(erro))
+    return {"agendado": marcado}
+
+
 @app.post("/api/fila/{fid}/pausar")
 def fila_pausar(fid: int, u: dict = Depends(dono_da_fabrica)):
     return _da_fabrica(_na_fila, fila.pausar, u["id"], fid)
@@ -2693,9 +2709,12 @@ async def acompanhar_lista(u: dict = Depends(usuario)):
         prod, ligada = {"andamento": [], "prontos": []}, False
     nomes = {c["id"]: c["titulo"] for c in banco.todos("SELECT c.id, c.titulo FROM meus_canais m JOIN canais c ON c.id=m.canal_id WHERE m.usuario_id=?", u["id"])}
     b = diagnostico.blocos(fila.listar(u["id"]), prod)
+    marcados = {a["fid"]: a for a in agendar.do_usuario(u["id"])}     # o dia de subir, quando o pedido tem um
     for chave in ("precisa_voce", "produzindo", "pausados", "na_fila", "entrada"):
         for item in b[chave]:
             item["canal"] = item.get("canal") or nomes.get(item.get("canal_id", ""), "")
+            if marcados.get(item.get("id")):
+                item["agendado"] = marcados[item["id"]]
     return b | {"limite": fila.limite(), "fabrica_ligada": ligada, "prontos_hoje": sum(
         1 for p in prod["prontos"] if (p.get("criado") or "")[:10] == datetime.now(banco.BRASILIA).date().isoformat())}
 

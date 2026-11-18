@@ -338,11 +338,13 @@ def passo(fabrica=None, roteirista=None, em_thread: bool = True, config_canal=No
     mudaram = []
     try:
         # antes da fábrica: uma máquina de fora que sumiu não depende de a fábrica daqui estar ligada
-        from . import maquinas, teste_canal   # import tardio: o teste_canal usa esta fila
+        from . import agendar, maquinas, teste_canal   # import tardio: o teste_canal e o agendar usam esta fila
 
         mudaram += maquinas.expirar()
         # o teste dos canais novos: solta um pedido quando a fila está parada e agenda os que ficaram prontos
         teste_canal.andar()
+        # os vídeos marcados para subir num dia: o que já está entregue vai para a fábrica publicar
+        agendar.andar()
         try:
             prod = fabrica.producoes()
         except fabrica_api.SemFabrica:

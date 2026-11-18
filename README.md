@@ -630,6 +630,13 @@ Menu: Meu trabalho ganhou **Custos**; Ferramentas ganhou **Integrações** (só 
   fábrica e chama a produção já confirmada quando há vaga: o limite "N ao mesmo tempo" (1 a 8, padrão 2, no topo do
   Acompanhar) conta os vídeos da fila e os da fábrica rodando fora dela. Fábrica desligada só faz esperar; servidor
   reiniciado no meio devolve o pedido para a fila.
+- **Postar no dia marcado** (`radar/agendar.py`, tabela `agendamentos`, `POST /api/fila/ID/agendar`, 2026-11-17): o
+  pedido da fila pode sair marcado para subir no canal. Sem dia, sobe assim que fica pronto; com dia (ISO na hora do
+  canal) sobe privado com o `publishAt`, e o YouTube publica sozinho com o Radar e o computador desligados. O vigia
+  da fila cuida disso a cada volta e o Acompanhar mostra "sobe em …" no pedido. **Para subir, o canal precisa estar
+  conectado na fábrica** (`http://127.0.0.1:8080/api/youtube/conectar`, um login do Google por canal: o token fica
+  preso ao canal escolhido na tela de consentimento); sem isso fica o erro no pedido e o Radar tenta de novo a cada
+  15 min, então conectar o canal já faz o vídeo subir sozinho.
 - **Acompanhar novo**: à esquerda os blocos Precisa de você, Produzindo, Na fila, Entrada e Parados na fábrica (busca
   e canal); à direita o vídeo com o anel, a etapa e as abas **Acompanhamento** (as 6 etapas com o tempo de cada uma,
   do "Tempo por etapa" da fábrica), **Diagnóstico** (`radar/diagnostico.py`: de onde vieram as cenas, real × imagem de IA
