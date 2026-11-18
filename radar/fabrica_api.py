@@ -213,6 +213,26 @@ def youtube_contas() -> dict:
     return _pedir("GET", "/api/youtube/status")
 
 
+def youtube_conectar_url() -> str:
+    """O endereço da tela de consentimento do Google para ligar mais um canal na fábrica.
+
+    A fábrica responde com um redirecionamento; o Radar lê o destino aqui e manda só ele para o navegador, para a
+    chave da fábrica nunca aparecer na barra de endereços. O Host vai como localhost porque é com ele que o endereço
+    de volta (redirect_uri) está cadastrado no Google, o mesmo do painel da fábrica."""
+    token = AMBIENTE.get("FABRICA_TOKEN", "")
+    cabecalhos = {"x-fabrica-token": token} if token else {}
+    if URL.startswith("http://127.0.0.1"):
+        cabecalhos["host"] = "localhost" + URL.split("127.0.0.1", 1)[1]
+    try:
+        r = httpx.get(URL + "/api/youtube/conectar", timeout=20, follow_redirects=False, headers=cabecalhos)
+    except httpx.HTTPError:
+        raise FabricaDesligada("O editor da fábrica não está ligado (porta 8080). Ligue a fábrica e tente de novo.")
+    destino = r.headers.get("location", "")
+    if not destino:
+        raise SemFabrica("A fábrica não devolveu o endereço do login do Google.")
+    return destino
+
+
 def youtube_publicar(nome: str, canal: str, quando: str = "", privacidade: str = "public",
                      com_thumbnail: bool = True, simular: bool = False, titulo: str = "",
                      descricao: str | None = None, tags: list | None = None) -> dict:

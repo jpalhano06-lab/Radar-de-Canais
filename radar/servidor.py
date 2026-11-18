@@ -1624,6 +1624,44 @@ async def liberar_teste_do_canal(canal_id: str, request: Request, u: dict = Depe
         raise HTTPException(400, str(erro))
 
 
+# ---------------------------------------------------------------- a aba Canal de teste (2026-11-17)
+# Tudo o que o teste precisa numa tela só: o login do Google do canal, o @ dele e a língua do título. Sem agente,
+# sem perfil de produção e sem fila para arrumar — os vídeos já vêm prontos do estoque.
+
+@app.get("/api/teste")
+def teste_aba(u: dict = Depends(usuario)):
+    return {"conectados": teste_canal.conectados(), "estoque": teste_canal.estoque_pronto(u["id"]),
+            "testes": teste_canal.todos(u["id"]), "linguas": list(fabrica_api.IDIOMA),
+            "lingua_padrao": teste_canal.LINGUA_PADRAO, "minutos": fila.MINUTOS_SEM_NARRACAO,
+            "quantos": teste_canal.POR_CANAL}
+
+
+@app.get("/api/teste/conectar")
+def teste_conectar(u: dict = Depends(dono_da_fabrica)):
+    """O endereço da tela do Google para ligar mais um canal na fábrica (um login por canal)."""
+    return _da_fabrica(lambda: {"url": fabrica_api.youtube_conectar_url()})
+
+
+@app.post("/api/teste")
+async def teste_comecar(request: Request, u: dict = Depends(dono_da_fabrica)):
+    """O @ (ou o canal já conectado) e a língua: o Radar acha o canal e começa o teste na hora."""
+    corpo = await request.json()
+    canal_id, nome = str(corpo.get("canal_id") or "").strip(), str(corpo.get("nome") or "").strip()
+    if not canal_id:
+        arroba = str(corpo.get("arroba") or "").strip()
+        if not arroba:
+            raise HTTPException(400, "Escreva o @ do canal.")
+        try:
+            with youtube.gastando("medir"):
+                achado = youtube.canal_por_handle(arroba if arroba.startswith("@") else "@" + arroba)
+        except youtube.SemCota as erro:
+            _sem_cota(erro)
+        if not achado:
+            raise HTTPException(404, "Canal não encontrado. Confira o @.")
+        canal_id, nome = achado["id"], achado["titulo"]
+    return _na_fila(teste_canal.comecar, u["id"], canal_id, str(corpo.get("lingua") or ""), nome)
+
+
 @app.get("/api/perfil/canal/{canal_id}")
 def meu_canal(canal_id: str, u: dict = Depends(usuario)):
     c = banco.um("SELECT * FROM canais WHERE id=?", canal_id)

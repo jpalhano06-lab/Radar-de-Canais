@@ -75,10 +75,28 @@ def _gravar_pedidos(usuario_id: int, canal_id: str, pedidos: list[dict]) -> None
                    json.dumps(pedidos, ensure_ascii=False), usuario_id, canal_id)
 
 
-def oferecer(usuario_id: int, canal_id: str) -> None:
+def oferecer(usuario_id: int, canal_id: str, nome: str = "") -> None:
     """Chamada quando a pessoa adiciona um canal. Só abre o convite: quem decide é ela, no perfil."""
     banco.executar("INSERT OR IGNORE INTO canais_teste (usuario_id, canal_id, estado, criado) VALUES (?,?,?,?)",
                    usuario_id, canal_id, "pendente", banco.agora())
+    if nome:
+        banco.executar("UPDATE canais_teste SET nome=? WHERE usuario_id=? AND canal_id=? AND nome=''",
+                       nome, usuario_id, canal_id)
+
+
+def conectados() -> list[dict]:
+    """Os canais que já têm login do Google na fábrica. Fábrica desligada: lista vazia, não é erro de ninguém."""
+    try:
+        return fabrica_api.youtube_contas().get("contas") or []
+    except Exception:  # noqa: BLE001 (a fábrica desligada não pode derrubar a aba)
+        return []
+
+
+def _e_dono(usuario_id: int, canal_id: str) -> bool:
+    """Seu é o canal que está nos seus canais ou que você mesmo ligou na fábrica pelo login do Google."""
+    if banco.um("SELECT 1 FROM meus_canais WHERE usuario_id=? AND canal_id=?", usuario_id, canal_id):
+        return True
+    return any(c.get("canal_id") == canal_id for c in conectados())
 
 
 def temas_novos(usuario_id: int, quantos: int = POR_CANAL) -> list[str]:
@@ -134,10 +152,29 @@ def do_canal(usuario_id: int, canal_id: str) -> dict | None:
                        "projeto": (item or {}).get("projeto", ""),
                        "agendado_para": p.get("agendado_para", ""), "url": p.get("url", ""),
                        "enviado": bool(p.get("enviado")), "erro": p.get("erro", "")})
-    prontos = len([l for l in _estoque(usuario_id) if l["estado"] == "entregue"])
-    return {"canal_id": canal_id, "estado": linha["estado"], "lingua": linha["lingua"] or LINGUA_PADRAO,
+    return {"canal_id": canal_id, "nome": linha["nome"] or "", "estado": linha["estado"],
+            "lingua": linha["lingua"] or LINGUA_PADRAO, "criado": linha["criado"],
             "lingua_padrao": LINGUA_PADRAO, "minutos": fila.MINUTOS_SEM_NARRACAO, "quantos": POR_CANAL,
-            "linguas": list(fabrica_api.IDIOMA), "estoque": prontos, "videos": videos}
+            "linguas": list(fabrica_api.IDIOMA), "estoque": estoque_pronto(usuario_id), "videos": videos}
+
+
+def estoque_pronto(usuario_id: int) -> int:
+    """Quantos vídeos de teste já estão prontos, esperando um canal."""
+    return len([l for l in _estoque(usuario_id) if l["estado"] == "entregue"])
+
+
+def todos(usuario_id: int) -> list[dict]:
+    """Todos os testes desta pessoa, o mais novo primeiro: é o que a aba Canal de teste mostra."""
+    cartoes = [do_canal(usuario_id, l["canal_id"])
+               for l in banco.todos("SELECT canal_id FROM canais_teste WHERE usuario_id=? AND estado<>'dispensado' "
+                                    "ORDER BY criado DESC, rowid DESC", usuario_id)]
+    return [c for c in cartoes if c]
+
+
+def comecar(usuario_id: int, canal_id: str, lingua: str = "", nome: str = "") -> dict:
+    """A aba Canal de teste: dito o @ e a língua, o teste já começa. Sem agente e sem mais nada para preencher."""
+    oferecer(usuario_id, canal_id, nome)
+    return liberar(usuario_id, canal_id, lingua)
 
 
 def dispensar(usuario_id: int, canal_id: str) -> dict | None:
@@ -153,8 +190,8 @@ def liberar(usuario_id: int, canal_id: str, lingua: str = "") -> dict:
         raise ValueError("Esse canal não tem teste para liberar.")
     if linha["estado"] == "liberado":
         raise ValueError("O teste deste canal já foi liberado.")
-    if not banco.um("SELECT 1 FROM meus_canais WHERE usuario_id=? AND canal_id=?", usuario_id, canal_id):
-        raise ValueError("Esse canal não é seu.")
+    if not _e_dono(usuario_id, canal_id):
+        raise ValueError("Esse canal não é seu: conecte ele na fábrica pelo login do Google antes.")
     lingua = (lingua or LINGUA_PADRAO).strip()
     pedidos = []
     # o estoque primeiro: vídeo pronto nessa língua vai para este canal na hora, sem esperar produção nenhuma
@@ -195,7 +232,7 @@ def _encher_estoque() -> list[int]:
     tira a vez de um vídeo de verdade nem enche a fila de teste de uma vez."""
     if not _fila_parada():
         return []
-    for dono in banco.todos("SELECT DISTINCT usuario_id FROM meus_canais"):
+    for dono in banco.todos("SELECT usuario_id FROM meus_canais UNION SELECT usuario_id FROM canais_teste"):
         usuario_id = dono["usuario_id"]
         guardados = _estoque(usuario_id)
         if len(guardados) >= ESTOQUE:

@@ -185,7 +185,7 @@ const icone = (n, classe = "") => `<svg ${classe ? `class="${classe}"` : ""} vie
 // A terceira posição de uma aba é o endereço dela, quando não é só "#/rota": serve para a mesma tela entrar no
 // menu com um recorte pronto (Entraram hoje é a lista de canais com a visão já ligada).
 const MENU = [
-  ["perfil", "Perfil", [["inicio", "Início"], ["meu-dia", "Meu dia"], ["trabalho", "Produzir"], ["acompanhar", "Acompanhar"], ["resultados", "Resultados"], ["custos", "Custos"]]],
+  ["perfil", "Perfil", [["inicio", "Início"], ["meu-dia", "Meu dia"], ["trabalho", "Produzir"], ["acompanhar", "Acompanhar"], ["resultados", "Resultados"], ["custos", "Custos"], ["teste", "Canal de teste"]]],
   ["descobrir", "Niche Finder", [["base", "Canais"], ["entraram", "Entraram hoje", "#/base?visao=entraram_hoje"],
     // Títulos saiu do menu de manhã (25/10) e voltou de tarde, no mesmo dia, quando o usuário pediu os "títulos
     // recomendados": agora a tela abre com os títulos que estouraram NOS NICHOS DOS CANAIS DELE, que é o que
@@ -206,6 +206,7 @@ const DICAS = {
   titulo: "Converse com o Claude sobre o título e leve para o roteiro", medir: "Cole um @ e veja os números na hora",
   extensao: "Garimpa enquanto você usa o YouTube", bloqueados: "O que você escondeu pelo ⊘", admin: "Cota do YouTube, garimpo e convites",
   integracoes: "As chaves de API e o saldo de cada serviço",
+  teste: "Ligue o canal, cole o @ e a língua: o Radar faz e agenda os 2 vídeos de teste",
   "meu-dia": "Os vídeos de hoje de cada canal, as thumbnails feitas e o link do canal de treino",
 };
 
@@ -4975,6 +4976,92 @@ function medir() {
   document.getElementById("ref").onkeydown = (e) => { if (e.key === "Enter") ir(); };
 }
 
+// ---------------------------------------------------------------- a aba Canal de teste (2026-11-17)
+// O teste inteiro numa tela só: ligar o canal no Google (um login por canal), colar o @ e escolher a língua do
+// título. Não há agente, perfil de produção nem fila para arrumar aqui: os dois vídeos já saem prontos do estoque
+// que o Radar vai fazendo com a fila parada, e sobem agendados, um num dia e o outro no seguinte.
+
+async function canalDeTeste() {
+  tela.innerHTML = titulo("Canal de teste", "Conecte o canal, cole o @ e escolha a língua do título. O resto é com o Radar.")
+    + `<div id="teste-aba"><p class="sub">Carregando…</p></div>`;
+  desenharCanalDeTeste();
+}
+
+function cartaoDoTeste(t) {
+  const nome = t.nome || t.canal_id;
+  const feito = t.videos.length
+    ? `<ul style="list-style:none;padding:0;margin:8px 0">${t.videos.map(linhaDoTesteDoCanal).join("")}</ul>`
+    : `<p class="sub">Esperando a vez na fila.</p>`;
+  return `<div class="cp-bloco" style="margin-top:12px"><h3>${esc(nome)}</h3>
+    <p class="sub">${esc(t.canal_id)} · ${t.quantos} vídeos de ${t.minutos} min em ${esc(t.lingua)}</p>${feito}</div>`;
+}
+
+async function desenharCanalDeTeste() {
+  const caixa = document.getElementById("teste-aba");
+  if (!caixa) return;
+  let d;
+  try { d = await api("/api/teste"); }
+  catch (e) { caixa.innerHTML = `<p class="sub aviso">${esc(porque(e))}</p>`; return; }
+
+  const ligados = d.conectados || [];
+  caixa.innerHTML = `
+    <div class="cp-bloco">
+      <h3>1. Ligar o canal no Google</h3>
+      <p class="sub">É um login por canal: o Google prende a autorização ao canal escolhido na tela de consentimento.</p>
+      ${ligados.length
+        ? `<ul style="list-style:none;padding:0;margin:8px 0">${ligados.map((c) =>
+            `<li style="margin:4px 0">✓ <b>${esc(c.canal_nome || c.canal_id)}</b> <span class="sub">${esc(c.canal_id)}</span></li>`).join("")}</ul>`
+        : `<p class="sub">Nenhum canal ligado ainda.</p>`}
+      <button class="botao sec" id="teste-conectar">Ligar um canal</button>
+    </div>
+
+    <div class="cp-bloco" style="margin-top:12px">
+      <h3>2. Começar o teste</h3>
+      <p class="sub">${d.quantos} vídeos de ${d.minutos} min sobre o espaço, sem narração (só música, nenhum crédito de
+      voz) e sem thumbnail. O primeiro sobe amanhã e o outro no dia seguinte, agendados pelo próprio YouTube.
+      ${d.estoque ? `<b>${d.estoque} ${d.estoque === 1 ? "pronto" : "prontos"} no estoque</b> em ${esc(d.lingua_padrao)}: nessa língua o teste sai na hora.`
+        : "O estoque está vazio: os vídeos vão ser feitos quando a fila ficar parada."}</p>
+      <div style="display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap;margin:10px 0">
+        ${ligados.length ? `<label>Canal<br><select id="teste-qual">
+          <option value="">— escrever o @ —</option>
+          ${ligados.map((c) => `<option value="${esc(c.canal_id)}" data-nome="${esc(c.canal_nome || "")}">${esc(c.canal_nome || c.canal_id)}</option>`).join("")}
+        </select></label>` : ""}
+        <label>@ do canal<br><input id="teste-arroba" placeholder="@meucanal"></label>
+        <label>Língua do título<br><select id="teste-lingua">${(d.linguas || []).map((l) =>
+          `<option value="${esc(l)}"${l === d.lingua_padrao ? " selected" : ""}>${esc(l)}</option>`).join("")}</select></label>
+        <button class="botao" id="teste-comecar">Começar o teste</button>
+      </div>
+      <p class="sub">Achar o canal pelo @ gasta 1 da cota do YouTube. Escolhendo um canal já ligado, não gasta nada.</p>
+    </div>
+
+    ${(d.testes || []).map(cartaoDoTeste).join("")}`;
+
+  const conectar = document.getElementById("teste-conectar");
+  conectar.onclick = () => carregando(conectar, "Abrindo o Google…", async () => {
+    const janela = window.open("", "_blank");       // aberta antes do await: depois dele o navegador bloqueia
+    try {
+      const { url } = await api("/api/teste/conectar");
+      if (janela) janela.location = url; else location.href = url;
+    } catch (e) { if (janela) janela.close(); throw e; }
+  });
+
+  const qual = document.getElementById("teste-qual");
+  const arroba = document.getElementById("teste-arroba");
+  if (qual) qual.onchange = () => { arroba.disabled = !!qual.value; if (qual.value) arroba.value = ""; };
+  const comecar = document.getElementById("teste-comecar");
+  comecar.onclick = () => carregando(comecar, "Começando…", async () => {
+    const escolhido = qual && qual.value ? qual.selectedOptions[0] : null;
+    const corpo = { lingua: document.getElementById("teste-lingua").value };
+    if (escolhido) { corpo.canal_id = escolhido.value; corpo.nome = escolhido.dataset.nome || ""; }
+    else {
+      corpo.arroba = arroba.value.trim();
+      if (!corpo.arroba) { aviso("Escreva o @ do canal."); return; }
+    }
+    await api("/api/teste", { method: "POST", body: corpo });
+    desenharCanalDeTeste();
+  });
+}
+
 // ---------------------------------------------------------------- depoimentos, na Administração
 // O print vai como data URL (o servidor confere tipo e tamanho e guarda em dados/depoimentos). Esconder tira da
 // vitrine sem apagar nada; apagar leva o print junto.
@@ -5249,7 +5336,7 @@ const ROTAS = { entrar: () => entrar(false), criar: () => entrar(true), inicio, 
   senha: telaSenha, "ideias-canal": ideiasCanal, treino, trabalho, acompanhar, resultados, titulo: () => { location.hash = "#/trabalho"; }, thumbnail: () => { location.hash = "#/trabalho"; },
   "meu-dia": meuDia, base: baseCanais, videos: videosLista, acharam, grupos, titulos, medir, extensao, bloqueados, admin, integracoes, custos, animacoes,
   entraram: () => { location.hash = "#/base?visao=entraram_hoje"; },
-  planos: telaPlanos,
+  planos: telaPlanos, teste: canalDeTeste,
   ...Object.fromEntries(Object.entries(VELHAS).map(([de, para]) => [de, () => { location.hash = para; }])) };
 
 // os filtros que ficavam guardados no navegador agora moram no endereço: apaga o que sobrou de antes, uma vez,
