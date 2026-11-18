@@ -5018,7 +5018,9 @@ async function desenharCanalDeTeste() {
   caixa.innerHTML = `
     <div class="cp-bloco">
       <h3>1. Ligar o canal no Google</h3>
-      <p class="sub">É um login por canal: o Google prende a autorização ao canal escolhido na tela de consentimento.</p>
+      <p class="sub">É um login por canal: o Google prende a autorização ao canal escolhido na tela de consentimento.
+      Ligou, o teste daquele canal começa sozinho em ${esc(d.lingua_padrao)} — para outra língua, comece ele aqui
+      embaixo antes de ligar.</p>
       ${TESTE_LIGADOS === null ? `<p class="sub">Perguntando à fábrica quais canais já estão ligados…</p>`
         : ligados.length
           ? `<ul style="list-style:none;padding:0;margin:8px 0">${ligados.map((c) =>
@@ -5030,7 +5032,7 @@ async function desenharCanalDeTeste() {
     <div class="cp-bloco" style="margin-top:12px">
       <h3>2. Começar o teste</h3>
       <p class="sub">${d.quantos} vídeos de ${d.minutos} min sobre o espaço, sem narração (só música, nenhum crédito de
-      voz) e sem thumbnail. O primeiro sobe amanhã e o outro no dia seguinte, agendados pelo próprio YouTube.
+      voz) e sem thumbnail. O primeiro sobe na hora que ficar pronto e o outro no dia seguinte, agendado pelo YouTube.
       ${d.estoque ? `<b>${d.estoque} ${d.estoque === 1 ? "pronto" : "prontos"} no estoque</b> em ${esc(d.lingua_padrao)}: nessa língua o teste sai na hora.`
         : "O estoque está vazio: os vídeos vão ser feitos quando a fila ficar parada."}</p>
       <div style="display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap;margin:10px 0">
