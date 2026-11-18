@@ -214,15 +214,25 @@ def youtube_contas() -> dict:
 
 
 def youtube_publicar(nome: str, canal: str, quando: str = "", privacidade: str = "public",
-                     com_thumbnail: bool = True, simular: bool = False) -> dict:
+                     com_thumbnail: bool = True, simular: bool = False, titulo: str = "",
+                     descricao: str | None = None, tags: list | None = None) -> dict:
     """Manda a fábrica subir o final.mp4 do projeto no canal (o id do canal do YouTube).
 
     quando: ISO na hora do canal ("2026-11-20T18:00"). Com ela o vídeo sobe privado com publishAt e o YouTube publica
-    sozinho no dia marcado, sem a fábrica nem o Radar ligados. Sem thumbnail o YouTube usa os quadros automáticos."""
+    sozinho no dia marcado, sem a fábrica nem o Radar ligados. Sem thumbnail o YouTube usa os quadros automáticos.
+
+    titulo, descricao e tags: o kit do Radar, escrito pelo Claude junto com o roteiro. Vão no pedido porque a
+    fábrica, sozinha, publica pelo publicacao.json dela (o molde dela, que pode até sair sem modelo nenhum)."""
     corpo = {"canal": canal, "privacidade": privacidade, "com_thumbnail": com_thumbnail,
              "com_shorts": False, "simular": simular}
     if quando:
         corpo["agendado_para"] = quando
+    if titulo:
+        corpo["titulo"] = titulo
+    if descricao is not None:
+        corpo["descricao"] = descricao
+    if tags is not None:
+        corpo["tags"] = list(tags)
     return _pedir("POST", f"/api/projetos/{nome}/youtube/publicar", corpo, tempo=60)
 
 

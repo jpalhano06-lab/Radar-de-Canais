@@ -1598,6 +1598,17 @@ como sempre) e as hashtags. A partir daí:
 - O kit passou a dizer de onde veio o texto (`origem`: `radar` ou `fabrica`), e a extensão diz isso no recado:
   "A descrição, as tags e as hashtags vieram do Radar, escritas junto com o roteiro".
 
+**Todo vídeo vai com descrição** (pedido do usuário em 2026-11-17: "coloque sempre descrição para o Claude criar e
+ir com o vídeo"). São três camadas, porque falhar uma vez não pode deixar o vídeo pelado:
+
+- Junto com o roteiro, o Claude tenta `roteiro_claude.TENTATIVAS_DESCRICAO` (3) vezes.
+- No envio para a fábrica, se ainda faltar, o Radar escreve ali mesmo antes de a fábrica começar o vídeo.
+- Na hora de postar, `descricao.garantir` lê o `publicacao_radar.json` do projeto e, faltando, escreve pelo roteiro
+  guardado e leva. **Sem descrição o vídeo não sobe**: fica o recado no pedido e o Radar tenta de novo em 15 min.
+- Postando pelo Radar (`agendar`, teste do canal), a descrição, o título e as tags vão **no próprio pedido** de
+  publicar (`fabrica_api.youtube_publicar(titulo=…, descricao=…, tags=…)`), porque a fábrica, sozinha, sobe com o
+  `publicacao.json` dela — o molde dela, que pode até sair "sem modelo" quando a chamada falha.
+
 **O que já era assim e continua.** Nos Detalhes, a extensão marca sozinha **"Não, não é conteúdo feito para
 crianças"** e **"Uso de IA: Sim"** (os vídeos da fábrica são feitos com IA), além de escrever título, descrição e
 tags. Isso não mudou — o que faltava era a descrição existir a tempo.

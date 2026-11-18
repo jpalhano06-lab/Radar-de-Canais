@@ -24,6 +24,7 @@ from .config import DADOS, FABRICA as _FABRICA
 PASTA = DADOS / "roteiros"
 VAZIA = DADOS / "claude"          # o Claude roda numa pasta vazia, para não ler nenhum CLAUDE.md
 PALAVRAS_POR_MINUTO = 150
+TENTATIVAS_DESCRICAO = 3          # todo vídeo vai com descrição: o Claude tenta três vezes antes de desistir
 LETRAS_POR_PALAVRA = 2  # japonês e chinês: 300 letras por minuto, a conta do agente do canal, são as 150 palavras
 _SEM_ESPACO = re.compile("[\u3040-\u30ff\u3400-\u9fff\uf900-\ufaff\uff66-\uff9d]")   # kana e kanji
 _PONTUACAO_SEM_ESPACO = re.compile("[\u3000-\u303f\uff00-\uff65]")                     # 。、！？「」 e companhia
@@ -656,16 +657,23 @@ def _escrever_descricao(usuario_id: int, pasta, projeto_descricao_id, aviso=lamb
     """A descrição do vídeo, escrita logo depois do roteiro (pedido do usuário em 2026-10-28: ela fica pronta
     enquanto o vídeo está sendo feito, em vez de só existir no fim, quando a fábrica monta o publicacao.json).
 
-    Falhar aqui não derruba o roteiro: o roteiro é o que a pessoa pediu, e a descrição se refaz com um botão.
-    O que deu errado fica no roteiro.json, para a tela de Revisão poder dizer."""
+    Todo vídeo vai com descrição (pedido do usuário em 2026-11-17: "coloque sempre descrição para o Claude criar e
+    ir com o vídeo"), então aqui são TENTATIVAS voltas antes de desistir. Falhar mesmo assim não derruba o roteiro:
+    o roteiro é o que a pessoa pediu, o erro fica no roteiro.json para a tela de Revisão dizer, e quem for publicar
+    escreve a descrição antes de subir (`descricao.garantir`)."""
     from . import descricao as _descricao
     aviso("Roteiro pronto. O Claude está escrevendo a descrição e as tags…")
     meta = json.loads((pasta / "roteiro.json").read_text(encoding="utf-8"))
-    try:
-        _descricao.gerar(usuario_id, pasta, projeto_descricao_id)
-        meta["descricao_erro"] = ""
-    except Exception as erro:
-        meta["descricao_erro"] = str(erro)[:300]
+    meta["descricao_erro"] = ""
+    for volta in range(TENTATIVAS_DESCRICAO):
+        try:
+            _descricao.gerar(usuario_id, pasta, projeto_descricao_id)
+            meta["descricao_erro"] = ""
+            break
+        except Exception as erro:
+            meta["descricao_erro"] = str(erro)[:300]
+            if volta + 1 < TENTATIVAS_DESCRICAO:
+                aviso(f"A descrição falhou ({str(erro)[:80]}). Tentando de novo…")
     (pasta / "roteiro.json").write_text(json.dumps(meta, ensure_ascii=False, indent=1), encoding="utf-8")
 
 
@@ -966,6 +974,13 @@ def enviar(usuario_id: int, nome: str, perfil: str, opcoes: dict | None = None) 
     # a descrição escrita junto com o roteiro vai junto: a extensão já acha este vídeo no Studio com o vídeo
     # ainda sendo feito, em vez de esperar o publicacao.json da fábrica
     from . import descricao as _descricao
+    if not _descricao.ler(pasta).get("sinopse"):
+        # falhou na hora do roteiro: última chance de escrever antes de a fábrica começar o vídeo
+        try:
+            _descricao.gerar(usuario_id, pasta)
+            meta["descricao_erro"] = ""
+        except Exception as erro:  # noqa: BLE001 (sem descrição o vídeo ainda é feito; quem publica escreve antes)
+            meta["descricao_erro"] = str(erro)[:300]
     levou = _descricao.levar(pasta, destino, meta["titulo"], perfil)
     meta["fabrica"] = {"projeto": final, "perfil": perfil, "enviado": banco.agora(), "descricao": levou,
                        "palavras": contar_palavras((pasta / "roteiro.txt").read_text(encoding="utf-8"))}
