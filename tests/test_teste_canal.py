@@ -258,3 +258,12 @@ def test_canal_ligado_com_teste_dispensado_fica_quieto(db, monkeypatch):
     teste_canal.dispensar(1, "UC1")
     monkeypatch.setattr(teste_canal, "conectados", lambda: [{"canal_id": "UC1", "canal_nome": "Um"}])
     assert teste_canal._ligar_conectados() == []
+
+
+def test_canal_ligado_com_convite_pendente_comeca(db, monkeypatch):
+    banco.executar("INSERT OR IGNORE INTO usuarios (id, email, senha_hash, admin, criado) VALUES (1,'eu','x',1,?)",
+                   banco.agora())
+    teste_canal.oferecer(1, "UC1")        # o convite estava lá, esperando resposta
+    monkeypatch.setattr(teste_canal, "conectados", lambda: [{"canal_id": "UC1", "canal_nome": "Um"}])
+    assert len(teste_canal._ligar_conectados()) == teste_canal.POR_CANAL
+    assert teste_canal.do_canal(1, "UC1")["estado"] == "liberado"
