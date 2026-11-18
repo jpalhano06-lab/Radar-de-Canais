@@ -258,7 +258,7 @@
   // a janela dos vídeos da página: atalhos, faixas de inscritos e de views, data, ordem e planilha (a página não muda)
   const FAIXA_INSCRITOS = [0, 1e3, 5e3, 1e4, 5e4, 1e5, 5e5, 1e6, 5e6];
   const FAIXA_VIEWS = [0, 1e3, 1e4, 5e4, 1e5, 5e5, 1e6, 5e6, 2e7];
-  const QUANDO = [["tudo", "Tudo", null], ["hora", "1 hora", 1 / 24], ["hoje", "Hoje", 1], ["semana", "7 dias", 7], ["mes", "30 dias", 30], ["ano", "1 ano", 365]];
+  const QUANDO = [["tudo", "Tudo", null], ["hora", "1 hora", 1 / 24], ["hoje", "Hoje", 1], ["dois", "2 dias", 2], ["tres", "3 dias", 3], ["semana", "7 dias", 7], ["mes", "30 dias", 30], ["ano", "1 ano", 365]];
   // o formato é escolha da pessoa, não regra escondida: a janela jogava fora, calada, todo vídeo de até 3 minutos.
   // Como na página inicial os Shorts são os de view mais alta, "Os mais vistos" nunca trazia os maiores números
   // que estavam na tela, e a conta do botão (que conta tudo) nunca batia com a da janela.

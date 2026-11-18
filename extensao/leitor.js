@@ -128,6 +128,10 @@
   const abrirXhr = XMLHttpRequest.prototype.open;
   XMLHttpRequest.prototype.open = function (metodo, url) {
     if (/\/api\/timedtext/.test(String(url))) this.addEventListener("load", () => guardarLegenda(String(url), this.responseText));
+    if (/\/youtubei\/v1\/get_transcript\b/.test(String(url))) this.addEventListener("load", () => {
+      if (!esperandoTranscricao) return;
+      try { esperandoTranscricao(JSON.parse(this.responseText)); } catch { /* não era JSON */ }
+    });
     return abrirXhr.apply(this, arguments);
   };
   // `exata`: a língua foi escolhida no seletor, e outra legenda já baixada não serve no lugar dela
@@ -179,15 +183,51 @@
     return linhas;
   }
 
-  // o jeito antigo (o botão da descrição), se o YouTube ainda mostrar o botão e a legenda do player falhar
+  // o painel do YouTube (botão da descrição), se a legenda do player falhar. A resposta nem sempre passa pelo fetch
+  // (o YouTube também pede por XHR) e, com o painel já aberto, ele não pede nada de novo: por isso o que vale no fim
+  // são os trechos que estão no painel, lidos do DOM. Esperar só a resposta de rede era o que deixava a aba em
+  // "Lendo a fala do vídeo…" com a transcrição escrita na tela (2026-11-17).
+  const PAINEL_FALA = 'ytd-engagement-panel-section-list-renderer[target-id*="transcript"]';
+  const TRECHO_FALA = "ytd-transcript-segment-renderer, yt-transcript-segment-view-model, .ytTranscriptSegmentViewModel";
+  const emMs = (t) => {
+    const p = String(t || "").trim().split(":").map(Number);
+    if (!p.length || p.some((n) => !Number.isFinite(n))) return 0;
+    return p.reduce((total, n) => total * 60 + n, 0) * 1000;
+  };
+  function trechosNoPainel() {
+    const painel = document.querySelector(PAINEL_FALA);
+    const linhas = [];
+    for (const seg of (painel || document).querySelectorAll(TRECHO_FALA)) {
+      const tempo = seg.querySelector(".segment-timestamp, [class*='imestamp']");
+      const texto = seg.querySelector(".segment-text, [class*='egmentText']");
+      const bruto = ((texto || seg).textContent || "").replace(/\s+/g, " ").trim();
+      const marca = tempo ? (tempo.textContent || "").replace(/\s+/g, " ").trim() : "";
+      const t = !texto && marca && bruto.startsWith(marca) ? bruto.slice(marca.length).trim() : bruto;
+      if (t) linhas.push({ ms: emMs(marca), texto: t });
+    }
+    return linhas;
+  }
+
   async function painelDoYoutube(id) {
+    if (new URLSearchParams(location.search).get("v") !== id) return [];
+    const jaNaTela = trechosNoPainel();
+    if (jaNaTela.length) return jaNaTela;   // o painel já está aberto: clicar só o fecharia, e nada seria pedido
     const botao = document.querySelector("ytd-video-description-transcript-section-renderer button");
-    if (!botao || new URLSearchParams(location.search).get("v") !== id) return [];
-    const j = await new Promise((ok) => { esperandoTranscricao = ok; botao.click(); setTimeout(() => ok(null), 7000); });
+    if (!botao) return [];
+    const j = await new Promise((ok) => {
+      let relogio = 0;
+      const terminar = (valor) => { clearInterval(relogio); esperandoTranscricao = null; ok(valor); };
+      esperandoTranscricao = terminar;
+      botao.click();
+      const fim = Date.now() + 7000;
+      relogio = setInterval(() => { if (trechosNoPainel().length || Date.now() > fim) terminar(null); }, 250);
+    });
     esperandoTranscricao = null;
-    const fechar = document.querySelector('ytd-engagement-panel-section-list-renderer[target-id*="transcript"] #visibility-button button');
+    const doDom = trechosNoPainel();   // lido antes de fechar: fechar o painel tira os trechos da tela
+    const fechar = document.querySelector(`${PAINEL_FALA} #visibility-button button, ${PAINEL_FALA} [aria-label*="echar"], ${PAINEL_FALA} [aria-label*="lose"]`);
     if (fechar) fechar.click();
-    return segmentos(j);
+    const linhas = segmentos(j);
+    return linhas.length ? linhas : doDom;
   }
 
   // Um pedido por vídeo de cada vez: a aba do painel e a janelinha do menu abrem a mesma transcrição, e dois
