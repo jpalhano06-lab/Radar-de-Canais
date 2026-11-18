@@ -4013,6 +4013,7 @@ document.addEventListener("click", async (e) => {
 
 let PAINEL_ABA = guardado("painel-aba", null);
 let PAINEL_MODO = guardado("painel-modo2", "ideias");
+let PAINEL_CANAL_TESTE = guardado("painel-canal-teste", "");   // a aba de canal aberta no "Tirar do privado"
 
 async function painel(abrir) {
   let caixa = document.getElementById("painel-ideias");
@@ -4027,10 +4028,11 @@ async function painel(abrir) {
   // o painel abre nos vídeos mandados fazer: o link da referência e a thumbnail para copiar (pedido do usuário em
   // 2026-10-18); as ideias salvas ficam na segunda aba
   // a lista leve, sem o texto de cada roteiro: o painel é pedido a cada troca de tela e só mostra título, link e capa
-  const [d, { roteiros }, { tarefas }, { videos: privados }] = await Promise.all([api("/api/ideias-salvas"),
+  const [d, { roteiros }, { tarefas }, { canais: canaisDeTeste }] = await Promise.all([api("/api/ideias-salvas"),
     api("/api/roteiros?leve=1").catch(() => ({ roteiros: [] })),
     api("/api/roteiros/tarefas").catch(() => ({ tarefas: [] })),
-    api("/api/teste/privados").catch(() => ({ videos: [] }))]);
+    api("/api/teste/privados").catch(() => ({ canais: [] }))]);
+  const privados = canaisDeTeste.reduce((n, c) => n + c.postar, 0);    // a conta da aba é o que já precisa de você
   const escrevendo = tarefas.filter((t) => t.estado === "rodando");
   // a aba na borda direita fica sempre à mão, em qualquer página, para abrir e fechar o painel (pedido do usuário em
   // 2026-10-18); com o painel aberto ela encosta nele e vira o "fechar"
@@ -4042,10 +4044,10 @@ async function painel(abrir) {
       title="${caixa.hidden ? "Abrir" : "Fechar"} as ideias salvas e os vídeos feitos">
     <span class="seta-lat">${caixa.hidden ? "‹" : "›"}</span><span class="txt">Ideias e vídeos</span>
     ${escrevendo.length ? `<span class="n girando">${escrevendo.length}</span>` : roteiros.length ? `<span class="n">${roteiros.length}</span>` : ""}</button>
-    ${privados.length ? `<button class="aba-lateral ${!caixa.hidden && PAINEL_MODO === "privado" ? "aberta" : ""}" data-painel="privado"
-      title="Vídeos de teste que estão no ar e precisam sair do privado">
+    ${canaisDeTeste.length ? `<button class="aba-lateral ${!caixa.hidden && PAINEL_MODO === "privado" ? "aberta" : ""}" data-painel="privado"
+      title="Vídeos de teste de cada canal: o que já está no ar, o que espera o dia e o que precisa sair do privado">
       <span class="seta-lat">${caixa.hidden ? "‹" : "›"}</span><span class="txt">Tirar do privado</span>
-      <span class="n">${privados.length}</span></button>` : ""}`;
+      ${privados ? `<span class="n">${privados}</span>` : ""}</button>` : ""}`;
   abas.querySelectorAll("button").forEach((b) => (b.onclick = () => {
     const quer = b.dataset.painel === "privado" ? "privado" : (PAINEL_MODO === "privado" ? "ideias" : PAINEL_MODO);
     if (!caixa.hidden && quer === PAINEL_MODO) return painel(false);      // clicou na aba aberta: fecha
@@ -4076,21 +4078,35 @@ async function painel(abrir) {
   caixa.innerHTML = `<div class="painel-cab"><b>${NOME_MODO[modo]}</b><button class="botao sec" id="fechar-painel">×</button></div>
     <div class="painel-modos"><button class="${modo === "ideias" ? "ativo" : ""}" data-modo="ideias">Ideias salvas · ${d.total || 0}</button>
       <button class="${modo === "feitos" ? "ativo" : ""}" data-modo="feitos">Vídeos feitos · ${feitos.length}</button>
-      ${privados.length ? `<button class="${modo === "privado" ? "ativo" : ""}" data-modo="privado">Tirar do privado · ${privados.length}</button>` : ""}</div>
+      ${canaisDeTeste.length ? `<button class="${modo === "privado" ? "ativo" : ""}" data-modo="privado">Tirar do privado${privados ? ` · ${privados}` : ""}</button>` : ""}</div>
     <div id="painel-corpo"></div>`;
   const corpo = document.getElementById("painel-corpo");
   if (modo === "privado") {
-    corpo.innerHTML = `<p class="sub" style="padding:0 12px">Vídeo que a API sobe fica travado em privado até o projeto
-      do Google passar pela auditoria do YouTube. Abra cada um no Studio, troque para público e marque aqui.</p>
-      <div class="painel-lista">${privados.map((v, i) => `<div class="feito" data-i="${i}">
-        <span class="feito-canal">${esc(v.canal)}</span>
+    // uma aba por canal, e cada vídeo na cor do que falta nele: verde já está no ar, azul espera o dia dele,
+    // vermelho é a sua vez de tirar do privado (pedido do usuário em 2026-11-18)
+    const atual = canaisDeTeste.find((c) => c.canal_id === PAINEL_CANAL_TESTE)
+      || canaisDeTeste.find((c) => c.postar) || canaisDeTeste[0];
+    PAINEL_CANAL_TESTE = atual.canal_id;
+    const corDoCanal = (c) => (c.postar ? "postar" : c.videos.every((v) => v.estado === "publico") ? "publico" : "espera");
+    corpo.innerHTML = `<p class="sub" style="padding:0 12px 8px">O vídeo que a API sobe fica privado até o projeto do
+      Google passar pela auditoria do YouTube. <b class="priv-cor postar">Vermelho</b> é a sua vez: abra no Studio,
+      troque para público e marque aqui. <b class="priv-cor espera">Azul</b> espera o dia dele,
+      <b class="priv-cor publico">verde</b> já está no ar.</p>
+      <div class="chips abas-canal priv-abas">${canaisDeTeste.map((c) => `<button class="chip ${c.canal_id === atual.canal_id ? "ativo" : ""}" data-canal-teste="${esc(c.canal_id)}">
+        <i class="priv-ponto ${corDoCanal(c)}"></i>${esc(c.canal)}${c.postar ? ` · ${c.postar}` : ""}</button>`).join("")}</div>
+      <div class="painel-lista">${atual.videos.map((v) => `<div class="feito priv ${v.estado}">
         <b class="feito-titulo">${esc(v.tema)}</b>
-        <div class="feito-link">${v.agendado_para ? `no ar ${new Date(v.agendado_para).toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" })}` : "subindo"}</div>
+        <div class="feito-link">${v.estado === "publico" ? "você já pôs no ar"
+          : v.agendado_para ? `${v.estado === "espera" ? "entra no ar" : "no ar desde"} ${new Date(v.agendado_para).toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" })}`
+          : "subindo"}</div>
         <div class="feito-acoes">
-          ${v.video_id ? `<a class="botao sec" href="https://studio.youtube.com/video/${esc(v.video_id)}/edit" target="_blank" rel="noopener">Abrir no Studio</a>` : ""}
-          ${v.url ? `<a class="botao sec" href="${esc(v.url)}" target="_blank" rel="noopener">Ver no YouTube</a>` : ""}
-          <button class="botao" data-conferir="${v.fid}" data-canal="${esc(v.canal_id)}">Já está público</button>
+          ${v.video_id ? `<a class="botao sec" href="https://studio.youtube.com/video/${esc(v.video_id)}/edit" target="_blank" rel="noopener">Abrir no Studio</a>
+            <a class="botao sec" href="${esc(v.url)}" target="_blank" rel="noopener">Abrir no YouTube</a>` : ""}
+          ${v.estado === "publico" ? "" : `<button class="botao" data-conferir="${v.fid}" data-canal="${esc(atual.canal_id)}">Já está público</button>`}
         </div></div>`).join("")}</div>`;
+    corpo.querySelectorAll("[data-canal-teste]").forEach((b) => (b.onclick = () => {
+      PAINEL_CANAL_TESTE = b.dataset.canalTeste; guardar("painel-canal-teste", PAINEL_CANAL_TESTE); painel();
+    }));
     corpo.querySelectorAll("[data-conferir]").forEach((b) => (b.onclick = () => carregando(b, "Tirando…", async () => {
       await api("/api/teste/privados", { method: "POST", body: { canal_id: b.dataset.canal, fid: +b.dataset.conferir } });
       painel();

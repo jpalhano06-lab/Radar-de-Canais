@@ -1640,14 +1640,14 @@ def teste_aba(u: dict = Depends(usuario)):
 
 @app.get("/api/teste/privados")
 def teste_privados(u: dict = Depends(usuario)):
-    """Os vídeos de teste já mandados que esperam uma olhada no canal, para tirar do privado."""
-    return {"videos": teste_canal.privados(u["id"])}
+    """Os vídeos de teste já mandados, agrupados por canal, para tirar do privado."""
+    return {"canais": teste_canal.privados(u["id"])}
 
 
 @app.post("/api/teste/privados")
 async def teste_conferir(request: Request, u: dict = Depends(usuario)):
     corpo = await request.json()
-    return {"videos": _na_fila(teste_canal.conferir, u["id"], str(corpo.get("canal_id") or ""),
+    return {"canais": _na_fila(teste_canal.conferir, u["id"], str(corpo.get("canal_id") or ""),
                                int(corpo.get("fid") or 0))}
 
 
