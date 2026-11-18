@@ -251,10 +251,20 @@ def _publicar_prontos() -> list[int]:
                 continue
             quando = _proximo_dia(pedidos, k)
             p["tentado"] = agora
+            from . import agendar          # import tardio: o agendar usa a fila, como este módulo
+            kit = agendar.kit_do_video(linha["usuario_id"], item)
+            if not kit.get("descricao"):
+                # nenhum vídeo sobe pelado: a descrição se escreve na próxima volta (pedido de 2026-11-17)
+                p["erro"] = agendar.SEM_DESCRICAO
+                mexeu = True
+                mudaram.append(p["fid"])
+                continue
             try:
                 # sem thumbnail de propósito: o vídeo de teste sobe com os quadros automáticos do YouTube
                 fabrica_api.youtube_publicar(item["projeto"], canal=linha["canal_id"],
-                                             quando=quando.strftime("%Y-%m-%dT%H:%M"), com_thumbnail=False)
+                                             quando=quando.strftime("%Y-%m-%dT%H:%M"), com_thumbnail=False,
+                                             titulo=kit.get("titulo", ""), descricao=kit["descricao"],
+                                             tags=kit.get("tags") or [])
                 p |= {"agendado_para": quando.isoformat(timespec="minutes"), "erro": "", "enviado": True}
             except fabrica_api.SemFabrica as erro:
                 p["erro"] = str(erro)

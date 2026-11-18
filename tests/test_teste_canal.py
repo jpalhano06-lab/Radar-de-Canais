@@ -8,7 +8,7 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from radar import banco, fabrica_api, fila, tempo, teste_canal  # noqa: E402
+from radar import agendar, banco, fabrica_api, fila, tempo, teste_canal  # noqa: E402
 
 
 @pytest.fixture
@@ -17,6 +17,9 @@ def db(tmp_path, monkeypatch):
     monkeypatch.setattr(banco, "_CON", None)
     fila._PARADOS.clear()
     monkeypatch.setattr(tempo, "ritmo", lambda uid, perfil, lingua: {"ppm": 150})
+    # nenhum vídeo sobe sem a descrição do Claude (2026-11-17): aqui ela já está escrita
+    monkeypatch.setattr(agendar, "kit_do_video",
+                        lambda uid, item: {"titulo": "Teste", "descricao": "A descrição do Claude.", "tags": ["t"]})
     banco.executar("INSERT OR IGNORE INTO meus_canais (usuario_id, canal_id, criado) VALUES (?,?,?)",
                    1, "UC1", banco.agora())
     yield

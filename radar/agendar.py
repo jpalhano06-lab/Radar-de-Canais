@@ -16,6 +16,20 @@ from datetime import datetime
 from . import banco, fabrica_api, fila
 
 ESPERA_NOVA_TENTATIVA = 15 * 60   # segundos entre duas tentativas de envio depois de um erro
+SEM_DESCRICAO = ("Sem a descrição do Claude ainda: o vídeo não sobe pelado. O Radar escreve e tenta de novo.")
+
+
+def kit_do_video(usuario_id: int, item: dict) -> dict:
+    """A descrição do Claude deste vídeo, escrita agora se ainda não existir (pedido do usuário em 2026-11-17:
+    "coloque sempre descrição para o Claude criar e ir com o vídeo"). Ela vai no pedido de publicar porque a
+    fábrica, sozinha, sobe com o publicacao.json dela."""
+    from . import descricao, producao
+    pedido = item.get("pedido") or {}
+    perfil = pedido.get("perfil") or ""
+    if not perfil and pedido.get("canal_id"):
+        perfil = producao.config(usuario_id, pedido["canal_id"]).get("perfil", "")
+    return descricao.garantir(usuario_id, item.get("projeto", ""), item.get("roteiro") or "",
+                              titulo=pedido.get("titulo", ""), perfil=perfil)
 
 
 def marcar(usuario_id: int, fid: int, canal_id: str, quando: str = "", com_thumbnail: bool = True) -> dict:
@@ -76,9 +90,17 @@ def andar() -> list[int]:
             if linha["erro"] and agora - float(linha["tentado"] or 0) < ESPERA_NOVA_TENTATIVA:
                 continue
             banco.executar("UPDATE agendamentos SET tentado=? WHERE id=?", agora, linha["id"])
+            kit = kit_do_video(linha["usuario_id"], item)
+            if not kit.get("descricao"):
+                # nenhum vídeo sobe pelado: sem a descrição do Claude, espera a próxima volta (ela se escreve lá)
+                banco.executar("UPDATE agendamentos SET erro=? WHERE id=?", SEM_DESCRICAO, linha["id"])
+                mudaram.append(linha["fid"])
+                continue
             try:
                 fabrica_api.youtube_publicar(item["projeto"], canal=linha["canal_id"], quando=linha["quando"],
-                                             com_thumbnail=bool(linha["com_thumbnail"]))
+                                             com_thumbnail=bool(linha["com_thumbnail"]),
+                                             titulo=kit.get("titulo", ""), descricao=kit["descricao"],
+                                             tags=kit.get("tags") or [])
                 banco.executar("UPDATE agendamentos SET enviado=?, erro='' WHERE id=?", banco.agora(), linha["id"])
             except fabrica_api.SemFabrica as erro:
                 banco.executar("UPDATE agendamentos SET erro=? WHERE id=?", str(erro)[:300], linha["id"])

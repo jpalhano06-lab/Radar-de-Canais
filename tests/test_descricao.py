@@ -114,3 +114,64 @@ def test_levar_nao_escreve_nada_sem_sinopse(tmp_path):
     destino = tmp_path / "destino"
     assert descricao.levar(tmp_path / "vazia", destino, "T") is False
     assert not destino.exists()
+
+
+# ---------------------------------------------------------------- todo vídeo vai com descrição (2026-11-17)
+
+def _pasta_de_roteiro(raiz, nome="2026-11-17-2106-roteiro", titulo="日本の新発明"):
+    pasta = raiz / nome
+    pasta.mkdir(parents=True)
+    (pasta / "roteiro.txt").write_text("A fala do vídeo.", encoding="utf-8")
+    (pasta / "roteiro.json").write_text(json.dumps({"titulo": titulo, "lingua": "japonês"}, ensure_ascii=False),
+                                        encoding="utf-8")
+    return pasta
+
+
+def test_garantir_escreve_a_descricao_que_faltou_e_leva_para_a_fabrica(tmp_path, responder, monkeypatch):
+    """Pedido do usuário em 2026-11-17: "coloque sempre descrição para o Claude criar e ir com o vídeo"."""
+    from radar import roteiro_claude
+    responder(RESPOSTA)
+    monkeypatch.setattr(roteiro_claude, "PASTA", tmp_path / "roteiros")
+    monkeypatch.setattr(roteiro_claude, "FABRICA", tmp_path / "fabrica")
+    monkeypatch.setattr(descricao, "agente", lambda *_a, **_k: None)
+    _pasta_de_roteiro(tmp_path / "roteiros")
+    (tmp_path / "fabrica" / "projetos" / "roteiro-16").mkdir(parents=True)
+
+    kit = descricao.garantir(1, "roteiro-16", "2026-11-17-2106-roteiro", titulo="日本の新発明")
+    assert kit["descricao"].startswith("Três frases sobre o vídeo.")
+    assert kit["titulo"] == "日本の新発明" and kit["tags"]
+    assert descricao.na_fabrica("roteiro-16")["descricao"] == kit["descricao"]   # ficou na pasta do projeto
+
+
+def test_garantir_devolve_o_que_ja_esta_na_fabrica_sem_chamar_o_claude(tmp_path, monkeypatch):
+    from radar import roteiro_claude
+    monkeypatch.setattr(roteiro_claude, "FABRICA", tmp_path / "fabrica")
+    pasta = tmp_path / "fabrica" / "projetos" / "roteiro-16"
+    pasta.mkdir(parents=True)
+    (pasta / descricao.NA_FABRICA).write_text(json.dumps({"descricao": "A que já foi"}), encoding="utf-8")
+    monkeypatch.setattr(descricao, "gerar", lambda *_a, **_k: pytest.fail("não era para escrever de novo"))
+    assert descricao.garantir(1, "roteiro-16", "qualquer")["descricao"] == "A que já foi"
+
+
+def test_garantir_sem_roteiro_para_escrever_devolve_vazio(tmp_path, monkeypatch):
+    from radar import roteiro_claude
+    monkeypatch.setattr(roteiro_claude, "PASTA", tmp_path / "roteiros")
+    monkeypatch.setattr(roteiro_claude, "FABRICA", tmp_path / "fabrica")
+    assert descricao.garantir(1, "roteiro-16", "sumiu") == {}
+
+
+def test_a_descricao_tenta_de_novo_quando_o_claude_falha(tmp_path, monkeypatch):
+    from radar import roteiro_claude
+    pasta = _pasta_de_roteiro(tmp_path)
+    voltas = []
+
+    def falhar_duas_vezes(usuario_id, p, projeto_id=None):
+        voltas.append(1)
+        if len(voltas) < 3:
+            raise RuntimeError("o Claude caiu")
+        (p / descricao.ARQUIVO).write_text(json.dumps({"sinopse": "Deu certo na terceira."}), encoding="utf-8")
+        return {}
+    monkeypatch.setattr(descricao, "gerar", falhar_duas_vezes)
+    roteiro_claude._escrever_descricao(1, pasta, None)
+    meta = json.loads((pasta / "roteiro.json").read_text(encoding="utf-8"))
+    assert len(voltas) == roteiro_claude.TENTATIVAS_DESCRICAO == 3 and meta["descricao_erro"] == ""

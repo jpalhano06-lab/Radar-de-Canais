@@ -173,6 +173,38 @@ def ler(pasta: Path) -> dict:
         return {}
 
 
+def na_fabrica(projeto: str) -> dict:
+    """O kit do Radar que já está na pasta do projeto da fábrica (publicacao_radar.json)."""
+    from .roteiro_claude import FABRICA
+    if not projeto:
+        return {}
+    try:
+        dados = json.loads((FABRICA / "projetos" / projeto / NA_FABRICA).read_text(encoding="utf-8"))
+        return dados if isinstance(dados, dict) else {}
+    except (OSError, ValueError):
+        return {}
+
+
+def garantir(usuario_id: int, projeto: str, roteiro: str = "", titulo: str = "", perfil: str = "",
+             projeto_descricao_id: int | None = None) -> dict:
+    """A descrição do Claude para este projeto da fábrica, sempre (pedido do usuário em 2026-11-17: "coloque sempre
+    descrição para o Claude criar e ir com o vídeo").
+
+    Já levada, devolve o que está lá. Faltando, escreve agora pelo roteiro guardado e leva para a pasta do projeto.
+    Devolve {} só quando não há roteiro para escrever ou o Claude falhou — e aí quem chamou decide o que fazer."""
+    kit = na_fabrica(projeto)
+    if kit.get("descricao"):
+        return kit
+    from .roteiro_claude import FABRICA, PASTA
+    pasta = PASTA / roteiro if roteiro else None
+    if not pasta or not (pasta / "roteiro.txt").exists():
+        return kit
+    if not ler(pasta).get("sinopse"):
+        gerar(usuario_id, pasta, projeto_descricao_id)
+    levar(pasta, FABRICA / "projetos" / projeto, titulo, perfil)
+    return na_fabrica(projeto)
+
+
 def salvar(pasta: Path, sinopse: str = "", tags: list | None = None, hashtags: list | None = None) -> dict:
     """A correção da pessoa antes de mandar para a fábrica."""
     dados = ler(pasta)

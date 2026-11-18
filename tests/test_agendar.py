@@ -11,12 +11,17 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from radar import agendar, banco, fabrica_api, fila  # noqa: E402
 
 
+KIT = {"titulo": "日本の新発明", "descricao": "A descrição do Claude.", "tags": ["銅 代替"]}
+
+
 @pytest.fixture
 def db(tmp_path, monkeypatch):
     monkeypatch.setattr(banco, "ARQUIVO", tmp_path / "t.db")
     monkeypatch.setattr(banco, "_CON", None)
     fila._PARADOS.clear()
     monkeypatch.setattr(fabrica_api, "youtube_do_projeto", lambda nome: None)
+    # a descrição do Claude vai com o vídeo (2026-11-17): aqui ela já está escrita
+    monkeypatch.setattr(agendar, "kit_do_video", lambda uid, item: dict(KIT))
     yield
     banco._CON.close()
     banco._CON = None
@@ -26,8 +31,8 @@ def db(tmp_path, monkeypatch):
 def enviados(monkeypatch):
     feitos = []
     monkeypatch.setattr(fabrica_api, "youtube_publicar",
-                        lambda nome, canal, quando="", com_thumbnail=True, **r:
-                        feitos.append((nome, canal, quando, com_thumbnail)) or {"sucesso": True})
+                        lambda nome, canal, quando="", com_thumbnail=True, titulo="", descricao=None, tags=None, **r:
+                        feitos.append((nome, canal, quando, com_thumbnail, titulo, descricao, tags)) or {"sucesso": True})
     return feitos
 
 
@@ -45,7 +50,7 @@ def test_so_sobe_quando_o_video_fica_pronto(db, enviados):
     assert agendar.andar() == [] and enviados == []      # ainda na fila: nada sobe
     _entregue(fid)
     assert agendar.andar() == [fid]
-    assert enviados == [("meu-projeto", "UC1", "2026-11-18T18:00", True)]
+    assert enviados == [("meu-projeto", "UC1", "2026-11-18T18:00", True, KIT["titulo"], KIT["descricao"], KIT["tags"])]
     assert agendar.do_pedido(1, fid)["enviado"]
     agendar.andar()
     assert len(enviados) == 1                            # mandado uma vez só
@@ -56,7 +61,7 @@ def test_sem_dia_marcado_sobe_assim_que_fica_pronto(db, enviados):
     agendar.marcar(1, fid, "UC1", com_thumbnail=False)
     _entregue(fid)
     agendar.andar()
-    assert enviados == [("meu-projeto", "UC1", "", False)]
+    assert enviados == [("meu-projeto", "UC1", "", False, KIT["titulo"], KIT["descricao"], KIT["tags"])]
 
 
 def test_o_link_aparece_quando_a_fabrica_termina(db, enviados, monkeypatch):
@@ -100,3 +105,18 @@ def test_marcar_pede_pedido_e_canal_de_verdade(db):
     agendar.marcar(1, fid, "UC1", "2026-11-18T18:00")
     agendar.desmarcar(1, fid)
     assert agendar.do_pedido(1, fid) is None
+
+
+def test_nenhum_video_sobe_sem_a_descricao_do_claude(db, enviados, monkeypatch):
+    """Pedido do usuário em 2026-11-17: "coloque sempre descrição para o Claude criar e ir com o vídeo"."""
+    monkeypatch.setattr(agendar, "kit_do_video", lambda uid, item: {})
+    fid = _pedido()
+    agendar.marcar(1, fid, "UC1")
+    _entregue(fid)
+    agendar.andar()
+    assert enviados == [] and agendar.do_pedido(1, fid)["erro"] == agendar.SEM_DESCRICAO
+
+    monkeypatch.setattr(agendar, "kit_do_video", lambda uid, item: dict(KIT))
+    monkeypatch.setattr(agendar, "ESPERA_NOVA_TENTATIVA", 0)
+    agendar.andar()
+    assert len(enviados) == 1 and not agendar.do_pedido(1, fid)["erro"]
