@@ -118,6 +118,11 @@ def criar(usuario_id: int, pedido: dict, comecar: bool) -> dict:
     for campo, validos in ESCOLHAS.items():
         if limpo.get(campo) and limpo[campo] not in validos:
             raise ValueError(f"A escolha de {campo} ({limpo[campo]}) não existe.")
+    # a língua do pedido é a da voz do canal (2026-11-17): o pedido manda no roteiro e no título, por cima do agente,
+    # então um pedido em outra língua faz o vídeo inteiro sair errado. O Canal de teste não tem canal e fica de fora
+    if limpo.get("canal_id") and limpo.get("lingua"):
+        from . import producao       # import tardio: o producao chega aqui pelo roteiro_claude
+        producao.conferir_lingua(producao.config(usuario_id, limpo["canal_id"]).get("perfil", ""), limpo["lingua"])
     if not str(limpo.get("roteiro_manual") or "").strip():
         limpo.pop("roteiro_manual", None)
         caracteres = int(pedido.get("caracteres") or 0)

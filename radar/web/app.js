@@ -1295,10 +1295,17 @@ async function formProducao(caixa, canalId, depois = () => {}, perguntarDeNovo =
   const perguntas = [
     // 1. a língua
     () => {
-      caixa.innerHTML = moldura(0, `<h3>Em que língua são os vídeos deste canal?</h3>` + cartoes([
-        ["português", bandeiraImg("br"), "Português"], ["inglês", bandeiraImg("us"), "Inglês"], ["espanhol", bandeiraImg("es"), "Espanhol"]], "lingua")
+      const tres = [["português", bandeiraImg("br"), "Português"], ["inglês", bandeiraImg("us"), "Inglês"], ["espanhol", bandeiraImg("es"), "Espanhol"]];
+      // a língua de agora entra como cartão quando não é uma das três (2026-11-17): sem ela, o único jeito de passar
+      // desta pergunta era clicar numa das três, e foi assim que o canal japonês ficou com "inglês" gravado e os dois
+      // primeiros vídeos saíram em inglês. Mudar a língua aqui agora pede uma voz naquela língua (producao.salvar)
+      const agora = p.lingua && !tres.some(([v]) => v === p.lingua)
+        ? [[p.lingua, "", p.lingua.charAt(0).toUpperCase() + p.lingua.slice(1), "a língua da voz deste canal"]] : [];
+      caixa.innerHTML = moldura(0, `<h3>Em que língua são os vídeos deste canal?</h3>` + cartoes([...agora, ...tres], "lingua")
         + `<label class="linha">Outra língua das vozes do OpenSpeaker: <select id="pg-outra"><option value="">Escolher…</option>
-          ${OUTRAS_LINGUAS_VOZ.map((l) => `<option ${l === escolha.lingua ? "selected" : ""}>${esc(l)}</option>`).join("")}</select></label>`);
+          ${OUTRAS_LINGUAS_VOZ.map((l) => `<option ${l === escolha.lingua ? "selected" : ""}>${esc(l)}</option>`).join("")}</select></label>
+        <p class="sub">A língua manda no roteiro e no título: o Claude escreve nela e o título vem traduzido para ela.
+        Trocar a língua do canal pede uma voz naquela língua na pergunta seguinte.</p>`);
       opcoes(null, "lingua", () => perguntas[1]());
       caixa.querySelector("#pg-outra").onchange = (e) => { if (e.target.value) { escolha.lingua = e.target.value; perguntas[1](); } };
     },
