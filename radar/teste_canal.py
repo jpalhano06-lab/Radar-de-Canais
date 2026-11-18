@@ -191,24 +191,40 @@ def todos(usuario_id: int) -> list[dict]:
 
 
 def privados(usuario_id: int) -> list[dict]:
-    """Os vídeos de teste já mandados que ainda precisam de uma olhada no canal (2026-11-18).
+    """Os vídeos de teste já mandados, um grupo por canal, cada um com a sua cor (2026-11-18).
 
     Enquanto o projeto do Google não passar pela auditoria da YouTube API Services, todo vídeo que a API sobe fica
     travado em privado, mesmo pedindo público. Quem tira do privado é a pessoa, no Studio do canal — e com vários
-    canais isso se perde. Esta lista é o lembrete, e some quando ela diz que já conferiu."""
-    espera = []
-    for linha in banco.todos("SELECT * FROM canais_teste WHERE usuario_id=? AND estado IN ('liberado','feito')",
-                             usuario_id):
+    canais isso se perde. Aqui cada canal tem a sua aba, e cada vídeo a cor do que falta fazer nele."""
+    agora = datetime.now()
+    canais = []
+    for linha in banco.todos("SELECT * FROM canais_teste WHERE usuario_id=? AND estado IN ('liberado','feito') "
+                             "ORDER BY criado, rowid", usuario_id):
+        videos = []
         for p in _pedidos(linha):
-            if not p.get("enviado") or p.get("conferido"):
+            if not p.get("enviado"):
                 continue
-            url = p.get("url", "")
-            espera.append({"canal_id": linha["canal_id"], "canal": linha["nome"] or linha["canal_id"],
-                           "tema": p.get("tema", ""), "fid": p.get("fid"), "url": url,
-                           # os primeiros subiram antes de o id ser guardado: ele é o fim do próprio link
-                           "video_id": p.get("video_id") or (url.rstrip("/").rsplit("/", 1)[-1] if url else ""),
-                           "agendado_para": p.get("agendado_para", "")})
-    return espera
+            url, quando = p.get("url", ""), p.get("agendado_para", "")
+            # os primeiros subiram antes de o id ser guardado: ele é o fim do próprio link
+            video_id = p.get("video_id") or (url.rstrip("/").rsplit("/", 1)[-1] if url else "")
+            videos.append({"tema": p.get("tema", ""), "fid": p.get("fid"),
+                           "url": url or (f"https://youtu.be/{video_id}" if video_id else ""),
+                           "video_id": video_id, "agendado_para": quando,
+                           "estado": _cor(p, quando, agora)})
+        if videos:
+            canais.append({"canal_id": linha["canal_id"], "canal": linha["nome"] or linha["canal_id"],
+                           "videos": videos, "postar": len([v for v in videos if v["estado"] == "postar"])})
+    return canais
+
+
+def _cor(pedido: dict, quando: str, agora: datetime) -> str:
+    """Verde: a pessoa já pôs no ar. Azul: esperando o dia dele. Vermelho: a hora chegou e ainda está privado."""
+    if pedido.get("conferido"):
+        return "publico"
+    try:
+        return "espera" if quando and datetime.fromisoformat(quando) > agora else "postar"
+    except ValueError:
+        return "postar"
 
 
 def conferir(usuario_id: int, canal_id: str, fid: int) -> list[dict]:

@@ -274,7 +274,7 @@ def test_canal_ligado_com_convite_pendente_comeca(db, monkeypatch):
 
 # ---------------------------------------------------------------- o lembrete de tirar do privado (2026-11-18)
 
-def test_o_que_subiu_entra_na_lista_de_tirar_do_privado(db, monkeypatch):
+def test_cada_canal_com_seus_videos_e_a_cor_de_cada_um(db, monkeypatch):
     monkeypatch.setattr(fabrica_api, "youtube_publicar", lambda *a, **k: {"sucesso": True})
     monkeypatch.setattr(fabrica_api, "youtube_do_projeto",
                         lambda nome: {"url": "https://youtu.be/" + nome[:4], "video_id": nome[:4]})
@@ -283,17 +283,19 @@ def test_o_que_subiu_entra_na_lista_de_tirar_do_privado(db, monkeypatch):
     assert teste_canal.privados(1) == []                  # nada subiu ainda
     _entregues(*[v["fid"] for v in cartao["videos"]])
     teste_canal._publicar_prontos()
-
-    espera = teste_canal.privados(1)
-    assert len(espera) == teste_canal.POR_CANAL
-    assert espera[0]["canal"] == "Meu Canal" and espera[0]["canal_id"] == "UC1"
     teste_canal._publicar_prontos()                       # a volta seguinte traz o link e o id do vídeo
-    espera = teste_canal.privados(1)
-    assert all(v["url"] and v["video_id"] for v in espera)
 
-    sobra = teste_canal.conferir(1, "UC1", espera[0]["fid"])
-    assert [v["fid"] for v in sobra] == [espera[1]["fid"]]
-    assert len(teste_canal.privados(1)) == 1              # o conferido não volta
+    canais = teste_canal.privados(1)
+    assert len(canais) == 1 and canais[0]["canal"] == "Meu Canal" and canais[0]["canal_id"] == "UC1"
+    videos = canais[0]["videos"]
+    assert len(videos) == teste_canal.POR_CANAL and all(v["url"] and v["video_id"] for v in videos)
+    # o primeiro subiu na hora: é a vez da pessoa tirar do privado. O outro espera o dia dele
+    assert [v["estado"] for v in videos] == ["postar", "espera"]
+    assert canais[0]["postar"] == 1
+
+    depois = teste_canal.conferir(1, "UC1", videos[0]["fid"])
+    assert [v["estado"] for v in depois[0]["videos"]] == ["publico", "espera"]
+    assert depois[0]["postar"] == 0                       # verde não cobra mais nada
 
 
 def test_conferir_so_mexe_em_canal_que_tem_teste(db):

@@ -2449,3 +2449,19 @@ form > input:not([type=checkbox]):not([type=radio]), form > select, form > .bota
 *::-webkit-scrollbar-thumb { background: var(--linha); border: 3px solid transparent; background-clip: content-box; border-radius: 999px; }
 *::-webkit-scrollbar-thumb:hover { background: var(--fraco); border: 3px solid transparent; background-clip: content-box; }
 *::-webkit-scrollbar-corner { background: transparent; }
+
+/* "Tirar do privado" no painel da direita (2026-11-18): uma aba por canal e a cor do que falta em cada vídeo.
+   Verde já está no ar, azul espera o dia dele, vermelho é a vez da pessoa tirar do privado no Studio. */
+.priv-abas { padding: 0 12px 10px; gap: 6px; flex-wrap: wrap; }
+.priv-abas .chip { display: inline-flex; align-items: center; gap: 6px; cursor: pointer; }
+.priv-ponto { width: 9px; height: 9px; border-radius: 980px; display: inline-block; flex: none; }
+.priv-ponto.postar { background: var(--detalhe); }
+.priv-ponto.espera { background: var(--azul); }
+.priv-ponto.publico { background: var(--verde); }
+.priv-cor.postar { color: var(--detalhe); }
+.priv-cor.espera { color: var(--azul); }
+.priv-cor.publico { color: var(--verde); }
+.feito.priv { border-left: 4px solid var(--linha); }
+.feito.priv.postar { border-left-color: var(--detalhe); }
+.feito.priv.espera { border-left-color: var(--azul); }
+.feito.priv.publico { border-left-color: var(--verde); }
