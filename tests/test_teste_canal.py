@@ -303,11 +303,20 @@ def test_conferir_so_mexe_em_canal_que_tem_teste(db):
         teste_canal.conferir(1, "UC7", 1)
 
 
+def _fabrica_com_tarefas(monkeypatch, enviados, tarefas):
+    """A fábrica como ela é: o envio vira uma tarefa na memória, e o status só conta dela a quem dá o id."""
+    def publicar(*a, **k):
+        enviados.append(a)
+        return {"sucesso": True, "tarefa_id": f"youtube_{len(enviados)}"}
+    monkeypatch.setattr(fabrica_api, "youtube_publicar", publicar)
+    monkeypatch.setattr(fabrica_api, "youtube_do_projeto", lambda nome: None)    # nada publicado
+    monkeypatch.setattr(fabrica_api, "youtube_publicacao",
+                        lambda nome, tarefa="": {"tarefa": tarefas.get(tarefa) if tarefa else None, "publicado": None})
+
+
 def test_envio_perdido_na_fabrica_vai_de_novo(db, monkeypatch):
     enviados = []
-    monkeypatch.setattr(fabrica_api, "youtube_publicar", lambda *a, **k: enviados.append(a) or {"sucesso": True})
-    monkeypatch.setattr(fabrica_api, "youtube_do_projeto", lambda nome: None)    # nada publicado
-    monkeypatch.setattr(fabrica_api, "youtube_publicacao", lambda nome, tarefa="": {"tarefa": None, "publicado": None})
+    _fabrica_com_tarefas(monkeypatch, enviados, {})     # religada: a memória das tarefas sumiu
     teste_canal.oferecer(1, "UC1")
     cartao = teste_canal.liberar(1, "UC1")
     _entregues(cartao["videos"][0]["fid"])
@@ -323,10 +332,9 @@ def test_envio_perdido_na_fabrica_vai_de_novo(db, monkeypatch):
 
 
 def test_envio_ainda_andando_na_fabrica_fica_quieto(db, monkeypatch):
+    # o vídeo longo leva mais de 15 minutos subindo: perguntar sem o id da tarefa mandava ele de novo, duplicado
     enviados = []
-    monkeypatch.setattr(fabrica_api, "youtube_publicar", lambda *a, **k: enviados.append(a) or {"sucesso": True})
-    monkeypatch.setattr(fabrica_api, "youtube_do_projeto", lambda nome: None)
-    monkeypatch.setattr(fabrica_api, "youtube_publicacao", lambda nome, tarefa="": {"tarefa": {"estado": "subindo"}})
+    _fabrica_com_tarefas(monkeypatch, enviados, {"youtube_1": {"status": "enviando"}})
     teste_canal.oferecer(1, "UC1")
     cartao = teste_canal.liberar(1, "UC1")
     _entregues(cartao["videos"][0]["fid"])
@@ -334,3 +342,45 @@ def test_envio_ainda_andando_na_fabrica_fica_quieto(db, monkeypatch):
     monkeypatch.setattr(teste_canal, "ESPERA_NOVA_TENTATIVA", 0)
     teste_canal._publicar_prontos()
     assert len(enviados) == 1 and teste_canal.do_canal(1, "UC1")["videos"][0]["enviado"]
+
+
+def test_envio_que_falhou_na_fabrica_vai_de_novo(db, monkeypatch):
+    enviados = []
+    _fabrica_com_tarefas(monkeypatch, enviados, {"youtube_1": {"status": "erro", "erro": "quota"}})
+    teste_canal.oferecer(1, "UC1")
+    cartao = teste_canal.liberar(1, "UC1")
+    _entregues(cartao["videos"][0]["fid"])
+    teste_canal._publicar_prontos()
+    monkeypatch.setattr(teste_canal, "ESPERA_NOVA_TENTATIVA", 0)
+    teste_canal._publicar_prontos()
+    primeiro = teste_canal.do_canal(1, "UC1")["videos"][0]
+    assert not primeiro["enviado"] and "quota" in primeiro["erro"]
+
+
+def test_envio_sem_id_da_tarefa_nao_vai_em_dobro(db, monkeypatch):
+    enviados = []
+    _fabrica_com_tarefas(monkeypatch, enviados, {})
+    monkeypatch.setattr(fabrica_api, "youtube_publicar", lambda *a, **k: enviados.append(a) or {"sucesso": True})
+    teste_canal.oferecer(1, "UC1")
+    cartao = teste_canal.liberar(1, "UC1")
+    _entregues(cartao["videos"][0]["fid"])
+    teste_canal._publicar_prontos()
+    monkeypatch.setattr(teste_canal, "ESPERA_NOVA_TENTATIVA", 0)
+    teste_canal._publicar_prontos()
+    teste_canal._publicar_prontos()
+    assert len(enviados) == 1
+
+
+def test_tags_cabem_nos_500_caracteres_do_youtube():
+    # as 18 tags do The Moon (2026-11-20): 512 caracteres contados como o YouTube conta, e ele recusou o envio
+    moon = ["lua se afastando da terra", "por que a lua está se afastando", "lua afastando 3,8 cm por ano",
+            "moon drifting away", "moon moving away from earth", "how fast is the moon moving away",
+            "moon moving away 3.8 cm per year", "lunar laser ranging", "retroreflectors on the moon",
+            "apollo mirrors on the moon", "tides and the moon", "tidal bulge moon orbit", "earth days getting longer",
+            "earth rotation slowing down", "moon closer to earth in the past", "why total solar eclipses happen",
+            "total solar eclipses will end", "moon facts"]
+    tags = fabrica_api.tags_que_cabem(moon)
+    conta = sum(len(t) + (2 if " " in t else 0) for t in tags) + len(tags) - 1
+    assert conta == 499 and tags[0] == moon[0] and len(tags) == 17      # só a última, "moon facts", ficou de fora
+    assert "lua afastando 3.8 cm por ano" in tags and not any("," in t for t in tags)
+    assert fabrica_api.tags_que_cabem(["a<b>", "", "  x  ", "x"]) == ["a b", "x"]

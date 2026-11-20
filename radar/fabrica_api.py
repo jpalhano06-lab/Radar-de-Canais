@@ -255,8 +255,26 @@ def youtube_publicar(nome: str, canal: str, quando: str = "", privacidade: str =
     if descricao is not None:
         corpo["descricao"] = descricao
     if tags is not None:
-        corpo["tags"] = list(tags)
+        corpo["tags"] = tags_que_cabem(tags)
     return _pedir("POST", f"/api/projetos/{nome}/youtube/publicar", corpo, tempo=60)
+
+
+def tags_que_cabem(tags: list) -> list:
+    """As tags, na ordem, até onde cabem nos 500 caracteres do YouTube, que conta a vírgula entre elas e as aspas
+    em volta da tag com espaço. Passou disso, ele recusa o envio inteiro com invalidTags (The Moon Is Drifting Away
+    From Us, 2026-11-20: 18 tags, 512 caracteres). Vírgula dentro da tag ("3,8 cm") e < > também são recusados.
+    A fábrica corta igual (youtube_publicar.tags_que_cabem); aqui vale sem esperar ela ser religada."""
+    cabem, usado = [], 0
+    for tag in tags or []:
+        tag = " ".join(str(tag).replace(",", ".").replace("<", " ").replace(">", " ").split())[:100]
+        if not tag or tag in cabem:
+            continue
+        custo = len(tag) + (2 if " " in tag else 0) + (1 if cabem else 0)
+        if usado + custo > 500:
+            continue
+        cabem.append(tag)
+        usado += custo
+    return cabem
 
 
 def youtube_publicacao(nome: str, tarefa: str = "") -> dict:

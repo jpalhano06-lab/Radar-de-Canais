@@ -378,13 +378,21 @@ def _publicar_prontos() -> list[int]:
                     continue
                 # sem link depois de todo esse tempo: ou a fábrica ainda está subindo, ou ela foi religada no meio e
                 # o envio morreu com ela (a tarefa dela só existe na memória). Sem tarefa e sem publicação, manda de novo
+                # A fábrica só conta a tarefa a quem dá o id dela: sem ele a resposta vem sempre sem tarefa, e todo envio
+                # que passava de 15 minutos subia de novo, duplicado (The Moon, 2026-11-20). Envio de antes de guardar
+                # o id fica quieto: sem como perguntar, mandar de novo arrisca o vídeo em dobro no canal.
+                if not p.get("tarefa"):
+                    continue
                 try:
-                    andamento = fabrica_api.youtube_publicacao(item["projeto"])
+                    andamento = fabrica_api.youtube_publicacao(item["projeto"], p["tarefa"])
                 except fabrica_api.SemFabrica:
                     continue
-                if andamento.get("tarefa") or andamento.get("publicado"):
+                tarefa = andamento.get("tarefa") or {}
+                if andamento.get("publicado") or (tarefa and tarefa.get("status") != "erro"):
                     continue
-                p |= {"enviado": False, "agendado_para": "", "erro": "O envio se perdeu na fábrica; mandando de novo."}
+                motivo = (f"O envio falhou na fábrica ({tarefa.get('erro')}); mandando de novo." if tarefa
+                          else "O envio se perdeu na fábrica; mandando de novo.")
+                p |= {"enviado": False, "agendado_para": "", "tarefa": "", "erro": motivo}
                 mexeu = True
                 mudaram.append(p["fid"])
                 continue
@@ -407,12 +415,13 @@ def _publicar_prontos() -> list[int]:
                 continue
             try:
                 # sem thumbnail de propósito: o vídeo de teste sobe com os quadros automáticos do YouTube
-                fabrica_api.youtube_publicar(item["projeto"], canal=linha["canal_id"],
-                                             quando=quando.strftime("%Y-%m-%dT%H:%M") if marcar else "",
-                                             com_thumbnail=False,
-                                             titulo=kit.get("titulo", ""), descricao=kit["descricao"],
-                                             tags=kit.get("tags") or [])
-                p |= {"agendado_para": quando.isoformat(timespec="minutes"), "erro": "", "enviado": True}
+                resposta = fabrica_api.youtube_publicar(item["projeto"], canal=linha["canal_id"],
+                                                        quando=quando.strftime("%Y-%m-%dT%H:%M") if marcar else "",
+                                                        com_thumbnail=False,
+                                                        titulo=kit.get("titulo", ""), descricao=kit["descricao"],
+                                                        tags=kit.get("tags") or [])
+                p |= {"agendado_para": quando.isoformat(timespec="minutes"), "erro": "", "enviado": True,
+                      "tarefa": (resposta or {}).get("tarefa_id", "")}
             except fabrica_api.SemFabrica as erro:
                 p["erro"] = str(erro)
             mexeu = True

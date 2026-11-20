@@ -11,6 +11,13 @@ rem A fabrica vem junto: o Radar sem ela mostra "Fabrica desligada" e nenhum ped
 rem so liga a da porta 8080 se ela nao estiver no ar; atualizar a fabrica continua sendo o LIGAR-TIPLABS.bat.
 rem Em outra janela, para o Radar subir junto em vez de esperar os segundos da fabrica.
 start "Ligando a fabrica" /min powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0LIGAR-A-FABRICA.ps1"
+rem Os roteiros podem sair de outra conta do claude.ai, e nao da logada no Claude Code deste computador: o token
+rem dela (gerado com "claude setup-token", entrando com a outra conta) fica em dados\claude-token.txt, fora do git.
+rem So este Radar usa o token; o Claude Code do dia a dia continua na conta de sempre. Sem o arquivo, nada muda.
+if exist "dados\claude-token.txt" (
+    set /p CLAUDE_CODE_OAUTH_TOKEN=<"dados\claude-token.txt"
+    echo Roteiros pela conta do dados\claude-token.txt.
+)
 echo Ligando o Radar e a fabrica... o navegador abre sozinho quando ele estiver pronto.
 uv run python -m radar servidor
 pause

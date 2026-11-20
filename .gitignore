@@ -24,3 +24,6 @@ __pycache__/
 
 # Configuração local do Claude
 .claude/
+
+# Restos de log do servidor
+*.log.err
