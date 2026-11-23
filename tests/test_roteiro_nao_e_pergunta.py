@@ -40,11 +40,12 @@ def _mundo(monkeypatch, tmp_path, respostas, projeto=None):
     monkeypatch.setattr(roteiro_claude, "transcricao", lambda v: ("a fala do vídeo " * 50, "en"))
     vistos = []
 
-    def falso(sistema, pedido, modelo=""):
+    def falso(sistema, pedido, modelo="", pesquisa=False):
         vistos.append({"sistema": sistema, "pedido": pedido})
         return respostas.pop(0) if respostas else ""
 
     monkeypatch.setattr(roteiro_claude, "_claude", falso)
+    monkeypatch.setattr(roteiro_claude, "garantir_lingua", lambda r, l, a=None: r)  # o texto falso é em português
     return roteiros, vistos
 
 
@@ -62,7 +63,22 @@ def test_o_sistema_proibe_perguntar_depois_das_instrucoes_do_canal(monkeypatch, 
     roteiro_claude.gerar(**_gerar())
     sistema = vistos[0]["sistema"]
     assert "Nunca pergunte" in sistema and "ninguém vai ler nem responder" in sistema.lower()
-    assert sistema.index("SEMPRE perguntar") < sistema.index("Nunca pergunte")
+    # o agente saiu (2026-11-20): a regra dele nem chega mais ao Claude, quem escreve é o PROMPT
+    assert "SEMPRE perguntar" not in sistema and sistema.startswith(roteiro_claude.PROMPT)
+
+
+def test_a_referencia_do_mesmo_assunto_para_o_pedido(monkeypatch, tmp_path):
+    """O Passo 1.5 do prompt: referência do mesmo assunto vira erro do pedido, com a explicação, e nunca narração."""
+    _mundo(monkeypatch, tmp_path, ["MESMO_ASSUNTO: Essa referência é sobre o mesmo assunto do seu vídeo."])
+    with pytest.raises(RuntimeError, match="mesmo assunto"):
+        roteiro_claude.gerar(**_gerar())
+
+
+def test_o_canal_de_teste_continua_com_o_agente_dele(monkeypatch, tmp_path):
+    projeto = {"id": 8, "nome": "CANAL DE TESTE", "instrucoes": "Regra do teste.", "arquivos": "[]"}
+    _, vistos = _mundo(monkeypatch, tmp_path, ["A primeira frase do roteiro. " * 400], projeto=projeto)
+    roteiro_claude.gerar(**_gerar(projeto_id=8))
+    assert "Regra do teste." in vistos[0]["sistema"] and roteiro_claude.PROMPT not in vistos[0]["sistema"]
 
 
 # ------------------------------------------------------- 2. a resposta que não é roteiro ganha outra chance, e para
@@ -121,3 +137,12 @@ def test_o_portao_deixa_passar_o_japones_sem_espacos():
     japonês passaria."""
     texto = "日本の技術がまた世界を驚かせました。" * 30
     assert roteiro_claude.conferir_roteiro(texto, {"minutos": 0, "lingua": "japonês", "ritmo": {"ppm": 116}}) == ""
+
+
+def test_as_fontes_da_busca_na_web_nao_viram_fala():
+    """Com a busca na web (2026-11-20) o Claude Code fecha a resposta com "Sources:" e os links."""
+    texto = ("A primeira frase do roteiro, com [um link](https://exemplo.com/a) no meio.\n\n"
+             "O fechamento do vídeo.\n\nSources:\n- [Fonte um](https://exemplo.com/1)\n- https://exemplo.com/2\n")
+    limpo = roteiro_claude._limpar(texto)
+    assert "Sources" not in limpo and "http" not in limpo
+    assert limpo == "A primeira frase do roteiro, com um link no meio.\n\nO fechamento do vídeo."

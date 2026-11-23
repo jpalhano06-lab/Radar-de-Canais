@@ -20,8 +20,58 @@ function hojeLocal() {
 }
 
 function amanhaLocal() {
-  const d = new Date(); d.setDate(d.getDate() + 1);
+  return diaDaqui(1);
+}
+
+/** A data (AAAA-MM-DD) daqui a `n` dias, no fuso do computador. */
+function diaDaqui(n) {
+  const d = new Date(); d.setDate(d.getDate() + n);
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
+const ehData = (x) => /^\d{4}-\d{2}-\d{2}$/.test(String(x || ""));
+
+/** O calendário do Meu dia (pedido do usuário em 2026-11-22: "tem que colocar calendário para poder fazer para vários
+ *  vídeos"): um pedido vai para qualquer dia, não só para amanhã. Ele pode estar hoje (no `dia`) ou na fila dos
+ *  próximos dias (`diaAmanha`, com `para`); vai para `data` com a thumbnail. Hoje ou antes: entra no dia de hoje. */
+async function diaMoverParaData(id, data) {
+  if (!ehData(data)) return null;
+  const hoje = hojeLocal();
+  const { [DIA_AMANHA]: fila = [] } = await chrome.storage.local.get(DIA_AMANHA);
+  const naFila = fila.find((x) => x.id === id);
+  if (naFila) {
+    if (data <= hoje) return diaAmanhaParaHoje(id);
+    naFila.para = data;
+    await chrome.storage.local.set({ [DIA_AMANHA]: fila });
+    return naFila;
+  }
+  if (data <= hoje) return null;  // já está hoje
+  const v = await mudarDia((d) => {
+    const x = d.videos.find((y) => y.id === id);
+    if (!x || x.postado) return null;
+    d.videos = d.videos.filter((y) => y.id !== id);
+    const ids = new Set([x.thumb, ...(x.ab || [])].filter(Boolean));
+    const thumbsGuardadas = d.thumbs.filter((t) => ids.has(t.id));
+    d.thumbs = d.thumbs.filter((t) => !ids.has(t.id));
+    return { ...x, thumbsGuardadas };
+  });
+  if (!v) return null;
+  const { [DIA_AMANHA]: fila2 = [] } = await chrome.storage.local.get(DIA_AMANHA);
+  fila2.push({ ...v, para: data });
+  await chrome.storage.local.set({ [DIA_AMANHA]: fila2 });
+  return v;
+}
+
+/** Planejar um vídeo num dia (o "+ Planejar" do calendário): só o título e o canal, sem pedido na fábrica ainda. */
+async function diaPlanejar({ canal, canalNome, titulo, data }) {
+  if (!ehData(data) || !String(titulo || "").trim()) return null;
+  const novo = { id: novoIdDia(), hora: Date.now(), postado: false, thumb: null, canal, canalNome,
+    titulo: String(titulo).trim(), planejado: true };
+  if (data <= hojeLocal()) return mudarDia((d) => { d.videos.push(novo); return novo; });
+  const { [DIA_AMANHA]: fila = [] } = await chrome.storage.local.get(DIA_AMANHA);
+  fila.push({ ...novo, para: data });
+  await chrome.storage.local.set({ [DIA_AMANHA]: fila });
+  return novo;
 }
 
 /** O dia de hoje. Se o guardado é de outro dia, começa um novo com os pedidos guardados para hoje (o "para amanhã"
@@ -131,9 +181,11 @@ async function diaNovoVideo(v) {
   const destino = v.canal && destinos[v.canal];
   if (destino) { delete destinos[v.canal]; await chrome.storage.local.set({ [DIA_DESTINO]: destinos }); }
   const novo = { id: novoIdDia(), hora: Date.now(), postado: false, thumb: null, ...v };
-  if (destino && destino.dia === "amanha" && Date.now() - destino.quando < DESTINO_VALE) {
+  // o destino é "amanha" ou, desde o calendário (2026-11-22), uma data qualquer (AAAA-MM-DD)
+  const para = destino && (destino.dia === "amanha" ? amanhaLocal() : ehData(destino.dia) ? destino.dia : "");
+  if (para && para > hojeLocal() && Date.now() - destino.quando < DESTINO_VALE) {
     const { [DIA_AMANHA]: fila = [] } = await chrome.storage.local.get(DIA_AMANHA);
-    fila.push({ ...novo, para: amanhaLocal() });
+    fila.push({ ...novo, para });
     await chrome.storage.local.set({ [DIA_AMANHA]: fila });
     return novo.id;
   }

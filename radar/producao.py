@@ -15,7 +15,8 @@ import re
 
 from . import banco, roteiro_claude, thumb
 
-PADRAO = {"perfil": "", "projeto_roteiro_id": "", "minutos": 8, "lingua": "", "thumb_projeto_id": "", "ia_imagem": "gemini",
+# prompt_id: o prompt do roteiro deste canal ("" = o prompt padrão do Radar, o mesmo para todos; 2026-11-20)
+PADRAO = {"perfil": "", "projeto_roteiro_id": "", "prompt_id": "", "minutos": 8, "lingua": "", "thumb_projeto_id": "", "ia_imagem": "gemini",
           "agenda": None, "concorrentes": None,
           # o texto que a extensão cola na descrição do Studio, igual em todo vídeo do canal (pedido do usuário em
           # 2026-10-22: "mais padronizado, só mudando para o tema do vídeo, sem spoilers, apenas uma sinopse")

@@ -77,17 +77,17 @@ def test_os_arquivos_vao_no_roteiro_os_mais_novos_primeiro(agentes, monkeypatch,
     monkeypatch.setattr(roteiro_claude, "_escrever_descricao", lambda *a, **k: None)
     visto = {}
 
-    def falso(sistema, pedido, modelo=""):
+    def falso(sistema, pedido, modelo="", pesquisa=False):
         visto["sistema"] = sistema
         return "Frase do roteiro. " * 400
 
     monkeypatch.setattr(roteiro_claude, "_claude", falso)
+    monkeypatch.setattr(roteiro_claude, "garantir_lingua", lambda r, l, a=None: r)  # o texto falso é em português
     roteiro_claude.gerar(usuario_id=1, titulo="Dieren", link="", minutos=3, lingua="holandês",
                          projeto_id=agentes["jan"], observacoes="")
-    assert "Regra do canal." in visto["sistema"]
-    # a abertura vem depois das instruções do canal, que mandam o apresentador se apresentar no começo
-    assert visto["sistema"].index("Regra do canal.") < visto["sistema"].index("Sobre o primeiro minuto do vídeo")
-    assert "=== roteiros/novo.txt ===" in visto["sistema"]
+    # o agente saiu do roteiro (2026-11-20): o canal escreve com o PROMPT, sem as instruções nem os arquivos do agente
+    assert visto["sistema"].startswith(roteiro_claude.PROMPT)
+    assert "Regra do canal." not in visto["sistema"] and "=== roteiros/novo.txt ===" not in visto["sistema"]
 
 
 def test_a_tela_recebe_so_quantos_arquivos(agentes):

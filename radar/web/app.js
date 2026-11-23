@@ -336,7 +336,7 @@ const AJUDA = {
   resultados: "Os vídeos prontos com o <b>custo real</b> de cada um (narração, imagens, visão), o custo por minuto e o total. Assista aqui ou abra a pasta da entrega.",
   titulo: "Cole o <b>título</b> e o link do vídeo (depois a extensão manda direto para cá) e converse com o <b>Claude</b>: regionalizar para outro país, deixar mais chamativo, traduzir. Clique em <b>usar</b> no título que gostar e em <b>Levar para o roteiro</b>: o Roteiro abre com o título, o link e a thumbnail. Conferir no YouTube se o título já foi feito é com você.",
   thumbnail: "Escreva o que quer (ex.: <b>tire o texto</b>), escolha o canal e cole o vídeo de referência. O <b>Claude</b> escreve o prompt com o estilo de thumbnail do canal e o que a referência mostra, e o botão manda para o <b>Gemini</b> ou o <b>ChatGPT</b>. Cada canal guarda o estilo e a IA dele.",
-  trabalho: "Aqui você <b>cria o vídeo</b>, um passo de cada vez: o <b>link da referência</b> e o título; o <b>canal</b> (a voz, a língua, o agente e o tempo vêm dele); o <b>Claude</b> escreve o roteiro limpo, só o texto para narrar; a <b>thumbnail</b>, se quiser; e o <b>envio para a fábrica</b>, com o ▶ Produzir.",
+  trabalho: "Aqui você <b>cria o vídeo</b>, um passo de cada vez: o <b>link da referência</b> e o título; o <b>canal</b> (a voz, a língua, o prompt e o tempo vêm dele); o <b>Claude</b> escreve o roteiro limpo, só o texto para narrar; a <b>thumbnail</b>, se quiser; e o <b>envio para a fábrica</b>, com o ▶ Produzir.",
   preferencias: "As respostas das perguntas da primeira vez (nichos, línguas, formato, o que nunca mostrar) e tudo o que você bloqueou pelo <b>⊘</b>. Elas valem no Explorar, nos Vídeos que estouraram e nas ideias de cada canal.",
   perfil: "Seus canais. Conecte ao <b>YouTube Studio</b> para ver as métricas que só o dono vê (horas assistidas, retenção, receita, de onde vêm as views). Clicando num canal, as <b>ideias para copiar</b>: vídeos que estouraram falando do mesmo assunto.",
   canal: "Tudo de um canal: os últimos vídeos com a nota de cada um, as <b>ideias para copiar</b> (vídeos que estouraram em canais do mesmo nicho) e, se o canal for seu e estiver conectado, as métricas do YouTube Studio.",
@@ -827,8 +827,8 @@ async function trabalho() {
   // a extensão abre #/trabalho?ref=ID&titulo=... ("Levar ao Roteiro" no painel do vídeo do YouTube)
   const daExtensao = new URLSearchParams(location.hash.split("?")[1] || "");
   if (/^[\w-]{11}$/.test(daExtensao.get("ref") || "")) { preset.link = linkVideo(daExtensao.get("ref")); preset.titulo = daExtensao.get("titulo") || ""; }
-  const [{ projetos }, fab, { roteiros }, prod] = await Promise.all([api("/api/projetos"), api("/api/fabrica"), api("/api/roteiros"),
-    api("/api/producoes").catch(() => null)]);
+  const [{ projetos }, fab, { roteiros }, prod, P] = await Promise.all([api("/api/projetos"), api("/api/fabrica"), api("/api/roteiros"),
+    api("/api/producoes").catch(() => null), api("/api/prompts").catch(() => ({ padrao: "", prompts: [] }))]);
   // dois tipos de agente: o que escreve o roteiro e o que escreve a descrição junto com ele (2026-10-28)
   const agentes = projetos.filter((p) => (p.tipo || "roteiro") === "roteiro");
   const agentesDesc = projetos.filter((p) => p.tipo === "descricao");
@@ -870,7 +870,7 @@ async function trabalho() {
   const carregarCanal = async () => {
     if (!E.canal) { E.cfg = null; return; }
     E.cfg = await api(`/api/producao/${encodeURIComponent(E.canal)}`);
-    E.agente = String(E.cfg.projeto_roteiro_id || ""); E.lingua = E.cfg.lingua || E.lingua;
+    E.agente = String(E.cfg.projeto_roteiro_id || ""); E.prompt = String(E.cfg.prompt_id || ""); E.lingua = E.cfg.lingua || E.lingua;
     E.minutos = +E.cfg.minutos || E.minutos; E.perfil = E.cfg.perfil || "";
   };
 
@@ -892,7 +892,7 @@ async function trabalho() {
       <dl class="rt-config">
         <dt>Título</dt><dd>${esc(E.titulo || "—")}</dd>
         <dt>Voz</dt><dd>${esc((E.cfg && E.cfg.voz) || "—")}</dd>
-        <dt>Agente</dt><dd>${esc((agentes.find((a) => String(a.id) === E.agente) || {}).nome || "Agente padrão")}</dd>
+        <dt>Prompt</dt><dd>${esc(nomeDoPrompt(P.prompts, E.prompt))}</dd>
         <dt>Descrição</dt><dd>${esc((agentesDesc.find((a) => String(a.id) === E.agenteDesc) || {}).nome || "Regras do Radar")}</dd>
         <dt>Língua</dt><dd>${esc(E.lingua)}</dd>
         <dt>Tempo</dt><dd>${E.minutos} min</dd>
@@ -909,7 +909,7 @@ async function trabalho() {
     () => {
       const canais = MEUS || [];
       $("rt-corpo").innerHTML = `<h2>Qual vídeo vamos fazer?</h2>
-        <p class="sub">Cole o vídeo de referência e o título. Depois escolha o canal: ele traz a voz, a língua, o agente e o tempo. <b>Sem link?</b> No próximo passo você cola o seu roteiro.</p>
+        <p class="sub">Cole o vídeo de referência e o título. Depois escolha o canal: ele traz a voz, a língua, o prompt e o tempo. <b>Sem link?</b> No próximo passo você cola o seu roteiro.</p>
         <div class="rt-conteudo">
           <label class="campo"><span>Link do vídeo de referência <em class="opcional">opcional</em></span><input id="rt-link" placeholder="https://www.youtube.com/watch?v=…" value="${esc(E.link)}"></label>
           <label class="campo"><span>Título que vamos usar</span><input id="rt-titulo" placeholder="O título do seu vídeo" value="${esc(E.titulo)}"></label>
@@ -1001,7 +1001,7 @@ async function trabalho() {
         ? `<div class="ritmo-placar ${ac.dentro === ac.total ? "bom" : ac.dentro ? "meio" : "ruim"}"><b>${ac.dentro} de ${ac.total}</b> dos últimos vídeos desta voz ficaram dentro de ${String(ac.margem).replace(".", ",")} min do tempo pedido${ac.erro_medio != null ? ` · erro médio <b>${sinal(ac.erro_medio)} min</b>` : ""}${ac.pior && !ac.pior.dentro ? ` · pior: pediu ${ac.pior.pedido_min} e saiu ${String(ac.pior.entregue_min).replace(".", ",")} min` : ""}</div>`
         : "";
       $("rt-corpo").innerHTML = `<h2>Agora o Claude escreve</h2>${escolhaQuem}
-        <p class="sub">${E.link ? "Ele lê a transcrição da referência e escreve" : "Sem vídeo de referência, ele escreve a partir do título"} um roteiro limpo, só o texto para narrar, com o agente e o tempo escolhidos. Grátis pela sua assinatura do Claude.</p>
+        <p class="sub">${E.link ? "Ele lê a transcrição da referência e escreve" : "Sem vídeo de referência, ele escreve a partir do título"} um roteiro limpo, só o texto para narrar, com o prompt do canal e o tempo escolhidos. Grátis pela sua assinatura do Claude.</p>
         <div class="ritmo-linha ${E.ritmo && E.ritmo.medidos ? "ajustado" : ""}">${E.ritmo && E.ritmo.medidos
           ? `<span><b>Tempo ajustado:</b> esta voz fala <b>${E.ppm} palavras por minuto</b> (medido em ${E.ritmo.medidos} ${E.ritmo.medidos === 1 ? "vídeo entregue" : "vídeos entregues"}). Para ${E.minutos} min, o Claude mira <b>${alvo.toLocaleString("pt-BR")} palavras</b>${E.ritmo.ppm_alvo && E.ritmo.ppm_alvo !== E.ppm ? " (já descontando o quanto ele costuma escrever a mais)" : ""}.</span><button class="link-editar" id="rt-por-que">por quê?</button>`
           : `<span>Para ${E.minutos} min, o Claude mira ${alvo.toLocaleString("pt-BR")} palavras. Quando a fábrica entregar os vídeos desta voz, o Radar mede o tempo real e <b>ajusta sozinho</b>.</span>`}</div>${placar}
@@ -1035,7 +1035,7 @@ async function trabalho() {
         try {
           const direto = modo === "direto";
           const { tarefa } = await api("/api/roteiros", { method: "POST", body: { titulo: E.titulo, link: E.link, minutos: E.minutos, lingua: E.lingua,
-            projeto_id: E.agente, projeto_descricao_id: E.agenteDesc, observacoes: E.obs, enviar_direto: direto,
+            prompt_id: E.prompt || "", projeto_descricao_id: E.agenteDesc, observacoes: E.obs, enviar_direto: direto,
             perfil: perfilDireto(), ...canalDoVideo() } });
           vigiarRoteiro(tarefa, E.titulo);
           $("rt-corpo").querySelectorAll(".modo, [data-quem]").forEach((x) => (x.disabled = true));
@@ -1252,10 +1252,10 @@ async function aplicarProducao(canalId, caixa, campos) {
   const estilo = campos.projeto ? campos.projeto.selectedOptions[0]?.textContent.replace(/^Agente: /, "") : "";
   caixa.innerHTML = `<div class="producao-resumo">
     <span><b>${p.voz ? esc(p.voz) : "sem voz"}</b><small>${p.perfil ? "perfil " + esc(p.perfil) : "nenhum perfil da fábrica com o nome deste canal"}</small></span>
-    <span><b>${esc(estilo || "Padrão")}</b><small>agente de roteiro</small></span>
+    <span><b>${esc(estilo || "Prompt padrão do Radar")}</b><small>prompt do roteiro</small></span>
     <span><b>${esc(p.lingua)}</b><small>língua</small></span>
     <span><b>${esc(p.minutos)} min</b><small>tempo do vídeo</small></span>
-    <button class="botao sec" id="pr-salvar" data-dica="Guarda o agente de roteiro e a língua escolhidos aqui como o padrão deste canal.">Salvar como padrão do canal</button>
+    <button class="botao sec" id="pr-salvar" data-dica="Guarda a língua escolhida aqui como o padrão deste canal.">Salvar como padrão do canal</button>
     <a class="sub" href="#" id="pr-ajustar">editar</a></div>`;
   caixa.querySelector("#pr-salvar").onclick = (e) => carregando(e.currentTarget, "Salvando…", async () => {
     await api(`/api/producao/${encodeURIComponent(canalId)}`, { method: "POST", body: { ...p,
@@ -1263,6 +1263,32 @@ async function aplicarProducao(canalId, caixa, campos) {
     aviso("Padrão do canal salvo.");
   });
 }
+
+// O prompt do roteiro (2026-11-20): o padrão do Radar vale para todos; a pessoa pode criar outros, que nascem com o
+// texto do padrão para ela mudar. Devolve o id do prompt salvo, ou null quando cancela.
+function editorDePrompt(padrao, atual = null) {
+  return new Promise((ok) => {
+    document.body.insertAdjacentHTML("beforeend", `<div class="modal-fundo" id="editor-prompt"><div class="np" role="dialog" aria-label="Prompt do roteiro" style="max-width:860px">
+      <header class="np-cab"><h2>${atual ? "Editar o prompt" : "Criar outro prompt"}</h2><button class="np-fechar" title="Fechar (Esc)">×</button></header>
+      <div style="padding:16px 22px;display:grid;gap:12px;overflow:auto">
+        <p class="sub" style="margin:0">O <b>prompt padrão do Radar</b> continua valendo para todos. Este é outro, só seu: ele nasce com o texto do padrão para você mudar o que quiser.</p>
+        <label class="campo"><span>Nome</span><input id="ep-nome" value="${esc(atual?.nome || "")}" placeholder="Ex.: listas curtas para canal de curiosidades"></label>
+        <label class="campo"><span>Prompt</span><textarea id="ep-texto" rows="18" style="font-family:ui-monospace,monospace;font-size:12.5px">${esc(atual?.instrucoes || padrao)}</textarea></label>
+      </div>
+      <footer class="np-rodape"><span class="np-erro"></span><button class="botao contorno" id="ep-cancelar">Cancelar</button><button class="botao" id="ep-salvar">Salvar o prompt</button></footer></div></div>`);
+    const fundo = document.getElementById("editor-prompt");
+    const fim = (v) => { fundo.remove(); ok(v); };
+    fundo.querySelector(".np-fechar").onclick = () => fim(null);
+    fundo.querySelector("#ep-cancelar").onclick = () => fim(null);
+    fundo.querySelector("#ep-salvar").onclick = (e) => carregando(e.currentTarget, "Salvando…", async () => {
+      const nome = fundo.querySelector("#ep-nome").value.trim(), texto = fundo.querySelector("#ep-texto").value.trim();
+      if (!nome || texto.length < 50) { fundo.querySelector(".np-erro").textContent = "Dê um nome e escreva o prompt."; return; }
+      const r = await api("/api/projetos", { method: "POST", body: { id: atual?.id || null, nome, instrucoes: texto, tipo: "prompt" } });
+      aviso("Prompt salvo."); fim(r.id);
+    });
+  });
+}
+const nomeDoPrompt = (lista, id) => (lista.find((x) => String(x.id) === String(id)) || {}).nome || "Prompt padrão do Radar";
 
 const bandeiraImg = (c) => `<img src="https://flagcdn.com/w40/${c}.png" alt="" style="width:28px;height:20px;object-fit:cover;border-radius:3px">`;
 // as línguas além das três de sempre que as vozes do narrador pago falam (o fabrica_api.IDIOMA tem os códigos)
@@ -1274,9 +1300,11 @@ const OUTRAS_LINGUAS_VOZ = ["francês", "alemão", "italiano", "holandês", "pol
 // "conectar a fábrica para já aparecer as vozes e dar para testar antes de escolher"; "adicionar o agente na terceira
 // pergunta, além do tempo dos vídeos".
 async function formProducao(caixa, canalId, depois = () => {}, perguntarDeNovo = false) {
-  let [p, { projetos: todos }] = await Promise.all([api(`/api/producao/${encodeURIComponent(canalId)}`), api("/api/projetos")]);
+  let [p, { projetos: todos }, P] = await Promise.all([api(`/api/producao/${encodeURIComponent(canalId)}`), api("/api/projetos"),
+    api("/api/prompts").catch(() => ({ padrao: "", prompts: [] }))]);
   let projetos = todos.filter((x) => (x.tipo || "roteiro") === "roteiro");
-  const escolha = { lingua: p.lingua, perfil: p.perfil, projeto_roteiro_id: String(p.projeto_roteiro_id || ""), minutos: String(p.minutos || 8) };
+  // o agente saiu (2026-11-20): a terceira pergunta é o prompt do roteiro, com o padrão do Radar já marcado
+  const escolha = { lingua: p.lingua, perfil: p.perfil, prompt_id: String(p.prompt_id || ""), minutos: String(p.minutos || 8) };
   let tocando = null, botaoTocando = null;
   const parar = () => { if (tocando) { tocando.pause(); tocando = null; } if (botaoTocando) { botaoTocando.textContent = "▶"; botaoTocando = null; } };
   const agenteDe = (id) => (projetos.find((x) => String(x.id) === String(id)) || {}).nome || "Agente padrão";
@@ -1371,35 +1399,22 @@ async function formProducao(caixa, canalId, depois = () => {}, perguntarDeNovo =
       };
       await carregar();
     },
-    // 3. o agente de roteiro, com a opção de criar um novo ali mesmo
+    // 3. o prompt do roteiro: o padrão do Radar (o mesmo para todos) ou um que a pessoa criou
     () => {
-      caixa.innerHTML = moldura(2, `<h3>Qual agente de roteiro escreve para este canal?</h3>
-        <p class="sub">O agente guarda o jeito de escrever: tom, público, como abrir e fechar.</p>` + cartoes([
-          ["", "", "Agente padrão", "o Claude no jeito padrão"], ...projetos.map((x) => [String(x.id), x.claude_uuid ? "" : "", x.nome,
-            x.claude_uuid ? `projeto ${x.claude_nome} do claude.ai${x.arquivos ? ` · ${x.arquivos} arquivos` : ""}` : x.instrucoes.slice(0, 80)]),
-        ], "projeto_roteiro_id") + `
-        <p class="sub">Os seus projetos do claude.ai viram agentes sozinhos: a extensão lê as instruções e os arquivos de cada um e atualiza o agente quando você muda lá (ao abrir o Chrome, a cada meia hora e ao abrir o claude.ai).</p>
-        <button class="opcao opcao-nova" id="ag-sincronizar"><span class="ic"></span><b>Atualizar do claude.ai agora</b><small>lê os seus projetos de novo</small></button>
-        <button class="opcao opcao-nova" id="ag-novo"><span class="ic">＋</span><b>Criar um agente novo</b><small>sem projeto no claude.ai: cole as instruções aqui</small></button>
-        <div class="agente-novo" id="ag-form" hidden><input id="ag-nome" placeholder="Nome do agente (ex.: canal de animais em inglês)">
-          <textarea id="ag-instr" rows="7" placeholder="Instruções: tom de voz, público, estrutura, como abrir e fechar, o que evitar…"></textarea>
-          <button class="botao" id="ag-salvar">Salvar o agente e usar neste canal</button></div>`);
+      caixa.innerHTML = moldura(2, `<h3>Qual prompt escreve os roteiros deste canal?</h3>
+        <p class="sub">O <b>prompt padrão do Radar</b> vale para todos os canais: ele pesquisa o tema, copia a estrutura do vídeo de referência e escreve na língua do canal. Se quiser outro jeito, crie um prompt seu.</p>` + cartoes([
+          ["", "★", "Prompt padrão do Radar", "o mesmo para todos (recomendado)"], ...P.prompts.map((x) => [String(x.id), "", x.nome, x.instrucoes.slice(0, 80)]),
+        ], "prompt_id") + `
+        <button class="opcao opcao-nova" id="pp-novo"><span class="ic">＋</span><b>Criar outro prompt</b><small>nasce com o texto do padrão para você mudar</small></button>`);
       ligarVoltar(2);
-      opcoes(null, "projeto_roteiro_id", () => perguntas[3]());
-      caixa.querySelector("#ag-sincronizar").onclick = (e) => carregando(e.currentTarget, "Lendo o claude.ai…", async () => {
-        try {
-          const d = await sincronizarClaude();
-          projetos = (await api("/api/projetos")).projetos.filter((x) => (x.tipo || "roteiro") === "roteiro");
-          aviso(resumoDaSincronizacao(d)); perguntas[2]();
-        } catch (erro) { aviso(porque(erro)); }
-      });
-      caixa.querySelector("#ag-novo").onclick = () => { caixa.querySelector("#ag-form").hidden = false; caixa.querySelector("#ag-nome").focus(); };
-      caixa.querySelector("#ag-salvar").onclick = (e) => carregando(e.currentTarget, "Salvando…", async () => {
-        const { id } = await api("/api/projetos", { method: "POST", body: { nome: caixa.querySelector("#ag-nome").value, instrucoes: caixa.querySelector("#ag-instr").value } });
-        projetos = (await api("/api/projetos")).projetos;
-        escolha.projeto_roteiro_id = String(id);
+      opcoes(null, "prompt_id", () => perguntas[3]());
+      caixa.querySelector("#pp-novo").onclick = async () => {
+        const id = await editorDePrompt(P.padrao);
+        if (!id) return;
+        P = await api("/api/prompts");
+        escolha.prompt_id = String(id);
         perguntas[3]();
-      });
+      };
     },
     // 4. o tempo dos vídeos
     () => {
@@ -1490,8 +1505,8 @@ async function formProducao(caixa, canalId, depois = () => {}, perguntarDeNovo =
       <div class="pc-grade">
         ${cartao("lingua", "Língua", esc(p.lingua))}
         ${cartao("voz", "Voz", esc(p.voz || p.perfil || "sem voz"))}
-        ${cartao("agente", "Agente de roteiro", esc(agenteDe(p.projeto_roteiro_id)),
-          `<button class="pc-link" id="pc-editar-agente">${p.projeto_roteiro_id ? "Editar o agente" : "Criar um agente"} →</button>`)}
+        ${cartao("agente", "Prompt do roteiro", esc(nomeDoPrompt(P.prompts, p.prompt_id)),
+          `<button class="pc-link" id="pc-editar-agente">${p.prompt_id ? "Editar este prompt" : "Criar outro prompt"} →</button>`)}
         ${cartao("tempo", "Tempo dos vídeos", `${esc(p.minutos)} minutos`)}
         <div class="pc-cartao pc-imagens-cartao"><span class="pc-ic">${icone(ICONES.imagem)}</span>
           <div class="pc-txt"><small>Quem gera as imagens de IA</small>
@@ -1499,7 +1514,14 @@ async function formProducao(caixa, canalId, depois = () => {}, perguntarDeNovo =
               .map(([v, nome]) => `<button type="button" role="radio" data-v="${esc(v)}" aria-checked="${quemAgora === v}"><b>${esc(nome)}</b></button>`).join("")}</div>
             <div id="pc-imagens-sub" class="pc-imagens-sub">${htmlDaAssinatura(p)}</div></div></div></div></div>`;
     caixa.querySelector("#pc-editar").onclick = () => perguntas[0]();
-    caixa.querySelector("#pc-editar-agente").onclick = () => editarAgente();
+    caixa.querySelector("#pc-editar-agente").onclick = async () => {
+      const atual = P.prompts.find((x) => String(x.id) === String(p.prompt_id)) || null;
+      const id = await editorDePrompt(P.padrao, atual);
+      if (!id) return;
+      P = await api("/api/prompts");
+      if (!atual) p = await api(`/api/producao/${encodeURIComponent(canalId)}/padrao`, { method: "POST", body: { prompt_id: String(id) } });
+      resumo(); depois();
+    };
     caixa.querySelector("#pc-imagens").onclick = async (e) => {
       const b = e.target.closest("button[data-v]");
       if (!b || b.dataset.v === quemAgora) return;
@@ -2393,6 +2415,16 @@ async function montarAssistente(caixa, obterTitulo = () => "", opcoes = {}) {
 
 let MEUS = null;              // os canais da pessoa, para as abas e para o "Salvar ideia"
 let CANAL_ATUAL = "";         // o canal da aba aberta em Ideias ou no Treino: o "Salvar ideia" vai direto para ele
+// "↻ Atualizar canais" (pedido do usuário em 2026-11-20: "às vezes o canal muda de nome"): relê nome, foto e @ no
+// YouTube. Devolve o aviso do que mudou
+async function atualizarCanais() {
+  const r = await api("/api/meus-canais/atualizar", { method: "POST" });
+  MEUS = r.canais;
+  return r.mudaram.length
+    ? `Atualizado: ${r.mudaram.map((m) => `“${m.antes}” agora é “${m.agora}”`).join(" · ")}`
+    : `Canais atualizados (${r.lidos}): nenhum mudou de nome.`;
+}
+
 async function meusCanais(recarregar = false) {
   if (!MEUS || recarregar) MEUS = (await api("/api/meus-canais")).canais;
   return MEUS;
@@ -2621,7 +2653,7 @@ function ligarTirarCanal(redesenhar) {
     e.preventDefault(); e.stopPropagation();
     if (!confirm(`Tirar "${b.dataset.nome}" dos seus canais?
 
-Sai do Radar com a configuração de produção (língua, voz, agente) e a conexão com o YouTube Studio. O canal no YouTube continua igual, e dá para adicionar de novo depois.`)) return;
+Sai do Radar com a configuração de produção (língua, voz, prompt) e a conexão com o YouTube Studio. O canal no YouTube continua igual, e dá para adicionar de novo depois.`)) return;
     try { await api(`/api/perfil/canais/${b.dataset.canal}`, { method: "DELETE" }); redesenhar(); }
     catch (erro) { aviso(porque(erro)); }
   }));
@@ -2632,7 +2664,8 @@ Sai do Radar com a configuração de produção (língua, voz, agente) e a conex
 async function canais(acao) {
   const [p, st] = await Promise.all([api("/api/inicio"), api("/api/youtube/status")]);
   const ok = new URLSearchParams(location.hash.split("?")[1] || "").get("studio") === "ok";
-  tela.innerHTML = titulo("Canais", "Seus canais e a produção de cada um: a língua, a voz e o agente de roteiro.") + `
+  tela.innerHTML = titulo("Canais", "Seus canais e a produção de cada um: a língua, a voz e o prompt do roteiro.") + `
+    <div style="display:flex;justify-content:flex-end"><button class="botao contorno" id="atualizar-canais" data-dica="Relê no YouTube o nome, a foto e o @ dos seus canais (quando um canal muda de nome)">↻ Atualizar canais</button></div>
     ${ok ? '<div class="chamada"><span class="texto"><b>YouTube Studio conectado.</b> Escolha o canal para ver as métricas.</span></div>' : ""}
     <div class="dois-grandes">
       <button class="grande-escolha ${acao === "novo" ? "" : "ativa"}" id="op-trabalhar"><span class="ic"></span><b>Ver um canal</b><small>Os números e as métricas do Studio</small></button>
@@ -2663,6 +2696,9 @@ async function canais(acao) {
   };
   document.getElementById("op-trabalhar").onclick = () => alternar(false);
   document.getElementById("op-adicionar").onclick = () => alternar(true);
+  document.getElementById("atualizar-canais").onclick = (e) => carregando(e.currentTarget, "Lendo no YouTube…", async () => {
+    try { aviso(await atualizarCanais()); canais(acao); } catch (erro) { aviso(porque(erro)); }
+  });
   ligarTirarCanal(() => { MEUS = null; canais(acao); });
   conexoesDoStudio(document.getElementById("conexoes-studio"));
   const b = document.getElementById("studio");
@@ -3535,7 +3571,7 @@ async function animacoes() {
 // o resto: canal, agente, idioma, roteiro, tamanho, nicho e observação. O último canal usado fica lembrado.
 
 const CARACTERES_POR_PALAVRA = 5.9;
-const ATALHOS_MIN = [8, 10, 12, 15, 20, 25, 30];
+const ATALHOS_MIN = [8, 10, 12, 15, 20, 25, 30, 35, 40];   // 35 e 40 desde 2026-11-22, como na extensão
 
 async function telaDeContasYoutube() {
   if (document.getElementById("contas-yt-fundo")) return;
@@ -3610,7 +3646,8 @@ async function telaDeMaquinas() {
 
 const TEMAS_ANIMACAO = [["", "Padrão do canal"], ["noticiario", "Noticiário"], ["dossie", "Dossiê"], ["cinema", "Cinema"],
   ["jornal", "Jornal"], ["caderno", "Caderno"], ["planilha", "Planilha"], ["hacker", "Hacker"], ["terror", "Terror"],
-  ["colagem", "Colagem"], ["cinetico", "Cinético"], ["arquivo", "Pasta de caso"], ["reaberto", "Caso reaberto"]];
+  ["colagem", "Colagem"], ["cinetico", "Cinético"], ["arquivo", "Pasta de caso"], ["reaberto", "Caso reaberto"],
+  ["investigacao", "Quadro de investigação"]];
 // o que aparece ao passar o mouse: como o tema fica na tela (animacoes.TEMAS e DESENHOS, na fábrica) e para que serve
 const DICAS_DO_TEMA = {
   "": "Sem tema próprio: o vídeo sai com o visual já configurado no canal.",
@@ -3626,6 +3663,7 @@ const DICAS_DO_TEMA = {
   cinetico: "Impacto: letra grossa em maiúsculas, amarelo sobre preto. Bom para listas, curiosidades rápidas e motivação.",
   arquivo: "Pasta de arquivo: papel pardo, aba no topo e letra de máquina de escrever. Bom para true crime e investigações.",
   reaberto: "Fita de isolamento: fundo escuro com fita amarela e preta inclinada. Bom para true crime pesado e casos reabertos.",
+  investigacao: "Quadro de investigação: cortiça escura com o fio vermelho e o alfinete ligando as pistas. Bom para mistério, crime e caso com muitas pontas.",
 };
 // quanto do vídeo sai de cada lugar: o resto é foto e vídeo de banco
 // a barra de IA x imagem real é livre, de 0 a 100 (pedido do usuário em 2026-11-16): a fábrica mira na parte mais perto
@@ -3714,8 +3752,9 @@ for (const sai of ["mouseout", "focusout"]) document.addEventListener(sai, (e) =
 const OPCOES_DO_VIDEO = [
   ["ritmo", "Segundos por cena", [["", "3 a 5 s"], ["4-6", "4 a 6 s"], ["5-8", "5 a 8 s"]]],
   ["edicao", "Edição", [["", "Padrão do canal"], ["documentario", "Documentário"], ["investigacao", "Investigação"], ["noticiario", "Noticiário"], ["energia", "Energia"], ["cinema", "Cinema"]]],
-  ["transicao", "Transição", [["", "Corte seco"], ["preto", "Preto"], ["branco", "Branco"], ["brasa", "Brasa"], ["flash", "Flash"]]],
-  ["camada", "Partículas", [["", "Nenhuma"], ["brasas", "Brasas"], ["poeira", "Poeira"]]],
+  ["transicao", "Transição", [["", "Corte seco"], ["preto", "Preto"], ["branco", "Branco"], ["brasa", "Brasa"], ["flash", "Flash"],
+    ["queima", "Queima (luz)"], ["superexposicao", "Superexposição (luz)"], ["dissolve", "Dissolve com grão (luz)"], ["derreter", "Derreter (luz)"]]],
+  ["camada", "Partículas", [["", "Nenhuma"], ["brasas", "Brasas"], ["poeira", "Poeira"], ["douradas", "Douradas"], ["vazando", "Luz vazando"]]],
   ["ia", "Imagem de IA", [["", "Ligada"], ["sem", "Desligada"]]],
   ["video_ia", "Vídeo de IA (pago por clipe)", [["", "Nenhum"], ["10", "10% das cenas de IA"], ["25", "25% das cenas de IA"]]],
   ["acervo", "Acervo de museus", [["", "Automático"], ["sempre", "Em toda cena"], ["sem", "Desligado"]]],
@@ -3731,10 +3770,11 @@ async function novaProducao(preset = {}) {
     api("/api/maquinas").catch(() => ({ maquinas: [] })),
     api("/api/animacoes/catalogo").catch(() => null), api("/api/animacoes/estilos").catch(() => ({ estilos: [] }))]);
   const agentes = todosAgentes.filter((a) => (a.tipo || "roteiro") === "roteiro");
+  let P = await api("/api/prompts").catch(() => ({ padrao: "", prompts: [] }));
   const lembrado = canais.some((c) => c.id === guardado("np-canal", "")) ? guardado("np-canal", "") : "";
   const N = { passo: 1, titulo: preset.titulo || "", link: preset.link || "", canal: preset.canal || CANAL_ATUAL || lembrado || (canais.length === 1 ? canais[0].id : ""), cfg: null, agente: "",
-    lingua: "português", ppm: 150, caracteres: 0, modo: "claude", roteiro: "", nicho: "", obs: "", revisar: false, ref: null, custo: null, anim: "",
-    footage: Number(guardado("np-footage", "0")) || 0, tema: guardado("np-tema", ""), iaPct: parteDeIa(guardado("np-ia", "")), destino: "", maquinas: [], opcoes: {}, opcoesAbertas: false };
+    lingua: "", ppm: 150, caracteres: 0, modo: "claude", roteiro: "", nicho: "", obs: "", revisar: false, ref: null, custo: null, anim: "",
+    prompt: "", footage: Number(guardado("np-footage", "0")) || 0, tema: guardado("np-tema", ""), iaPct: parteDeIa(guardado("np-ia", "")), destino: "", maquinas: [], opcoes: {}, opcoesAbertas: false };
   N.maquinas = maquinasDeFora;
   // o estilo das animações só deste vídeo: "" é o padrão do canal, e a página Animações é onde se monta um estilo
   const opcoesAnim = () => `<option value="">Padrão do canal</option>
@@ -3778,13 +3818,13 @@ async function novaProducao(preset = {}) {
   fundo.onclick = (e) => { if (e.target === fundo) fechar(); };
 
   const desenharPrevia = () => {
-    const agente = agentes.find((a) => String(a.id) === String(N.agente));
     const capa = N.ref?.id ? `<img src="https://i.ytimg.com/vi/${esc(N.ref.id)}/mqdefault.jpg" alt="">` : "";
     previa.innerHTML = `<small>Assim ele entra na fila</small>
       <div class="np-cartao">${capa}<b>${esc(N.titulo || "O título do vídeo aparece aqui")}</b>
         <span class="np-cartao-rodape"><span>● Nova produção</span><span>≈ ${Math.round(minutos())} min</span></span></div>
       <dl class="np-resumo"><dt>Canal</dt><dd>${esc(nomeCanal() || "falta")}</dd>
-        <dt>Estilo</dt><dd>${N.modo === "manual" ? "roteiro colado" : esc(agente?.nome || "padrão do Claude")}</dd>
+        <dt>Língua</dt><dd>${esc(N.lingua || "falta")}</dd>
+        <dt>Roteiro</dt><dd>${N.modo === "manual" ? "roteiro colado" : esc(nomeDoPrompt(P.prompts, N.prompt))}</dd>
         ${catAnim ? `<dt>Animações</dt><dd>${esc(nomeAnim())}</dd>` : ""}
         <dt>Tamanho</dt><dd>${N.modo === "manual" ? `${(N.roteiro.split(/\s+/).filter(Boolean).length).toLocaleString("pt-BR")} palavras` : `≈ ${Math.round(minutos())} min · ~${palavras().toLocaleString("pt-BR")} palavras`}</dd>
         <dt>Revisão</dt><dd>${N.revisar ? "Para para eu revisar" : "Segue direto"}</dd>
@@ -3823,6 +3863,7 @@ async function novaProducao(preset = {}) {
     if (N.cfg) {
       N.lingua = N.cfg.lingua || N.lingua;
       N.agente = N.cfg.projeto_roteiro_id || "";
+      N.prompt = String(N.cfg.prompt_id || "");
       temaDoAgenteEscolhido();
       try {
         N.ppm = (await api("/api/roteiros/ritmo?" + consulta({ perfil: N.cfg.perfil, lingua: N.lingua }))).ppm || 150;
@@ -3833,19 +3874,20 @@ async function novaProducao(preset = {}) {
       N.caracteres = Math.round((N.cfg.minutos || 12) * N.ppm * CARACTERES_POR_PALAVRA / 10) * 10;
     }
     N.lendoCanal = null;
-    desenhar(); atualizarCusto();
+    desenhar(); desenharPrevia(); atualizarCusto();
   })());
 
   function desenhar() {
-    const agente = agentes.find((a) => String(a.id) === String(N.agente));
-    const canaisHtml = `<div class="campo"><span>Canal</span><div class="np-canais">${canais.map((c) => `<button type="button" class="np-canal ${c.id === N.canal ? "escolhido" : ""}" data-id="${esc(c.id)}">
+    // 2026-11-20: o agente saiu do roteiro ("sempre será um prompt agora"); no lugar dele, a pergunta é a língua
+    const linguaHtml = (rotulo) => `<label class="campo"><span>${rotulo}</span><select id="np-lingua"><option value="">${N.canal ? "— escolha a língua —" : "— escolha o canal primeiro —"}</option>${[...new Set([N.lingua, ...LINGUAS].filter(Boolean))].map((l) => `<option ${l === N.lingua ? "selected" : ""}>${esc(l)}</option>`).join("")}</select></label>`;
+    const canaisHtml = `<div class="campo"><span>Canal <small>(<a href="#" id="np-atualizar-canais">↻ atualizar nomes</a>)</small></span><div class="np-canais">${canais.map((c) => `<button type="button" class="np-canal ${c.id === N.canal ? "escolhido" : ""}" data-id="${esc(c.id)}">
           ${c.foto ? `<img src="${esc(c.foto)}" alt="" data-sigla="${esc(sigla(c.titulo))}">` : `<i>${esc(sigla(c.titulo))}</i>`}${esc(c.titulo)}</button>`).join("") || '<span class="np-dica">Nenhum canal: adicione em Meu trabalho → Canais.</span>'}</div>
         ${N.canal && N.cfg && !N.cfg.perfil ? '<span class="np-dica alerta">Este canal ainda não tem voz da fábrica: configure em Canais antes de começar.</span>' : ""}</div>`;
     const footageHtml = `<label class="campo"><span>Footage real do YouTube <small>(trechos de vídeos de outros canais; o resto segue com banco e IA)</small></span>
       <select id="np-footage">${opcoesDe(PARTES_DE_YOUTUBE, N.footage)}</select>
       ${N.footage ? '<small class="np-dica alerta">Trecho de terceiro pode render reivindicação de direitos no YouTube.</small>' : ""}</label>`;
     const revisarSo = `<label class="np-revisar"><input type="checkbox" id="np-revisar" ${N.revisar ? "checked" : ""}><span><b>Parar para eu revisar o roteiro</b><small>O Claude escreve e espera você aprovar no Acompanhar antes de ir para a fábrica.</small></span></label>`;
-    const temaHtml = seletorDeTema("np-tema", N.tema, "Tema das animações", agente?.tema ? `O agente ${agente.nome} usa ${TEMAS_ANIMACAO.find(([v]) => v === agente.tema)?.[1]}.` : "");
+    const temaHtml = seletorDeTema("np-tema", N.tema, "Tema das animações", "");
     const destinoHtml = N.maquinas.length ? `<label class="campo"><span>Onde produzir</span>
       <select id="np-destino"><option value="">Esta máquina</option><option value="robo" ${N.destino ? "selected" : ""}>A primeira máquina livre (${N.maquinas.filter((m) => m.online).length} ligada${N.maquinas.filter((m) => m.online).length === 1 ? "" : "s"})</option></select></label>` : "";
     const opcoesHtml = `<details class="campo np-opcoes" ${N.opcoesAbertas ? "open" : ""}><summary>Mais opções deste vídeo</summary><div class="np-duas">${OPCOES_DO_VIDEO.map(([campo, rotulo, lista]) => `<label class="campo"><span>${rotulo}</span><select class="np-opcao" data-campo="${campo}">${lista.map(([v, r]) => `<option value="${v}" ${v === (N.opcoes[campo] || "") ? "selected" : ""}>${r}</option>`).join("")}</select></label>`).join("")}</div></details>`;
@@ -3862,23 +3904,20 @@ async function novaProducao(preset = {}) {
       <label class="campo"><span>Vídeo de referência <small>(opcional: o roteiro modela este vídeo)</small></span><input id="np-link" value="${esc(N.link)}" placeholder="https://youtu.be/…"></label>
       ${N.ref?.titulo ? `<button class="link-editar np-usar" type="button">usar o título da referência: “${esc(N.ref.titulo)}”</button>` : ""}
       ${N.canal ? "" : canaisHtml}
-      <div class="campo"><span>Agente do roteiro</span><div class="np-agente">
-        <div><b>${esc(N.modo === "manual" ? "Roteiro colado por você" : agente?.nome || "Padrão do Claude")}</b>
-          <small>${esc([nomeCanal() || "escolha o canal", N.lingua, N.modo === "manual" ? null : `≈ ${Math.round(minutos())} min`].filter(Boolean).join(" · "))}</small>
-          ${agente?.ideal_para && N.modo !== "manual" ? `<small class="np-ideal">Ideal para: ${esc(agente.ideal_para)}</small>` : ""}</div>
+      ${linguaHtml("Língua do vídeo")}
+      <div class="campo"><div class="np-agente">
+        <div><b>${esc(N.modo === "manual" ? "Roteiro colado por você" : `O Claude escreve com o ${nomeDoPrompt(P.prompts, N.prompt)}`)}</b>
+          <small>${esc([nomeCanal() || "escolha o canal", N.modo === "manual" ? null : `≈ ${Math.round(minutos())} min`].filter(Boolean).join(" · "))}</small></div>
         <button type="button" class="botao contorno" id="np-editar">Editar</button></div>
-        <small class="np-dica">Sem editar, o Claude escreve o roteiro com este agente e o vídeo segue para a fábrica.</small></div>
+        <small class="np-dica">O roteiro sai nesta língua, com as adaptações culturais do país. Use uma referência de OUTRO assunto: do mesmo assunto, o pedido para.</small></div>
       ${catAnim ? `<label class="campo"><span>Animações <small>(<a href="#/animacoes" id="np-ver-anim">ver os estilos</a>)</small></span><select id="np-anim">${opcoesAnim()}</select></label>` : ""}
       ${revisarHtml}`;
     } else {
       campos.innerHTML = `${passos}
       <button type="button" class="link-editar" id="np-voltar">← Voltar ao vídeo</button>
       ${canaisHtml}
-      <div class="np-duas">
-        <label class="campo"><span>Agente do roteiro</span><select id="np-agente"><option value="">Padrão do Claude</option>${agentes.map((a) => `<option value="${a.id}" ${String(a.id) === String(N.agente) ? "selected" : ""}>${esc(a.nome)}</option>`).join("")}</select>
-          ${agente?.ideal_para ? `<small class="np-ideal">Ideal para: ${esc(agente.ideal_para)}</small>` : ""}</label>
-        <label class="campo"><span>Idioma</span><select id="np-lingua">${[...new Set([N.lingua, ...LINGUAS])].map((l) => `<option ${l === N.lingua ? "selected" : ""}>${esc(l)}</option>`).join("")}</select></label>
-      </div>
+      <div class="np-duas">${linguaHtml("Língua do vídeo")}
+        <label class="campo"><span>Prompt do roteiro <small>(<a href="#" id="np-novo-prompt">criar outro</a>)</small></span><select id="np-prompt"><option value="">Prompt padrão do Radar</option>${P.prompts.map((x) => `<option value="${x.id}" ${String(x.id) === String(N.prompt) ? "selected" : ""}>${esc(x.nome)}</option>`).join("")}</select></label></div>
       <div class="campo"><span>Roteiro</span><div class="np-modos">
         <button type="button" class="chip ${N.modo === "claude" ? "ativo" : ""}" data-modo="claude">O Claude escreve</button>
         <button type="button" class="chip ${N.modo === "manual" ? "ativo" : ""}" data-modo="manual">Já tenho o roteiro</button></div></div>
@@ -3910,8 +3949,22 @@ async function novaProducao(preset = {}) {
     campos.querySelectorAll(".np-canal img").forEach((img) => (img.onerror = () => {
       const i = document.createElement("i"); i.textContent = img.dataset.sigla; img.replaceWith(i);
     }));
-    $n("np-agente")?.addEventListener("change", (e) => { N.agente = e.target.value; temaDoAgenteEscolhido(); desenhar(); atualizarCusto(); });
-    $n("np-lingua")?.addEventListener("change", (e) => { N.lingua = e.target.value; desenharPrevia(); });
+    $n("np-atualizar-canais")?.addEventListener("click", async (e) => {
+      e.preventDefault();
+      try {
+        aviso(await atualizarCanais());
+        canais.splice(0, canais.length, ...MEUS);
+        desenhar(); desenharPrevia();
+      } catch (erro) { aviso(porque(erro)); }
+    });
+    $n("np-prompt")?.addEventListener("change", (e) => { N.prompt = e.target.value; desenhar(); desenharPrevia(); });
+    $n("np-novo-prompt")?.addEventListener("click", async (e) => {
+      e.preventDefault();
+      const id = await editorDePrompt(P.padrao);
+      if (!id) return;
+      P = await api("/api/prompts"); N.prompt = String(id); desenhar(); desenharPrevia();
+    });
+    $n("np-lingua")?.addEventListener("change", (e) => { N.lingua = e.target.value; desenhar(); desenharPrevia(); });
     campos.querySelectorAll("[data-modo]").forEach((b) => (b.onclick = () => { N.modo = b.dataset.modo; desenhar(); desenharPrevia(); }));
     $n("np-roteiro")?.addEventListener("input", (e) => { N.roteiro = e.target.value; desenharPrevia(); });
     $n("np-caracteres")?.addEventListener("change", (e) => { N.caracteres = Math.max(1000, Math.min(80000, Number(e.target.value) || 0)); desenhar(); atualizarCusto(); });
@@ -3938,7 +3991,8 @@ async function novaProducao(preset = {}) {
     if (!N.canal) { erro.textContent = "Escolha o canal."; N.passo = 2; desenhar(); return; }
     if (N.lendoCanal) await N.lendoCanal;      // o tamanho do canal ainda estava chegando
     if (N.modo !== "manual" && !N.cfg) { erro.textContent = N.avisoTamanho || "Não consegui ler o canal. Escolha o canal de novo."; return; }
-    const pedido = { titulo: N.titulo, link: N.link, canal_id: N.canal, agente_id: N.agente, lingua: N.lingua, revisar: N.revisar, animacoes: ajustesAnim(),
+    if (!N.lingua) { erro.textContent = "Escolha a língua do vídeo."; return; }
+    const pedido = { titulo: N.titulo, link: N.link, canal_id: N.canal, lingua: N.lingua, prompt_id: N.prompt, revisar: N.revisar, animacoes: ajustesAnim(),
       ...(N.footage ? { footage_real: N.footage } : {}), escolhido_na_tela: true, ...(N.tema ? { tema: N.tema } : {}), ...(N.iaPct !== "" ? { ia_pct: Number(N.iaPct) } : {}), ...(N.destino ? { destino: N.destino } : {}),
       ...Object.fromEntries(Object.entries(N.opcoes).filter(([, v]) => v)),
       ...(N.modo === "manual" ? { roteiro_manual: N.roteiro } : { caracteres: N.caracteres, nicho: N.nicho, observacao: N.obs }) };

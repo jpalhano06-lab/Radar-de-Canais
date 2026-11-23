@@ -31,11 +31,12 @@ def _mundo(monkeypatch, tmp_path, erro_da_legenda=None, base=""):
     monkeypatch.setattr(roteiro_claude, "transcricao", legenda)
     visto = {}
 
-    def falso(sistema, pedido, modelo=""):
+    def falso(sistema, pedido, modelo="", pesquisa=False):
         visto["pedido"] = pedido
         return "Primeira frase do roteiro. " * 200
 
     monkeypatch.setattr(roteiro_claude, "_claude", falso)
+    monkeypatch.setattr(roteiro_claude, "garantir_lingua", lambda r, l, a=None: r)  # o texto falso é em português
     return roteiros, visto
 
 

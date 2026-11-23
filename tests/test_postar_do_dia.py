@@ -3,13 +3,16 @@ import json
 
 from radar import roteiro_claude, servidor
 
+# um mp4 inteiro de verdade, só com as caixas (o Radar não chama de pronto um arquivo cortado no meio)
+MP4 = (16).to_bytes(4, "big") + b"ftypisom" + bytes(4) + (8).to_bytes(4, "big") + b"moov"
+
 
 def _projeto(raiz, nome, titulo, com_video=True, entrega=None):
     pasta = raiz / "projetos" / nome
     pasta.mkdir(parents=True)
     (pasta / "publicacao_radar.json").write_text(json.dumps({"titulo": titulo}), encoding="utf-8")
     if com_video:
-        (pasta / "final.mp4").write_bytes(b"\x00" * 10)
+        (pasta / "final.mp4").write_bytes(MP4)
     if entrega:
         (pasta / "entrega_pc.json").write_text(json.dumps({"video": str(entrega)}), encoding="utf-8")
     return pasta
@@ -19,7 +22,7 @@ def test_acha_o_video_pronto_pelo_titulo(tmp_path, monkeypatch):
     monkeypatch.setattr(roteiro_claude, "FABRICA", tmp_path)
     _projeto(tmp_path, "uk-retail", "12 Huge UK Retailers Are Closing Stores")
     r = servidor.ext_postar(titulo="12 Huge UK Retailers Are Closing Stores", u={})
-    assert r["nome"] == "uk-retail" and r["pronto"] and r["tamanho"] == 10
+    assert r["nome"] == "uk-retail" and r["pronto"] and r["tamanho"] == len(MP4)
 
 
 def test_sem_video_ainda_nao_esta_pronto(tmp_path, monkeypatch):
@@ -37,7 +40,7 @@ def test_titulo_desconhecido_nao_acha_nada(tmp_path, monkeypatch):
 def test_a_entrega_no_pc_ganha_do_final(tmp_path):
     entrega = tmp_path / "entrega" / "Titulo.mp4"
     entrega.parent.mkdir()
-    entrega.write_bytes(b"\x01" * 5)
+    entrega.write_bytes(MP4)
     pasta = _projeto(tmp_path, "com-entrega", "Um título qualquer comprido", entrega=entrega)
     assert servidor._video_final(pasta) == entrega
     entrega.unlink()                                    # a entrega sumiu: volta ao final.mp4 da pasta

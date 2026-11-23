@@ -57,6 +57,28 @@ def test_fora_do_portugues_vem_a_traducao_e_os_paragrafos_ficam(monkeypatch):
     assert dados["traducao"] == {"titulo": "O futuro da Coreia", "sinopse": "Primeiro.\n\nSegundo."}
 
 
+PT = ("Um saco de doações sai do porta-malas de um carro numa manhã de sábado, e o vídeo segue esse saco para ver "
+      "aonde ele realmente vai. Depois do ciclone, os neozelandeses doaram mais de vinte milhões de dólares ao fundo. ") * 5
+EN = ("A bag of donations leaves the boot of a car on a Saturday morning, and the video follows that bag to see "
+      "where it really goes. After the cyclone, New Zealanders gave more than twenty million dollars to the fund. ") * 5
+
+
+def test_a_sinopse_em_portugues_num_video_em_ingles_e_pedida_de_novo(monkeypatch):
+    """De 2026-11-18 a 11-23 quase todo vídeo em inglês foi para o YouTube com a sinopse em português."""
+    pedidos, respostas = [], [resposta(PT), resposta(EN)]
+    monkeypatch.setattr(roteiro_claude, "_claude", lambda s, p, modelo="": pedidos.append(p) or respostas.pop(0))
+    dados = descricao.escrever("Red Cross", "The video script. " * 50, "inglês")
+    assert dados["sinopse"] == " ".join(EN.split())
+    assert "TODAS em inglês" in pedidos[0] and "veio com a sinopse em português" in pedidos[1]
+
+
+def test_a_sinopse_que_insiste_na_lingua_errada_vira_erro(monkeypatch):
+    monkeypatch.setattr(roteiro_claude, "_claude", lambda s, p, modelo="": resposta("가" * 300 + " " + PT))
+    import pytest
+    with pytest.raises(RuntimeError, match="não em japonês"):
+        descricao.escrever("題名", "日本の新発明について話します " * 20, "japonês")
+
+
 def test_o_titulo_do_radar_ganha_do_da_fabrica(tmp_path):
     from radar import publicar
     (tmp_path / "publicacao.json").write_text(json.dumps({"titulo": "韓国の列車 (한국의 열차)"}), encoding="utf-8")

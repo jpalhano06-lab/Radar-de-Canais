@@ -2215,3 +2215,58 @@ do YouTube mostrava 43.170 para o mesmo 14/11.
   dele, o mesmo da dica ao passar o mouse; senão, soma as barras de 48 h dentro do dia do Pacífico. A dica da linha
   diz de onde veio. O "hoje (desde a meia-noite)" do cartão de 48 h continua no horário do Brasil.
 - Para usar: dê ↻ na extensão em `chrome://extensions` e recarregue o Studio.
+
+## O agente saiu do roteiro: sempre o prompt, e a pergunta é a língua (2026-11-20, extensão 0.55.0)
+
+Pedido do usuário: "vamos mudar o Radar e retirar o agente, sempre será um prompt agora… a única pergunta no lugar do
+agente será a língua que será feita o vídeo".
+
+- **O prompt** (`roteiro_claude.PROMPT`): o roteirista que faz tudo sozinho — pesquisa o tema, valida a referência
+  (Passo 1.5), extrai a estrutura real dela (hook, blocos, re-hooks, CTA) e encaixa o tema novo nela; sem referência,
+  a estrutura documental em percentuais. Entrega só a fala, números por extenso, sem fontes. O formulário do Passo 1
+  é respondido pelo Radar no pedido: título, minutos, idioma de saída e a transcrição.
+- **As instruções e os arquivos do agente do canal não vão mais ao Claude**, nem a regra de abertura (`ABERTURA`). O
+  tamanho continua o do ritmo real da voz, com as partes e a conferência do tempo; `SEM_PERGUNTA`, CTAs de canal
+  pequeno, retenção e o "por que estourou" seguem.
+- **Busca na web**: o rascunho do roteiro roda com `--tools WebSearch`. O `_limpar` corta o "Sources:" e os links que
+  o Claude Code põe no fim.
+- **Referência do mesmo assunto**: o Claude responde `MESMO_ASSUNTO: …` e o pedido para com erro e a explicação, em
+  vez de virar narração. Atenção ao botão "usar o título da referência": ele cai nisso.
+- **Só o Canal de teste continua com o agente CANAL DE TESTE** (genérico, sem referência, com o modo sem narração).
+- **Nova produção (extensão e site)**: no lugar do select do agente, o select **Língua do vídeo** (vem com a do canal,
+  obrigatório). O "Tornar padrão" guarda só língua e tempo. O agente do canal ainda dá o tema das animações no site.
+- Para usar: religue o Radar e dê ↻ na extensão em `chrome://extensions`.
+
+## A língua conferida em todo vídeo, e o prompt padrão com a opção de outro (2026-11-20, extensão 0.56.0)
+
+Pedido do usuário: "você tem que conferir se realmente os vídeos, as narrações e o roteiro caíram na língua certa…
+o prompt é padrão, e dê a opção de criar outro, porém esse é o padrão, deixe pra todos… conferir se os motions irão
+pra língua certa também, e a criação de canal".
+
+- **Roteiro** (`roteiro_claude.lingua_errada` / `garantir_lingua`): toda língua é conferida, não só as de outro
+  alfabeto. As de alfabeto latino pelas palavras mais comuns de cada uma. Veio errado, o Claude reescreve uma vez na
+  língua pedida; errado de novo, o pedido para com erro. O portão antes da fábrica (`conferir_roteiro`) usa o mesmo.
+- **Narração**: no envio para a fábrica, a voz do perfil tem de falar a língua do roteiro (o sem narração não tem voz).
+- **Motions e textos da tela**: o Radar grava `lingua` (o código) no `projeto.json`, e a fábrica (`idioma.lingua`,
+  repositório fabrica-videos) lê dali primeiro. Antes ela só reconhecia pt, en, es, ja e ko pelo texto: francês era
+  lido como espanhol, e os dois vídeos de teste em holandês saíram com a tela pedida em inglês. Sem a declaração, a voz
+  numa língua que o texto não reconhece manda. O filtro de alfabeto da fábrica deixa passar chinês, cirílico, árabe e
+  devanágari nos vídeos dessas línguas. **Vale depois de religar a fábrica.**
+- **Auditoria de 2026-11-20**: 188 roteiros — 2 errados (os japoneses de 03/11 que narraram perguntas) e 2 em inglês
+  num canal de voz japonesa (17/11); 110 projetos da fábrica — os 2 de teste em holandês com a tela em inglês.
+- **Prompts**: o `PROMPT` é o padrão para todos (`GET /api/prompts`). Outros são criados pela pessoa (tabela
+  `projetos_roteiro`, tipo `prompt`, nascem com o texto do padrão) e escolhidos por canal (`prompt_id` na configuração)
+  ou só num vídeo (Nova produção, passo 2). A sincronização com o claude.ai não apaga esse tipo.
+- **Criação/configuração do canal**: a terceira pergunta virou "Qual prompt escreve os roteiros deste canal?", com o
+  padrão já marcado e "Criar outro prompt". O cartão do canal mostra o prompt.
+
+## ↻ Atualizar canais (2026-11-20, extensão 0.57.0)
+
+Pedido do usuário: "tem que ter um botão de atualizar os canais da extensão ou no Radar, porque às vezes o canal muda
+de nome". O Radar guardava o nome da primeira leitura e nunca mais olhava.
+
+- `POST /api/meus-canais/atualizar`: relê no YouTube (`channels.list`, 1 unidade a cada 50) o nome, a foto, o @, os
+  inscritos e os totais dos canais da pessoa; o que o YouTube não manda fica como estava. Devolve os canais e quais
+  mudaram de nome.
+- Botões: **↻ Atualizar canais** na tela Canais; **↻ atualizar nomes** no campo Canal da Nova produção do site e da
+  extensão (o aviso diz "X agora é Y").

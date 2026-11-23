@@ -2213,12 +2213,18 @@
   // revisar"); 2 · editar o roteiro (canal, agente, idioma, tamanho, nicho e observação). Sem editar, o Claude escreve
   // com o agente do canal. Num vídeo aberto, o link dele já vem como referência. O canal não fica lembrado: é escolhido
   // a cada pedido, e ele traz o agente dele (pedido do usuário em 2026-11-14).
-  const POR_PALAVRA = 5.9, MINUTOS_NP = [8, 10, 12, 15, 20, 25, 30];
+  // 35 e 40 min desde 2026-11-22 (pedido do usuário); o servidor aceita até 80.000 caracteres (fila.MAX_CARACTERES)
+  const POR_PALAVRA = 5.9, MINUTOS_NP = [8, 10, 12, 15, 20, 25, 30, 35, 40];
   const TESTE = "teste";      // o Canal de teste da Nova produção: não é canal do Radar, a língua é escolhida na hora
   const MINUTOS_TESTE = [2, 3];   // o vídeo de teste é sempre de 2 a 3 min (pedido do usuário em 2026-10-29)
   // ou 5 min sem narração (pedido do usuário em 2026-11-12): ninguém narra, nenhuma IA, só banco grátis; a língua vale
   // só para os textos na tela (motions), então qualquer uma destas serve, tenha voz na fábrica ou não
   const MINUTOS_SEM_NARRACAO = 5, LINGUAS_SEM_NARRACAO = ["português", "inglês", "espanhol"];
+  // as línguas que o Radar conhece (fabrica_api.IDIOMA): a pergunta da Nova produção no lugar do agente
+  const LINGUAS_DO_VIDEO = ["português", "inglês", "espanhol", "francês", "alemão", "italiano", "holandês", "polonês",
+    "russo", "ucraniano", "turco", "árabe", "hindi", "tâmil", "japonês", "chinês", "coreano", "indonésio", "malaio",
+    "filipino", "vietnamita", "sueco", "dinamarquês", "norueguês", "finlandês", "grego", "tcheco", "eslovaco",
+    "húngaro", "romeno", "búlgaro", "croata"];
 
   // o botão "Nova produção" do Meu dia abre o YouTube com este endereço, e a janela já vem aberta
   if (location.hash === "#radar-nova-producao") { history.replaceState(null, "", location.pathname + location.search); setTimeout(() => novaProducao(), 800); }
@@ -2471,17 +2477,22 @@
     janela.append(h("div", { class: "radar-fraco" }, "Abrindo a Nova produção…"));
     document.body.append(fundo);
 
-    const [rc, ra] = await Promise.all([api("/api/meus-canais"), api("/api/projetos")]);
-    if (rc.erro || ra.erro) return janela.replaceChildren(h("div", { class: "radar-erro" }, erroDoRadar(rc.erro ? rc : ra)));
-    const canais = rc.dados.canais || [], agentes = ra.dados.projetos || [];
+    const [rc, rp] = await Promise.all([api("/api/meus-canais"), api("/api/prompts")]);
+    if (rc.erro) return janela.replaceChildren(h("div", { class: "radar-erro" }, erroDoRadar(rc)));
+    const canais = rc.dados.canais || [];
+    // o prompt do roteiro (2026-11-20): "" é o prompt padrão do Radar, o mesmo para todos; os outros a pessoa cria
+    const prompts = rp.erro ? [] : rp.dados.prompts || [];
+    const nomeDoPrompt = (id) => (prompts.find((x) => String(x.id) === String(id)) || {}).nome || "Prompt padrão do Radar";
     const daqui = location.pathname === "/watch" && new URLSearchParams(location.search).get("v");
     // o canal abre sempre vazio e é a escolha obrigatória (2026-11-14: "não é o agente que era para forçar a escolher,
     // e sim o canal"); escolhido, ele traz língua, voz, tempo e o agente dele. N.padrao guarda o agente do canal para
     // o aviso da confirmação, quando a pessoa troca o agente. Só o Canal de teste (TESTE), que é genérico, pede a língua. N.agente "padrao" é
     // escrever sem agente, pelas regras do Radar; N.perfil é a voz da fábrica escolhida no Canal de teste
-    const N = { passo: 1, titulo: "", link: daqui ? `https://youtu.be/${daqui}` : "", ref: null, cfg: null, agente: "", padrao: "", lingua: "português",
+    // 2026-11-20: o agente saiu ("sempre será um prompt agora"); no lugar dele a única pergunta é a língua do vídeo.
+    // N.agente só existe no Canal de teste, que continua com o agente CANAL DE TESTE
+    const N = { passo: 1, titulo: "", link: daqui ? `https://youtu.be/${daqui}` : "", ref: null, cfg: null, agente: "", padrao: "", lingua: "",
       ppm: 150, caracteres: Math.round(12 * 150 * POR_PALAVRA / 10) * 10, modo: "claude", roteiro: "", nicho: "", obs: "", revisar: false, custo: null,
-      teste: null, perfil: "", semNarracao: false,
+      teste: null, perfil: "", semNarracao: false, prompt: "",
       canal: "" };
     const minutos = () => N.caracteres / POR_PALAVRA / N.ppm;
     const eTeste = () => N.canal === TESTE;
@@ -2529,8 +2540,7 @@
       if (!N.cfg) N.avisoTamanho = `Não consegui ler o canal (${erroDoRadar(r)}). Escolha o canal de novo antes de enviar.`;
       if (N.cfg) {
         N.lingua = N.cfg.lingua || N.lingua;
-        N.padrao = N.cfg.projeto_roteiro_id ? String(N.cfg.projeto_roteiro_id) : "padrao";
-        N.agente = N.padrao;
+        N.padrao = ""; N.agente = ""; N.prompt = String(N.cfg.prompt_id || "");
         const ritmo = await api(`/api/roteiros/ritmo?perfil=${encodeURIComponent(N.cfg.perfil || "")}&lingua=${encodeURIComponent(N.lingua)}`);
         N.ppm = (!ritmo.erro && ritmo.dados.ppm) || 150;
         if (ritmo.erro) N.avisoTamanho = "Não li a velocidade da voz deste canal: a conta usa 150 palavras por minuto e o vídeo pode sair com outro tempo.";
@@ -2558,8 +2568,14 @@
       desenhar();
     };
 
-    const nomeDoAgente = (id) => (agentes.find((a) => String(a.id) === String(id)) || {}).nome || "Padrão do Claude (sem agente)";
-    const escolherAgente = (v) => { N.agente = v; desenhar(); };
+    const escolherLinguaDoVideo = async (v) => {
+      N.lingua = v;
+      const ritmo = await api(`/api/roteiros/ritmo?perfil=${encodeURIComponent(perfilAtual())}&lingua=${encodeURIComponent(v)}`);
+      const min = Math.round(minutos());
+      N.ppm = (!ritmo.erro && ritmo.dados.ppm) || 150;
+      N.caracteres = Math.round(min * N.ppm * POR_PALAVRA / 10) * 10;
+      desenhar(); custo();
+    };
 
     const campo = (rotulo, ...filhos) => h("label", { class: "radar-np-campo" }, h("span", {}, rotulo), ...filhos);
     const entrada = (valor, attrs, aoMudar, evento = "input") => { const i = h("input", { value: valor, ...attrs }); i.addEventListener(evento, (e) => aoMudar(e.target.value)); return i; };
@@ -2567,21 +2583,19 @@
     const erro = h("span", { class: "radar-np-erro" });
 
     const sel = (opcoes, atual, aoMudar) => { const s = h("select", {}, opcoes.map(([v, t]) => { const o = h("option", { value: v }, t); if (String(v) === String(atual)) o.selected = true; return o; })); s.onchange = () => aoMudar(s.value); return s; };
-    // o mesmo select nos dois passos. Fica vazio até o canal ser escolhido; aí vem com o agente do canal (N.padrao) e
-    // pode ser trocado. O vídeo da Coreia com o agente da Austrália (2026-11-13) vinha do canal lembrado: agora o canal
-    // não é lembrado, e é ele que a pessoa tem de escolher a cada pedido
-    const selAgente = () => sel([["", N.canal ? "— escolha o agente —" : "— escolha o canal primeiro —"], ["padrao", "Padrão do Claude (sem agente)"],
-      ...agentes.map((a) => [a.id, a.nome])], N.agente, escolherAgente);
+    // a língua do vídeo, no lugar do antigo select do agente (2026-11-20): o mesmo select nos dois passos. Vem com a
+    // língua do canal e pode ser trocada; sem canal, fica vazia
+    const selLingua = () => sel([["", N.canal ? "— escolha a língua —" : "— escolha o canal primeiro —"],
+      ...[...new Set([N.lingua, ...LINGUAS_DO_VIDEO].filter(Boolean))].map((l) => [l, l])], N.lingua, escolherLinguaDoVideo);
 
     // "Tornar padrão" (pedido do usuário em 2026-11-15: "mudei o tempo do agente, não quero ter que ir lá mudar
     // tudo"): o agente, o idioma e o tempo deste pedido viram o padrão do canal no Radar, e o próximo pedido já abre
     // com eles. Só aparece quando algum dos três está diferente do que o canal guarda
-    const padraoDoCanal = () => N.cfg ? { agente: N.cfg.projeto_roteiro_id ? String(N.cfg.projeto_roteiro_id) : "padrao",
-      lingua: N.cfg.lingua || "", minutos: Number(N.cfg.minutos) || 12 } : null;
+    const padraoDoCanal = () => N.cfg ? { lingua: N.cfg.lingua || "", minutos: Number(N.cfg.minutos) || 12 } : null;
     const mudouDoPadrao = () => {
       const p = padraoDoCanal();
       if (!p) return [];
-      return [N.agente && N.agente !== p.agente ? "agente" : null, N.lingua !== p.lingua ? "idioma" : null,
+      return [N.lingua && N.lingua !== p.lingua ? "idioma" : null,
         Math.round(minutos()) !== p.minutos ? "tempo" : null].filter(Boolean);
     };
     const tornarPadrao = () => {
@@ -2592,18 +2606,29 @@
       b.onclick = async () => {
         b.disabled = true; b.textContent = "Salvando o padrão…";
         const r = await api(`/api/producao/${encodeURIComponent(N.canal)}/padrao`, "POST",
-          { projeto_roteiro_id: N.agente === "padrao" ? "" : N.agente, lingua: N.lingua, minutos: Math.round(minutos()) });
+          { lingua: N.lingua, minutos: Math.round(minutos()) });
         if (r.erro) { b.disabled = false; b.textContent = `Não salvou (${erroDoRadar(r)}): tente de novo`; return; }
         N.cfg = { ...N.cfg, ...r.dados };
-        N.padrao = N.cfg.projeto_roteiro_id ? String(N.cfg.projeto_roteiro_id) : "padrao";
-        N.padraoSalvo = `✓ Agora é o padrão de ${nomeCanal()}: ${nomeDoAgente(N.padrao)} · ${N.cfg.lingua} · ${N.cfg.minutos} min.`;
+        N.padraoSalvo = `✓ Agora é o padrão de ${nomeCanal()}: ${N.cfg.lingua} · ${N.cfg.minutos} min.`;
         desenhar();
       };
       return b;
     };
 
     function desenhar() {
-      const canaisEl =h("div", { class: "radar-np-campo" }, h("span", {}, N.canal ? "Canal" : "Canal (escolha a cada pedido)"),
+      // "↻ atualizar nomes" (2026-11-20: "às vezes o canal muda de nome"): relê os canais no YouTube pelo Radar
+      const atualizar = h("button", { type: "button", class: "radar-np-usar", style: "margin-left:8px" }, "↻ atualizar nomes");
+      atualizar.onclick = async () => {
+        atualizar.disabled = true; atualizar.textContent = "Lendo no YouTube…";
+        const r = await api("/api/meus-canais/atualizar", "POST", {});
+        if (r.erro) { atualizar.disabled = false; atualizar.textContent = `Não atualizou (${erroDoRadar(r)})`; return; }
+        canais.splice(0, canais.length, ...(r.dados.canais || []));
+        N.avisoCanais = r.dados.mudaram.length ? r.dados.mudaram.map((m) => `“${m.antes}” agora é “${m.agora}”`).join(" · ")
+          : "Nenhum canal mudou de nome.";
+        desenhar();
+      };
+      const canaisEl =h("div", { class: "radar-np-campo" }, h("span", {}, N.canal ? "Canal" : "Canal (escolha a cada pedido)", atualizar),
+        N.avisoCanais ? h("small", { class: "radar-fraco" }, N.avisoCanais) : null,
         h("div", { class: `radar-np-chips${N.canal ? "" : " falta"}` }, ...canais.map((c) => chip(c.titulo, c.id === N.canal, () => escolherCanal(c.id))),
           chip("Canal de teste", eTeste(), () => escolherCanal(TESTE))));
       // no Canal de teste a língua é a escolha: ela decide a voz (um perfil da fábrica que fala essa língua)
@@ -2635,19 +2660,21 @@
           N.ref && N.ref.titulo ? h("button", { type: "button", class: "radar-np-usar", onclick: () => { N.titulo = N.ref.titulo; desenhar(); } }, `usar o título da referência: “${N.ref.titulo}”`) : null,
           canaisEl,
           eTeste() ? linguaTeste() : null,
-          h("div", { class: "radar-np-campo" }, h("span", {}, "Agente do roteiro"),
-            h("div", { class: `radar-np-agente${N.modo !== "manual" && N.canal && !N.agente ? " falta" : ""}` },
-              h("div", {}, N.modo === "manual" ? h("b", {}, "Roteiro colado por você") : selAgente(),
-                h("small", {}, [nomeCanal() || "escolha o canal", N.lingua, N.modo === "manual" ? null : `≈ ${Math.round(minutos())} min`].filter(Boolean).join(" · "))),
+          h("div", { class: "radar-np-campo" }, h("span", {}, "Língua do vídeo"),
+            h("div", { class: `radar-np-agente${N.canal && !eTeste() && !N.lingua ? " falta" : ""}` },
+              h("div", {}, eTeste() ? h("b", {}, N.lingua || "escolha acima") : selLingua(),
+                h("small", {}, [nomeCanal() || "escolha o canal", N.modo === "manual" ? "roteiro colado por você" : `≈ ${Math.round(minutos())} min`].filter(Boolean).join(" · "))),
               h("button", { type: "button", class: "radar-np-editar", onclick: () => { N.passo = 2; desenhar(); } }, "Editar")),
-            h("small", { class: "radar-fraco" }, `${!N.canal ? "Escolha o canal: ele traz o agente dele. " : N.padrao && N.agente !== N.padrao ? `O agente deste canal é ${nomeDoAgente(N.padrao)}. ` : ""}O título pode ser em português: ele é traduzido para a língua do vídeo. Se o vídeo de referência não tiver legenda, o Claude escreve a partir do título — o pedido não para.`)),
+            h("small", { class: "radar-fraco" }, `${!N.canal ? "Escolha o canal: ele traz a língua dele. " : ""}O roteiro é escrito pelo prompt do Radar, já nesta língua, com as adaptações culturais do país. O título pode ser em português: ele é traduzido. Use uma referência de OUTRO assunto: do mesmo assunto, o pedido para.`)),
           tornarPadrao(),
           revisar];
       } else if (N.passo === 2) {
         corpo = [passos, h("button", { type: "button", class: "radar-np-usar", onclick: () => { N.passo = 1; desenhar(); } }, "← Voltar ao vídeo"), canaisEl,
-          h("div", { class: "radar-np-duas" },
-            campo("Agente do roteiro", selAgente()),
-            eTeste() ? null : campo("Idioma", sel([...new Set([N.lingua, "português", "inglês", "espanhol", "francês", "alemão", "italiano"])].map((l) => [l, l]), N.lingua, (v) => { N.lingua = v; }))),
+          eTeste() ? null : campo("Língua do vídeo", selLingua()),
+          eTeste() || N.modo === "manual" ? null : campo("Prompt do roteiro",
+            sel([["", "Prompt padrão do Radar"], ...prompts.map((x) => [x.id, x.nome])], N.prompt, (v) => { N.prompt = v; desenhar(); }),
+            h("button", { type: "button", class: "radar-np-usar", onclick: () => chrome.runtime.sendMessage({ tipo: "radar", caminho: "/#/canais" }) },
+              "＋ criar outro prompt (no Radar, na configuração do canal)")),
           eTeste() ? linguaTeste() : null,
           h("div", { class: "radar-np-campo" }, h("span", {}, "Roteiro"), h("div", { class: "radar-np-chips" },
             chip("O Claude escreve", N.modo === "claude", () => { N.modo = "claude"; desenhar(); }), chip("Já tenho o roteiro", N.modo === "manual", () => { N.modo = "manual"; desenhar(); }))),
@@ -2674,13 +2701,10 @@
           h("div", { class: "radar-np-conf" },
             linha(N.titulo.trim() ? "ok" : "falta", "Título", N.titulo.trim() || "falta escrever o título do vídeo"),
             linha(N.canal ? "ok" : "falta", "Canal", nomeCanal() || "falta escolher o canal"),
-            linha(N.modo === "manual" ? "ok" : !N.agente ? "falta" : N.padrao && N.agente !== N.padrao ? "aviso" : "ok", "Agente do roteiro",
-              N.modo === "manual" ? "roteiro colado por você" : N.agente ? nomeDoAgente(N.agente) : "falta escolher o agente",
-              N.modo !== "manual" && N.agente && N.padrao && N.agente !== N.padrao
-                ? `Não é o agente deste canal (${nomeDoAgente(N.padrao)}). Confira se é esse mesmo.` : null),
-            linha("ok", "Idioma e tamanho", N.modo === "manual"
+            linha(!N.lingua ? "falta" : N.cfg && N.cfg.lingua && N.lingua !== N.cfg.lingua ? "aviso" : "ok", "Língua e tamanho", !N.lingua ? "falta escolher a língua" : N.modo === "manual"
               ? `${N.lingua} · ${N.roteiro.split(/\s+/).filter(Boolean).length.toLocaleString("pt-BR")} palavras coladas`
               : `${N.lingua} · ${N.caracteres.toLocaleString("pt-BR")} caracteres ≈ ${Math.round(minutos())} min`),
+            N.modo === "manual" || eTeste() ? null : linha("ok", "Prompt do roteiro", nomeDoPrompt(N.prompt)),
             linha(!N.link ? "ok" : N.ref && N.ref.titulo ? (semLegenda || naoConferiu ? "aviso" : "ok") : "aviso", "Vídeo de referência",
               !N.link ? "nenhum" : N.ref && N.ref.titulo ? `“${N.ref.titulo}”` : "não consegui ler esse link",
               !N.link ? "O roteiro sai do título, das observações e do estilo do canal."
@@ -2700,7 +2724,7 @@
         if (!N.titulo.trim()) { erro.textContent = "Escreva o título do vídeo."; N.passo = 1; desenhar(); return false; }
         if (!N.canal) { erro.textContent = "Escolha o canal."; N.passo = 1; desenhar(); return false; }
         if (N.modo !== "manual" && !eTeste() && !N.cfg) { erro.textContent = N.avisoTamanho || "Não consegui ler o canal. Escolha o canal de novo."; N.passo = 2; desenhar(); return false; }
-        if (N.modo !== "manual" && !N.agente) { erro.textContent = "Escolha o agente do roteiro."; N.passo = 1; desenhar(); return false; }
+        if (!N.lingua) { erro.textContent = "Escolha a língua do vídeo."; N.passo = 1; desenhar(); return false; }
         if (eTeste() && !N.semNarracao && !N.perfil) { erro.textContent = "Escolha uma língua que tenha voz na fábrica."; N.passo = 1; desenhar(); return false; }
         if (N.modo === "manual" && N.roteiro.split(/\s+/).filter(Boolean).length < 30) { erro.textContent = "Cole o roteiro inteiro."; N.passo = 2; desenhar(); return false; }
         return true;
@@ -2712,7 +2736,8 @@
         const semNarracao = eTeste() && N.semNarracao;
         const pedido = { titulo: N.titulo, link: N.link, canal_id: eTeste() ? "" : N.canal, perfil: eTeste() && !semNarracao ? N.perfil : "",
           ...(semNarracao ? { sem_narracao: true } : {}),
-          agente_id: N.agente === "padrao" ? "" : N.agente, lingua: N.lingua, revisar: N.revisar,
+          agente_id: eTeste() && N.agente !== "padrao" ? N.agente : "", lingua: N.lingua, revisar: N.revisar,
+          ...(eTeste() ? {} : { prompt_id: N.prompt }),
           ...(N.modo === "manual" ? { roteiro_manual: N.roteiro } : { caracteres: N.caracteres, nicho: N.nicho, observacao: N.obs,
             ...(N.refFala ? { transcricao_ref: N.refFala } : {}) }) };
         const r = await api("/api/fila", "POST", { pedido, comecar });

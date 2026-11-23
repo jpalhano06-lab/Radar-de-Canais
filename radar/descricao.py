@@ -59,6 +59,10 @@ Sinopse:
 {sinopse}"""
 
 
+LINGUA_ERRADA = """ATENÇÃO: a sua resposta anterior veio com a sinopse em {veio}, mas o vídeo é em {lingua}. Escreva a
+sinopse, as tags e as hashtags em {lingua} (só titulo_pt e sinopse_pt em português). Responda só com o mesmo JSON."""
+
+
 def minimo_da_sinopse(texto: str) -> int:
     """Quantos caracteres a sinopse precisa ter, pela escrita do roteiro."""
     amostra = (texto or "")[:2000]
@@ -116,7 +120,10 @@ def escrever(titulo: str, roteiro: str, lingua: str = "", instrucoes: str = "") 
                             f"quando conflitarem):\n{instrucoes}" if instrucoes.strip() else "")
     pedido = f"Título do vídeo: {' '.join(str(titulo).split())[:300]}\n"
     if lingua:
-        pedido += f"Língua: {lingua}\n"
+        # "Língua: inglês" sozinho, num pedido todo em português, fazia a sinopse sair em português (de 2026-11-18 a
+        # 11-23, quase todo vídeo em inglês, japonês e coreano foi assim para o YouTube)
+        pedido += (f"Língua do vídeo: {lingua}. A sinopse, as tags e as hashtags são escritas TODAS em {lingua}, a "
+                   f"língua de quem assiste. Só titulo_pt e sinopse_pt vão em português.\n")
     # o roteiro inteiro passa fácil de 9 mil palavras num vídeo de 1 hora: o começo e o fim dizem o bastante
     texto = (roteiro or "").strip()
     if len(texto) > 24000:
@@ -124,6 +131,14 @@ def escrever(titulo: str, roteiro: str, lingua: str = "", instrucoes: str = "") 
     minimo = minimo_da_sinopse(texto)
     pedido += (f"\nRoteiro do vídeo:\n{texto}\n\nEscreva a sinopse (pelo menos {minimo} caracteres), as tags e as hashtags.")
     dados = _json_do_claude(roteiro_claude._claude(sistema, pedido, modelo=roteiro_claude.LEVE))
+    veio = roteiro_claude.lingua_errada(_paragrafos(dados.get("sinopse")), lingua)
+    if veio:
+        # a sinopse na língua errada não vai para o YouTube: uma volta pedindo de novo, e se vier errada outra vez, erro
+        dados = _json_do_claude(roteiro_claude._claude(sistema, pedido + "\n\n" + LINGUA_ERRADA.format(
+            veio=veio, lingua=lingua), modelo=roteiro_claude.LEVE))
+        veio = roteiro_claude.lingua_errada(_paragrafos(dados.get("sinopse")), lingua)
+        if veio:
+            raise RuntimeError(f"A descrição veio em {veio}, e não em {lingua}.")
     sinopse = _paragrafos(dados.get("sinopse"))
     if not sinopse:
         raise RuntimeError("O Claude não devolveu nenhuma sinopse.")
@@ -133,7 +148,7 @@ def escrever(titulo: str, roteiro: str, lingua: str = "", instrucoes: str = "") 
             nova = _json_do_claude(roteiro_claude._claude(sistema, f"{pedido}\n\n" + ALONGAR.format(
                 atual=len(sinopse), minimo=minimo, sinopse=sinopse), modelo=roteiro_claude.LEVE))
             nova_sinopse = _paragrafos(nova.get("sinopse"))
-            if len(nova_sinopse) > len(sinopse):
+            if len(nova_sinopse) > len(sinopse) and not roteiro_claude.lingua_errada(nova_sinopse, lingua):
                 sinopse = nova_sinopse
                 dados["sinopse_pt"] = nova.get("sinopse_pt") or dados.get("sinopse_pt")
         except (RuntimeError, ValueError):

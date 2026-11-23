@@ -852,12 +852,45 @@ def ext_publicar_legenda(nome: str, u: dict = Depends(exigir("extensao"))):
     return FileResponse(arquivo, media_type="application/x-subrip", filename=f"{nome}.srt")
 
 
+def _mp4_inteiro(arquivo: Path) -> bool:
+    """O .mp4 terminou de ser escrito: as caixas do topo cobrem o arquivo e uma delas é o moov (o índice, que o ffmpeg
+    grava no fim). Em 2026-11-21 o disco encheu no meio do render do vídeo coreano "12-999": o final.mp4 ficou com
+    1 GB mas sem o moov, o Meu dia dizia "é só postar" e o upload do Studio ficava carregando para sempre. Só lê os
+    cabeçalhos das caixas (uns poucos bytes), então pode rodar a cada consulta."""
+    try:
+        tamanho = arquivo.stat().st_size
+        tem_moov = False
+        with arquivo.open("rb") as f:
+            pos = 0
+            while pos < tamanho:
+                f.seek(pos)
+                cabeca = f.read(8)
+                if len(cabeca) < 8:
+                    return False
+                caixa, tipo = int.from_bytes(cabeca[:4], "big"), cabeca[4:]
+                if caixa == 1:
+                    grande = f.read(8)
+                    if len(grande) < 8:
+                        return False
+                    caixa = int.from_bytes(grande, "big")
+                elif caixa == 0:
+                    caixa = tamanho - pos
+                if caixa < 8 or pos + caixa > tamanho:
+                    return False
+                tem_moov = tem_moov or tipo == b"moov"
+                pos += caixa
+        return tem_moov
+    except OSError:
+        return False
+
+
 def _video_final(pasta: Path) -> Path | None:
-    """O .mp4 pronto do projeto: o da entrega no PC (com o título no nome) ou o final.mp4 da pasta."""
+    """O .mp4 pronto do projeto: o da entrega no PC (com o título no nome) ou o final.mp4 da pasta. Um arquivo cortado
+    (o render parou no meio) não conta como pronto."""
     entrega = publicar._ler(pasta / "entrega_pc.json").get("video")
     for arquivo in ([Path(str(entrega))] if entrega else []) + [pasta / "final.mp4"]:
         try:
-            if arquivo.is_file() and arquivo.stat().st_size > 0:
+            if arquivo.is_file() and arquivo.stat().st_size > 0 and _mp4_inteiro(arquivo):
                 return arquivo
         except OSError:
             continue
@@ -1850,6 +1883,31 @@ def meus_canais(u: dict = Depends(usuario)):
                                   "JOIN canais c ON c.id=m.canal_id WHERE m.usuario_id=? ORDER BY c.inscritos DESC", u["id"])}
 
 
+@app.post("/api/meus-canais/atualizar")
+def atualizar_meus_canais(u: dict = Depends(usuario)):
+    """Relê no YouTube o nome, a foto, o @ e os números dos canais da pessoa (pedido do usuário em 2026-11-20: "às
+    vezes o canal muda de nome"). O Radar guardava o nome da primeira leitura e nunca mais olhava. 1 unidade de cota
+    a cada 50 canais. Devolve os canais e quais mudaram de nome."""
+    ids = [l["canal_id"] for l in banco.todos("SELECT canal_id FROM meus_canais WHERE usuario_id=?", u["id"])]
+    antes = {l["id"]: l["titulo"] for l in banco.todos(
+        f"SELECT id, titulo FROM canais WHERE id IN ({','.join('?' * len(ids))})", *ids)} if ids else {}
+    try:
+        lidos = youtube.canais(ids)
+    except Exception as erro:  # noqa: BLE001 (cota, rede, chave)
+        raise HTTPException(502, f"Não consegui ler os canais no YouTube: {str(erro)[:200]}")
+    mudaram = []
+    for c in lidos:
+        if not c.get("titulo"):
+            continue
+        novo = {"id": c["id"], "titulo": c["titulo"], "handle": c.get("handle"), "foto": c.get("foto"),
+                "inscritos": c.get("inscritos"), "videos_total": c.get("videos_total"), "views_total": c.get("views_total")}
+        # o que o YouTube não mandou (inscritos escondidos, sem foto) fica como estava
+        banco.gravar("canais", "id", {k: v for k, v in novo.items() if v not in (None, "")})
+        if antes.get(c["id"]) and antes[c["id"]] != c["titulo"]:
+            mudaram.append({"id": c["id"], "antes": antes[c["id"]], "agora": c["titulo"]})
+    return {"lidos": len(lidos), "mudaram": mudaram, **meus_canais(u)}
+
+
 @app.get("/api/meus-canais/{canal_id}/ideias")
 def ideias_do_canal(canal_id: str, request: Request, u: dict = Depends(usuario)):
     c = _meu_canal(u["id"], canal_id)
@@ -2339,9 +2397,10 @@ async def producao_padrao(canal_id: str, request: Request, u: dict = Depends(usu
     no pedido viram o padrão do canal. Só esses três mudam: o POST /api/producao troca a configuração inteira."""
     _meu_canal(u["id"], canal_id)
     d = await request.json()
-    novo = {k: d[k] for k in ("projeto_roteiro_id", "lingua", "minutos") if k in d}
-    if "projeto_roteiro_id" in novo:
-        novo["projeto_roteiro_id"] = str(novo["projeto_roteiro_id"] or "")
+    novo = {k: d[k] for k in ("projeto_roteiro_id", "prompt_id", "lingua", "minutos") if k in d}
+    for chave in ("projeto_roteiro_id", "prompt_id"):
+        if chave in novo:
+            novo[chave] = str(novo[chave] or "")
     if "lingua" in novo:
         novo["lingua"] = str(novo["lingua"] or "").strip()[:40]
     if "minutos" in novo:
@@ -3185,6 +3244,7 @@ async def roteiro_comecar(request: Request, u: dict = Depends(usuario)):
     tid = roteiro_claude.comecar(u["id"], enviar_perfil=perfil, titulo=titulo, link=str(d.get("link", "")).strip(),
                                  minutos=max(1, min(60, int(d.get("minutos") or 8))), lingua=str(d.get("lingua") or "português"),
                                  projeto_id=int(d["projeto_id"]) if d.get("projeto_id") else None,
+                                 prompt_id=int(d["prompt_id"]) if str(d.get("prompt_id") or "").isdigit() else None,
                                  projeto_descricao_id=int(d["projeto_descricao_id"]) if d.get("projeto_descricao_id") else None,
                                  observacoes=str(d.get("observacoes", "")).strip()[:1000], perfil=str(d.get("perfil") or ""),
                                  canal=_canal_do_pedido(d))
@@ -3300,7 +3360,8 @@ async def salvar_projeto(request: Request, u: dict = Depends(usuario)):
     ideal = str(d["ideal_para"]).strip()[:300] if "ideal_para" in d else None
     # "roteiro" escreve o roteiro; "descricao" escreve a sinopse, as tags e as hashtags junto com ele
     tipo = str(d.get("tipo") or "roteiro")
-    if tipo not in ("roteiro", "descricao"):
+    # "prompt": um prompt de roteiro criado pela pessoa, no lugar do padrão do Radar (2026-11-20)
+    if tipo not in ("roteiro", "descricao", "prompt"):
         raise HTTPException(400, "O agente é de roteiro ou de descrição.")
     # o tema dos vídeos deste agente; vazio é o padrão do canal, e sem o campo no pedido fica o que já estava
     tema = str(d["tema"] or "") if "tema" in d else None
@@ -3324,6 +3385,14 @@ async def salvar_projeto(request: Request, u: dict = Depends(usuario)):
     for campo, valor in partes.items():
         banco.executar(f"UPDATE projetos_roteiro SET {campo}=? WHERE id=? AND usuario_id=?", valor, novo, u["id"])
     return {"id": novo}
+
+
+@app.get("/api/prompts")
+def prompts(u: dict = Depends(usuario)):
+    """O prompt padrão do roteiro (o mesmo para todos) e os prompts que esta pessoa criou (2026-11-20)."""
+    lista = banco.todos("SELECT id, nome, instrucoes FROM projetos_roteiro WHERE usuario_id=? AND tipo='prompt' "
+                        "ORDER BY nome", u["id"])
+    return {"padrao": roteiro_claude.PROMPT, "prompts": lista}
 
 
 @app.delete("/api/projetos/{pid}")

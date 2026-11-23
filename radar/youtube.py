@@ -174,6 +174,8 @@ def videos(ids: list[str]) -> list[dict]:
                 "views": _int(st.get("viewCount")), "curtidas": _int(st.get("likeCount")),
                 "comentarios": _int(st.get("commentCount")), "tags": sn.get("tags", [])[:30],
                 "ao_vivo": sn.get("liveBroadcastContent", "none") != "none",
+                # a língua do áudio original (vídeo dublado tem uma legenda automática por dublagem)
+                "lingua_audio": sn.get("defaultAudioLanguage", ""),
             })
     return saida
 

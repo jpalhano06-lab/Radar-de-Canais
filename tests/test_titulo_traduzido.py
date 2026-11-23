@@ -16,13 +16,14 @@ TITULO = "Por que os gatos dormem 16 horas por dia?"
 def _claude_falso(monkeypatch, traducao="Why Do Cats Sleep 16 Hours a Day?"):
     pedidos = []
 
-    def falso(sistema, pedido, modelo=""):
+    def falso(sistema, pedido, modelo="", pesquisa=False):
         pedidos.append(pedido)
         if pedido.startswith("Língua de destino"):
             return traducao
         return "Primeira frase do roteiro. " * 200
 
     monkeypatch.setattr(roteiro_claude, "_claude", falso)
+    monkeypatch.setattr(roteiro_claude, "garantir_lingua", lambda r, l, a=None: r)  # o texto falso é em português
     return pedidos
 
 

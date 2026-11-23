@@ -418,6 +418,7 @@ function cartaoDoVideo(v, numero) {
           onclick: () => mudarDia((d) => { const x = d.videos.find((y) => y.id === v.id); if (x) x.thumb = null; }) }, "↺") : null,
         v.postado ? null : h("button", { type: "button", class: "mudar-dia", title: "Passa este vídeo para amanhã (com a thumbnail)",
           onclick: () => diaHojeParaAmanha(v.id).then(recarregar) }, "Para amanhã"),
+        v.postado ? null : escolherData(v, "Passa este vídeo para outro dia do calendário (com a thumbnail)"),
         h("button", { class: "x", title: "Tirar este vídeo do dia (fica em Tirados hoje, dá para voltar)",
           onclick: () => tirarVideo(v) }, "×"))));
 }
@@ -546,17 +547,12 @@ function cartaoDoCanal(c, videos) {
       h("button", { type: "button", title: `Abre o YouTube na conta ${cfg.treino}; o próximo pedido deste canal fica para hoje`,
         onclick: () => procurarIdeia(c, cfg.treino, "hoje") }, "Para hoje ↗"),
       h("button", { type: "button", title: `Abre o YouTube na conta ${cfg.treino}; o próximo pedido deste canal fica para amanhã`,
-        onclick: () => procurarIdeia(c, cfg.treino, "amanha") }, "Para amanhã ↗"))
+        onclick: () => procurarIdeia(c, cfg.treino, "amanha") }, "Para amanhã ↗"),
+      procurarParaData(c, cfg.treino))
     : null;
-  const deAmanha = amanha.filter((v) => v.canal === c.id);
-  const listaAmanha = deAmanha.length ? h("div", { class: "amanha" }, ...deAmanha.map((v) => h("div", { class: "amanha-item" },
-    h("span", { class: "fraco" }, "Amanhã:"), h("span", { class: "amanha-titulo" }, v.titulo || "vídeo sem título"),
-    h("button", { type: "button", class: "mudar-dia", title: "Este pedido é para hoje", onclick: () => diaAmanhaParaHoje(v.id).then(recarregar) }, "Passar para hoje"),
-    h("button", { class: "x", title: "Tirar este pedido de amanhã", onclick: async () => {
-      const { [DIA_AMANHA]: fila = [] } = await chrome.storage.local.get(DIA_AMANHA);
-      await chrome.storage.local.set({ [DIA_AMANHA]: fila.filter((x) => x.id !== v.id) });
-      recarregar();
-    } }, "×")))) : null;
+  // os pedidos de outros dias ficam no dia deles (pedido do usuário em 2026-11-22: "minha ideia é que seja os pedidos
+  // de cada dia"): o cartão de hoje mostra só hoje, e o calendário no alto troca a tela para o dia escolhido
+  const listaAmanha = null;
 
   // tudo postado (pedido do usuário em 2026-11-15): fica só o nome em verde e o procurar ideia. Clicar no nome abre
   if (semPostar && !abertos.has(c.id)) {
@@ -614,7 +610,125 @@ function cartaoDoCanal(c, videos) {
         h("div", { class: "linha" }, novoTitulo, h("button", { onclick: marcar }, "+ vídeo")))));
 }
 
+// ------------------------------------------------------------ o calendário (pedido do usuário em 2026-11-22)
+// "No meu dia tem que colocar calendário para poder fazer para vários vídeos": cada pedido vai para qualquer dia (não
+// só amanhã), o procurar ideia aponta para um dia, e no alto fica a faixa dos próximos 14 dias com o que cada um tem.
+const DIAS_NO_CALENDARIO = 14;
+// o dia que a tela mostra: "" é hoje (o Meu dia de sempre); uma data AAAA-MM-DD troca os cartões dos canais para os
+// pedidos daquele dia (pedido do usuário em 2026-11-22: "quando escolher outro dia, muda ali")
+let diaVisto = "";
+
+const dataCurta = (iso) => `${iso.slice(8, 10)}/${iso.slice(5, 7)}`;
+function nomeDoDia(iso) {
+  const [a, m, d] = iso.split("-").map(Number);
+  return new Date(a, m - 1, d).toLocaleDateString("pt-BR", { weekday: "short" }).replace(".", "");
+}
+const dataLonga = (iso) => new Date(`${iso}T12:00`).toLocaleDateString("pt-BR", { weekday: "long", day: "numeric", month: "long" });
+const pedidosDoDia = (iso) => amanha.filter((v) => v.para === iso);
+
+/** O seletor de data de um pedido (de hoje ou de outro dia): escolheu, ele vai para esse dia. */
+function escolherData(v, titulo) {
+  const campo = h("input", { type: "date", class: "data-pedido", min: hojeLocal(), value: v.para || hojeLocal(), title: titulo });
+  campo.addEventListener("change", async () => {
+    if (!campo.value) return;
+    await diaMoverParaData(v.id, campo.value);
+    recarregar();
+  });
+  return campo;
+}
+
+/** "Procurar ideia" para um dia do calendário: o próximo pedido deste canal na Nova produção entra nesse dia. */
+function procurarParaData(c, treino) {
+  const campo = h("input", { type: "date", class: "data-pedido", min: diaDaqui(2), value: diaDaqui(2),
+    title: "O dia do próximo pedido deste canal" });
+  const botao = h("button", { type: "button", title: `Abre o YouTube na conta ${treino}; o próximo pedido deste canal fica para o dia escolhido`,
+    onclick: () => campo.value && procurarIdeia(c, treino, campo.value) }, "Para o dia ↗");
+  return h("span", { class: "procurar-data" }, campo, botao);
+}
+
+/** Um pedido de outro dia, no cartão do canal desse dia. */
+function itemDaFila(v) {
+  return h("div", { class: "amanha-item" },
+    h("span", { class: "amanha-titulo" }, v.titulo || "vídeo sem título"),
+    v.planejado ? h("span", { class: "fraco", title: "Planejado no calendário, ainda sem pedido na fábrica" }, "planejado") : null,
+    escolherData(v, "Mudar o dia deste pedido"),
+    h("button", { type: "button", class: "mudar-dia", title: "Este pedido é para hoje", onclick: () => diaAmanhaParaHoje(v.id).then(recarregar) }, "Para hoje"),
+    h("button", { class: "x", title: "Tirar este pedido do calendário", onclick: async () => {
+      const { [DIA_AMANHA]: fila = [] } = await chrome.storage.local.get(DIA_AMANHA);
+      await chrome.storage.local.set({ [DIA_AMANHA]: fila.filter((x) => x.id !== v.id) });
+      recarregar();
+    } }, "×"));
+}
+
+/** A faixa do calendário: hoje e os próximos dias, cada um com quantos vídeos tem contra a meta somada dos canais.
+ *  O clique troca a tela inteira para aquele dia. */
+function calendario() {
+  const meta = canais.reduce((s, c) => s + ((config[c.id] || {}).porDia || 0), 0);
+  const hoje = hojeLocal();
+  const dias = Array.from({ length: DIAS_NO_CALENDARIO }, (_, k) => diaDaqui(k + 1));
+  // um pedido com data além da faixa também aparece (ele não some do calendário)
+  const alem = [...new Set(amanha.map((v) => v.para).filter((p) => p && p > hoje && !dias.includes(p)))].sort();
+  const celula = (iso) => {
+    const ehHoje = iso === hoje;
+    const n = ehHoje ? dia.videos.length : pedidosDoDia(iso).length;
+    const cor = !meta ? (n ? "ok" : "") : n >= meta ? "ok" : n ? "meio" : "falta";
+    const aberto = ehHoje ? !diaVisto : diaVisto === iso;
+    const lista = ehHoje ? dia.videos : pedidosDoDia(iso);
+    return h("button", { type: "button", class: `cal-dia ${cor}${aberto ? " aberto" : ""}`,
+      title: lista.map((v) => `${v.canalNome || ""} · ${v.titulo}`).join("\n") || "Nada pedido",
+      onclick: () => { diaVisto = ehHoje ? "" : iso; desenhar(); window.scrollTo({ top: 0 }); } },
+    h("span", { class: "cal-sem" }, ehHoje ? "Hoje" : nomeDoDia(iso)), h("b", {}, dataCurta(iso)),
+    h("span", { class: "cal-conta" }, meta ? `${n}/${meta}` : String(n)));
+  };
+  return [h("h2", {}, "Calendário"), h("div", { class: "cal-faixa" }, ...[hoje, ...dias, ...alem].map(celula))];
+}
+
+/** O cartão de um canal num dia que não é hoje: os pedidos dele para aquele dia, a meta, o procurar ideia e o
+ *  "+ Planejar" (vários vídeos de uma vez, um título por vez). */
+function cartaoDoDia(c, videos, iso) {
+  const cfg = config[c.id] || {};
+  const meta = cfg.porDia || 0, n = videos.length;
+  const cor = meta ? (n >= meta ? "ok" : n ? "meio" : "falta") : (n ? "ok" : "");
+  const titulo = h("input", { type: "text", placeholder: "Título do vídeo", class: "cal-titulo" });
+  const planejar = async () => {
+    if (!titulo.value.trim()) return titulo.focus();
+    await diaPlanejar({ canal: c.id, canalNome: c.titulo, titulo: titulo.value, data: iso });
+    recarregar();
+  };
+  titulo.addEventListener("keydown", (e) => { if (e.key === "Enter") planejar(); });
+  return h("article", { class: `canal ${cor}` },
+    h("div", { class: "canal-cab" }, h("b", {}, c.titulo),
+      h("span", { class: `meta ${cor}` }, meta ? `${n}/${meta} em ${dataCurta(iso)}` : plural(n, "vídeo", "vídeos"))),
+    n ? h("div", { class: "amanha" }, ...videos.map((v) => itemDaFila(v)))
+      : h("div", { class: "fraco" }, meta ? `Falta pedir ${plural(meta, "vídeo", "vídeos")} para ${dataCurta(iso)}.` : "Nada pedido para este dia."),
+    cfg.treino ? h("div", { class: "linha procurar" },
+      h("button", { type: "button", title: `Abre o YouTube na conta ${cfg.treino}; o próximo pedido deste canal fica para ${dataCurta(iso)}`,
+        onclick: () => procurarIdeia(c, cfg.treino, iso) }, `Procurar ideia para ${dataCurta(iso)} ↗`)) : null,
+    h("div", { class: "linha cal-planejar" }, titulo, h("button", { type: "button", onclick: planejar }, "+ Planejar")));
+}
+
+/** A tela de um dia que não é hoje: os cartões dos canais com os pedidos daquele dia. */
+function desenharOutroDia(iso) {
+  $("data").replaceChildren(h("span", {}, dataLonga(iso)), " ",
+    h("button", { type: "button", class: "voltar-hoje", onclick: () => { diaVisto = ""; desenhar(); } }, "← Voltar para hoje"));
+  const lista = [...canais];
+  for (const v of pedidosDoDia(iso)) if (!lista.some((c) => c.id === v.canal)) lista.push({ id: v.canal || "", titulo: v.canalNome || "Sem canal" });
+  const doCanal = (id) => pedidosDoDia(iso).filter((v) => (v.canal || "") === id);
+  const falta = (c) => Math.max(0, ((config[c.id] || {}).porDia || 0) - doCanal(c.id).length);
+  lista.sort((a, b) => falta(b) - falta(a));
+  $("canais").replaceChildren(...(lista.length ? lista.map((c) => cartaoDoDia(c, doCanal(c.id), iso))
+    : [h("div", { class: "vazio" }, "Nenhum canal ainda. Ligue o Radar e cadastre seus canais.")]));
+  const metaTotal = canais.reduce((s, c) => s + ((config[c.id] || {}).porDia || 0), 0);
+  const n = pedidosDoDia(iso).length;
+  $("resumo").replaceChildren(...[
+    metaTotal ? h("span", { class: `pilula ${corDaConta(Math.min(n, metaTotal), metaTotal)}` }, `Vídeos ${n}/${metaTotal} em ${dataCurta(iso)}`)
+      : h("span", { class: "pilula" }, plural(n, "vídeo pedido", "vídeos pedidos"))]);
+  $("calendario").replaceChildren(...calendario());
+}
+
 function desenhar() {
+  if (diaVisto && diaVisto <= hojeLocal()) diaVisto = "";  // virou o dia: o dia visto passou a ser hoje
+  if (diaVisto) return desenharOutroDia(diaVisto);
   const d = new Date();
   $("data").textContent = d.toLocaleDateString("pt-BR", { weekday: "long", day: "numeric", month: "long" });
   if (erroRadar) mostrarErro(erroRadar);
@@ -643,6 +757,7 @@ function desenhar() {
     n ? h("span", { class: `pilula ${corDaConta(postados, n)}` }, `${postados}/${n} postados`) : null,
     !metaTotal && !dia.videos.length ? h("span", { class: "pilula" }, "Nada pedido hoje") : null].filter(Boolean));
   $("legenda").replaceChildren(legenda(), ...[avisoDesfazer()].filter(Boolean));
+  $("calendario").replaceChildren(...calendario());
   $("tirados").replaceChildren(...secaoTirados());
   lerPedidosDaFabrica();
 

@@ -70,7 +70,7 @@ def test_o_roteiro_curto_e_continuado_ate_cair_dentro_do_tempo(monkeypatch):
     """O caso que o usuário viu: 30 min pedidos e um roteiro de 17 minutos. Antes ele ia para a fábrica assim."""
     chamadas = []
 
-    def falso(sistema, pedido, modelo=""):
+    def falso(sistema, pedido, modelo="", pesquisa=False):
         chamadas.append(pedido)
         return _texto(1500)
 
@@ -83,7 +83,7 @@ def test_o_roteiro_curto_e_continuado_ate_cair_dentro_do_tempo(monkeypatch):
 
 def test_uma_continuacao_fraca_nao_desiste_do_roteiro(monkeypatch):
     """Era o que fazia o vídeo sair curto: uma volta que voltava quase vazia parava o laço de vez."""
-    respostas = ["", _texto(1400), _texto(1400)]
+    respostas = ["", "", _texto(1400), _texto(1400)]     # a continuação e o reescrever mais longo, os dois vazios
 
     monkeypatch.setattr(roteiro_claude, "_claude", lambda s, p, modelo="": respostas.pop(0) if respostas else "")
     roteiro, conf = roteiro_claude._conferir_tamanho(_texto(1000), "sis", "ped", 15, {"ppm": 215, "de": "voz"})
@@ -93,11 +93,92 @@ def test_uma_continuacao_fraca_nao_desiste_do_roteiro(monkeypatch):
 
 # ------------------------------------------------------------------- o roteiro comprido é condensado, não cortado
 
+def test_continuacao_vazia_faz_o_claude_reescrever_mais_longo(monkeypatch):
+    """O japonês de 30 min de 2026-11-23: o rascunho já acabava na despedida, as continuações voltavam vazias e o
+    roteiro ficava em 13,4 min. Agora a volta vazia vira um pedido para reescrever o roteiro inteiro, mais longo."""
+    respostas, pedidos = ["", _texto(3200)], []
+
+    def falso(sistema, pedido, modelo="", pesquisa=False):
+        pedidos.append(pedido)
+        return respostas.pop(0) if respostas else ""
+
+    monkeypatch.setattr(roteiro_claude, "_claude", falso)
+    roteiro, conf = roteiro_claude._conferir_tamanho(_texto(1500), "sis", "ped", 15, {"ppm": 215, "de": "voz"})
+    assert conf["dentro"] and len(roteiro.split()) == 3200
+    assert "Continue o roteiro" in pedidos[0] and "aprofunde cada assunto" in pedidos[1]
+
+
+def test_a_continuacao_entra_antes_da_despedida(monkeypatch):
+    """O coreano de 2026-11-23 dizia "obrigado por assistir" aos 54% do vídeo: a continuação entrava depois dele."""
+    pedidos = []
+
+    def falso(sistema, pedido, modelo="", pesquisa=False):
+        pedidos.append(pedido)
+        return "novo " * 1700
+
+    monkeypatch.setattr(roteiro_claude, "_claude", falso)
+    fecho = "If this changed how you see it, subscribe. Thanks for watching, see you in the next one."
+    curto = _texto(1500) + ". " + fecho
+    roteiro, conf = roteiro_claude._conferir_tamanho(curto, "sis", "ped", 15, {"ppm": 215, "de": "voz"})
+    assert conf["dentro"] and roteiro.endswith(fecho) and roteiro.count("Thanks for watching") == 1
+    assert "novo" not in roteiro.split(fecho)[1:][0]           # nada depois da despedida
+    assert "Continue o roteiro" in pedidos[0] and "NÃO escreva fechamento" in pedidos[0]
+    assert "subscribe" not in pedidos[0].split("NÃO repita nada dele")[1]   # o começo mandado vai sem o fechamento
+
+
+_SE_DESPEDE_NO_MEIO = (_texto(800) + ". Thanks for watching, and I'll see you in the next one.\n\nOne last thing before "
+                       "you go. " + _texto(800) + ". Subscribe. Thanks for watching!")
+
+
+def test_despedida_no_meio_e_achada_e_a_do_fim_nao():
+    assert roteiro_claude.despedida_no_meio(_SE_DESPEDE_NO_MEIO) == "Thanks for watching"
+    assert roteiro_claude.despedida_no_meio(_texto(1600) + ". Subscribe. Thanks for watching!") == ""
+    # a chamada do meio ("nos próximos vídeos vamos continuar") não é despedida
+    assert roteiro_claude.despedida_no_meio("본론. " * 300 + "구독하시면 다음 영상에서도 계속 파고들겠습니다. " + "본론. " * 300
+                                            + "시청해 주셔서 감사합니다.") == ""
+    assert roteiro_claude.despedida_no_meio("本編。" * 300 + "ご視聴ありがとうございました。……と、ここで終わるつもりでしたが、"
+                                            + "本編。" * 300 + "次の動画でまたお会いしましょう。")
+
+
+def test_o_claude_reescreve_o_roteiro_que_se_despede_no_meio(monkeypatch):
+    pedidos = []
+    consertado = _texto(1650) + ". Subscribe. Thanks for watching!"
+
+    def falso(sistema, pedido, modelo="", pesquisa=False):
+        pedidos.append(pedido)
+        return consertado
+
+    monkeypatch.setattr(roteiro_claude, "_claude", falso)
+    assert roteiro_claude.despedida_so_no_fim(_SE_DESPEDE_NO_MEIO, "s", 15, "inglês") == consertado
+    assert len(pedidos) == 1 and "A despedida vem UMA vez só, no fim" in pedidos[0]
+
+
+def test_a_reescrita_que_encolhe_nao_entra_e_o_portao_barra(monkeypatch):
+    monkeypatch.setattr(roteiro_claude, "_claude", lambda s, p, modelo="": _texto(300) + ". Thanks for watching!")
+    final = roteiro_claude.despedida_so_no_fim(_SE_DESPEDE_NO_MEIO, "s", 15, "inglês")
+    assert final == _SE_DESPEDE_NO_MEIO
+    motivo = roteiro_claude.conferir_roteiro(final, {"minutos": 0, "lingua": ""})
+    assert "se despede no meio" in motivo
+
+
+def test_separar_fechamento_do_roteiro_japones():
+    corpo = "富士フイルムの話。" * 300
+    fecho = "この動画で見方が変わったなら、高評価とチャンネル登録をお願いします。ご視聴ありがとうございました。"
+    assert roteiro_claude.separar_fechamento(corpo + fecho) == (corpo, fecho)
+    assert roteiro_claude.separar_fechamento(corpo) == (corpo, "")
+
+
+def test_ja_fechou_olha_so_o_fim_do_roteiro():
+    assert roteiro_claude.ja_fechou("本編。\n\nご視聴ありがとうございました。また次の動画でお会いしましょう。")
+    assert roteiro_claude.ja_fechou("본론.\n\n시청해 주셔서 감사합니다.")
+    assert not roteiro_claude.ja_fechou("Thanks for watching. " + _texto(400))
+
+
 def test_o_roteiro_comprido_e_condensado(monkeypatch):
     """15 min pedidos que saíam com 23: agora o Claude reescreve menor em vez de ninguém olhar."""
     pedidos = []
 
-    def falso(sistema, pedido, modelo=""):
+    def falso(sistema, pedido, modelo="", pesquisa=False):
         pedidos.append(pedido)
         return _texto(3200)
 
@@ -168,7 +249,7 @@ def test_condensar_que_quase_nao_encurta_para_logo(monkeypatch):
     respostas = [_texto(9750), _texto(9700), _texto(9650)]
     chamadas = []
 
-    def falso(sistema, pedido, modelo=""):
+    def falso(sistema, pedido, modelo="", pesquisa=False):
         chamadas.append(pedido)
         return respostas.pop(0)
 
@@ -221,7 +302,7 @@ def test_a_referencia_maior_vem_avisada_e_o_tamanho_repetido_no_fim(monkeypatch,
     monkeypatch.setattr(_tempo, "ritmo", lambda *a, **k: {"ppm": 213, "ppm_alvo": 213, "de": "voz"})
     pedidos = []
 
-    def falso(sistema, pedido, modelo=""):
+    def falso(sistema, pedido, modelo="", pesquisa=False):
         pedidos.append(pedido)
         return "Frase do roteiro. " * 3195
 

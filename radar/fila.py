@@ -20,7 +20,7 @@ LIMITES = (1, 2, 3, 4, 6, 8)
 ESCRITAS_AO_MESMO_TEMPO = 2       # roteiros pelo Claude ao mesmo tempo (20 pedidos de uma vez eram 20 chamadas juntas)
 CAMPOS = ("titulo", "link", "canal_id", "agente_id", "lingua", "caracteres", "roteiro_manual", "nicho", "observacao",
           "revisar", "perfil", "footage_real", "ia_pct", "tema", "escolhido_na_tela", "destino", "ritmo", "edicao", "transicao", "camada", "ia", "acervo",
-          "avatar", "musica", "som_textos", "video_ia", "animacoes", "transcricao_ref", "sem_narracao")
+          "avatar", "musica", "som_textos", "video_ia", "animacoes", "transcricao_ref", "sem_narracao", "prompt_id")
 # o Canal de teste sem narração (pedido do usuário em 2026-11-12): não narra nada e não usa IA de imagem nem de
 # vídeo, só banco grátis (Pexels/Pixabay). A língua escolhida vale só para os textos na tela (os motions). O perfil da
 # fábrica é o sem-narracao (voz do computador só para medir o tempo, muda no vídeo final: narracao_no_video: false)
@@ -34,11 +34,12 @@ IA_PCT = tuple(range(101))
 # o que a Nova produção deixa escolher por vídeo. Vazio é o padrão do canal, e aí nada é gravado no projeto
 ESCOLHAS = {
     "tema": ("noticiario", "dossie", "cinema", "jornal", "caderno", "planilha", "hacker", "terror", "colagem", "cinetico",
-             "arquivo", "reaberto"),  # animacoes.TEMAS
+             "arquivo", "reaberto", "investigacao"),  # animacoes.TEMAS
     "ritmo": ("4-6", "5-8"),
     "edicao": ("documentario", "investigacao", "noticiario", "energia", "cinema"),  # render.VISUAIS
-    "transicao": ("preto", "branco", "brasa", "flash"),  # render.TRANSICOES
-    "camada": ("brasas", "poeira"),  # render.CAMADAS
+    # render.TRANSICOES e render.TRANSICOES_DE_LUZ (as de luz vieram do estudo da Dotti, 2026-11-22)
+    "transicao": ("preto", "branco", "brasa", "flash", "queima", "superexposicao", "dissolve", "derreter"),
+    "camada": ("brasas", "poeira", "douradas", "vazando"),  # render.CAMADAS
     "ia": ("sem",),
     "acervo": ("sem", "sempre"),
     "avatar": ("sem",),
@@ -308,15 +309,22 @@ def _escrever(linha: dict, roteirista, config_canal, ritmo) -> None:
         else:
             ppm = ritmo(linha["usuario_id"], perfil_do(pedido, cfg), lingua)["ppm"]
             agente = pedido.get("agente_id") or cfg.get("projeto_roteiro_id")
+            # o prompt do roteiro: o escolhido no pedido, senão o do canal, senão o padrão do Radar (2026-11-20)
+            prompt = pedido.get("prompt_id") if "prompt_id" in pedido else cfg.get("prompt_id")
 
             def aviso(texto):
                 mudar(linha["id"], "escrevendo", de=("escrevendo",), passo=texto[:200])
             r = roteirista.gerar(usuario_id=linha["usuario_id"], titulo=pedido["titulo"], link=pedido.get("link", ""),
                                  minutos=minutos_do(pedido, ppm), lingua=lingua,
                                  projeto_id=int(agente) if agente else None, observacoes=_observacoes(pedido),
+                                 prompt_id=int(prompt) if str(prompt or "").isdigit() else None,
                                  perfil=perfil_do(pedido, cfg), canal=canal, aviso=aviso,
                                  transcricao_pronta=pedido.get("transcricao_ref") or "")
     except Exception as erro:  # noqa: BLE001 (qualquer falha do roteiro vira o erro do pedido, com o motivo)
+        if type(erro).__name__ == "LimiteDoClaude":
+            # o limite da assinatura não é defeito do pedido: ele volta para a fila e espera o limite renovar
+            mudar(linha["id"], "na_fila", de=("escrevendo",), erro="", passo=str(erro)[:200])
+            return
         mudar(linha["id"], "erro", de=("escrevendo",), erro=str(erro)[:500], passo="")
         return
     revisar = pedido.get("revisar") and not linha["aprovado"]
@@ -359,8 +367,12 @@ def passo(fabrica=None, roteirista=None, em_thread: bool = True, config_canal=No
         # 3. a fila, na ordem (o prioritário antes): primeiro o roteiro (não ocupa vaga, até ESCRITAS_AO_MESMO_TEMPO),
         # depois o envio (ocupa). O prioritário passa por cima dos dois limites
         escrevendo = banco.um("SELECT COUNT(*) AS n FROM producoes_fila WHERE estado='escrevendo'")["n"]
+        # o Claude no limite da assinatura: nenhum roteiro novo começa até renovar (o colado não precisa dele)
+        pausa = getattr(roteirista, "pausa_do_claude", lambda: 0)()
         for linha in banco.todos("SELECT * FROM producoes_fila WHERE estado='na_fila' ORDER BY prioridade DESC, ordem"):
             if not linha["roteiro"]:
+                if pausa and not json.loads(linha["pedido"]).get("roteiro_manual"):
+                    continue
                 if (escrevendo >= ESCRITAS_AO_MESMO_TEMPO and not linha["prioridade"]) or \
                         not mudar(linha["id"], "escrevendo", de=("na_fila",), passo="Começando…"):
                     continue
@@ -372,8 +384,8 @@ def passo(fabrica=None, roteirista=None, em_thread: bool = True, config_canal=No
                 _escrever(linha, roteirista, config_canal, ritmo)
                 escrevendo -= 1
                 linha = banco.um("SELECT * FROM producoes_fila WHERE id=?", linha["id"])
-                if linha["estado"] != "na_fila":
-                    continue
+                if linha["estado"] != "na_fila" or not linha["roteiro"]:
+                    continue          # sem roteiro (o Claude no limite): espera na fila, nada vai para a fábrica
             if json.loads(linha["pedido"]).get("destino") == "robo":
                 continue  # com o roteiro pronto, espera uma máquina reivindicar (maquinas.py)
             if vagas is None:

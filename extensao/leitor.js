@@ -115,13 +115,17 @@
   // tem), então a legenda é ligada por um instante, a resposta que o player baixa é lida e a legenda volta como estava.
   // O player não baixa de novo uma legenda que já baixou: toda legenda que passa fica guardada por vídeo.
   const esperandoLegenda = new Set();   // quem está esperando a próxima legenda (um por pedido)
-  const legendas = new Map();        // id do vídeo -> [{ lingua, kind, dados }]
+  // `tlang` é a tradução automática do player (2026-11-22: com "Traduzir automaticamente" ligado no YouTube, a
+  // legenda baixada vinha com lang=en&tlang=ar e era guardada como a fala em inglês; a transcrição saía em árabe, e
+  // vídeos em inglês viravam roteiro com base em português). A traduzida fica guardada à parte e nunca vale como fala.
+  const legendas = new Map();        // id do vídeo -> [{ lingua, kind, tlang, url, dados }]
   function guardarLegenda(url, texto) {
     try {
       const u = new URL(url, location.href), dados = JSON.parse(texto);
       if (!dados || !dados.events) return;
       const id = u.searchParams.get("v");
-      legendas.set(id, [...(legendas.get(id) || []), { lingua: u.searchParams.get("lang") || "", kind: u.searchParams.get("kind") || "", dados }]);
+      legendas.set(id, [...(legendas.get(id) || []), { lingua: u.searchParams.get("lang") || "", kind: u.searchParams.get("kind") || "",
+        tlang: u.searchParams.get("tlang") || "", url: u.href, dados }]);
       for (const avisar of [...esperandoLegenda]) avisar(id);
     } catch { /* não era a legenda em JSON */ }
   }
@@ -136,20 +140,39 @@
   };
   // `exata`: a língua foi escolhida no seletor, e outra legenda já baixada não serve no lugar dela
   const guardada = (id, t, exata = false) => {
-    const lista = legendas.get(id) || [];
+    const lista = (legendas.get(id) || []).filter((l) => !l.tlang);
     return (lista.find((l) => l.lingua === t.languageCode && l.kind === (t.kind || "")) || (exata ? null : lista[0]) || {}).dados || null;
   };
-
   // a legenda feita à mão na língua do vídeo; senão a automática; senão a primeira que houver
   const trilhasDe = (r) => (r && r.captions && r.captions.playerCaptionsTracklistRenderer
     && r.captions.playerCaptionsTracklistRenderer.captionTracks) || [];
   const chaveDa = (t) => `${t.languageCode}|${t.kind || ""}`;
 
+  // Vídeo com dublagem (várias faixas de áudio, comum nos canais de IA): o YouTube gera uma legenda automática por
+  // dublagem, e a primeira da lista podia ser a do árabe (2026-11-22: "Salvos Has Been Caught" transcrito em árabe).
+  // A fala original é a faixa que não é dublagem automática ("Inglês (US) original"): a faixa padrão (audioIsDefault)
+  // é a dublagem na língua de quem assiste, pt-BR aqui.
+  const base = (codigo) => String(codigo || "").split(/[-_.]/)[0].toLowerCase();
+  function linguaDoAudio(r) {
+    const faixas = ((r && r.streamingData && r.streamingData.adaptiveFormats) || []).map((f) => f.audioTrack).filter(Boolean);
+    const original = faixas.find((a) => !a.isAutoDubbed && /original/i.test(a.displayName || ""))
+      || (faixas.some((a) => a.isAutoDubbed) && faixas.find((a) => !a.isAutoDubbed))
+      || faixas.find((a) => a.audioIsDefault);
+    if (original) return base(original.id);
+    const rend = r && r.captions && r.captions.playerCaptionsTracklistRenderer;
+    const faixa = rend && rend.audioTracks && rend.audioTracks[rend.defaultAudioTrackIndex || 0];
+    return faixa && faixa.audioTrackId ? base(faixa.audioTrackId) : "";
+  }
+  function automaticaOriginal(r) {
+    const autos = trilhasDe(r).filter((t) => t.kind === "asr"), lingua = linguaDoAudio(r);
+    return (lingua && autos.find((t) => base(t.languageCode) === lingua)) || autos[0] || null;
+  }
+
   function trilha(r, pedida) {
     const trilhas = trilhasDe(r);
     const escolhida = pedida && trilhas.find((t) => chaveDa(t) === pedida);
     if (escolhida) return escolhida;
-    const auto = trilhas.find((t) => t.kind === "asr");
+    const auto = automaticaOriginal(r);
     return (auto && trilhas.find((t) => t.kind !== "asr" && t.languageCode.split("-")[0] === auto.languageCode.split("-")[0]))
       || auto || trilhas[0] || null;
   }
@@ -160,6 +183,7 @@
     if (!p || !p.setOption || !t || !r.videoDetails || r.videoDetails.videoId !== id) return [];
     let j = guardada(id, t, !!pedida);
     if (!j) {
+      for (const fim = Date.now() + 15000; p.classList.contains("ad-showing") && Date.now() < fim;) await new Promise((ok) => setTimeout(ok, 500));
       const antes = p.getOption && p.getOption("captions", "track");
       let pronto = () => {};
       const avisar = (vid) => { if (vid === id) pronto(); };
@@ -167,7 +191,8 @@
         pronto = ok;
         esperandoLegenda.add(avisar);
         if (p.loadModule) p.loadModule("captions");
-        p.setOption("captions", "track", { languageCode: t.languageCode, kind: t.kind || "" });
+        p.setOption("captions", "track", {});
+        setTimeout(() => p.setOption("captions", "track", { languageCode: t.languageCode, kind: t.kind || "" }), 300);
         setTimeout(ok, 6000);
       });
       esperandoLegenda.delete(avisar);
@@ -187,19 +212,25 @@
   // (o YouTube também pede por XHR) e, com o painel já aberto, ele não pede nada de novo: por isso o que vale no fim
   // são os trechos que estão no painel, lidos do DOM. Esperar só a resposta de rede era o que deixava a aba em
   // "Lendo a fala do vídeo…" com a transcrição escrita na tela (2026-11-17).
-  const PAINEL_FALA = 'ytd-engagement-panel-section-list-renderer[target-id*="transcript"]';
-  const TRECHO_FALA = "ytd-transcript-segment-renderer, yt-transcript-segment-view-model, .ytTranscriptSegmentViewModel";
+  // 2026-11-22: o painel novo ("Neste vídeo", com Capítulos e Transcrição) vem sem target-id e com
+  // transcript-segment-view-model; sem achar os trechos, ele ficava aberto embaixo e a aba dizia que não deu
+  const TRECHO_FALA = "ytd-transcript-segment-renderer, yt-transcript-segment-view-model, transcript-segment-view-model, .ytTranscriptSegmentViewModel";
+  const painelFala = () => {
+    const seg = document.querySelector(TRECHO_FALA);
+    return (seg && seg.closest("ytd-engagement-panel-section-list-renderer"))
+      || document.querySelector('ytd-engagement-panel-section-list-renderer[target-id*="transcript"][visibility*="EXPANDED"]');
+  };
   const emMs = (t) => {
     const p = String(t || "").trim().split(":").map(Number);
     if (!p.length || p.some((n) => !Number.isFinite(n))) return 0;
     return p.reduce((total, n) => total * 60 + n, 0) * 1000;
   };
   function trechosNoPainel() {
-    const painel = document.querySelector(PAINEL_FALA);
+    const painel = painelFala();
     const linhas = [];
     for (const seg of (painel || document).querySelectorAll(TRECHO_FALA)) {
-      const tempo = seg.querySelector(".segment-timestamp, [class*='imestamp']");
-      const texto = seg.querySelector(".segment-text, [class*='egmentText']");
+      const tempo = seg.querySelector(".segment-timestamp, .ytwTranscriptSegmentViewModelTimestamp, [class*='imestamp']:not([class*='11y'])");
+      const texto = seg.querySelector(".segment-text, [class*='egmentText'], .ytAttributedStringHost");
       const bruto = ((texto || seg).textContent || "").replace(/\s+/g, " ").trim();
       const marca = tempo ? (tempo.textContent || "").replace(/\s+/g, " ").trim() : "";
       const t = !texto && marca && bruto.startsWith(marca) ? bruto.slice(marca.length).trim() : bruto;
@@ -224,7 +255,8 @@
     });
     esperandoTranscricao = null;
     const doDom = trechosNoPainel();   // lido antes de fechar: fechar o painel tira os trechos da tela
-    const fechar = document.querySelector(`${PAINEL_FALA} #visibility-button button, ${PAINEL_FALA} [aria-label*="echar"], ${PAINEL_FALA} [aria-label*="lose"]`);
+    const aberto = painelFala();
+    const fechar = aberto && aberto.querySelector('#visibility-button button, button[aria-label="Fechar"], button[aria-label="Close"], [aria-label*="echar"], [aria-label*="lose"]');
     if (fechar) fechar.click();
     const linhas = segmentos(j);
     return linhas.length ? linhas : doDom;
@@ -237,7 +269,7 @@
   // as legendas que o YouTube já tem: o seletor da aba Transcrição mostra estas, nada é traduzido aqui. A trilha
   // automática é a língua falada: o YouTube só gera a automática da fala, as outras são escritas ou traduzidas.
   const faixasDe = (r) => {
-    const trilhas = trilhasDe(r), auto = trilhas.find((t) => t.kind === "asr");
+    const trilhas = trilhasDe(r), auto = automaticaOriginal(r);
     return { falada: auto ? auto.languageCode : "", faixas: trilhas.map((t) => ({ chave: chaveDa(t), codigo: t.languageCode,
       nome: L.texto(t.name) || t.languageCode, auto: t.kind === "asr" })) };
   };

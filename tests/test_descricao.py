@@ -130,7 +130,8 @@ def _pasta_de_roteiro(raiz, nome="2026-11-17-2106-roteiro", titulo="日本の新
 def test_garantir_escreve_a_descricao_que_faltou_e_leva_para_a_fabrica(tmp_path, responder, monkeypatch):
     """Pedido do usuário em 2026-11-17: "coloque sempre descrição para o Claude criar e ir com o vídeo"."""
     from radar import roteiro_claude
-    responder(RESPOSTA)
+    # o roteiro é japonês: a sinopse também (a em português agora é recusada)
+    responder(json.dumps({"sinopse": "動画のあらすじ。" * 120, "tags": ["日本 発明"], "hashtags": ["#日本"]}, ensure_ascii=False))
     monkeypatch.setattr(roteiro_claude, "PASTA", tmp_path / "roteiros")
     monkeypatch.setattr(roteiro_claude, "FABRICA", tmp_path / "fabrica")
     monkeypatch.setattr(descricao, "agente", lambda *_a, **_k: None)
@@ -138,7 +139,7 @@ def test_garantir_escreve_a_descricao_que_faltou_e_leva_para_a_fabrica(tmp_path,
     (tmp_path / "fabrica" / "projetos" / "roteiro-16").mkdir(parents=True)
 
     kit = descricao.garantir(1, "roteiro-16", "2026-11-17-2106-roteiro", titulo="日本の新発明")
-    assert kit["descricao"].startswith("Três frases sobre o vídeo.")
+    assert kit["descricao"].startswith("動画のあらすじ。")
     assert kit["titulo"] == "日本の新発明" and kit["tags"]
     assert descricao.na_fabrica("roteiro-16")["descricao"] == kit["descricao"]   # ficou na pasta do projeto
 
