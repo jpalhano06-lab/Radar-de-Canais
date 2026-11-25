@@ -5,7 +5,7 @@
   const INTERVALO = 450;           // ms entre os dois cliques direitos
   let ultimo = 0, painel = null, abinha = null;
   const NO_STUDIO = location.hostname === "studio.youtube.com";
-  let pendente = "";
+  let pendente = "", pendenteAuto = false;
 
   function montar() {
     painel = document.createElement("div");
@@ -28,9 +28,10 @@
     // no Studio o Meu dia tem o "Postar" de cada vídeo (pedido do usuário em 2026-11-15); o `pendente` vem do Postar
     // apertado no YouTube (dia.js guarda diaPostar e abre o Studio) e já começa o upload daquele vídeo
     const postar = pendente; pendente = "";
+    const auto = pendenteAuto; pendenteAuto = false;   // o postar sozinho: o Meu dia sobe e o Studio faz as etapas
     // o canal do Studio aberto (2026-11-16): o Postar de um vídeo de outro canal abre o Studio do canal certo
     const canalStudio = NO_STUDIO ? ((location.pathname.match(/\/channel\/(UC[\w-]{22})/) || [])[1] || "") : "";
-    quadro.src = chrome.runtime.getURL("dia.html") + "?embutido=1" + (NO_STUDIO ? "&studio=1" : "") + (postar ? `&postar=${postar}` : "")
+    quadro.src = chrome.runtime.getURL("dia.html") + "?embutido=1" + (NO_STUDIO ? "&studio=1" : "") + (postar ? `&postar=${postar}` : "") + (postar && auto ? "&auto=1" : "")
       + (canalStudio ? `&canalStudio=${canalStudio}` : "");
     quadro.title = "Meu dia";
     quadro.allow = "clipboard-write";
@@ -93,10 +94,12 @@
     while (!canalAqui() && Date.now() < fim) await new Promise((r) => setTimeout(r, 500));
     if (diaPostar.canal && canalAqui() && canalAqui() !== diaPostar.canal) {
       avisoNoStudio("Meu dia: este Studio é de outro canal. Troque de conta e aperte Postar de novo (o vídeo não foi enviado).");
+      if (diaPostar.auto) chrome.runtime.sendMessage({ tipo: "auto-fim", id: diaPostar.id, ok: false, motivo: "o Studio abriu em outro canal" }).catch(() => {});
       return;
     }
     chrome.storage.local.remove("diaPostar");
     pendente = diaPostar.id;
+    pendenteAuto = !!diaPostar.auto;
     if (painel) { painel.remove(); painel = null; }   // já aberto: monta de novo, com o pedido
     alternar(true);
   }).catch(() => {});

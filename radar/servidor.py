@@ -22,7 +22,7 @@ from fastapi.staticfiles import StaticFiles
 
 from starlette.background import BackgroundTask
 
-from . import avisos, backup, descoberta, maquinas
+from . import avisos, backup, descoberta, limpeza_postados, maquinas
 from . import agendar, alvos, banco, canal_painel, capas, lente_ia, molde, pedidos, ponte, chatgpt_conta, claude_projetos, custos, descricao, diagnostico, estilos_animacao, fabrica_api, fila, funcoes, garimpo, gosto, horarios, ia, integracoes, medir, mercado, metricas, nichos, pagina, perfil, producao, publicar, radar_paises, roteiro_claude, studio, tempo, teste_canal, thumb, trabalho, treinamento, trello, youtube
 from .config import DADOS, NOME, PLANOS, RAIZ, pode
 
@@ -2563,6 +2563,8 @@ def producao_video(nome: str, u: dict = Depends(usuario)):
     """O vídeo pronto, para assistir no Radar (o FileResponse responde aos pedaços que o player pede)."""
     final = _projeto_fabrica(nome) / "final.mp4"
     if not final.exists():
+        if limpeza_postados.limpo(nome):
+            raise HTTPException(404, "O vídeo foi apagado 48 h depois de postado, para liberar espaço. Ele está no YouTube.")
         raise HTTPException(404, "O vídeo ainda não está pronto.")
     return FileResponse(final, media_type="video/mp4")
 
@@ -2587,6 +2589,9 @@ def producao_pasta(nome: str, request: Request, u: dict = Depends(usuario)):
 def _na_fila(funcao, *args):
     try:
         return funcao(*args)
+    except fila.Repetido as erro:
+        # 409: a tela pergunta se cria mesmo assim e manda de novo com "repetir"
+        raise HTTPException(409, str(erro))
     except ValueError as erro:
         raise HTTPException(400, str(erro))
 
@@ -2704,7 +2709,7 @@ def fila_lista(u: dict = Depends(usuario)):
 
 @app.post("/api/fila")
 def fila_criar(corpo: dict, u: dict = Depends(dono_da_fabrica)):
-    novo = _na_fila(fila.criar, u["id"], corpo.get("pedido") or {}, bool(corpo.get("comecar")))
+    novo = _na_fila(fila.criar, u["id"], corpo.get("pedido") or {}, bool(corpo.get("comecar")), bool(corpo.get("repetir")))
     # a ideia vai para a lista do canal no Trello (o Canal de teste não tem canal e fica de fora)
     if novo["pedido"].get("canal_id"):
         trello.do_pedido(producao.config(u["id"], novo["pedido"]["canal_id"]).get("canal", ""), novo["pedido"])
@@ -3747,6 +3752,7 @@ def _ligar():
     molde.iniciar()
     capas.iniciar()
     avisos.iniciar()
+    limpeza_postados.iniciar()
 
 
 # ---------------------------------------------------------------- site

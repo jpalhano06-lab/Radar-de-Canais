@@ -106,6 +106,9 @@ def producoes() -> dict:
         if nome.startswith("_"):
             continue
         c = p.get("criacao") or {}
+        # vídeo postado há mais de 48 h teve o final.mp4 apagado (limpeza_postados.py), mas continua pronto
+        if not p.get("tem_final") and (_pasta(nome) / "limpo_pos_postagem.json").exists():
+            p = {**p, "tem_final": True}
         perfil = Path(str(p.get("perfil") or "")).stem
         canal = producao._perfil(perfil).get("canal") if perfil else ""
         item = {"nome": nome, "titulo": _titulo(nome), "canal": canal or "Sem canal", "perfil": perfil, "criado": p.get("criado", ""), "duracao": p.get("duracao") or 0,

@@ -40,6 +40,16 @@ def test_recusa_titulo_vazio_e_tamanho_fora(db):
     assert fila.criar(1, {"titulo": "T", "caracteres": 0, "roteiro_manual": "texto"}, True)["estado"] == "na_fila"
 
 
+def test_titulo_repetido_so_com_confirmacao(db):
+    a = fila.criar(1, {"titulo": "Os Reis  do Egito", "caracteres": 10620}, comecar=True)
+    with pytest.raises(fila.Repetido):
+        fila.criar(1, {"titulo": " os reis do egito ", "caracteres": 10620}, comecar=True)
+    assert fila.criar(1, {"titulo": "Os Reis do Egito", "caracteres": 10620}, True, repetir=True)["id"] != a["id"]
+    assert fila.criar(2, {"titulo": "Os Reis do Egito", "caracteres": 10620}, True)   # outro usuário não conta
+    fila.mudar(a["id"], "cancelado")
+    assert fila.pedido_igual(1, "os reis do egito")["id"] != a["id"]                  # o cancelado não conta
+
+
 def test_limite(db):
     assert fila.limite() == 2
     assert fila.definir_limite(4) == 4

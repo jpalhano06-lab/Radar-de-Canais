@@ -29,7 +29,7 @@ def db(tmp_path, monkeypatch):
 
 
 def _pedido(destino="robo", **extras):
-    item = fila.criar(1, {"titulo": "Vídeo", "caracteres": 2650, "perfil": "canal-x", "destino": destino, **extras}, True)
+    item = fila.criar(1, {"titulo": "Vídeo", "caracteres": 2650, "perfil": "canal-x", "destino": destino, **extras}, True, repetir=True)
     banco.executar("UPDATE producoes_fila SET roteiro='r1' WHERE id=?", item["id"])
     return item["id"]
 

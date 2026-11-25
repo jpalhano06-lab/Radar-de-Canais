@@ -49,6 +49,7 @@ function registrarTrocaBg(passo, url = "background") {
 // escondida atrás, onde o YouTube não desenha o menu) e guarda pelo id da aba a conta para trocar e, se houver, para
 // onde ir depois (content.js pede com "troca-pendente")
 async function abrirParaTrocar(de, alvo, depois) {
+  // `de` vazio é o postar sozinho (sem aba de origem): abre na janela em foco
   const aba = await chrome.tabs.create({ url: "https://www.youtube.com/", active: true,
     ...(de && de.windowId >= 0 ? { windowId: de.windowId, index: de.index + 1 } : {}) });
   const { trocasPorAba = {} } = await chrome.storage.session.get("trocasPorAba");
@@ -83,7 +84,11 @@ chrome.runtime.onMessage.addListener((msg, _remetente, responder) => {
   }
   if (msg && msg.tipo === "abrir-dia") abrirDia();       // o "Abrir em aba" do painel do YouTube e o ícone (popup)
   if (msg && msg.tipo === "dia-postado") {               // publicou no Studio: fica verde no Meu dia (publicar.js)
-    diaMarcarPostado(msg).then((id) => { registrarTrocaBg(`postado no Studio: "${msg.titulo}" → ${id || "não achei no Meu dia"}`); responder({ ok: true, id }); },
+    diaMarcarPostado(msg).then(async (id) => {
+      // o postar sozinho acabou bem: libera o próximo
+      const { autoPostando } = await chrome.storage.local.get("autoPostando");
+      if (autoPostando && (autoPostando.id === id || autoPostando.id === msg.id)) await chrome.storage.local.remove("autoPostando");
+      registrarTrocaBg(`postado no Studio: "${msg.titulo}" → ${id || "não achei no Meu dia"}`); responder({ ok: true, id }); },
       (e) => responder({ erro: String(e) }));
     return true;
   }
@@ -238,7 +243,49 @@ async function olharProgresso() {
 }
 chrome.runtime.onInstalled.addListener(() => { chrome.alarms.create("progresso", { periodInMinutes: 1 }); olharProgresso(); });
 chrome.runtime.onStartup.addListener(() => { chrome.alarms.create("progresso", { periodInMinutes: 1 }); olharProgresso(); });
-chrome.alarms.onAlarm.addListener((a) => { if (a.name === "progresso") olharProgresso().catch(() => {}); });
+chrome.alarms.onAlarm.addListener((a) => { if (a.name === "progresso") { olharProgresso().catch(() => {}); olharPostarSozinho().catch(() => {}); } });
+
+// ------------------------------------------------------------ postar sozinho (pedido do usuário em 2026-11-24)
+// "Uma opção no Meu dia: quando tudo estiver pronto e só faltar o vídeo, o Radar posta quando o vídeo ficar pronto".
+// O vídeo marcado (v.auto), com thumbnail e agendamento no futuro, é conferido a cada minuto na fábrica; pronto, abre
+// o Studio do canal (o mesmo caminho do Postar) com o pedido `auto`, e o publicar.js faz as etapas e agenda. Um de
+// cada vez: `autoPostando` segura os outros até o atual acabar (ou 25 minutos, se a aba morrer no meio).
+const AUTO_SEGURA = 25 * 60 * 1000;
+const agendaValida = (v) => /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(v.agendar || "") && new Date(v.agendar).getTime() > Date.now() + 5 * 60 * 1000;
+
+async function olharPostarSozinho() {
+  await diaAplicarPadroes().catch(() => 0);   // os vídeos novos ganham a hora e o postar sozinho do padrão do canal
+  const { autoPostando, [DIA_AMANHA]: fila = [] } = await chrome.storage.local.get(["autoPostando", DIA_AMANHA]);
+  if (autoPostando && Date.now() - autoPostando.quando < AUTO_SEGURA) return;
+  const hoje = await lerDia();
+  const candidatos = [...hoje.videos, ...fila].filter((v) => v.auto && !v.postado && !v.autoFalhou && v.thumb && v.canal && v.canalNome && agendaValida(v));
+  for (const v of candidatos) {
+    const r = await pedir({ caminho: `/api/ext/postar?titulo=${encodeURIComponent(v.titulo || "")}` });
+    if (!(r.dados && r.dados.pronto)) continue;
+    await chrome.storage.local.set({ autoPostando: { id: v.id, titulo: v.titulo, quando: Date.now() },
+      diaPostar: { id: v.id, quando: Date.now(), canal: v.canal, auto: true } });
+    registrarTrocaBg(`postar sozinho: "${v.titulo}" pronto na fábrica, abrindo o Studio de ${v.canalNome}`);
+    notificar(`dia-auto-${v.id}`, "Radar: postando sozinho", `"${v.titulo}" ficou pronto. Abrindo o Studio de ${v.canalNome} para agendar.`);
+    await abrirParaTrocar(null, v.canalNome, "https://studio.youtube.com/");
+    return;
+  }
+}
+
+/** O Studio contou como acabou o postar sozinho (publicar.js e painel-dia.js). */
+async function fimDoAuto({ id, ok, motivo = "" }) {
+  await chrome.storage.local.remove("autoPostando");
+  if (!id) return;
+  if (ok) {
+    // agendado, mas alguma etapa reclamou no caminho (ex.: os anúncios não couberam): avisa para conferir
+    if (motivo) notificar(`dia-auto-aviso-${id}`, "Radar: agendado, confira", motivo.slice(0, 250));
+    return;
+  }
+  await diaMudarVideo(id, (v) => { v.autoFalhou = motivo || "parou no Studio"; });
+  notificar(`dia-auto-falhou-${id}`, "Radar: não postei sozinho", `${motivo || "Parou no Studio"}. O vídeo não foi agendado: confira no Meu dia.`);
+}
+chrome.runtime.onMessage.addListener((msg, _remetente, responder) => {
+  if (msg && msg.tipo === "auto-fim") { fimDoAuto(msg).then(() => responder({ ok: true }), (e) => responder({ erro: String(e) })); return true; }
+});
 
 // ------------------------------------------------------------ Meu dia (dia.html, dia-dados.js)
 // A aba abre uma vez só: chamar de novo traz para a frente a que já está aberta

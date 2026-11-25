@@ -2740,7 +2740,9 @@
           ...(eTeste() ? {} : { prompt_id: N.prompt }),
           ...(N.modo === "manual" ? { roteiro_manual: N.roteiro } : { caracteres: N.caracteres, nicho: N.nicho, observacao: N.obs,
             ...(N.refFala ? { transcricao_ref: N.refFala } : {}) }) };
-        const r = await api("/api/fila", "POST", { pedido, comecar });
+        let r = await api("/api/fila", "POST", { pedido, comecar });
+        // 409 = já há pedido com esse título: só entra outro igual se a pessoa confirmar
+        if (r.status === 409 && confirm(`${r.erro}\n\nCriar outro pedido igual mesmo assim?`)) r = await api("/api/fila", "POST", { pedido, comecar, repetir: true });
         if (r.erro) { botao.disabled = false; botao.lastChild.textContent = comecar ? "Criar e começar" : "Salvar na Entrada"; erro.textContent = erroDoRadar(r); return; }
         // o pedido entra no Meu dia como "feito, falta a thumbnail" (pedido do usuário em 2026-11-14). O de teste não:
         // ele não é postado em canal nenhum

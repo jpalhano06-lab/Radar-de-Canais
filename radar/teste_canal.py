@@ -119,16 +119,16 @@ def _e_dono(usuario_id: int, canal_id: str) -> bool:
 
 
 def temas_novos(usuario_id: int, quantos: int = POR_CANAL) -> list[str]:
-    """Temas que nenhum teste deste usuário usou ainda; esgotados, recomeça do começo da lista."""
+    """Temas que nenhum teste deste usuário usou ainda e que não têm pedido de mesmo título na fila.
+    Esgotados, não recomeça: recomeçar fez "The Day the Sun Will Die" sair 13 vezes (2026-11-18), e pedido de título
+    repetido só entra com a confirmação de uma pessoa (pedido de 2026-11-24)."""
     usados = set()
     for l in banco.todos("SELECT pedidos FROM canais_teste WHERE usuario_id=?", usuario_id):
         for p in _pedidos(l):
             usados.add(p.get("tema", ""))
     for l in banco.todos("SELECT tema FROM estoque_teste WHERE usuario_id=?", usuario_id):
         usados.add(l["tema"])
-    livres = [t for t in TEMAS if t not in usados]
-    if len(livres) < quantos:
-        livres += [t for t in TEMAS if t in usados]
+    livres = [t for t in TEMAS if t not in usados and not fila.pedido_igual(usuario_id, t)]
     return livres[:quantos]
 
 

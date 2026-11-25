@@ -19,6 +19,10 @@ function h(tag, attrs = {}, ...filhos) {
 
 let canais = [], config = {}, dia = { data: hojeLocal(), videos: [], thumbs: [] }, imagens = {}, erroRadar = "";
 let amanha = [];                      // os pedidos guardados para amanhã (dia-dados.js, diaAmanha)
+// o dia que está na tela, no mesmo formato do `dia` (pedido do usuário em 2026-11-24: "todos os dias tem que ser
+// igual para poder adicionar thumbnail ou o que quiser"). Hoje é o próprio `dia`; outro dia vem do lerDiaDe
+let vista = dia;
+const mudarVista = (fn) => mudarDiaDe(vista.data, fn);
 const abertos = new Set();            // os cartões verdes que a pessoa abriu de novo clicando no nome
 let destinoArquivo = null;   // quem recebe o arquivo escolhido: o vídeo, { canal } ou null (fica solta)
 let colarEm = null;          // o canal sob o mouse: o Ctrl+V cai nele
@@ -28,6 +32,8 @@ const NO_SITE = new URLSearchParams(location.search).has("site");
 // dentro do painel do YouTube Studio (painel-dia.js leva ?studio=1): o Postar sobe o vídeo ali mesmo
 const NO_STUDIO = new URLSearchParams(location.search).has("studio");
 let postarAoAbrir = new URLSearchParams(location.search).get("postar") || "";
+// o postar sozinho (background.js, olharPostarSozinho): o Studio faz as etapas e agenda sem ninguém apertar nada
+const AUTO_AO_ABRIR = new URLSearchParams(location.search).has("auto");
 
 const hora = (t) => new Date(t).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
 const plural = (n, um, varios) => `${n} ${n === 1 ? um : varios}`;
@@ -39,19 +45,23 @@ async function guardarConfig(canal, mudanca) {
 }
 
 async function carregarImagens() {
-  const faltam = dia.thumbs.map((t) => t.id).filter((id) => !(id in imagens));
+  const faltam = [...dia.thumbs, ...vista.thumbs].map((t) => t.id).filter((id) => !(id in imagens));
   if (!faltam.length) return;
   const g = await chrome.storage.local.get(faltam.map((id) => DIA_THUMB + id));
   for (const id of faltam) imagens[id] = g[DIA_THUMB + id] || "";
 }
 
 async function recarregar() {
+  // o padrão de postagem de cada canal entra nos vídeos sem agendamento antes de desenhar
+  await diaAplicarPadroes().catch(() => 0);
   dia = await lerDia();
+  if (diaVisto && diaVisto <= hojeLocal()) diaVisto = "";  // virou o dia: o dia visto passou a ser hoje
+  vista = diaVisto ? await lerDiaDe(diaVisto) : dia;
   const g = await chrome.storage.local.get([DIA_CONFIG, "diaCanais", DIA_AMANHA]);
   config = g[DIA_CONFIG] || {};
   amanha = g[DIA_AMANHA] || [];
   if (!canais.length) canais = g.diaCanais || [];
-  for (const id of Object.keys(imagens)) if (!dia.thumbs.some((t) => t.id === id)) delete imagens[id];
+  for (const id of Object.keys(imagens)) if (![...dia.thumbs, ...vista.thumbs].some((t) => t.id === id)) delete imagens[id];
   await carregarImagens();
   desenhar();
 }
@@ -71,9 +81,10 @@ const lerArquivo = (arquivo) => new Promise((ok) => {
 });
 
 // `alvo`: { video } para o vídeo, { canal, canalNome } para o canal (fica como feita nele) ou {} para as soltas
-const alvoDe = (alvo) => (alvo && typeof alvo === "object" ? alvo : { video: alvo || null });
+// `data`: a imagem entra no dia que está na tela
+const alvoDe = (alvo) => ({ data: diaVisto, ...(alvo && typeof alvo === "object" ? alvo : { video: alvo || null }) });
 // as thumbnails que já estão num vídeo: a principal (A) e as do teste A/B (B e C)
-const thumbsUsadas = () => new Set(dia.videos.flatMap((v) => [v.thumb, ...(v.ab || [])]).filter(Boolean));
+const thumbsUsadas = () => new Set(vista.videos.flatMap((v) => [v.thumb, ...(v.ab || [])]).filter(Boolean));
 const abAbertos = new Set();   // os vídeos com o teste A/B aberto no cartão
 
 async function guardarDeTransferencia(dt, alvo) {
@@ -126,7 +137,7 @@ const baixar = (thumb, titulo) => h("a", { class: "botao", href: imagens[thumb.i
 const videoCompleto = (v) => !!(v.thumb && v.postado);
 // 2026-11-16 (pedido do usuário): "não vou postar nada hoje" deixa o canal verde; azul é quando os vídeos do dia já
 // têm pedido e thumbnail e só falta postar; a faixa do canto do cartão se divide em um pedaço por vídeo do dia
-const semPostarHoje = (id) => (dia.semPostar || []).includes(id);
+const semPostarHoje = (id) => (vista.semPostar || []).includes(id);
 const corDoVideo = (v) => (!v ? "falta" : v.postado ? "ok" : v.thumb ? "azul" : "meio");
 function faixaDoCanal(meta, videos, semPostar) {
   if (semPostar) return ["ok"];
@@ -216,8 +227,14 @@ async function abrirUpload(canal, canalNome) {
   await chrome.storage.local.set({ diaAbrirUpload: Date.now() });
 }
 
-async function postar(v, botao, canal) {
+async function postar(v, botao, canal, { auto = false } = {}) {
+  // o postar sozinho que não sai daqui avisa o background (ele libera o próximo e marca o vídeo como parado)
+  const falhouAuto = (motivo) => { if (auto) pedirAoFundo({ tipo: "auto-fim", id: v && v.id, ok: false, motivo }); };
   if (!v) return abrirUpload(canal && canal.id, canal && canal.titulo);
+  if (v.agendar && !agendamentoValido(v)) {
+    falhouAuto("o horário do agendamento já passou");
+    return mostrarErro(`O agendamento de "${v.titulo}" já passou: escolha outra data e hora, ou tire o agendamento.`);
+  }
   if (!noStudioDoCanal(v.canal)) {
     if (v.canal && v.canalNome) return abrirNoCanal(v.canal, v.canalNome, v.id);
     window.open("https://studio.youtube.com/", "_blank");
@@ -262,9 +279,13 @@ async function postar(v, botao, canal) {
       capasAB.push(new File([b], `${nomeDeArquivo(v.titulo)} ${"BC"[i]}.${(b.type.split("/")[1] || "png").replace("jpeg", "jpg")}`, { type: b.type || "image/png" }));
     }
     texto("Abrindo o upload…");
-    window.parent.postMessage({ tipo: "radar-postar", id: v.id, titulo: v.titulo, video, capa, capasAB }, "https://studio.youtube.com");
+    window.parent.postMessage({ tipo: "radar-postar", id: v.id, titulo: v.titulo, video, capa, capasAB, agendar: agendamentoValido(v), auto,
+      // o padrão do canal: anúncio a cada N minutos e a tela final escolhida
+      anuncioCada: ((config[v.canal] || {}).postagem || {}).anuncioCada || 0, telaFinal: ((config[v.canal] || {}).postagem || {}).telaFinal || "" },
+      "https://studio.youtube.com");
   } catch (e) {
     mostrarErro((e && e.message) || String(e));
+    falhouAuto((e && e.message) || String(e));
   } finally {
     postando = "";
     setTimeout(desenhar, 1500);
@@ -313,7 +334,7 @@ function linhaDoTesteAB(v, thumb) {
     return h("button", { type: "button", class: "ab-abrir", title: "Testar 2 ou 3 thumbnails no Studio (Testar e comparar)",
       onclick: () => { abAbertos.add(v.id); desenhar(); } }, "+ Teste A/B");
   }
-  const tirar = (id) => mudarDia((d) => { const x = d.videos.find((y) => y.id === v.id); if (x) x.ab = (x.ab || []).filter((y) => y !== id); });
+  const tirar = (id) => mudarVista((d) => { const x = d.videos.find((y) => y.id === v.id); if (x) x.ab = (x.ab || []).filter((y) => y !== id); });
   const mini = (letra, id) => id
     ? h("div", { class: "ab-slot cheio", title: `Thumbnail ${letra}` }, h("img", { src: imagens[id], alt: "" }),
       h("span", { class: "ab-letra" }, letra),
@@ -384,43 +405,176 @@ const legenda = () => h("div", { class: "legenda" },
 // cada caixinha de vídeo tem a cor dela e o número dela (1, 2…), o mesmo dos pedacinhos no alto do canal
 const NOME_DA_COR = { falta: "ainda não pedido", meio: "falta a thumbnail", azul: "só falta postar", ok: "postado" };
 function cartaoDoVideo(v, numero) {
-  const thumb = v.thumb && dia.thumbs.find((t) => t.id === v.thumb);
+  const thumb = v.thumb && vista.thumbs.find((t) => t.id === v.thumb);
   const slot = thumb && imagens[thumb.id]
     ? h("div", { class: "slot cheio", title: "Arraste outra imagem para trocar" }, h("img", { src: imagens[thumb.id], alt: "" }))
     : h("div", { class: "slot", title: "Arraste a imagem, ou clique para escolher o arquivo" }, "Arraste a thumbnail aqui");
   zonaDeImagem(slot, v.id);
   const postado = h("input", { type: "checkbox" }); postado.checked = !!v.postado;
-  postado.onchange = () => mudarDia((d) => { const x = d.videos.find((y) => y.id === v.id); if (x) x.postado = postado.checked; });
+  postado.onchange = () => mudarVista((d) => { const x = d.videos.find((y) => y.id === v.id); if (x) x.postado = postado.checked; });
   const estadoTexto = v.postado && thumb ? "✓ Vídeo · ✓ thumbnail · ✓ postado"
     : thumb ? "✓ Vídeo pedido · ✓ thumbnail feita · falta postar"
       : `✓ Vídeo pedido${v.entrada ? " (na Entrada)" : ""} · falta a thumbnail${v.postado ? " · ✓ postado" : ""}`;
   const fabrica = v.postado ? null : linhaDaFabrica(v);
   const testeAB = v.postado ? null : linhaDoTesteAB(v, thumb);
+  const agendado = v.postado ? "" : agendamentoValido(v);
   const botaoPostar = v.postado ? null : h("button", { type: "button", class: "vermelho postar",
-    title: NO_STUDIO ? "Sobe o vídeo da fábrica e a thumbnail no Studio" : "Abre o YouTube Studio já com o vídeo e a thumbnail" },
-  postando === v.id ? "Baixando…" : NO_STUDIO ? "Postar" : "Postar ↗");
+    title: (agendado ? `Sobe o vídeo e já deixa agendado para ${quandoCurto(agendado)}. ` : "")
+      + (NO_STUDIO ? "Sobe o vídeo da fábrica e a thumbnail no Studio" : "Abre o YouTube Studio já com o vídeo e a thumbnail") },
+  postando === v.id ? "Baixando…" : `${agendado ? "Postar agendado" : "Postar"}${NO_STUDIO ? "" : " ↗"}`);
   if (botaoPostar) botaoPostar.onclick = () => postar(v, botaoPostar);
+  const hoje = vista.data === hojeLocal();
   return h("div", { class: `video ${corDoVideo(v)}` }, numero ? h("span", { class: "num", title: NOME_DA_COR[corDoVideo(v)] }, String(numero)) : null, slot,
     h("div", {},
-      v.veioDe && v.veioDe !== dia.data ? h("span", { class: "veio-de", title: "Não foi postado no dia dele: passou para hoje" },
+      v.veioDe && v.veioDe !== vista.data ? h("span", { class: "veio-de", title: "Não foi postado no dia dele: passou para hoje" },
         `↪ de ${v.veioDe.slice(8, 10)}/${v.veioDe.slice(5, 7)}`) : null,
       h("b", {}, v.titulo || "vídeo sem título"),
       h("div", { class: `estado ${videoCompleto(v) ? "ok" : "falta"}` }, estadoTexto),
       fabrica,
       linhaDaReferencia(v),
       testeAB,
+      v.postado ? null : linhaDoAgendar(v),
       h("div", { class: "acoes" },
         botaoPostar,
         h("label", { class: "check" }, postado, "Postado"),
         h("span", { class: "fraco" }, hora(v.hora)),
         thumb ? baixar(thumb, v.titulo) : null,
         thumb ? h("button", { class: "x", title: "Tirar a thumbnail deste vídeo (ela fica nas soltas)",
-          onclick: () => mudarDia((d) => { const x = d.videos.find((y) => y.id === v.id); if (x) x.thumb = null; }) }, "↺") : null,
-        v.postado ? null : h("button", { type: "button", class: "mudar-dia", title: "Passa este vídeo para amanhã (com a thumbnail)",
+          onclick: () => mudarVista((d) => { const x = d.videos.find((y) => y.id === v.id); if (x) x.thumb = null; }) }, "↺") : null,
+        v.postado || !hoje ? null : h("button", { type: "button", class: "mudar-dia", title: "Passa este vídeo para amanhã (com a thumbnail)",
           onclick: () => diaHojeParaAmanha(v.id).then(recarregar) }, "Para amanhã"),
+        v.postado || hoje ? null : h("button", { type: "button", class: "mudar-dia", title: "Este vídeo é para hoje (com a thumbnail)",
+          onclick: () => diaAmanhaParaHoje(v.id).then(recarregar) }, "Para hoje"),
         v.postado ? null : escolherData(v, "Passa este vídeo para outro dia do calendário (com a thumbnail)"),
-        h("button", { class: "x", title: "Tirar este vídeo do dia (fica em Tirados hoje, dá para voltar)",
-          onclick: () => tirarVideo(v) }, "×"))));
+        hoje ? h("button", { class: "x", title: "Tirar este vídeo do dia (fica em Tirados hoje, dá para voltar)",
+          onclick: () => tirarVideo(v) }, "×")
+          : h("button", { class: "x", title: "Tirar este vídeo do calendário (com a thumbnail dele)", onclick: async () => {
+            if (!confirm(`Tirar "${v.titulo || "este vídeo"}" do dia ${dataCurta(vista.data)}? A thumbnail dele vai junto.`)) return;
+            await diaTirarDoCalendario(v.id); recarregar();
+          } }, "×"))));
+}
+
+// ------------------------------------------------------------ agendar a postagem (pedido do usuário em 2026-11-24)
+// "Uma opção em todos de programar postagem: colocar a data e a hora no vídeo, clicar em Postar e ele já configura
+// essa parte". A data e a hora ficam no vídeo (v.agendar = "AAAA-MM-DDTHH:MM"); o Postar leva para o Studio, e o
+// publicar.js marca o Programar da etapa Visibilidade com elas. Quem aperta o Programar final é a pessoa.
+const quandoCurto = (q) => `${q.slice(8, 10)}/${q.slice(5, 7)} às ${q.slice(11, 16)}`;
+// o agendamento que vale: com data e hora, e ainda no futuro (o YouTube não agenda para trás)
+const agendamentoValido = (v) => (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(v.agendar || "") && new Date(v.agendar).getTime() > Date.now() ? v.agendar : "");
+// 2026-11-24, segunda volta (pedido do usuário: "algo mais bonito, só a opção, o calendário só com os 5 próximos
+// dias, o horário sem o minuto, um relógio que facilite"): fechado, é só o botão "Agendar" (sem emoji: pedido do usuário) (ou o horário escolhido);
+// aberto, mostra os 5 dias e um relógio de 24 horas (fora 12h–23h, dentro 0h–11h). O minuto é sempre :00
+const agendarAberto = new Map();   // id do vídeo -> o dia escolhido no painel aberto
+const DIAS_DO_AGENDAR = 5;
+const quandoBonito = (q) => `${nomeDoDia(q.slice(0, 10))} ${dataCurta(q.slice(0, 10))} às ${Number(q.slice(11, 13))}h`;
+function linhaDoAgendar(v) {
+  // agendou para outro dia: o vídeo muda para esse dia no calendário, com a thumbnail (pedido do usuário em 2026-11-24)
+  const guardar = async (valor) => {
+    await mudarVista((d) => { const x = d.videos.find((y) => y.id === v.id); if (x) x.agendar = valor; });
+    const dataNova = valor.slice(0, 10);
+    if (dataNova && dataNova !== vista.data) { await diaMoverParaData(v.id, dataNova); recarregar(); }
+  };
+  const passou = v.agendar && !agendamentoValido(v);
+  const aberto = agendarAberto.has(v.id);
+  const alternar = () => {
+    if (aberto) agendarAberto.delete(v.id);
+    else agendarAberto.set(v.id, (v.agendar || "").slice(0, 10) || (vista.data > hojeLocal() ? vista.data : hojeLocal()));
+    desenhar();
+  };
+  const chip = h("div", { class: "ag-linha" },
+    h("button", { type: "button", class: `ag-chip${v.agendar ? (passou ? " passou" : " marcado") : ""}${aberto ? " aberto" : ""}`,
+      title: v.agendar ? "Mudar o dia e a hora em que o vídeo vai ao ar" : "Escolher o dia e a hora: o Postar já deixa agendado no Studio",
+      onclick: alternar },
+    v.agendar ? (passou ? `${quandoBonito(v.agendar)} · já passou` : quandoBonito(v.agendar)) : "Agendar"),
+    v.agendar ? h("button", { type: "button", class: "x", title: "Sem agendamento: o Postar publica na hora",
+      onclick: async () => {
+        agendarAberto.delete(v.id);
+        await mudarVista((d) => { const x = d.videos.find((y) => y.id === v.id); if (x) { x.agendar = ""; x.auto = false; x.semPadrao = true; } });
+      } }, "×") : null);
+  if (!aberto) return h("div", { class: "agendar" }, chip, v.agendar && !passou ? linhaDoAuto(v) : null);
+
+  const diaEscolhido = agendarAberto.get(v.id);
+  const dias = Array.from({ length: DIAS_DO_AGENDAR }, (_, k) => diaDaqui(k));
+  if (diaEscolhido && !dias.includes(diaEscolhido)) dias.push(diaEscolhido);   // um dia antigo de mais longe segue visível
+  const horaMarcada = v.agendar && v.agendar.slice(0, 10) === diaEscolhido ? Number(v.agendar.slice(11, 13)) : null;
+  const linhaDias = h("div", { class: "ag-dias" }, ...dias.map((iso) => h("button", { type: "button",
+    class: `ag-dia${iso === diaEscolhido ? " escolhido" : ""}`, onclick: () => { agendarAberto.set(v.id, iso); desenhar(); } },
+  h("span", {}, iso === hojeLocal() ? "Hoje" : nomeDoDia(iso)), h("b", {}, dataCurta(iso)))));
+
+  // o relógio: cada hora num ponto do círculo; a que já passou (hoje) fica apagada
+  const relogio = h("div", { class: "ag-relogio" }, h("span", { class: "ag-centro" }));
+  if (horaMarcada != null) {
+    const ponteiro = h("span", { class: `ag-ponteiro${horaMarcada < 12 ? " dentro" : ""}` });
+    ponteiro.style.transform = `rotate(${(horaMarcada % 12) * 30}deg)`;
+    relogio.append(ponteiro);
+  }
+  for (let hr = 0; hr < 24; hr++) {
+    const fora = hr >= 12, raio = fora ? 63 : 40, ang = ((hr % 12) * 30 - 90) * Math.PI / 180;
+    const quando = `${diaEscolhido}T${String(hr).padStart(2, "0")}:00`;
+    const ja = new Date(quando).getTime() <= Date.now();
+    const b = h("button", { type: "button", class: `ag-hora${fora ? "" : " dentro"}${hr === horaMarcada ? " escolhida" : ""}`, disabled: ja,
+      title: ja ? "Essa hora já passou" : `${dataCurta(diaEscolhido)} às ${hr}h`,
+      onclick: () => { agendarAberto.delete(v.id); guardar(quando); } }, String(hr));
+    b.style.left = `${82 + raio * Math.cos(ang)}px`; b.style.top = `${82 + raio * Math.sin(ang)}px`;
+    relogio.append(b);
+  }
+  return h("div", { class: "agendar" }, chip,
+    h("div", { class: "ag-painel" }, linhaDias, relogio,
+      h("div", { class: "fraco ag-dica" }, "Toque na hora: o vídeo vai ao ar nela, em ponto.")));
+}
+
+// o postar sozinho (pedido do usuário em 2026-11-24): com a thumbnail e o agendamento prontos, o Radar posta quando a
+// fábrica terminar o vídeo (background.js olha a cada minuto; publicar.js faz as etapas, com anúncio a cada 1 minuto)
+function linhaDoAuto(v) {
+  const caixa = h("input", { type: "checkbox" }); caixa.checked = !!v.auto;
+  caixa.onchange = () => mudarVista((d) => {
+    const x = d.videos.find((y) => y.id === v.id);
+    if (x) { x.auto = caixa.checked; delete x.autoFalhou; }
+  });
+  const situacao = !v.auto ? "" : v.autoFalhou ? `parou: ${v.autoFalhou}. Desmarque e marque para tentar de novo`
+    : !v.thumb ? "falta a thumbnail" : "espera a fábrica terminar";
+  return h("div", { class: "ag-auto" },
+    h("label", { class: "check", title: "Quando a fábrica terminar, o Radar abre o Studio deste canal, sobe o vídeo com a thumbnail, "
+      + "passa as etapas (anúncio a cada 1 minuto) e agenda para o horário escolhido" }, caixa, "Postar sozinho quando o vídeo ficar pronto"),
+    situacao ? h("span", { class: v.autoFalhou ? "aviso" : "fraco" }, situacao) : null);
+}
+
+// o padrão de postagem do canal (pedido do usuário em 2026-11-24): a hora de cada vídeo do dia, o postar sozinho, o
+// anúncio e a tela final. Os vídeos sem agendamento ganham a hora sozinhos (dia-dados.js, diaAplicarPadroes)
+const TELAS_FINAIS_DIA = { melhor: "Melhor vídeo + inscrever", ultimo: "Igual à do último", nenhuma: "Não mexer" };
+function linhaDoPadrao(c, cfg, meta) {
+  const p = cfg.postagem || {};
+  const guardar = (mudanca) => guardarConfig(c.id, { postagem: { ...p, ...mudanca } });
+  const quantos = Math.max(1, meta || 0, (p.horas || []).length);
+  const seletorHora = (i) => {
+    const sel = h("select", { class: "pd-hora", title: `A hora do ${i + 1}º vídeo do dia neste canal` },
+      h("option", { value: "" }, "sem hora"),
+      ...Array.from({ length: 24 }, (_, hr) => h("option", { value: String(hr) }, `${hr}h`)));
+    sel.value = (p.horas || [])[i] == null ? "" : String(p.horas[i]);
+    sel.onchange = () => {
+      const horas = Array.from({ length: quantos }, (_, k) => (p.horas || [])[k] ?? null);
+      horas[i] = sel.value === "" ? null : Number(sel.value);
+      guardar({ horas });
+    };
+    return h("label", { class: "pd-item" }, h("span", { class: "fraco" }, quantos > 1 ? `${i + 1}º vídeo` : "Hora"), sel);
+  };
+  const auto = h("input", { type: "checkbox" }); auto.checked = !!p.auto;
+  auto.onchange = () => guardar({ auto: auto.checked });
+  const anuncio = h("select", { title: "O intervalo dos anúncios no meio do vídeo" },
+    ...[1, 2, 3, 5].map((n) => h("option", { value: String(n) }, `a cada ${n} min`)));
+  anuncio.value = String(p.anuncioCada || 1);
+  anuncio.onchange = () => guardar({ anuncioCada: Number(anuncio.value) });
+  const tela = h("select", { title: "A tela final do vídeo" },
+    ...Object.entries(TELAS_FINAIS_DIA).map(([k, t]) => h("option", { value: k }, t)));
+  tela.value = p.telaFinal || "melhor";
+  tela.onchange = () => guardar({ telaFinal: tela.value });
+  return h("div", { class: "padrao" },
+    h("b", {}, "Padrão de postagem"),
+    h("div", { class: "pd-linha" }, ...Array.from({ length: quantos }, (_, i) => seletorHora(i))),
+    h("label", { class: "check" }, auto, "Postar sozinho quando o vídeo ficar pronto"),
+    h("div", { class: "pd-linha" }, h("label", { class: "pd-item" }, h("span", { class: "fraco" }, "Anúncio"), anuncio),
+      h("label", { class: "pd-item" }, h("span", { class: "fraco" }, "Tela final"), tela)),
+    h("span", { class: "fraco" }, "Vale para os vídeos deste canal sem agendamento, hoje e no calendário. Mudar um vídeo na mão não muda o padrão."));
 }
 
 // o "procurar ideia": abre o YouTube e a extensão troca para a conta de treino (content.js). Pelo #radar-conta= do
@@ -499,13 +653,22 @@ function cartaoDoCanal(c, videos) {
         title: "Abre o YouTube e lê de novo todas as contas do menu Trocar de conta" }, "↻ Ler as contas de novo") : null);
   })();
 
-  const novoTitulo = h("input", { placeholder: "Título de um vídeo feito fora da Nova produção" });
-  const marcar = () => { const t = novoTitulo.value.trim(); novoTitulo.blur(); if (t) diaNovoVideo({ canal: c.id, canalNome: c.titulo, titulo: t }); };
+  // o dia na tela: hoje ou um dia do calendário (os textos dizem "hoje" ou "em 26/11")
+  const ehHoje = vista.data === hojeLocal();
+  const noDia = ehHoje ? "hoje" : `em ${dataCurta(vista.data)}`;
+  const novoTitulo = h("input", { placeholder: ehHoje ? "Título de um vídeo feito fora da Nova produção" : `Título de um vídeo para ${dataCurta(vista.data)}` });
+  // num dia do calendário, o vídeo entra como planejado (o "+ Planejar" de antes, que continua igual)
+  const marcar = async () => {
+    const t = novoTitulo.value.trim(); novoTitulo.blur();
+    if (!t) return;
+    if (ehHoje) diaNovoVideo({ canal: c.id, canalNome: c.titulo, titulo: t });
+    else { await diaPlanejar({ canal: c.id, canalNome: c.titulo, titulo: t, data: vista.data }); recarregar(); }
+  };
   novoTitulo.addEventListener("keydown", (e) => { if (e.key === "Enter") marcar(); });
 
   // as thumbnails salvas para o canal pelo botão direito que não entraram num vídeo: ficam aqui, como feitas
   const usadas = thumbsUsadas();
-  const doCanal = dia.thumbs.filter((t) => t.canal === c.id && !usadas.has(t.id) && imagens[t.id]);
+  const doCanal = vista.thumbs.filter((t) => t.canal === c.id && !usadas.has(t.id) && imagens[t.id]);
   const thumbFeita = doCanal.length || videos.some((v) => v.thumb);
   const semPostar = semPostarHoje(c.id);
   const estado = corDoCanal(meta, videos, thumbFeita, semPostar);
@@ -518,7 +681,7 @@ function cartaoDoCanal(c, videos) {
   const naoPedidos = Array.from({ length: Math.max(0, (meta || 0) - videos.length) }, (_, i) => h("div", { class: "video falta vazio-pedido" },
     h("span", { class: "num" }, String(videos.length + i + 1)), h("div", {}, h("b", {}, `Vídeo ${videos.length + i + 1}`),
       h("div", { class: "estado falta" }, "Ainda não pedido: procure a ideia e faça a Nova produção"))));
-  const alternarSemPostar = () => mudarDia((d) => {
+  const alternarSemPostar = () => mudarVista((d) => {
     const lista = new Set(d.semPostar || []);
     if (lista.has(c.id)) lista.delete(c.id); else lista.add(c.id);
     d.semPostar = [...lista];
@@ -529,7 +692,7 @@ function cartaoDoCanal(c, videos) {
       h("div", { class: "estado ok" }, "Thumbnail feita"),
       h("div", { class: "acoes" }, h("span", { class: "fraco" }, `${hora(t.hora)}${t.origem ? " · " + t.origem : ""}`), baixar(t, c.titulo),
         h("button", { class: "x", title: "Apagar esta thumbnail", onclick: async () => {
-          await mudarDia((d) => { d.thumbs = d.thumbs.filter((x) => x.id !== t.id); });
+          await mudarVista((d) => { d.thumbs = d.thumbs.filter((x) => x.id !== t.id); });
           chrome.storage.local.remove(DIA_THUMB + t.id);
         } }, "×"))));
 
@@ -541,8 +704,14 @@ function cartaoDoCanal(c, videos) {
   novaThumb.addEventListener("mouseenter", () => { colarEm = { canal: c.id, canalNome: c.titulo }; });
   novaThumb.addEventListener("mouseleave", () => { colarEm = null; });
 
-  // procurar ideia para hoje ou para amanhã (o próximo pedido deste canal entra no dia escolhido)
-  const procurar = cfg.treino
+  // procurar ideia para hoje ou para amanhã (o próximo pedido deste canal entra no dia escolhido); num dia do
+  // calendário, o primeiro botão é para o próprio dia
+  const procurar = cfg.treino && !ehHoje
+    ? h("div", { class: "linha procurar" }, h("span", { class: "fraco" }, "Procurar ideia:"),
+      h("button", { type: "button", title: `Abre o YouTube na conta ${cfg.treino}; o próximo pedido deste canal fica para ${dataCurta(vista.data)}`,
+        onclick: () => procurarIdeia(c, cfg.treino, vista.data) }, `Para ${dataCurta(vista.data)} ↗`),
+      procurarParaData(c, cfg.treino))
+    : cfg.treino
     ? h("div", { class: "linha procurar" }, h("span", { class: "fraco" }, "Procurar ideia:"),
       h("button", { type: "button", title: `Abre o YouTube na conta ${cfg.treino}; o próximo pedido deste canal fica para hoje`,
         onclick: () => procurarIdeia(c, cfg.treino, "hoje") }, "Para hoje ↗"),
@@ -558,17 +727,17 @@ function cartaoDoCanal(c, videos) {
   if (semPostar && !abertos.has(c.id)) {
     return h("article", { class: "canal ok fechado" },
       h("div", { class: "canal-cab", title: "Clique para abrir o canal", onclick: () => { abertos.add(c.id); desenhar(); } },
-        h("b", {}, `✓ ${c.titulo}`), h("span", { class: "meta ok" }, "hoje sem postar ▸")),
-      h("div", { class: "linha" }, h("button", { type: "button", onclick: alternarSemPostar }, "Desfazer: vou postar hoje"), procurar),
+        h("b", {}, `✓ ${c.titulo}`), h("span", { class: "meta ok" }, `${noDia} sem postar ▸`)),
+      h("div", { class: "linha" }, h("button", { type: "button", onclick: alternarSemPostar }, `Desfazer: vou postar ${noDia}`), procurar),
       listaAmanha);
   }
   const tudoPostado = estado === "ok" && videos.length > 0;
   if (tudoPostado && !abertos.has(c.id)) {
     return h("article", { class: "canal ok fechado" },
-      h("div", { class: "canal-cab", title: "Clique para ver os vídeos de hoje", onclick: () => { abertos.add(c.id); desenhar(); } },
+      h("div", { class: "canal-cab", title: `Clique para ver os vídeos ${ehHoje ? "de hoje" : "do dia"}`, onclick: () => { abertos.add(c.id); desenhar(); } },
         h("b", {}, `✓ ${c.titulo}`), h("span", { class: "meta ok" }, `${plural(postados, "postado", "postados")} ▸`)),
       procurar || h("span", { class: "fraco" }, "Escolha a conta de treino em Ajustes do canal (clique no nome) para procurar ideia."),
-      linhaForaDoMeuDia(c),
+      ehHoje ? linhaForaDoMeuDia(c) : null,
       listaAmanha);
   }
 
@@ -576,38 +745,41 @@ function cartaoDoCanal(c, videos) {
   // sem vídeo pedido, abre o upload do Studio
   const naoPostados = videos.filter((v) => !v.postado);
   const avisos = [naoPostados.length ? `Falta postar ${plural(naoPostados.length, "vídeo", "vídeos")}` : "",
-    falta ? `falta pedir ${plural(falta, "vídeo", "vídeos")} hoje` : ""].filter(Boolean).join(" · ");
+    falta ? `falta pedir ${plural(falta, "vídeo", "vídeos")} ${noDia}` : ""].filter(Boolean).join(" · ");
   const postarCanal = h("button", { type: "button", class: "vermelho",
     title: naoPostados.length ? `Postar "${naoPostados[0].titulo}"` : "Abre o upload do YouTube Studio" },
   NO_STUDIO ? "Postar" : "Postar ↗");
   postarCanal.onclick = () => postar(naoPostados[0], postarCanal, c);
-  const botaoSemPostar = h("button", { type: "button", class: "sem-postar", title: semPostar ? "Volta a contar este canal hoje" : "O canal fica verde hoje e sai da conta do dia",
-    onclick: alternarSemPostar }, semPostar ? "Desfazer: vou postar hoje" : "Hoje não vou postar");
+  const botaoSemPostar = h("button", { type: "button", class: "sem-postar", title: semPostar ? `Volta a contar este canal ${noDia}` : `O canal fica verde ${noDia} e sai da conta do dia`,
+    onclick: alternarSemPostar }, semPostar ? `Desfazer: vou postar ${noDia}` : ehHoje ? "Hoje não vou postar" : `Não vou postar ${noDia}`);
 
   return h("article", { class: `canal ${estado}` },
     h("div", { class: "canal-cab", ...(tudoPostado || semPostar ? { title: "Clique para recolher", onclick: () => { abertos.delete(c.id); desenhar(); } } : {}) },
       h("b", {}, c.titulo),
       meta == null ? null : h("span", { class: `meta ${estado}` },
-        meta === 0 ? plural(feitos, "vídeo hoje", "vídeos hoje") : `${feitos}/${meta} hoje${postados ? ` · ${postados} postado${postados > 1 ? "s" : ""}` : ""}`)),
+        meta === 0 ? plural(feitos, `vídeo ${noDia}`, `vídeos ${noDia}`) : `${feitos}/${meta} ${noDia}${postados ? ` · ${postados} postado${postados > 1 ? "s" : ""}` : ""}`)),
     pedacos,
     thumbFeita ? h("div", { class: "estado ok" }, "Thumbnail feita") : null,
     meta == null ? pergunta : null,
     avisos && !semPostar ? h("div", { class: "linha" }, h("span", { class: "aviso" }, avisos[0].toUpperCase() + avisos.slice(1)), postarCanal, botaoSemPostar)
       : !tudoPostado ? h("div", { class: "linha" }, botaoSemPostar) : null,
     procurar,
-    linhaForaDoMeuDia(c),
+    ehHoje ? linhaForaDoMeuDia(c) : null,
     listaAmanha,
     videos.length || doCanal.length || naoPedidos.length ? h("div", { class: "videos" },
       ...videos.map((v) => cartaoDoVideo(v, (meta || 0) > 1 || videos.length > 1 ? numeroDe(v) : 0)),
       ...(semPostar || (meta || 0) < 2 ? [] : naoPedidos), ...doCanal.map(cartaoThumb)) : null,
     c.id && !NO_SITE ? novaThumb : null,
+    // num dia do calendário, planejar um vídeo fica à mão (antes era o "+ Planejar" do cartão simples)
+    ehHoje ? null : h("div", { class: "linha cal-planejar" }, novoTitulo, h("button", { type: "button", onclick: marcar }, "+ Planejar")),
     h("details", {}, h("summary", {}, !cfg.treino ? "Ajustes do canal · falta a conta de treino"
       : /^https?:\/\//i.test(cfg.treino) && !/@[\w.\-]+/.test(cfg.treino) ? "Ajustes do canal · troque o link pelo @ da conta de treino" : "Ajustes do canal"),
       h("div", { style: "display:grid;gap:8px" },
         linkTreino,
+        linhaDoPadrao(c, cfg, meta),
         meta == null ? null : h("div", { class: "linha" }, h("span", { class: "fraco" }, "Vídeos por dia:"),
           ...[0, 1, 2, 3, 4].map((n) => h("button", { class: n === meta ? "vermelho" : "", onclick: () => escolherMeta(n) }, n === 0 ? "não posto todo dia" : String(n)))),
-        h("div", { class: "linha" }, novoTitulo, h("button", { onclick: marcar }, "+ vídeo")))));
+        ehHoje ? h("div", { class: "linha" }, novoTitulo, h("button", { onclick: marcar }, "+ vídeo")) : null)));
 }
 
 // ------------------------------------------------------------ o calendário (pedido do usuário em 2026-11-22)
@@ -632,6 +804,10 @@ function escolherData(v, titulo) {
   campo.addEventListener("change", async () => {
     if (!campo.value) return;
     await diaMoverParaData(v.id, campo.value);
+    // o agendamento vai junto para o dia novo, na mesma hora
+    if (v.agendar && v.agendar.slice(0, 10) !== campo.value) {
+      await mudarDiaDe(campo.value, (d) => { const x = d.videos.find((y) => y.id === v.id); if (x) x.agendar = `${campo.value}T${v.agendar.slice(11, 16)}`; });
+    }
     recarregar();
   });
   return campo;
@@ -644,20 +820,6 @@ function procurarParaData(c, treino) {
   const botao = h("button", { type: "button", title: `Abre o YouTube na conta ${treino}; o próximo pedido deste canal fica para o dia escolhido`,
     onclick: () => campo.value && procurarIdeia(c, treino, campo.value) }, "Para o dia ↗");
   return h("span", { class: "procurar-data" }, campo, botao);
-}
-
-/** Um pedido de outro dia, no cartão do canal desse dia. */
-function itemDaFila(v) {
-  return h("div", { class: "amanha-item" },
-    h("span", { class: "amanha-titulo" }, v.titulo || "vídeo sem título"),
-    v.planejado ? h("span", { class: "fraco", title: "Planejado no calendário, ainda sem pedido na fábrica" }, "planejado") : null,
-    escolherData(v, "Mudar o dia deste pedido"),
-    h("button", { type: "button", class: "mudar-dia", title: "Este pedido é para hoje", onclick: () => diaAmanhaParaHoje(v.id).then(recarregar) }, "Para hoje"),
-    h("button", { class: "x", title: "Tirar este pedido do calendário", onclick: async () => {
-      const { [DIA_AMANHA]: fila = [] } = await chrome.storage.local.get(DIA_AMANHA);
-      await chrome.storage.local.set({ [DIA_AMANHA]: fila.filter((x) => x.id !== v.id) });
-      recarregar();
-    } }, "×"));
 }
 
 /** A faixa do calendário: hoje e os próximos dias, cada um com quantos vídeos tem contra a meta somada dos canais.
@@ -676,69 +838,29 @@ function calendario() {
     const lista = ehHoje ? dia.videos : pedidosDoDia(iso);
     return h("button", { type: "button", class: `cal-dia ${cor}${aberto ? " aberto" : ""}`,
       title: lista.map((v) => `${v.canalNome || ""} · ${v.titulo}`).join("\n") || "Nada pedido",
-      onclick: () => { diaVisto = ehHoje ? "" : iso; desenhar(); window.scrollTo({ top: 0 }); } },
+      onclick: () => { diaVisto = ehHoje ? "" : iso; recarregar(); window.scrollTo({ top: 0 }); } },
     h("span", { class: "cal-sem" }, ehHoje ? "Hoje" : nomeDoDia(iso)), h("b", {}, dataCurta(iso)),
     h("span", { class: "cal-conta" }, meta ? `${n}/${meta}` : String(n)));
   };
   return [h("h2", {}, "Calendário"), h("div", { class: "cal-faixa" }, ...[hoje, ...dias, ...alem].map(celula))];
 }
 
-/** O cartão de um canal num dia que não é hoje: os pedidos dele para aquele dia, a meta, o procurar ideia e o
- *  "+ Planejar" (vários vídeos de uma vez, um título por vez). */
-function cartaoDoDia(c, videos, iso) {
-  const cfg = config[c.id] || {};
-  const meta = cfg.porDia || 0, n = videos.length;
-  const cor = meta ? (n >= meta ? "ok" : n ? "meio" : "falta") : (n ? "ok" : "");
-  const titulo = h("input", { type: "text", placeholder: "Título do vídeo", class: "cal-titulo" });
-  const planejar = async () => {
-    if (!titulo.value.trim()) return titulo.focus();
-    await diaPlanejar({ canal: c.id, canalNome: c.titulo, titulo: titulo.value, data: iso });
-    recarregar();
-  };
-  titulo.addEventListener("keydown", (e) => { if (e.key === "Enter") planejar(); });
-  return h("article", { class: `canal ${cor}` },
-    h("div", { class: "canal-cab" }, h("b", {}, c.titulo),
-      h("span", { class: `meta ${cor}` }, meta ? `${n}/${meta} em ${dataCurta(iso)}` : plural(n, "vídeo", "vídeos"))),
-    n ? h("div", { class: "amanha" }, ...videos.map((v) => itemDaFila(v)))
-      : h("div", { class: "fraco" }, meta ? `Falta pedir ${plural(meta, "vídeo", "vídeos")} para ${dataCurta(iso)}.` : "Nada pedido para este dia."),
-    cfg.treino ? h("div", { class: "linha procurar" },
-      h("button", { type: "button", title: `Abre o YouTube na conta ${cfg.treino}; o próximo pedido deste canal fica para ${dataCurta(iso)}`,
-        onclick: () => procurarIdeia(c, cfg.treino, iso) }, `Procurar ideia para ${dataCurta(iso)} ↗`)) : null,
-    h("div", { class: "linha cal-planejar" }, titulo, h("button", { type: "button", onclick: planejar }, "+ Planejar")));
-}
-
-/** A tela de um dia que não é hoje: os cartões dos canais com os pedidos daquele dia. */
-function desenharOutroDia(iso) {
-  $("data").replaceChildren(h("span", {}, dataLonga(iso)), " ",
-    h("button", { type: "button", class: "voltar-hoje", onclick: () => { diaVisto = ""; desenhar(); } }, "← Voltar para hoje"));
-  const lista = [...canais];
-  for (const v of pedidosDoDia(iso)) if (!lista.some((c) => c.id === v.canal)) lista.push({ id: v.canal || "", titulo: v.canalNome || "Sem canal" });
-  const doCanal = (id) => pedidosDoDia(iso).filter((v) => (v.canal || "") === id);
-  const falta = (c) => Math.max(0, ((config[c.id] || {}).porDia || 0) - doCanal(c.id).length);
-  lista.sort((a, b) => falta(b) - falta(a));
-  $("canais").replaceChildren(...(lista.length ? lista.map((c) => cartaoDoDia(c, doCanal(c.id), iso))
-    : [h("div", { class: "vazio" }, "Nenhum canal ainda. Ligue o Radar e cadastre seus canais.")]));
-  const metaTotal = canais.reduce((s, c) => s + ((config[c.id] || {}).porDia || 0), 0);
-  const n = pedidosDoDia(iso).length;
-  $("resumo").replaceChildren(...[
-    metaTotal ? h("span", { class: `pilula ${corDaConta(Math.min(n, metaTotal), metaTotal)}` }, `Vídeos ${n}/${metaTotal} em ${dataCurta(iso)}`)
-      : h("span", { class: "pilula" }, plural(n, "vídeo pedido", "vídeos pedidos"))]);
-  $("calendario").replaceChildren(...calendario());
-}
-
+// todos os dias com os mesmos cartões (pedido do usuário em 2026-11-24): o dia do calendário escolhido (`vista`) é
+// desenhado igual a hoje, com thumbnail, teste A/B, Postar e agendamento
 function desenhar() {
-  if (diaVisto && diaVisto <= hojeLocal()) diaVisto = "";  // virou o dia: o dia visto passou a ser hoje
-  if (diaVisto) return desenharOutroDia(diaVisto);
-  const d = new Date();
-  $("data").textContent = d.toLocaleDateString("pt-BR", { weekday: "long", day: "numeric", month: "long" });
+  if (diaVisto && vista.data !== diaVisto) return void recarregar();  // trocou de dia e o dia novo ainda não foi lido
+  const ehHoje = vista.data === hojeLocal();
+  if (ehHoje) $("data").textContent = new Date().toLocaleDateString("pt-BR", { weekday: "long", day: "numeric", month: "long" });
+  else $("data").replaceChildren(h("span", {}, dataLonga(vista.data)), " ",
+    h("button", { type: "button", class: "voltar-hoje", onclick: () => { diaVisto = ""; recarregar(); } }, "← Voltar para hoje"));
   if (erroRadar) mostrarErro(erroRadar);
 
   const lista = [...canais];
-  for (const v of dia.videos) if (!lista.some((c) => c.id === v.canal)) lista.push({ id: v.canal || "", titulo: v.canalNome || "Sem canal" });
-  const doCanal = (id) => dia.videos.filter((v) => (v.canal || "") === id);
+  for (const v of vista.videos) if (!lista.some((c) => c.id === v.canal)) lista.push({ id: v.canal || "", titulo: v.canalNome || "Sem canal" });
+  const doCanal = (id) => vista.videos.filter((v) => (v.canal || "") === id);
   // primeiro o vermelho, depois o amarelo, os sem cor e por fim os verdes
   const peso = (c) => {
-    const m = (config[c.id] || {}).porDia, cor = corDoCanal(m, doCanal(c.id), dia.thumbs.some((t) => t.canal === c.id), semPostarHoje(c.id));
+    const m = (config[c.id] || {}).porDia, cor = corDoCanal(m, doCanal(c.id), vista.thumbs.some((t) => t.canal === c.id), semPostarHoje(c.id));
     return { falta: 0, meio: 1, azul: 2, "": 3, ok: 4 }[cor];
   };
   lista.sort((a, b) => peso(a) - peso(b));
@@ -749,28 +871,28 @@ function desenhar() {
   const contam = canais.filter((c) => !semPostarHoje(c.id));
   const metaTotal = contam.reduce((s, c) => s + ((config[c.id] || {}).porDia || 0), 0);
   const feitosMeta = contam.reduce((s, c) => s + Math.min(doCanal(c.id).length, (config[c.id] || {}).porDia || 0), 0);
-  const semThumb = dia.videos.filter((v) => !v.thumb).length, postados = dia.videos.filter((v) => v.postado).length;
-  const n = dia.videos.length;
+  const semThumb = vista.videos.filter((v) => !v.thumb).length, postados = vista.videos.filter((v) => v.postado).length;
+  const n = vista.videos.length;
   $("resumo").replaceChildren(...[
-    metaTotal ? h("span", { class: `pilula ${corDaConta(feitosMeta, metaTotal)}` }, `Vídeos ${feitosMeta}/${metaTotal}`) : null,
+    metaTotal ? h("span", { class: `pilula ${corDaConta(feitosMeta, metaTotal)}` }, `Vídeos ${feitosMeta}/${metaTotal}${ehHoje ? "" : ` em ${dataCurta(vista.data)}`}`) : null,
     n ? h("span", { class: `pilula ${corDaConta(n - semThumb, n)}` }, semThumb ? `${plural(semThumb, "thumbnail falta", "thumbnails faltam")}` : "Thumbnails em dia") : null,
     n ? h("span", { class: `pilula ${corDaConta(postados, n)}` }, `${postados}/${n} postados`) : null,
-    !metaTotal && !dia.videos.length ? h("span", { class: "pilula" }, "Nada pedido hoje") : null].filter(Boolean));
+    !metaTotal && !vista.videos.length ? h("span", { class: "pilula" }, ehHoje ? "Nada pedido hoje" : `Nada pedido para ${dataCurta(vista.data)}`) : null].filter(Boolean));
   $("legenda").replaceChildren(legenda(), ...[avisoDesfazer()].filter(Boolean));
   $("calendario").replaceChildren(...calendario());
-  $("tirados").replaceChildren(...secaoTirados());
+  $("tirados").replaceChildren(...(ehHoje ? secaoTirados() : []));
   lerPedidosDaFabrica();
 
   const usadas = thumbsUsadas();
-  const soltas = dia.thumbs.filter((t) => !usadas.has(t.id) && !t.canal && imagens[t.id]);
-  const semThumbVideos = dia.videos.filter((v) => !v.thumb);
+  const soltas = vista.thumbs.filter((t) => !usadas.has(t.id) && !t.canal && imagens[t.id]);
+  const semThumbVideos = vista.videos.filter((v) => !v.thumb);
   $("soltas").replaceChildren(
     ...soltas.map((t) => {
       // escolher o canal (ou um vídeo de hoje) marca a thumbnail como feita lá
       const sel = h("select", {}, h("option", { value: "" }, "Escolher o canal…"),
         ...canais.map((c) => h("option", { value: "c:" + c.id }, c.titulo)),
         ...semThumbVideos.map((v) => h("option", { value: "v:" + v.id }, `${v.canalNome ? v.canalNome + " · " : ""}${v.titulo}`)));
-      sel.onchange = () => sel.value && mudarDia((d) => {
+      sel.onchange = () => sel.value && mudarVista((d) => {
         const [tipo, alvo] = [sel.value.slice(0, 1), sel.value.slice(2)];
         const th = d.thumbs.find((x) => x.id === t.id);
         const x = tipo === "v" ? d.videos.find((y) => y.id === alvo) : d.videos.find((y) => y.canal === alvo && !y.thumb);
@@ -782,7 +904,7 @@ function desenhar() {
         sel,
         h("div", { class: "linha" }, baixar(t),
           h("button", { class: "x", title: "Apagar", onclick: async () => {
-            await mudarDia((d) => { d.thumbs = d.thumbs.filter((x) => x.id !== t.id); });
+            await mudarVista((d) => { d.thumbs = d.thumbs.filter((x) => x.id !== t.id); });
             chrome.storage.local.remove(DIA_THUMB + t.id);
           } }, "×")));
     }),
@@ -797,7 +919,7 @@ chrome.storage.onChanged.addListener((mudou, area) => {
     for (const id of Object.keys(prontoNaFabrica)) delete prontoNaFabrica[id];
     lerProgresso().then(() => { const a = document.activeElement; if (!(a && a.tagName === "INPUT" && a.type !== "checkbox")) desenhar(); });
   }
-  if (area !== "local" || !(mudou[DIA_CHAVE] || mudou[DIA_CONFIG] || mudou[DIA_AMANHA])) return;
+  if (area !== "local" || !(mudou[DIA_CHAVE] || mudou[DIA_CONFIG] || mudou[DIA_AMANHA] || mudou[DIA_FUTURO])) return;
   // não redesenha no meio de quem está digitando um link ou título
   const digitando = () => document.activeElement && document.activeElement.tagName === "INPUT" && document.activeElement.type !== "checkbox";
   const tentar = () => (digitando() ? setTimeout(tentar, 1500) : recarregar());
@@ -810,7 +932,12 @@ document.addEventListener("visibilitychange", () => { if (!document.hidden && di
 if (new URLSearchParams(location.search).has("embutido")) document.body.classList.add("embutido");
 Promise.all([lerContasYoutube(), lerProgresso()]).then(() => recarregar()).then(() => {
   // veio do Postar apertado fora do Studio: começa sozinho
-  const v = postarAoAbrir && dia.videos.find((x) => x.id === postarAoAbrir);
+  let v = postarAoAbrir && dia.videos.find((x) => x.id === postarAoAbrir);
+  // o Postar de um dia do calendário: abre aquele dia, que é onde estão a thumbnail e o agendamento dele
+  const doCalendario = !v && postarAoAbrir && amanha.find((x) => x.id === postarAoAbrir);
+  if (doCalendario) { diaVisto = doCalendario.para; return recarregar().then(() => vista.videos.find((x) => x.id === postarAoAbrir)); }
+  return v;
+}).then((v) => {
   postarAoAbrir = "";
-  if (v && NO_STUDIO) postar(v, null);
+  if (v && NO_STUDIO) postar(v, null, null, { auto: AUTO_AO_ABRIR });
 }).then(lerCanais);

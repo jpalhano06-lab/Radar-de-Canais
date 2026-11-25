@@ -91,11 +91,32 @@ def _publico(linha: dict | None) -> dict | None:
     return {k: v for k, v in linha.items() if k not in ("pedido", "lease")} | {"pedido": pedido}
 
 
-def criar(usuario_id: int, pedido: dict, comecar: bool) -> dict:
+class Repetido(ValueError):
+    """Já existe um pedido com o mesmo título: só entra outro se a pessoa confirmar (pedido de 2026-11-24)."""
+
+
+def _chave_titulo(titulo: str) -> str:
+    return " ".join(str(titulo or "").split()).casefold()
+
+
+def pedido_igual(usuario_id: int, titulo: str) -> dict | None:
+    """O pedido mais antigo deste usuário com o mesmo título (sem olhar maiúsculas e espaços). O cancelado não conta."""
+    chave = _chave_titulo(titulo)
+    for linha in banco.todos("SELECT id, estado, pedido FROM producoes_fila WHERE usuario_id=? AND estado!='cancelado' "
+                             "ORDER BY id", usuario_id):
+        if _chave_titulo(json.loads(linha["pedido"] or "{}").get("titulo")) == chave:
+            return {"id": linha["id"], "estado": linha["estado"]}
+    return None
+
+
+def criar(usuario_id: int, pedido: dict, comecar: bool, repetir: bool = False) -> dict:
     limpo = {k: pedido.get(k) for k in CAMPOS if pedido.get(k) not in (None, "")}
     limpo["titulo"] = str(pedido.get("titulo") or "").strip()
     if not limpo["titulo"]:
         raise ValueError("Escreva o título do vídeo.")
+    # vídeo saindo em dobro na fábrica (2026-11-24): pedido com título igual a outro só entra com confirmação
+    if not repetir and (igual := pedido_igual(usuario_id, limpo["titulo"])):
+        raise Repetido(f"Já existe um pedido com esse título (nº {igual['id']}, {igual['estado'].replace('_', ' ')}).")
     limpo["revisar"] = bool(pedido.get("revisar"))
     if limpo.get("sem_narracao"):
         if limpo.get("canal_id"):

@@ -3998,7 +3998,12 @@ async function novaProducao(preset = {}) {
       ...(N.modo === "manual" ? { roteiro_manual: N.roteiro } : { caracteres: N.caracteres, nicho: N.nicho, observacao: N.obs }) };
     try {
       await api("/api/fila", { method: "POST", body: { pedido, comecar } });
-    } catch (e) { erro.textContent = e.message; return; }
+    } catch (e) {
+      // 409 = já há pedido com esse título: só entra outro igual se a pessoa confirmar
+      if (e.status !== 409 || !confirm(`${e.message}\n\nCriar outro pedido igual mesmo assim?`)) { erro.textContent = e.message; return; }
+      try { await api("/api/fila", { method: "POST", body: { pedido, comecar, repetir: true } }); }
+      catch (e2) { erro.textContent = e2.message; return; }
+    }
     fechar();
     aviso(comecar ? "Na fila: o vídeo começa quando a fábrica tiver vaga." : "Guardado na Entrada.");
     if (rotaAtual() === "acompanhar") acompanhar(); else location.hash = "#/acompanhar";

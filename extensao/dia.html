@@ -56,6 +56,42 @@
   .cal-planejar select { max-width: 180px; }
   .cal-titulo { flex: 1; min-width: 160px; }
   .data-pedido { font-size: 12px; padding: 3px 6px; max-width: 140px; color-scheme: dark; }
+  /* agendar: o botão fechado; aberto, os 5 dias e o relógio de 24 horas */
+  .agendar { margin: 6px 0 2px; font-size: 12px; }
+  .ag-linha { display: flex; align-items: center; gap: 4px; }
+  .ag-chip { display: inline-flex; align-items: center; gap: 6px; padding: 5px 12px; font-size: 12.5px; font-weight: 600;
+    border-style: dashed; color: var(--fraco); }
+  .ag-chip:hover, .ag-chip.aberto { border-color: #3d8bfd; color: var(--texto); }
+  .ag-chip.marcado { border-style: solid; border-color: rgba(61,139,253,.7); background: rgba(61,139,253,.14); color: #8fbaff; }
+  .ag-chip.passou { border-style: solid; border-color: rgba(245,179,1,.6); color: var(--amarelo); }
+  .ag-painel { margin-top: 8px; padding: 8px; border: 1px solid var(--linha); border-radius: 12px; background: var(--fundo);
+    display: grid; gap: 8px; justify-items: center; box-sizing: border-box; width: 100%; max-width: 230px; }
+  .ag-dias { display: flex; gap: 4px; flex-wrap: wrap; justify-content: center; }
+  .ag-dia { display: grid; justify-items: center; gap: 0; padding: 4px 6px; border-radius: 9px; font-size: 10.5px; line-height: 1.2; min-width: 38px; }
+  .ag-dia span { color: var(--fraco); text-transform: capitalize; }
+  .ag-dia b { font-size: 11.5px; }
+  .ag-dia.escolhido { background: #3d8bfd; border-color: #3d8bfd; }
+  .ag-dia.escolhido span { color: #dbe8ff; }
+  .ag-relogio { position: relative; width: 164px; height: 164px; border-radius: 50%; flex: none;
+    background: radial-gradient(circle, var(--campo) 0 34%, var(--caixa) 35% 100%); border: 1px solid var(--linha); }
+  .ag-centro { position: absolute; left: 50%; top: 50%; width: 8px; height: 8px; margin: -4px 0 0 -4px; border-radius: 50%; background: #3d8bfd; z-index: 2; }
+  .ag-ponteiro { position: absolute; left: 50%; bottom: 50%; width: 2px; height: 63px; margin-left: -1px; background: #3d8bfd;
+    transform-origin: 50% 100%; z-index: 0; }
+  .ag-ponteiro.dentro { height: 40px; }
+  .ag-hora { position: absolute; width: 24px; height: 24px; margin: -12px 0 0 -12px; padding: 0; border: 0; border-radius: 50%;
+    background: transparent; font-size: 12px; font-weight: 600; display: grid; place-items: center; z-index: 1; }
+  .ag-hora.dentro { width: 20px; height: 20px; margin: -10px 0 0 -10px; font-size: 10.5px; color: var(--fraco); }
+  .ag-hora:hover:not(:disabled) { background: rgba(61,139,253,.3); color: var(--texto); }
+  .ag-hora.escolhida { background: #3d8bfd; color: #fff; }
+  .ag-hora:disabled { opacity: .25; cursor: default; }
+  .ag-dica { text-align: center; font-size: 11.5px; }
+  .padrao { display: grid; gap: 8px; padding: 10px; border: 1px solid var(--linha); border-radius: 10px; font-size: 12.5px; }
+  .padrao .check { display: inline-flex; align-items: center; gap: 6px; }
+  .pd-linha { display: flex; flex-wrap: wrap; gap: 8px; }
+  .pd-item { display: inline-flex; align-items: center; gap: 6px; }
+  .pd-item select { padding: 4px 8px; font-size: 12.5px; }
+  .ag-auto { display: grid; gap: 2px; margin-top: 6px; font-size: 12px; }
+  .ag-auto .check { display: inline-flex; align-items: center; gap: 6px; font-weight: 600; }
   .procurar-data { display: inline-flex; gap: 4px; align-items: center; }
   .voltar-hoje { margin-left: 8px; padding: 3px 10px; font-size: 12px; }
   /* o pedido de outro dia: o título numa linha, o dia e os botões embaixo (no cartão estreito o título sumia) */

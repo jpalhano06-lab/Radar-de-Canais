@@ -782,7 +782,8 @@
   function pegarOPadraoDoCanal() {
     const p = estado.kit && estado.kit.padrao;
     if (!p) return;
-    if (p.anuncio_cada) { estado.cadaMin = p.anuncio_cada; estado.modoAnuncio = "cada"; }
+    // o padrão do canal no Meu dia vale por cima do da fábrica (estado.padraoDoDia, postarDoDia)
+    if (p.anuncio_cada && !estado.padraoDoDia) { estado.cadaMin = p.anuncio_cada; estado.modoAnuncio = "cada"; }
     if (p.tela_final) estado.telaFinal = p.tela_final;
   }
 
@@ -890,6 +891,9 @@
       return { texto: ocupado ? "Montando…" : tf.botao, tarefa: () => tf.tarefa() };
     }
     if (etapa === "verificacoes") return { texto: "Pular esta etapa", tarefa: () => proximaEtapa() };
+    // o vídeo do Meu dia com agendamento: o botão põe de novo a data e a hora no Programar (a primeira vez é sozinha)
+    const ag = etapa === "visibilidade" ? agendarPendente() : "";
+    if (ag) return { texto: ocupado ? "Agendando…" : `Agendar ${quandoCurto(ag)}`, tarefa: () => agendarNoStudio(ag) };
     return null;   // quem aperta Publicar é a pessoa
   }
 
@@ -1016,18 +1020,207 @@
     recado(`Meu dia: teste A/B montado com ${capas.length} thumbnails. Confira e siga as etapas — publicou, ele fica verde no Meu dia.`);
   }
 
-  async function postarDoDia({ id, titulo, video, capa, capasAB = [] }) {
-    sessionStorage.setItem(POSTANDO, JSON.stringify({ id, titulo, desde: Date.now() }));
+  // ------------------------------------------------------------ o agendamento do Meu dia (pedido do usuário em 2026-11-24)
+  // O vídeo do Meu dia pode levar data e hora ("AAAA-MM-DDTHH:MM", no fuso do computador). Na etapa Visibilidade, o
+  // Programar do Studio é aberto e recebe as duas, escritas do jeito que o Studio mostra na língua dele
+  // (#second-container-expand-button abre; ytcp-visibility-scheduler tem o #datepicker-trigger, que abre o
+  // ytcp-date-picker com o campo da data, e o #time-of-day-container com o da hora). Quem aperta o Programar final é a
+  // pessoa, como no resto da publicação.
+  const agendarPendente = () => {
+    try { return JSON.parse(sessionStorage.getItem(POSTANDO) || "{}").agendar || ""; } catch { return ""; }
+  };
+  const quandoCurto = (q) => `${q.slice(8, 10)}/${q.slice(5, 7)} às ${q.slice(11, 16)}`;
+
+  function apertarEnter(campo) {
+    for (const tipo of ["keydown", "keypress", "keyup"]) {
+      campo.dispatchEvent(new KeyboardEvent(tipo, { key: "Enter", code: "Enter", keyCode: 13, which: 13, bubbles: true }));
+    }
+  }
+
+  // as formas que a hora pode ter na lista do Studio: "18:00", "6:00 PM", "6:00 p.m."… comparadas sem espaço e ponto
+  const horaLimpa = (t) => String(t || "").toLowerCase().replace(/[\s.  ]/g, "");
+  function formasDaHora(alvo, lingua) {
+    const hh = alvo.getHours(), mm = String(alvo.getMinutes()).padStart(2, "0");
+    const doze = hh % 12 || 12, ampm = hh < 12 ? "am" : "pm";
+    return new Set([alvo.toLocaleTimeString(lingua, { hour: "numeric", minute: "2-digit" }), `${hh}:${mm}`, `${String(hh).padStart(2, "0")}:${mm}`,
+      `${doze}:${mm}${ampm}`, `${String(doze).padStart(2, "0")}:${mm}${ampm}`].map(horaLimpa));
+  }
+
+  // 2026-11-24: na primeira vez a hora ficou para a pessoa pôr na mão. Digitar no campo não basta: o Studio só aceita a
+  // hora escolhida na lista que abre embaixo do campo. Agora o campo é clicado, a hora é achada na lista e clicada; só
+  // sem a lista ela é digitada. Cada passo diz onde parou, para o recado contar.
+  async function agendarNoStudio(quando) {
+    if (estado.trabalhando) return;
+    const alvo = new Date(quando);
+    if (!(alvo.getTime() > Date.now())) return recado(`Meu dia: o agendamento (${quandoCurto(quando)}) já passou. Escolha a data e a hora no Programar.`, true);
+    estado.trabalhando = "agendar"; desenhar();
+    let passo = "abrir o Programar";
+    try {
+      const lingua = document.documentElement.lang || navigator.language || "pt-BR";
+      const agendador = () => [...document.querySelectorAll("ytcp-visibility-scheduler")].find(visivel) || null;
+      if (!agendador()) {
+        const abrir = naTela("#second-container-expand-button") || naTela("tp-yt-paper-radio-button[name=SCHEDULE]")
+          || botao(/^(Programar|Agendar|Schedule)$/i) || folhas(/^(Programar|Agendar|Schedule)$/i)[0];
+        if (abrir) abrir.click();
+      }
+      const caixaAg = await esperarPor(agendador, 6000);
+      if (!caixaAg) throw new Error("não achei o Programar da Visibilidade");
+
+      passo = "pôr a data";
+      const gatilho = caixaAg.querySelector("#datepicker-trigger") || caixaAg.querySelector("ytcp-dropdown-trigger");
+      if (!gatilho) throw new Error("não achei o campo da data");
+      const diaOk = () => new RegExp(`(^|\D)0?${alvo.getDate()}(\D|$)`).test(limpo(gatilho));
+      gatilho.click();
+      const campoData = await esperarPor(() => [...document.querySelectorAll("ytcp-date-picker tp-yt-paper-input input, ytcp-date-picker input")].find(visivel), 4000);
+      if (!campoData) throw new Error("o calendário da data não abriu");
+      digitar(campoData, alvo.toLocaleDateString(lingua, { day: "numeric", month: "short", year: "numeric" }));
+      apertarEnter(campoData);
+      await esperar(800);
+      // o calendário às vezes fica aberto: fecha com Esc para a lista da hora poder abrir
+      if (visivel(campoData)) { campoData.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", code: "Escape", keyCode: 27, bubbles: true })); await esperar(300); }
+
+      passo = "pôr a hora";
+      const campoHora = await esperarPor(() => [...caixaAg.querySelectorAll("#time-of-day-container input, #time-of-day-container tp-yt-paper-input input, ytcp-form-input-container#time-of-day-container input")].find(visivel), 3000);
+      if (!campoHora) throw new Error("não achei o campo da hora");
+      const formas = formasDaHora(alvo, lingua);
+      const horaOk = () => formas.has(horaLimpa(oQueTem(campoHora)));
+      campoHora.focus(); campoHora.click();
+      const item = await esperarPor(() => [...document.querySelectorAll("tp-yt-paper-item, ytcp-ve tp-yt-paper-item, [role=option]")]
+        .find((el) => formas.has(horaLimpa(limpo(el)))), 2500);
+      if (item) {
+        item.scrollIntoView({ block: "center" });
+        item.click();
+        await esperar(500);
+      }
+      if (!horaOk()) {
+        // sem a lista (ou a lista não mudou o campo): digita a hora no formato que o campo do Studio já mostra.
+        // 2026-11-24 (gravação do usuário): o toLocaleTimeString do Chrome põe um espaço especial (U+202F) antes do PM;
+        // o Studio não entendia "11:00 PM" assim e voltava para 12:00 AM. Agora o texto é montado à mão, com espaço comum
+        const doze = /[ap]\.?\s*m/i.test(oQueTem(campoHora));
+        const hh = alvo.getHours(), mm = String(alvo.getMinutes()).padStart(2, "0");
+        digitar(campoHora, doze ? `${hh % 12 || 12}:${mm} ${hh < 12 ? "AM" : "PM"}` : `${String(hh).padStart(2, "0")}:${mm}`);
+        apertarEnter(campoHora);
+        campoHora.dispatchEvent(new Event("blur", { bubbles: true }));
+        await esperar(500);
+      }
+      document.body.click();
+
+      estado.agendou = quando;
+      const dataNaTela = limpo(gatilho), horaNaTela = oQueTem(campoHora);
+      if (horaOk() && diaOk()) {
+        recado(`Meu dia: agendado para ${quandoCurto(quando)} (${dataNaTela}, ${horaNaTela}).${auto.ativo ? "" : " Confira e aperte Programar."}`);
+        return true;
+      }
+      recado(`Meu dia: o Studio ficou com ${diaOk() ? "a data certa" : `a data ${dataNaTela || "vazia"}`} e ${horaOk() ? "a hora certa" : `a hora ${horaNaTela || "vazia"}`}. `
+        + `Ponha ${quandoCurto(quando)} na mão antes de apertar Programar.`, true);
+      return false;
+    } catch (e) {
+      estado.agendou = quando;
+      recado(`Meu dia: não agendei sozinho (parei em ${passo}: ${(e && e.message) || e}). Ponha ${quandoCurto(quando)} na mão.`, true);
+      return false;
+    } finally {
+      estado.trabalhando = ""; desenhar();
+    }
+  }
+
+  // ------------------------------------------------------------ postar sozinho (pedido do usuário em 2026-11-24)
+  // O vídeo do Meu dia marcado para "postar sozinho" chega aqui com `auto`: depois do vídeo e da capa, cada etapa
+  // roda a mesma tarefa do botão vermelho dela (Preencher e pular, Ligar e colocar com anúncio a cada 1 minuto,
+  // nada disso, tela final, Next) e, na Visibilidade, o Programar recebe a data e a hora. O Schedule só é apertado se
+  // a data e a hora conferirem; qualquer etapa parada por 2 minutos, ou o agendamento que não confere, para tudo
+  // ANTES de publicar e avisa (background.js, auto-fim). O vídeo fica no Studio para a pessoa terminar.
+  const auto = { ativo: false, id: "", etapa: "", desde: 0, vezes: 0, ultima: 0, ocupado: false, capaPronta: false, avisos: [] };
+  const PARADO_DEMAIS = 2 * 60 * 1000;
+
+  function autoComecar(id) {
+    Object.assign(auto, { ativo: true, id, etapa: "", desde: Date.now(), vezes: 0, ultima: 0, ocupado: false, capaPronta: false, avisos: [] });
+  }
+  function autoParar(ok, motivo = "") {
+    auto.ativo = false;
+    pedir({ tipo: "auto-fim", id: auto.id, ok, motivo });
+    if (!ok) recado(`Meu dia (postar sozinho): parei em ${motivo}. Nada foi agendado: termine você aqui.`, true);
+  }
+  const desativado = (b) => !b || b.hasAttribute("disabled") || b.getAttribute("aria-disabled") === "true";
+
+  // depois do Schedule: o Studio mostra "We're still checking" (Got it) e "Video uploading" (Close)
+  async function fecharJanelasDepois() {
+    const fim = Date.now() + 90 * 1000;
+    while (Date.now() < fim) {
+      await esperar(1500);
+      clicar(/^(Got it|Entendi|Ok|OK)$/i, document.body);
+      const janela = [...document.querySelectorAll("ytcp-uploads-still-processing-dialog, ytcp-video-share-dialog")].find(visivel);
+      if (janela && clicar(/^(Close|Fechar)$/i, janela)) return;
+    }
+  }
+
+  async function autoPasso() {
+    if (!auto.ativo || auto.ocupado || estado.trabalhando || !telaDePublicar()) return;
+    const etapa = etapaAtual();
+    if (!etapa) return;
+    if (etapa !== auto.etapa) Object.assign(auto, { etapa, desde: Date.now(), vezes: 0, ultima: 0 });
+    if (Date.now() - auto.desde > PARADO_DEMAIS) return autoParar(false, `a etapa "${etapa}" (fiquei 2 minutos nela)`);
+    if (auto.vezes && Date.now() - auto.ultima < 8000) return;      // dá tempo para a tela mudar antes de insistir
+    if (etapa === "detalhes" && (!auto.capaPronta || estado.carregando)) return;   // o vídeo e a capa ainda entrando
+    auto.ocupado = true; auto.vezes++; auto.ultima = Date.now();
+    try {
+      // anúncio do padrão do canal no Meu dia (1 minuto se não houver), por cima do da fábrica
+      estado.modoAnuncio = "cada"; estado.cadaMin = auto.cadaMin || 1;
+      if (etapa === "detalhes") { if (auto.vezes === 1) await preencherDetalhes({ avancar: true }); else proximaEtapa(); }
+      else if (etapa === "monetizacao") { if (auto.vezes === 1) await ligarEColocarAnuncios(); else proximaEtapa(); }
+      else if (etapa === "anuncios") { if (auto.vezes <= 2) await colocarAnuncios(); else clicar(/^(Continuar|Continue)$/i); }
+      else if (etapa === "anunciantes") await responderNadaDisso();
+      else if (etapa === "elementos") { if (auto.vezes === 1) await telaFinalEscolhida().tarefa(); else proximaEtapa(); }
+      else if (etapa === "verificacoes") proximaEtapa();
+      else if (etapa === "visibilidade") {
+        const ag = agendarPendente();
+        if (!ag) return autoParar(false, "a Visibilidade, sem horário de agendamento");
+        if (!(await agendarNoStudio(ag))) return autoParar(false, "a Visibilidade: a data ou a hora não conferiram");
+        await esperar(800);
+        const final = naTela("ytcp-uploads-dialog #done-button");
+        if (desativado(final)) return autoParar(false, "a Visibilidade: o botão Schedule não liberou");
+        auto.ativo = false;
+        (final.querySelector("button") || final).click();      // o clique de sempre: o Meu dia marca postado
+        recado(`Meu dia (postar sozinho): agendado para ${quandoCurto(ag)}.`);
+        pedir({ tipo: "auto-fim", id: auto.id, ok: true, motivo: auto.avisos.join(" · ") });
+        fecharJanelasDepois();
+        return;
+      }
+      if (estado.recadoErro && estado.recado && !auto.avisos.includes(estado.recado)) auto.avisos.push(estado.recado);
+    } catch (e) {
+      autoParar(false, `a etapa "${etapa}" (${(e && e.message) || e})`);
+    } finally {
+      auto.ocupado = false;
+    }
+  }
+
+  async function postarDoDia({ id, titulo, video, capa, capasAB = [], agendar = "", auto: sozinho = false, anuncioCada = 0, telaFinal = "" }) {
+    // o padrão de postagem do canal (Meu dia): o intervalo dos anúncios e a tela final
+    estado.padraoDoDia = !!(anuncioCada || telaFinal);
+    if (anuncioCada) { estado.cadaMin = anuncioCada; estado.modoAnuncio = "cada"; }
+    if (telaFinal && TELAS_FINAIS[telaFinal]) estado.telaFinal = telaFinal;
+    auto.cadaMin = anuncioCada || 1;
+    sessionStorage.setItem(POSTANDO, JSON.stringify({ id, titulo, agendar, desde: Date.now() }));
+    estado.agendou = "";
+    if (sozinho) autoComecar(id);
     ultimoTitulo = ""; avisouPostado = "";
     recado("Meu dia: abrindo o upload com o vídeo da fábrica…");
     await abrirUpload();
     const campo = await esperarPor(campoDoVideo, 15000);
-    if (!campo) return recado("Meu dia: não achei o botão de enviar vídeo do Studio. Abra Criar > Carregar vídeos e aperte Postar de novo.", true);
+    if (!campo) {
+      if (auto.ativo) return autoParar(false, "o upload: não achei o botão de enviar vídeo do Studio");
+      return recado("Meu dia: não achei o botão de enviar vídeo do Studio. Abra Criar > Carregar vídeos e aperte Postar de novo.", true);
+    }
     colocarArquivo(campo, video);
-    if (!capa) return recado("Meu dia: o vídeo está subindo. Este vídeo ainda não tem thumbnail no Meu dia: escolha a capa aqui.");
+    if (!capa) {
+      if (auto.ativo) return autoParar(false, "a capa: o vídeo não tem thumbnail no Meu dia");
+      return recado("Meu dia: o vídeo está subindo. Este vídeo ainda não tem thumbnail no Meu dia: escolha a capa aqui.");
+    }
     // a capa só aparece nos Detalhes, depois que o upload começa
     const campoCapa = await esperarPor(campoDaCapa, 60000);
-    if (!campoCapa) return recado("Meu dia: o vídeo está subindo, mas o campo da capa não apareceu: coloque a thumbnail na mão.", true);
+    if (!campoCapa) {
+      if (auto.ativo) return autoParar(false, "a capa: o campo da thumbnail não apareceu");
+      return recado("Meu dia: o vídeo está subindo, mas o campo da capa não apareceu: coloque a thumbnail na mão.", true);
+    }
     let arquivo = capa;
     if (capa.size > CAPA_LIMITE) {
       try { const { bloco } = await encolher(capa); arquivo = new File([bloco], capa.name.replace(/\.[^.]+$/, "") + ".jpg", { type: "image/jpeg" }); }
@@ -1036,8 +1229,10 @@
     aplicandoCapa = arquivo !== capa;
     try { colocarArquivo(campoCapa, arquivo); } finally { aplicandoCapa = false; }
     const extras = (capasAB || []).filter((f) => f && typeof f.size === "number");
-    if (extras.length) { await esperar(2500); return montarTesteAB([capa, ...extras]); }
-    recado("Meu dia: vídeo e thumbnail no Studio. Confira e siga as etapas — publicou, ele fica verde no Meu dia.");
+    if (extras.length) { await esperar(2500); await montarTesteAB([capa, ...extras]); auto.capaPronta = true; return; }
+    auto.capaPronta = true;
+    recado(auto.ativo ? "Meu dia (postar sozinho): vídeo e thumbnail no Studio, seguindo as etapas…"
+      : "Meu dia: vídeo e thumbnail no Studio. Confira e siga as etapas — publicou, ele fica verde no Meu dia.");
   }
 
   window.addEventListener("message", (e) => {
@@ -1124,6 +1319,12 @@
     }
     // o recado é da etapa em que foi dado: o "✗ tags…" do Detalhes não pode seguir para a Adequação
     const etapa = agora ? etapaAtual() : "";
+    // chegou na Visibilidade com um vídeo do Meu dia agendado: marca o Programar sozinho, uma vez
+    if (auto.ativo) autoPasso();
+    else if (etapa === "visibilidade" && !estado.trabalhando) {
+      const ag = agendarPendente();
+      if (ag && estado.agendou !== ag) agendarNoStudio(ag);
+    }
     if (etapa !== ultimaEtapa) {
       if (ultimaEtapa && !estado.trabalhando) estado.recado = "";
       ultimaEtapa = etapa;
