@@ -27,3 +27,6 @@ __pycache__/
 
 # Restos de log do servidor
 *.log.err
+
+# Cópia velha da extensão (0.27, veio de um zip): a certa é extensao/
+radar-extensao/
