@@ -39,6 +39,8 @@ async function pedir({ caminho, metodo = "GET", corpo }) {
 let filaTrocaLog = Promise.resolve();
 function registrarTrocaBg(passo, url = "background") {
   const linha = { t: new Date().toISOString(), url, passo };
+  // vai também ao Radar (dados/troca-log.txt), para conferir sem abrir o Chrome (2026-11-26)
+  pedir({ caminho: "/api/ext/troca-log", metodo: "POST", corpo: linha }).catch(() => {});
   filaTrocaLog = filaTrocaLog.then(async () => {
     const { diaTrocaLog = [] } = await chrome.storage.local.get("diaTrocaLog");
     await chrome.storage.local.set({ diaTrocaLog: [...diaTrocaLog.slice(-59), linha] });
@@ -85,6 +87,9 @@ chrome.runtime.onMessage.addListener((msg, _remetente, responder) => {
   if (msg && msg.tipo === "abrir-dia") abrirDia();       // o "Abrir em aba" do painel do YouTube e o ícone (popup)
   if (msg && msg.tipo === "dia-postado") {               // publicou no Studio: fica verde no Meu dia (publicar.js)
     diaMarcarPostado(msg).then(async (id) => {
+      // o vídeo do Canal de teste: o Radar fica sabendo e procura o link dele no canal
+      const v = id ? await diaAcharVideo(id) : null;
+      if (v && v.testeId) await pedir({ caminho: "/api/ext/teste/postado", metodo: "POST", corpo: { id: v.testeId, titulo: msg.titulo || v.titulo } });
       // o postar sozinho acabou bem: libera o próximo
       const { autoPostando } = await chrome.storage.local.get("autoPostando");
       if (autoPostando && (autoPostando.id === id || autoPostando.id === msg.id)) await chrome.storage.local.remove("autoPostando");
@@ -98,11 +103,45 @@ chrome.runtime.onMessage.addListener((msg, _remetente, responder) => {
   // o Postar do Meu dia (2026-11-16): abria o Studio na conta que estivesse aberta. Agora é o caminho do procurar
   // ideia com a conta do próprio canal e, depois da troca, o Studio dele; o pedido de postar (diaPostar) ou de só abrir
   // o upload (diaAbrirUpload) espera lá
+  // o "Avaliar métricas hoje" da aba Canais de teste (canais-teste.js, 2026-11-25): troca para a conta do canal e
+  // abre as métricas dele no Studio
+  if (msg && msg.tipo === "abrir-canal-studio") {
+    const id = /^UC[\w-]{22}$/.test(msg.canalId || "") ? msg.canalId : "";
+    const studio = id ? `https://studio.youtube.com/channel/${id}${msg.onde === "analytics" ? "/analytics/tab-overview/period-default" : ""}` : "https://studio.youtube.com/";
+    abrirParaTrocar(_remetente.tab, msg.canalNome, studio).then(() => responder({ ok: true }), (e) => responder({ erro: String(e) }));
+    return true;
+  }
+  // o Postar da aba Canais de teste (2026-11-25): acha o vídeo guardado pelo id do teste (puxa do Radar se ainda não
+  // chegou) e segue o Postar do Meu dia, com a troca para a conta do canal
+  // ligou ou desligou o "Postar sozinho" na aba: os vídeos guardados pegam o modo novo já
+  if (msg && msg.tipo === "teste-sincronizar") {
+    olharTestes().then(() => responder({ ok: true }), (e) => responder({ erro: String(e) }));
+    return true;
+  }
+  if (msg && msg.tipo === "teste-postar") {
+    (async () => {
+      const achar = async () => {
+        const { [DIA_AMANHA]: fila = [] } = await chrome.storage.local.get(DIA_AMANHA);
+        return (await lerDia()).videos.find((v) => v.testeId === msg.testeId) || fila.find((v) => v.testeId === msg.testeId);
+      };
+      let v = await achar();
+      if (!v) { await olharTestes().catch(() => {}); v = await achar(); }
+      if (!v) throw new Error("o vídeo ainda não chegou na extensão: tente de novo em um minuto");
+      await chrome.storage.local.set({ diaPostar: { id: v.id, quando: Date.now(), canal: v.canal || "" } });
+      const studio = /^UC[\w-]{22}$/.test(v.canal || "") ? `https://studio.youtube.com/channel/${v.canal}` : "https://studio.youtube.com/";
+      await abrirParaTrocar(_remetente.tab, v.canalNome, studio);
+    })().then(() => responder({ ok: true }), (e) => responder({ erro: String(e.message || e) }));
+    return true;
+  }
   if (msg && msg.tipo === "postar-no-canal") {
     // vai para a raiz do Studio, que abre o canal da conta da aba: o endereço /channel/<id> direto, logo depois da
     // troca, deu "Oops" no teste com João o Lobo (2026-11-16). O painel do Studio confere o canal antes de subir
     const pedido = msg.id ? { diaPostar: { id: msg.id, quando: Date.now(), canal: msg.canalId || "" } } : msg.soAbrir ? {} : { diaAbrirUpload: Date.now() };
-    chrome.storage.local.set(pedido).then(() => abrirParaTrocar(_remetente.tab, msg.canalNome, "https://studio.youtube.com/"))
+    // 2026-11-25: a raiz do Studio não segue a conta do YouTube, volta para o último canal aberto no Studio (o Postar
+    // do 한국의 미래 caía no Australia Insight e parava em "este Studio é de outro canal"). Visto no Chrome: depois da
+    // troca, o /channel/<id> direto abre o canal certo
+    const studio = /^UC[\w-]{22}$/.test(msg.canalId || "") ? `https://studio.youtube.com/channel/${msg.canalId}` : "https://studio.youtube.com/";
+    chrome.storage.local.set(pedido).then(() => abrirParaTrocar(_remetente.tab, msg.canalNome, studio))
       .then(() => responder({ ok: true }), (e) => responder({ erro: String(e) }));
     return true;
   }
@@ -243,7 +282,15 @@ async function olharProgresso() {
 }
 chrome.runtime.onInstalled.addListener(() => { chrome.alarms.create("progresso", { periodInMinutes: 1 }); olharProgresso(); });
 chrome.runtime.onStartup.addListener(() => { chrome.alarms.create("progresso", { periodInMinutes: 1 }); olharProgresso(); });
-chrome.alarms.onAlarm.addListener((a) => { if (a.name === "progresso") { olharProgresso().catch(() => {}); olharPostarSozinho().catch(() => {}); } });
+chrome.alarms.onAlarm.addListener((a) => { if (a.name === "progresso") { olharProgresso().catch(() => {}); olharTestes().catch(() => {}).then(() => olharPostarSozinho()).catch(() => {}); } });
+
+// o Canal de teste do Radar (pedido do usuário em 2026-11-25): os vídeos dele entram no Meu dia com o postar sozinho,
+// e o Studio sobe cada um com o título, a descrição e as tags do kit do Radar
+async function olharTestes() {
+  const r = await pedir({ caminho: "/api/ext/teste/pendentes" });
+  // a lista vazia também vai: é ela que tira do Meu dia o vídeo de teste que o Radar trocou
+  if (r.dados && Array.isArray(r.dados.videos)) await diaTesteSincronizar(r.dados.videos);
+}
 
 // ------------------------------------------------------------ postar sozinho (pedido do usuário em 2026-11-24)
 // "Uma opção no Meu dia: quando tudo estiver pronto e só faltar o vídeo, o Radar posta quando o vídeo ficar pronto".
@@ -253,34 +300,68 @@ chrome.alarms.onAlarm.addListener((a) => { if (a.name === "progresso") { olharPr
 const AUTO_SEGURA = 25 * 60 * 1000;
 const agendaValida = (v) => /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(v.agendar || "") && new Date(v.agendar).getTime() > Date.now() + 5 * 60 * 1000;
 
+// 2026-11-25 (pedido do usuário: "ele só vai me auxiliar a postar ... só posta se eu não postar agendado até a hora"):
+// pronto o vídeo, o Radar abre o Studio no modo "ajudar" (sobe, preenche as etapas e põe a data e a hora, mas quem
+// aperta Agendar é a pessoa), uma vez por vídeo (`ajudado`). O postar sozinho de verdade (v.auto) só entra
+// AUTO_NA_HORA antes da hora marcada, se o vídeo ainda não estiver postado.
+const AUTO_NA_HORA = 15 * 60 * 1000;
 async function olharPostarSozinho() {
   await diaAplicarPadroes().catch(() => 0);   // os vídeos novos ganham a hora e o postar sozinho do padrão do canal
   const { autoPostando, [DIA_AMANHA]: fila = [] } = await chrome.storage.local.get(["autoPostando", DIA_AMANHA]);
   if (autoPostando && Date.now() - autoPostando.quando < AUTO_SEGURA) return;
   const hoje = await lerDia();
-  const candidatos = [...hoje.videos, ...fila].filter((v) => v.auto && !v.postado && !v.autoFalhou && v.thumb && v.canal && v.canalNome && agendaValida(v));
+  // o vídeo do Canal de teste não tem thumbnail de propósito (semCapa)
+  // o Canal de teste com o "Postar sozinho" ligado (2026-11-25): não agenda, publica quando chega a hora do teste
+  const deTesteNaHora = (v) => v.teste && v.naHora && v.auto && !v.autoFalhou && v.testeQuando
+    && new Date(v.testeQuando).getTime() <= Date.now();
+  const candidatos = [...hoje.videos, ...fila].filter((v) => !v.postado && (v.thumb || v.semCapa) && v.canal && v.canalNome
+    && (agendaValida(v) || deTesteNaHora(v)));
   for (const v of candidatos) {
-    const r = await pedir({ caminho: `/api/ext/postar?titulo=${encodeURIComponent(v.titulo || "")}` });
+    // o do Canal de teste posta sozinho assim que fica pronto, sem esperar a hora nem a pessoa (2026-11-25)
+    const naHora = deTesteNaHora(v) || (v.auto && !v.autoFalhou && !v.naHora
+      && (v.teste || new Date(v.agendar).getTime() - Date.now() <= AUTO_NA_HORA));
+    const ajudar = !naHora && !v.teste && (v.ajudar || v.auto) && !v.ajudado;
+    if (!naHora && !ajudar) continue;
+    const r = await pedir({ caminho: `/api/ext/postar?titulo=${encodeURIComponent(v.titulo || "")}${v.projeto ? `&nome=${encodeURIComponent(v.projeto)}` : ""}` });
     if (!(r.dados && r.dados.pronto)) continue;
-    await chrome.storage.local.set({ autoPostando: { id: v.id, titulo: v.titulo, quando: Date.now() },
-      diaPostar: { id: v.id, quando: Date.now(), canal: v.canal, auto: true } });
-    registrarTrocaBg(`postar sozinho: "${v.titulo}" pronto na fábrica, abrindo o Studio de ${v.canalNome}`);
-    notificar(`dia-auto-${v.id}`, "Radar: postando sozinho", `"${v.titulo}" ficou pronto. Abrindo o Studio de ${v.canalNome} para agendar.`);
-    await abrirParaTrocar(null, v.canalNome, "https://studio.youtube.com/");
+    const modo = naHora ? true : "ajudar";
+    if (ajudar) await diaMudarVideo(v.id, (x) => { x.ajudado = Date.now(); });
+    await chrome.storage.local.set({ autoPostando: { id: v.id, titulo: v.titulo, quando: Date.now(), modo },
+      diaPostar: { id: v.id, quando: Date.now(), canal: v.canal, auto: modo } });
+    const studio = /^UC[\w-]{22}$/.test(v.canal) ? `https://studio.youtube.com/channel/${v.canal}` : "https://studio.youtube.com/";
+    if (naHora) {
+      registrarTrocaBg(`postar sozinho: "${v.titulo}" não foi postado até perto da hora, abrindo o Studio de ${v.canalNome}`);
+      notificar(`dia-auto-${v.id}`, "Radar: postando sozinho", v.naHora
+        ? `Chegou a hora de "${v.titulo}". Abrindo o Studio de ${v.canalNome} para publicar.`
+        : `"${v.titulo}" não foi postado e a hora está chegando. Abrindo o Studio de ${v.canalNome} para agendar.`);
+    } else {
+      registrarTrocaBg(`ajudar a postar: "${v.titulo}" pronto na fábrica, abrindo o Studio de ${v.canalNome}`);
+      notificar(`dia-ajuda-${v.id}`, "Radar: vídeo pronto para postar", `"${v.titulo}" ficou pronto. Abrindo o Studio de ${v.canalNome}: confira e aperte Agendar.`);
+    }
+    await abrirParaTrocar(null, v.canalNome, studio);
     return;
   }
 }
 
 /** O Studio contou como acabou o postar sozinho (publicar.js e painel-dia.js). */
 async function fimDoAuto({ id, ok, motivo = "" }) {
+  const { autoPostando } = await chrome.storage.local.get("autoPostando");
   await chrome.storage.local.remove("autoPostando");
   if (!id) return;
+  // o modo ajudar não marca o vídeo como parado: o postar sozinho perto da hora continua valendo
+  if (autoPostando && autoPostando.id === id && autoPostando.modo === "ajudar") {
+    if (!ok) notificar(`dia-ajuda-parou-${id}`, "Radar: parei de preencher", `${motivo || "Parou no Studio"}. Termine você no Studio.`);
+    return;
+  }
   if (ok) {
     // agendado, mas alguma etapa reclamou no caminho (ex.: os anúncios não couberam): avisa para conferir
     if (motivo) notificar(`dia-auto-aviso-${id}`, "Radar: agendado, confira", motivo.slice(0, 250));
     return;
   }
   await diaMudarVideo(id, (v) => { v.autoFalhou = motivo || "parou no Studio"; });
+  // o vídeo do Canal de teste: a aba dele fica vermelha no Radar e na beirada do YouTube
+  const v = await diaAcharVideo(id);
+  if (v && v.testeId) await pedir({ caminho: "/api/ext/teste/falhou", metodo: "POST", corpo: { id: v.testeId, motivo: motivo || "o Studio parou no meio" } });
   notificar(`dia-auto-falhou-${id}`, "Radar: não postei sozinho", `${motivo || "Parou no Studio"}. O vídeo não foi agendado: confira no Meu dia.`);
 }
 chrome.runtime.onMessage.addListener((msg, _remetente, responder) => {

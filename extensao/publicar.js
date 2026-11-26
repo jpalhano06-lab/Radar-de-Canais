@@ -185,7 +185,9 @@
       if (digitar(campoTitulo(), (k.titulo || "").slice(0, 100))) feitos.push("título"); else faltou.push("título");
       await esperar(300);
 
-      if (digitar(campoDescricao(), (k.descricao || "").slice(0, 5000))) feitos.push("descrição"); else faltou.push("descrição");
+      // o vídeo do Canal de teste vai só com o título (k.so_titulo, 2026-11-25)
+      if (k.so_titulo) { /* sem descrição */ }
+      else if (digitar(campoDescricao(), (k.descricao || "").slice(0, 5000))) feitos.push("descrição"); else faltou.push("descrição");
       await esperar(300);
     }
 
@@ -194,9 +196,10 @@
         .map((e) => e.closest("tp-yt-paper-radio-button")).filter(Boolean)[0];
     if (naoCriancas) { marcar(naoCriancas); feitos.push("não é para crianças"); } else faltou.push("público (crianças)");
 
-    const tg = await abrirAsTags();
+    const tg = k && k.so_titulo ? null : await abrirAsTags();
     const tags = k ? tagsQueCabem(k.tags || []) : [];
-    if (!tags.length) faltou.push(k ? "tags (a fábrica não mandou nenhuma para este vídeo)" : "tags");
+    if (k && k.so_titulo) { /* sem tags */ }
+    else if (!tags.length) faltou.push(k ? "tags (a fábrica não mandou nenhuma para este vídeo)" : "tags");
     else if (!tg) faltou.push("tags (não abriu o Mostrar mais a tempo — abra e aperte de novo)");
     else if (digitar(tg, tags.join(", "))) { tg.blur(); feitos.push(`${tags.length} tags`); }
     else faltou.push("tags");
@@ -232,9 +235,12 @@
   const simDaSecao = (p) => opcoesDaSecao(p).find((r) => /^(Sim|Yes)$/i.test(limpo(r)));
   const estaMarcado = (r) => (r.checked != null ? !!r.checked : r.getAttribute("aria-checked") === "true" || r.hasAttribute("checked"));
 
+  // o vídeo de verdade do banco do Canal de teste (kit.real, 2026-11-25) não é feito com IA: a resposta é Não
+  const naoDaSecao = (p) => opcoesDaSecao(p).find((r) => /^(Não|No)$/i.test(limpo(r)));
   function marcarIA() {
-    const secao = secaoDe(IA_PERGUNTA, simDaSecao);
-    return secao ? marcar(simDaSecao(secao), true) : false;
+    const real = !!(estado.kit && estado.kit.real);
+    const secao = secaoDe(IA_PERGUNTA, real ? naoDaSecao : simDaSecao);
+    return secao ? marcar((real ? naoDaSecao : simDaSecao)(secao), true) : false;
   }
 
   // Sem apertar nada (pedido do usuário em 2026-11-15: "aqui sempre a extensão tem que colocar que tem uso de IA"):
@@ -1069,7 +1075,9 @@
       passo = "pôr a data";
       const gatilho = caixaAg.querySelector("#datepicker-trigger") || caixaAg.querySelector("ytcp-dropdown-trigger");
       if (!gatilho) throw new Error("não achei o campo da data");
-      const diaOk = () => new RegExp(`(^|\D)0?${alvo.getDate()}(\D|$)`).test(limpo(gatilho));
+      // 2026-11-25: dentro do `…` o "\D" virava "D" e a data nunca conferia: o postar sozinho parava sempre na
+      // Visibilidade. O "\\D" chega inteiro na regex
+      const diaOk = () => new RegExp(`(^|\\D)0?${alvo.getDate()}(\\D|$)`).test(limpo(gatilho));
       gatilho.click();
       const campoData = await esperarPor(() => [...document.querySelectorAll("ytcp-date-picker tp-yt-paper-input input, ytcp-date-picker input")].find(visivel), 4000);
       if (!campoData) throw new Error("o calendário da data não abriu");
@@ -1132,13 +1140,14 @@
   const auto = { ativo: false, id: "", etapa: "", desde: 0, vezes: 0, ultima: 0, ocupado: false, capaPronta: false, avisos: [] };
   const PARADO_DEMAIS = 2 * 60 * 1000;
 
-  function autoComecar(id) {
-    Object.assign(auto, { ativo: true, id, etapa: "", desde: Date.now(), vezes: 0, ultima: 0, ocupado: false, capaPronta: false, avisos: [] });
+  // `ajudar` (2026-11-25): faz as mesmas etapas e põe a data e a hora, mas não aperta Agendar: isso é da pessoa
+  function autoComecar(id, ajudar = false) {
+    Object.assign(auto, { ativo: true, id, ajudar, etapa: "", desde: Date.now(), vezes: 0, ultima: 0, ocupado: false, capaPronta: false, avisos: [] });
   }
   function autoParar(ok, motivo = "") {
     auto.ativo = false;
     pedir({ tipo: "auto-fim", id: auto.id, ok, motivo });
-    if (!ok) recado(`Meu dia (postar sozinho): parei em ${motivo}. Nada foi agendado: termine você aqui.`, true);
+    if (!ok) recado(`Meu dia (${auto.ajudar ? "ajudar a postar" : "postar sozinho"}): parei em ${motivo}. Nada foi agendado: termine você aqui.`, true);
   }
   const desativado = (b) => !b || b.hasAttribute("disabled") || b.getAttribute("aria-disabled") === "true";
 
@@ -1173,8 +1182,31 @@
       else if (etapa === "verificacoes") proximaEtapa();
       else if (etapa === "visibilidade") {
         const ag = agendarPendente();
+        if (!ag && !auto.ajudar) {
+          // o Canal de teste com o "Postar sozinho" (2026-11-25): não agenda, publica na hora, como Público
+          const publico = naTela("tp-yt-paper-radio-button[name=PUBLIC]")
+            || [...document.querySelectorAll("tp-yt-paper-radio-button")].find((r) => visivel(r) && /^(P[úu]blico|Public)\b/i.test(limpo(r)));
+          if (!publico) return autoParar(false, "a Visibilidade: não achei a opção Público");
+          publico.click();
+          await esperar(800);
+          const pronto = naTela("ytcp-uploads-dialog #done-button");
+          if (desativado(pronto)) return autoParar(false, "a Visibilidade: o botão Publicar não liberou");
+          auto.ativo = false;
+          (pronto.querySelector("button") || pronto).click();   // o clique de sempre: o Meu dia marca postado
+          recado("Meu dia (postar sozinho): publicado agora.");
+          pedir({ tipo: "auto-fim", id: auto.id, ok: true, motivo: auto.avisos.join(" · ") });
+          fecharJanelasDepois();
+          return;
+        }
         if (!ag) return autoParar(false, "a Visibilidade, sem horário de agendamento");
         if (!(await agendarNoStudio(ag))) return autoParar(false, "a Visibilidade: a data ou a hora não conferiram");
+        if (auto.ajudar) {
+          auto.ativo = false;
+          recado(`Meu dia: tudo preenchido, agendamento em ${quandoCurto(ag)}. Confira e aperte Agendar. `
+            + "Se não agendar, o Radar posta sozinho 15 minutos antes da hora (se o postar sozinho estiver ligado).");
+          pedir({ tipo: "auto-fim", id: auto.id, ok: true, motivo: auto.avisos.join(" · ") });
+          return;
+        }
         await esperar(800);
         const final = naTela("ytcp-uploads-dialog #done-button");
         if (desativado(final)) return autoParar(false, "a Visibilidade: o botão Schedule não liberou");
@@ -1193,7 +1225,7 @@
     }
   }
 
-  async function postarDoDia({ id, titulo, video, capa, capasAB = [], agendar = "", auto: sozinho = false, anuncioCada = 0, telaFinal = "" }) {
+  async function postarDoDia({ id, titulo, video, capa, capasAB = [], agendar = "", auto: sozinho = false, anuncioCada = 0, telaFinal = "", semCapa = false }) {
     // o padrão de postagem do canal (Meu dia): o intervalo dos anúncios e a tela final
     estado.padraoDoDia = !!(anuncioCada || telaFinal);
     if (anuncioCada) { estado.cadaMin = anuncioCada; estado.modoAnuncio = "cada"; }
@@ -1201,7 +1233,7 @@
     auto.cadaMin = anuncioCada || 1;
     sessionStorage.setItem(POSTANDO, JSON.stringify({ id, titulo, agendar, desde: Date.now() }));
     estado.agendou = "";
-    if (sozinho) autoComecar(id);
+    if (sozinho) autoComecar(id, sozinho === "ajudar");
     ultimoTitulo = ""; avisouPostado = "";
     recado("Meu dia: abrindo o upload com o vídeo da fábrica…");
     await abrirUpload();
@@ -1211,6 +1243,12 @@
       return recado("Meu dia: não achei o botão de enviar vídeo do Studio. Abra Criar > Carregar vídeos e aperte Postar de novo.", true);
     }
     colocarArquivo(campo, video);
+    // o vídeo do Canal de teste sobe sem thumbnail de propósito: o YouTube usa os quadros automáticos (2026-11-25)
+    if (!capa && semCapa) {
+      auto.capaPronta = true;
+      return recado(auto.ativo ? "Meu dia (postar sozinho): vídeo de teste no Studio, sem thumbnail, seguindo as etapas…"
+        : "Meu dia: vídeo de teste no Studio, sem thumbnail. Confira e siga as etapas.");
+    }
     if (!capa) {
       if (auto.ativo) return autoParar(false, "a capa: o vídeo não tem thumbnail no Meu dia");
       return recado("Meu dia: o vídeo está subindo. Este vídeo ainda não tem thumbnail no Meu dia: escolha a capa aqui.");
@@ -1231,7 +1269,7 @@
     const extras = (capasAB || []).filter((f) => f && typeof f.size === "number");
     if (extras.length) { await esperar(2500); await montarTesteAB([capa, ...extras]); auto.capaPronta = true; return; }
     auto.capaPronta = true;
-    recado(auto.ativo ? "Meu dia (postar sozinho): vídeo e thumbnail no Studio, seguindo as etapas…"
+    recado(auto.ativo ? `Meu dia (${auto.ajudar ? "ajudar a postar" : "postar sozinho"}): vídeo e thumbnail no Studio, seguindo as etapas…`
       : "Meu dia: vídeo e thumbnail no Studio. Confira e siga as etapas — publicou, ele fica verde no Meu dia.");
   }
 

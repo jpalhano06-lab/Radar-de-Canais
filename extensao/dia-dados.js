@@ -164,6 +164,7 @@ async function diaAplicarPadroes() {
       const quando = `${d.data}T${String(hr).padStart(2, "0")}:00`;
       if (new Date(quando).getTime() <= Date.now() + 10 * 60 * 1000) continue;
       v.agendar = quando;
+      v.ajudar = true;   // pronto o vídeo, o background abre o Studio e preenche (quem agenda é a pessoa)
       if (p.auto) v.auto = true;
       mudou++;
     }
@@ -317,6 +318,69 @@ async function diaGuardarThumb(dados, { origem = "", nome = "", video = null, ca
     if (v) v.thumb = id;
     return v || null;
   });
+}
+
+/** O vídeo do Meu dia pelo id, esteja hoje ou num dia do calendário. */
+async function diaAcharVideo(id) {
+  const hoje = await lerDia();
+  const { [DIA_AMANHA]: fila = [] } = await chrome.storage.local.get(DIA_AMANHA);
+  return hoje.videos.find((v) => v.id === id) || fila.find((v) => v.id === id) || null;
+}
+
+/** Os vídeos do Canal de teste do Radar (pedido do usuário em 2026-11-25: "quero que ele faça isso manualmente
+ *  sozinho"): cada um vira um vídeo do Meu dia com o postar sozinho ligado, sem thumbnail (o YouTube usa os quadros
+ *  dele) e com o projeto da fábrica já sabido. O Radar remarcou a hora (o Studio não postou a tempo)? O vídeo
+ *  muda de hora e de dia e pode tentar de novo. Devolve quantos mudaram. */
+async function diaTesteSincronizar(lista) {
+  const hoje = hojeLocal();
+  let mudou = 0;
+  for (const t of lista || []) {
+    // 2026-11-25: quem posta é a pessoa, pela aba Canais de teste. O vídeo fica guardado sem agendamento no Studio
+    // (`agendar` vazio): o dia e a hora do teste ficam em `testeQuando`. Com o "Postar sozinho" do canal ligado
+    // (`auto` e `naHora`), o background publica na hora marcada; desligado, o Postar é da pessoa, na aba. O do dia que
+    // já passou fica em hoje, para o Postar achar
+    const auto = t.auto !== false;
+    const semAgendar = !auto || !!t.naHora;
+    const agendar = semAgendar ? "" : t.agendar;
+    let data = String(t.agendar || "").slice(0, 10);
+    if (!ehData(data) || (data < hoje && !semAgendar)) continue;
+    if (data < hoje) data = hoje;
+    const { [DIA_AMANHA]: fila = [] } = await chrome.storage.local.get(DIA_AMANHA);
+    const dia = await lerDia();
+    const existe = dia.videos.find((v) => v.testeId === t.id) || fila.find((v) => v.testeId === t.id);
+    if (existe) {
+      const igual = (existe.testeQuando || existe.agendar) === t.agendar;
+      if (existe.postado || (igual && existe.agendar === agendar && !!existe.auto === auto && !!existe.naHora === !!t.naHora)) continue;
+      await diaMudarVideo(existe.id, (v) => {
+        v.agendar = agendar; v.testeQuando = t.agendar; v.auto = auto; v.naHora = !!t.naHora;
+        // a falha só se apaga com hora nova: senão o sozinho tentaria de novo a cada volta
+        if (!igual || !auto) { delete v.autoFalhou; delete v.ajudado; }
+      });
+      const agora = await diaAcharVideo(existe.id);
+      if (agora && (agora.para || hoje) !== data) await diaMoverParaData(existe.id, data);
+      mudou++;
+      continue;
+    }
+    const novo = { id: novoIdDia(), hora: Date.now(), postado: false, thumb: null, titulo: t.titulo, canal: t.canal,
+      canalNome: t.canalNome, agendar, testeQuando: t.agendar, auto, naHora: !!t.naHora, teste: true, semCapa: true,
+      semPadrao: true, testeId: t.id, projeto: t.projeto };
+    if (data > hoje) {
+      fila.push({ ...novo, para: data });
+      await chrome.storage.local.set({ [DIA_AMANHA]: fila });
+    } else {
+      await mudarDia((d) => { d.videos.push(novo); });
+    }
+    mudou++;
+  }
+  // o que o Radar tirou do teste (o vídeo repetido trocado por outro, 2026-11-25) sai do Meu dia, se ainda não foi
+  // postado: um vídeo de teste nunca vai duas vezes ao ar
+  const vivos = new Set((lista || []).map((t) => t.id));
+  const sobra = (v) => !v.testeId || v.postado || vivos.has(v.testeId);
+  const { [DIA_AMANHA]: fila = [] } = await chrome.storage.local.get(DIA_AMANHA);
+  if (!fila.every(sobra)) { await chrome.storage.local.set({ [DIA_AMANHA]: fila.filter(sobra) }); mudou++; }
+  const dia = await lerDia();
+  if (!dia.videos.every(sobra)) { await mudarDia((d) => { d.videos = d.videos.filter(sobra); }); mudou++; }
+  return mudou;
 }
 
 /** Publicou no Studio (publicar.js): o vídeo do Meu dia fica como postado. Acha pelo id (o botão Postar) ou, para

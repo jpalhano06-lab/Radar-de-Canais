@@ -290,6 +290,24 @@ CREATE TABLE IF NOT EXISTS canais_teste (
     liberado TEXT NOT NULL DEFAULT '',
     PRIMARY KEY (usuario_id, canal_id)
 );
+-- O banco de vídeos do teste (pedido do usuário em 2026-11-25): vídeos de verdade que a pessoa sobe (o do cachorro,
+-- por exemplo) para o Radar postar no canal de teste no lugar dos que ele produz. O arquivo fica em
+-- dados/banco_teste/<id>.mp4 e o mesmo vídeo pode ir para vários canais, nunca duas vezes no mesmo.
+CREATE TABLE IF NOT EXISTS banco_teste (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    usuario_id INTEGER NOT NULL,
+    titulo TEXT NOT NULL,
+    descricao TEXT NOT NULL DEFAULT '',
+    arquivo TEXT NOT NULL,
+    tamanho INTEGER NOT NULL DEFAULT 0,
+    criado TEXT NOT NULL
+);
+-- Os ajustes da criação em massa (2026-11-25): os assuntos ligados, os títulos da própria pessoa, quantos deixar
+-- prontos e em que língua. Um JSON por pessoa (teste_canal.ajustes).
+CREATE TABLE IF NOT EXISTS teste_ajustes (
+    usuario_id INTEGER PRIMARY KEY,
+    dados TEXT NOT NULL DEFAULT '{}'
+);
 CREATE TABLE IF NOT EXISTS estoque_teste (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     usuario_id INTEGER NOT NULL,
@@ -387,7 +405,9 @@ COLUNAS_NOVAS = {
     # painel: a ordem e as abas escondidas do menu de cada pessoa. Fica fora de `prefs` porque salvar_prefs reescreve
     # aquele JSON inteiro a cada resposta das perguntas, e levaria o menu junto
     "usuarios": {"prefs": "TEXT NOT NULL DEFAULT '{}'", "painel": "TEXT NOT NULL DEFAULT '{}'"},
-    "canais_teste": {"nome": "TEXT NOT NULL DEFAULT ''"},     # o nome do canal, para a aba Canal de teste mostrar
+    "canais_teste": {"nome": "TEXT NOT NULL DEFAULT ''",      # o nome do canal, para a aba Canal de teste mostrar
+                     # o que a pessoa achou olhando as métricas no Studio (2026-11-25): "bom" ou "ruim", e quando
+                     "avaliacao": "TEXT NOT NULL DEFAULT ''", "avaliado": "TEXT NOT NULL DEFAULT ''"},
     "salvos": {"pasta": "TEXT NOT NULL DEFAULT ''"},        # a pasta em que a pessoa guardou aquele canal
     # tipo: "roteiro" (o agente que escreve o roteiro) ou "descricao" (o que escreve a sinopse, as tags e as
     # hashtags junto com ele). Os agentes que já existiam são todos de roteiro, por isso o padrão

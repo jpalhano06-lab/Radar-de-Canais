@@ -33,7 +33,8 @@ const NO_SITE = new URLSearchParams(location.search).has("site");
 const NO_STUDIO = new URLSearchParams(location.search).has("studio");
 let postarAoAbrir = new URLSearchParams(location.search).get("postar") || "";
 // o postar sozinho (background.js, olharPostarSozinho): o Studio faz as etapas e agenda sem ninguém apertar nada
-const AUTO_AO_ABRIR = new URLSearchParams(location.search).has("auto");
+// "1" = postar sozinho; "ajudar" (2026-11-25) = abre e preenche, mas quem aperta Agendar é a pessoa
+const AUTO_AO_ABRIR = ((v) => (v === "ajudar" ? "ajudar" : !!v))(new URLSearchParams(location.search).get("auto"));
 
 const hora = (t) => new Date(t).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
 const plural = (n, um, varios) => `${n} ${n === 1 ? um : varios}`;
@@ -51,15 +52,19 @@ async function carregarImagens() {
   for (const id of faltam) imagens[id] = g[DIA_THUMB + id] || "";
 }
 
+// os vídeos do Canal de teste (v.teste, 2026-11-25) moram no Meu dia só para o postar sozinho: a tela não mostra
+// nem conta (pedido do usuário: "da onde surgiu esse canal"). Eles aparecem na aba Canais de teste (canais-teste.js)
+const semTeste = (d) => ({ ...d, videos: (d.videos || []).filter((v) => !v.teste) });
+
 async function recarregar() {
   // o padrão de postagem de cada canal entra nos vídeos sem agendamento antes de desenhar
   await diaAplicarPadroes().catch(() => 0);
-  dia = await lerDia();
+  dia = semTeste(await lerDia());
   if (diaVisto && diaVisto <= hojeLocal()) diaVisto = "";  // virou o dia: o dia visto passou a ser hoje
-  vista = diaVisto ? await lerDiaDe(diaVisto) : dia;
+  vista = diaVisto ? semTeste(await lerDiaDe(diaVisto)) : dia;
   const g = await chrome.storage.local.get([DIA_CONFIG, "diaCanais", DIA_AMANHA]);
   config = g[DIA_CONFIG] || {};
-  amanha = g[DIA_AMANHA] || [];
+  amanha = (g[DIA_AMANHA] || []).filter((v) => !v.teste);
   if (!canais.length) canais = g.diaCanais || [];
   for (const id of Object.keys(imagens)) if (![...dia.thumbs, ...vista.thumbs].some((t) => t.id === id)) delete imagens[id];
   await carregarImagens();
@@ -126,7 +131,9 @@ document.addEventListener("paste", (e) => {
 function mostrarErro(texto) {
   const el = $("erro");
   el.textContent = texto; el.hidden = !texto;
-  if (texto) setTimeout(() => { if (el.textContent === texto) { el.hidden = true; } }, 9000);
+  // o erro fica no topo: com o painel rolado até o vídeo, a pessoa não via (2026-11-25)
+  if (texto) el.scrollIntoView({ block: "nearest", behavior: "smooth" });
+  if (texto) setTimeout(() => { if (el.textContent === texto) { el.hidden = true; } }, 15000);
 }
 
 const baixar = (thumb, titulo) => h("a", { class: "botao", href: imagens[thumb.id] || "#",
@@ -232,22 +239,43 @@ async function postar(v, botao, canal, { auto = false } = {}) {
   const falhouAuto = (motivo) => { if (auto) pedirAoFundo({ tipo: "auto-fim", id: v && v.id, ok: false, motivo }); };
   if (!v) return abrirUpload(canal && canal.id, canal && canal.titulo);
   if (v.agendar && !agendamentoValido(v)) {
-    falhouAuto("o horário do agendamento já passou");
-    return mostrarErro(`O agendamento de "${v.titulo}" já passou: escolha outra data e hora, ou tire o agendamento.`);
+    if (auto) {
+      falhouAuto("o horário do agendamento já passou");
+      return mostrarErro(`O agendamento de "${v.titulo}" já passou: escolha outra data e hora, ou tire o agendamento.`);
+    }
+    // 2026-11-25 (pedido do usuário): o Postar com o agendamento vencido parava e o aviso sumia no topo do painel.
+    // Agora pergunta; no sim, tira o agendamento e publica na hora
+    if (!confirm(`O agendamento de "${v.titulo || "este vídeo"}" (${quandoCurto(v.agendar)}) já passou. Publicar agora?`)) return;
+    await mudarVista((d) => { const x = d.videos.find((y) => y.id === v.id); if (x) { x.agendar = ""; x.auto = false; x.semPadrao = true; } });
+    v = { ...v, agendar: "", auto: false, semPadrao: true };
   }
   if (!noStudioDoCanal(v.canal)) {
-    if (v.canal && v.canalNome) return abrirNoCanal(v.canal, v.canalNome, v.id);
+    if (v.canal && v.canalNome) {
+      // 2026-11-25: no Studio de outro canal o Postar do vídeo coreano não fazia nada e não dizia nada. Sem resposta do
+      // background (extensão recarregada com esta aba aberta), o pedido de troca de conta se perdia calado
+      if (botao) botao.textContent = "Abrindo o Studio do canal…";
+      const r = await abrirNoCanal(v.canal, v.canalNome, v.id);
+      if (botao) setTimeout(desenhar, 1500);
+      if (!r.ok) {
+        falhouAuto("a troca para o canal não começou");
+        return mostrarErro(`Não consegui abrir o Studio de ${v.canalNome}${r.erro ? ` (${r.erro})` : ""}. `
+          + "Recarregue esta aba (F5) e aperte Postar de novo, ou troque para a conta do canal e poste por lá.");
+      }
+      return;
+    }
     window.open("https://studio.youtube.com/", "_blank");
     await chrome.storage.local.set({ diaPostar: { id: v.id, quando: Date.now() } });
     return;
   }
-  if (postando) return;
+  // 2026-11-25: um download que travou (o vídeo de 1,4 GB no código antigo) deixava `postando` preso e todo Postar
+  // seguinte voltava aqui calado
+  if (postando) return mostrarErro("Ainda estou baixando outro vídeo para postar. Se travou, aperte F5 nesta aba e tente de novo.");
   postando = v.id;
   if (!botao) desenhar();             // começou sozinho: o botão do vídeo mostra "Baixando…"
   const texto = (t) => { if (botao) botao.textContent = t; };
   try {
     texto("Procurando na fábrica…");
-    const r = await api(`/api/ext/postar?titulo=${encodeURIComponent(v.titulo || "")}`);
+    const r = await api(`/api/ext/postar?titulo=${encodeURIComponent(v.titulo || "")}${v.projeto ? `&nome=${encodeURIComponent(v.projeto)}` : ""}`);
     if (r.erro) throw new Error(`O Radar não respondeu (${r.erro}).`);
     if (!r.dados.nome) throw new Error(`Não achei "${v.titulo}" na fábrica. Suba o vídeo pelo Criar do Studio.`);
     if (!r.dados.pronto) throw new Error("A fábrica ainda não terminou este vídeo.");
@@ -256,15 +284,17 @@ async function postar(v, botao, canal, { auto = false } = {}) {
       { headers: token ? { Authorization: `Bearer ${token}` } : {} });
     if (!resp.ok) throw new Error(`O Radar não entregou o vídeo (erro ${resp.status}).`);
     const total = Number(resp.headers.get("content-length")) || r.dados.tamanho || 0;
-    const leitor = resp.body.getReader(), pedacos = [];
-    let veio = 0;
-    for (;;) {
-      const { done, value } = await leitor.read();
-      if (done) break;
-      pedacos.push(value); veio += value.length;
-      texto(total ? `Baixando ${Math.round((veio / total) * 100)}%` : `Baixando ${Math.round(veio / 1048576)} MB`);
-    }
-    const video = new File(pedacos, `${nomeDeArquivo(r.dados.titulo || v.titulo)}.mp4`, { type: "video/mp4" });
+    // 2026-11-25: o vídeo de 1,4 GB chegou ao Studio como "Ficheiro ilegível". Antes os pedaços iam para a memória do
+    // JavaScript e depois eram copiados para o File (o dobro do vídeo em RAM); sem memória, o Chrome entrega um arquivo
+    // que não pode ser lido. O resp.blob() grava direto no armazenamento do Chrome, que usa o disco quando precisa.
+    // Sem a porcentagem: mostra o tamanho e o tempo
+    const gb = total ? `${(total / 1073741824).toFixed(1).replace(".", ",")} GB` : "";
+    const inicio = Date.now();
+    const relogio = setInterval(() => texto(`Baixando ${gb} · ${Math.round((Date.now() - inicio) / 1000)} s`), 1000);
+    let bloco;
+    try { texto(`Baixando ${gb}…`); bloco = await resp.blob(); } finally { clearInterval(relogio); }
+    if (total && bloco.size !== total) throw new Error(`O vídeo veio incompleto (${bloco.size} de ${total} bytes). Aperte Postar de novo.`);
+    const video = new File([bloco], `${nomeDeArquivo(r.dados.titulo || v.titulo)}.mp4`, { type: "video/mp4" });
     const thumb = v.thumb && imagens[v.thumb];
     let capa = null;
     if (thumb) {
@@ -280,6 +310,7 @@ async function postar(v, botao, canal, { auto = false } = {}) {
     }
     texto("Abrindo o upload…");
     window.parent.postMessage({ tipo: "radar-postar", id: v.id, titulo: v.titulo, video, capa, capasAB, agendar: agendamentoValido(v), auto,
+      semCapa: !!v.semCapa,
       // o padrão do canal: anúncio a cada N minutos e a tela final escolhida
       anuncioCada: ((config[v.canal] || {}).postagem || {}).anuncioCada || 0, telaFinal: ((config[v.canal] || {}).postagem || {}).telaFinal || "" },
       "https://studio.youtube.com");
@@ -314,12 +345,16 @@ function linhaDaFabrica(v) {
   if ((!r || Date.now() - r.quando > 60 * 1000) && !(r && r.buscando)) {
     prontoNaFabrica[v.id] = { ...(r || {}), buscando: true, quando: (r && r.quando) || 0 };
     api(`/api/ext/postar?titulo=${encodeURIComponent(v.titulo || "")}`).then((x) => {
-      prontoNaFabrica[v.id] = { pronto: !!(x.dados && x.dados.pronto), achou: !!(x.dados && x.dados.nome), quando: Date.now() };
+      prontoNaFabrica[v.id] = { pronto: !!(x.dados && x.dados.pronto), achou: !!(x.dados && x.dados.nome),
+        parado: (x.dados && x.dados.parado) || "", quando: Date.now() };
       desenhar();
     }, () => { prontoNaFabrica[v.id] = { quando: Date.now() }; });
   }
   if (!r || r.pronto == null) return null;
   if (r.pronto) return h("div", { class: "fabrica ok" }, "✓ Vídeo pronto na fábrica: é só postar");
+  // 2026-11-25: o render do ai-2 parou sem disco e aqui dizia "na fila"; o vídeo parado com erro mostra o motivo
+  if (r.achou && r.parado) return h("div", { class: "fabrica parado", title: r.parado },
+    h("span", { class: "fabrica-texto" }, "Fábrica parada: precisa de você", h("span", { class: "fraco" }, ` · ${r.parado}`)));
   if (r.achou) return h("div", { class: "fabrica" }, "Fábrica: na fila, ainda não começou");
   return null;
 }
@@ -532,10 +567,11 @@ function linhaDoAuto(v) {
     if (x) { x.auto = caixa.checked; delete x.autoFalhou; }
   });
   const situacao = !v.auto ? "" : v.autoFalhou ? `parou: ${v.autoFalhou}. Desmarque e marque para tentar de novo`
-    : !v.thumb ? "falta a thumbnail" : "espera a fábrica terminar";
+    : !v.thumb ? "falta a thumbnail" : "pronto o vídeo, o Radar abre o Studio para você; se não postar, ele agenda sozinho 15 min antes da hora";
   return h("div", { class: "ag-auto" },
     h("label", { class: "check", title: "Quando a fábrica terminar, o Radar abre o Studio deste canal, sobe o vídeo com a thumbnail, "
-      + "passa as etapas (anúncio a cada 1 minuto) e agenda para o horário escolhido" }, caixa, "Postar sozinho quando o vídeo ficar pronto"),
+      + "Quando a fábrica terminar, o Radar abre o Studio e preenche as etapas; você confere e aperte Agendar. "
+      + "Se até 15 minutos antes da hora o vídeo não estiver postado, ele faz tudo e agenda sozinho" }, caixa, "Se eu não postar até a hora, postar sozinho"),
     situacao ? h("span", { class: v.autoFalhou ? "aviso" : "fraco" }, situacao) : null);
 }
 
@@ -571,7 +607,7 @@ function linhaDoPadrao(c, cfg, meta) {
   return h("div", { class: "padrao" },
     h("b", {}, "Padrão de postagem"),
     h("div", { class: "pd-linha" }, ...Array.from({ length: quantos }, (_, i) => seletorHora(i))),
-    h("label", { class: "check" }, auto, "Postar sozinho quando o vídeo ficar pronto"),
+    h("label", { class: "check" }, auto, "Se eu não postar até a hora, postar sozinho"),
     h("div", { class: "pd-linha" }, h("label", { class: "pd-item" }, h("span", { class: "fraco" }, "Anúncio"), anuncio),
       h("label", { class: "pd-item" }, h("span", { class: "fraco" }, "Tela final"), tela)),
     h("span", { class: "fraco" }, "Vale para os vídeos deste canal sem agendamento, hoje e no calendário. Mudar um vídeo na mão não muda o padrão."));
@@ -932,11 +968,18 @@ document.addEventListener("visibilitychange", () => { if (!document.hidden && di
 if (new URLSearchParams(location.search).has("embutido")) document.body.classList.add("embutido");
 Promise.all([lerContasYoutube(), lerProgresso()]).then(() => recarregar()).then(() => {
   // veio do Postar apertado fora do Studio: começa sozinho
-  let v = postarAoAbrir && dia.videos.find((x) => x.id === postarAoAbrir);
-  // o Postar de um dia do calendário: abre aquele dia, que é onde estão a thumbnail e o agendamento dele
-  const doCalendario = !v && postarAoAbrir && amanha.find((x) => x.id === postarAoAbrir);
-  if (doCalendario) { diaVisto = doCalendario.para; return recarregar().then(() => vista.videos.find((x) => x.id === postarAoAbrir)); }
-  return v;
+  // procura no que está guardado, não no que a tela mostra: o vídeo do Canal de teste fica fora da tela
+  return lerDia().then(async (todo) => {
+    const v = postarAoAbrir && todo.videos.find((x) => x.id === postarAoAbrir);
+    if (v || !postarAoAbrir) return v;
+    // o Postar de um dia do calendário: abre aquele dia, que é onde estão a thumbnail e o agendamento dele
+    const { [DIA_AMANHA]: fila = [] } = await chrome.storage.local.get(DIA_AMANHA);
+    const doCalendario = fila.find((x) => x.id === postarAoAbrir);
+    if (!doCalendario) return null;
+    diaVisto = doCalendario.para;
+    await recarregar();
+    return (await lerDiaDe(diaVisto)).videos.find((x) => x.id === postarAoAbrir);
+  });
 }).then((v) => {
   postarAoAbrir = "";
   if (v && NO_STUDIO) postar(v, null, null, { auto: AUTO_AO_ABRIR });

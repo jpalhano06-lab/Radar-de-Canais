@@ -95,6 +95,38 @@ def _publicado(nome: str) -> dict | None:
     return {"video_id": y["video_id"], "url": y.get("url") or f"https://youtu.be/{y['video_id']}", "pela": "fabrica"} if y.get("video_id") else None
 
 
+def mp4_inteiro(arquivo: Path) -> bool:
+    """O .mp4 terminou de ser escrito: as caixas do topo cobrem o arquivo e uma delas é o moov (o índice, que o ffmpeg
+    grava no fim). Em 2026-11-21 o disco encheu no meio do render do vídeo coreano "12-999": o final.mp4 ficou com
+    1 GB mas sem o moov, o Meu dia dizia "é só postar" e o upload do Studio ficava carregando para sempre. Só lê os
+    cabeçalhos das caixas (uns poucos bytes), então pode rodar a cada consulta."""
+    try:
+        tamanho = arquivo.stat().st_size
+        tem_moov = False
+        with arquivo.open("rb") as f:
+            pos = 0
+            while pos < tamanho:
+                f.seek(pos)
+                cabeca = f.read(8)
+                if len(cabeca) < 8:
+                    return False
+                caixa, tipo = int.from_bytes(cabeca[:4], "big"), cabeca[4:]
+                if caixa == 1:
+                    grande = f.read(8)
+                    if len(grande) < 8:
+                        return False
+                    caixa = int.from_bytes(grande, "big")
+                elif caixa == 0:
+                    caixa = tamanho - pos
+                if caixa < 8 or pos + caixa > tamanho:
+                    return False
+                tem_moov = tem_moov or tipo == b"moov"
+                pos += caixa
+        return tem_moov
+    except OSError:
+        return False
+
+
 def producoes() -> dict:
     """Tudo da fábrica, separado em andamento e prontos, os mais recentes primeiro."""
     # com dois vídeos pesados andando a lista levou 37 s (2026-11-16), e com 20 s o vigia achava a fábrica desligada
@@ -103,12 +135,22 @@ def producoes() -> dict:
     andamento, prontos = [], []
     for p in sorted(lista, key=lambda x: x.get("criado") or "", reverse=True):
         nome = p["nome"]
-        if nome.startswith("_"):
+        if nome.startswith(("_", "teste-banco-")):   # o vídeo do banco de teste não é produção
             continue
         c = p.get("criacao") or {}
         # vídeo postado há mais de 48 h teve o final.mp4 apagado (limpeza_postados.py), mas continua pronto
         if not p.get("tem_final") and (_pasta(nome) / "limpo_pos_postagem.json").exists():
             p = {**p, "tem_final": True}
+        # a criação que chegou ao fim (o "concluido" só sai depois da etapa 5) e teve a pasta esvaziada à mão, sem a
+        # marca da limpeza: sobra só criacao.json e projeto.json. É vídeo pronto e postado, não parado (2026-11-25: 82
+        # vídeos esvaziados em 21/11 enchiam o "Parados na fábrica"). Sem cenas.json não há o que continuar.
+        elif not p.get("tem_final") and c.get("status") == "concluido" and not c.get("rodando") \
+                and not (_pasta(nome) / "cenas.json").exists():
+            p = {**p, "tem_final": True}
+        # o render que parou com erro no meio (o disco cheio do ai-2, 2026-11-25) deixa um final.mp4 cortado, sem o
+        # moov: com ele o vídeo ia para os prontos, a fila dava o pedido por entregue e o Meu dia dizia "na fila"
+        elif p.get("tem_final") and c.get("status") == "erro" and not mp4_inteiro(_pasta(nome) / "final.mp4"):
+            p = {**p, "tem_final": False}
         perfil = Path(str(p.get("perfil") or "")).stem
         canal = producao._perfil(perfil).get("canal") if perfil else ""
         item = {"nome": nome, "titulo": _titulo(nome), "canal": canal or "Sem canal", "perfil": perfil, "criado": p.get("criado", ""), "duracao": p.get("duracao") or 0,

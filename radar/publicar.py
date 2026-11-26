@@ -111,6 +111,8 @@ def kit(pasta: Path) -> dict:
     textos = pub.get("textos") or {}
     tags = [str(t).strip() for t in (radar.get("tags") or pub.get("tags") or textos.get("tags") or []) if str(t).strip()]
     descricao = str(radar.get("descricao") or pub.get("descricao") or textos.get("resumo") or "")
+    if radar.get("so_titulo"):
+        tags, descricao = [], ""
     capitulos = [c for c in pub.get("capitulos") or [] if isinstance(c, dict)]
     return {
         "nome": pasta.name,
@@ -125,6 +127,10 @@ def kit(pasta: Path) -> dict:
         # a descrição já traz os capítulos; o mid-roll fica melhor entre eles
         "capitulos": [{"tempo": str(c.get("tempo", "")), "nome": str(c.get("nome", "")), "inicio": c.get("inicio")} for c in capitulos],
         "sintetico": bool(pub.get("sintetico") or radar.get("sintetico")),
+        # o vídeo de verdade do banco do Canal de teste: no Studio, "Uso de IA" fica Não (2026-11-25)
+        "real": bool(radar.get("real")),
+        # o vídeo do Canal de teste: só o título, sem descrição nem tags (2026-11-25)
+        "so_titulo": bool(radar.get("so_titulo")),
         # de onde veio o texto do kit: "radar" (escrito junto com o roteiro) ou "fabrica"
         "origem": "radar" if radar.get("descricao") else "fabrica",
         "legenda": str(pub.get("legenda") or ""),

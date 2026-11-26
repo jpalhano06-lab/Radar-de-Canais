@@ -175,6 +175,7 @@ const I = {
   olho: '<path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6-10-6-10-6z"/><circle cx="12" cy="12" r="3"/>',
   olhoFechado: '<path d="M3 3l18 18"/><path d="M10.6 6.2A9.8 9.8 0 0112 6c6.5 0 10 6 10 6a16 16 0 01-3.4 4M6.5 7.7A16 16 0 002 12s3.5 6 10 6c1.3 0 2.5-.2 3.5-.6"/>',
   arrastar: '<path d="M8 6h.01M8 12h.01M8 18h.01M16 6h.01M16 12h.01M16 18h.01"/>',
+  teste: '<path d="M9 3h6M10 3v6L4.5 18.5A1.7 1.7 0 006 21h12a1.7 1.7 0 001.5-2.5L14 9V3"/><path d="M7.5 15h9"/>',
 };
 const icone = (n, classe = "") => `<svg ${classe ? `class="${classe}"` : ""} viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${I[n]}</svg>`;
 
@@ -185,15 +186,60 @@ const icone = (n, classe = "") => `<svg ${classe ? `class="${classe}"` : ""} vie
 // A terceira posição de uma aba é o endereço dela, quando não é só "#/rota": serve para a mesma tela entrar no
 // menu com um recorte pronto (Entraram hoje é a lista de canais com a visão já ligada).
 const MENU = [
-  ["perfil", "Perfil", [["inicio", "Início"], ["meu-dia", "Meu dia"], ["trabalho", "Produzir"], ["acompanhar", "Acompanhar"], ["resultados", "Resultados"], ["custos", "Custos"], ["teste", "Canal de teste"]]],
+  ["perfil", "Perfil", [["inicio", "Início"], ["meu-dia", "Meu dia"], ["trabalho", "Produzir"], ["acompanhar", "Acompanhar"], ["resultados", "Resultados"]]],
   ["descobrir", "Niche Finder", [["base", "Canais"], ["entraram", "Entraram hoje", "#/base?visao=entraram_hoje"],
     // Títulos saiu do menu de manhã (25/10) e voltou de tarde, no mesmo dia, quando o usuário pediu os "títulos
     // recomendados": agora a tela abre com os títulos que estouraram NOS NICHOS DOS CANAIS DELE, que é o que
     // faltava para ela valer o lugar no menu. O gerador continua aqui e no Roteiro.
     ["videos", "Faceless Outliers"], ["titulos", "Títulos que funcionam"], ["grupos", "Grupos de canais"],
     ["acharam", "Acharam para você"]]],
-  ["ferramentas", "Ferramentas", [["animacoes", "Animações"], ["extensao", "Extensão"], ["medir", "Medir canal"], ["bloqueados", "Bloqueados"], ["planos", "Planos"], ["admin", "Administração"], ["integracoes", "Integrações"]]],
+  // a área Canal de teste (pedido do usuário em 2026-11-25): saiu de dentro do Perfil e virou uma área da porta
+  ["teste", "Canal de teste", [["teste", "Painel"], ["teste-novo", "Novo teste"], ["teste-banco", "Banco de vídeos"], ["teste-massa", "Criar em massa"]]],
+  ["ferramentas", "Configurações", [["animacoes", "Animações"], ["custos", "Custos"], ["extensao", "Extensão"], ["medir", "Medir canal"], ["bloqueados", "Bloqueados"], ["planos", "Planos"], ["admin", "Administração"], ["integracoes", "Integrações"]]],
 ];
+// A porta do Radar (pedido do usuário em 2026-11-25: "como se fosse os planos do chatgpt, 3 telas"): ao entrar, três
+// cartões lado a lado, um por área. Escolhida a área, o menu da esquerda mostra só as abas dela
+const AREAS = {
+  perfil: { nome: "Perfil e produções", frase: "Para fazer e postar", texto: "Seus canais, o dia de postagens, os roteiros e o que a fábrica está produzindo.",
+    numero: async () => { try { const n = (await meusCanais()).length; return [n, n === 1 ? "canal seu" : "canais seus"]; } catch { return null; } } },
+  descobrir: { nome: "Niche Finder", frase: "Para achar o próximo nicho", texto: "Os canais e vídeos que estouraram, os nichos abertos e os títulos que funcionam.",
+    numero: async () => NUMEROS.no_radar != null ? [NUMEROS.no_radar, "canais no Radar"] : null },
+  teste: { nome: "Canal de teste", frase: "Para achar o canal novo bom", texto: "Três vídeos por canal novo, de três em três dias, e o aviso quando um passa de mil impressões.",
+    numero: async () => { try { const n = (await api("/api/teste")).numeros; return n.bons ? [n.bons, n.bons === 1 ? "canal bom" : "canais bons"] : [n.canais, n.canais === 1 ? "canal em teste" : "canais em teste"]; } catch { return null; } } },
+  ferramentas: { nome: "Configurações", frase: "Para ajustar o Radar", texto: "Custos, animações, extensão, integrações, planos e o resto do ajuste.",
+    numero: async () => null },
+};
+// as abas de uma área que a pessoa vê, na ordem dela (sem as de administrador para quem não é, sem as escondidas)
+const abasDaArea = (g) => {
+  const subs = (MENU.find(([x]) => x === g) || [, , []])[2].filter(([r]) => !["admin", "integracoes"].includes(r) || EU?.admin);
+  return ordemComAsNovas(subs.map(([r]) => r), PAINEL.abas_ordem).map((r) => subs.find(([x]) => x === r)).filter((s) => s && !abaEscondida(s[0]));
+};
+const VISTO = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>';
+
+// fundo branco e três cartões altos, como a página de planos do ChatGPT (pedido do usuário em 2026-11-25). A área
+// em que a pessoa esteve por último leva o contorno e a etiqueta
+async function telaAreas() {
+  const ultima = guardado("area-ultima", "perfil");
+  tela.innerHTML = `<div class="areas-porta">
+    <header><span class="ponto"></span><h1>Para onde você vai hoje?</h1><p>Escolha uma área. Dá para trocar a qualquer hora pelo menu da esquerda.</p></header>
+    <div class="areas">${Object.entries(AREAS).map(([g, a]) => {
+      const abas = abasDaArea(g);
+      const [r, , endereco] = abas[0] || [];
+      return `<article class="area ${g === ultima ? "destaque" : ""}">
+        <div class="area-topo"><span class="area-ic">${icone(g)}</span>${g === ultima ? '<span class="area-tag">Última que você usou</span>' : ""}</div>
+        <h2>${esc(a.nome)}</h2>
+        <div class="area-numero" data-numero="${g}"><b>${esc(a.frase)}</b></div>
+        <p class="area-texto">${esc(a.texto)}</p>
+        <a class="area-botao" href="${endereco || "#/" + (r || "inicio")}">Entrar em ${esc(a.nome)}</a>
+        <ul>${abas.map(([, t]) => `<li>${VISTO}<span>${esc(t)}</span></li>`).join("")}</ul></article>`;
+    }).join("")}</div></div>`;
+  // o número de cada área chega depois: a porta não espera o servidor para aparecer
+  for (const [g, a] of Object.entries(AREAS)) a.numero().then((x) => {
+    const alvo = tela.querySelector(`[data-numero="${g}"]`);
+    if (x && alvo) alvo.innerHTML = `<b>${num(x[0])}</b><small>${esc(x[1])}</small>`;
+  });
+}
+
 const DICAS = {
   planos: "O que cada plano abre, e o preço",
   animacoes: "O estilo, as cores, as letras e quais animações entram nos seus vídeos",
@@ -206,7 +252,10 @@ const DICAS = {
   titulo: "Converse com o Claude sobre o título e leve para o roteiro", medir: "Cole um @ e veja os números na hora",
   extensao: "Garimpa enquanto você usa o YouTube", bloqueados: "O que você escondeu pelo ⊘", admin: "Cota do YouTube, garimpo e convites",
   integracoes: "As chaves de API e o saldo de cada serviço",
-  teste: "Ligue o canal, cole o @ e a língua: o Radar faz e agenda os 2 vídeos de teste",
+  teste: "Os canais em teste, os três vídeos de cada um e as impressões",
+  "teste-novo": "Escolha de onde vêm os vídeos e comece o teste pelo @ do canal",
+  "teste-banco": "Os vídeos seus que o Radar posta nos canais de teste",
+  "teste-massa": "Os assuntos baratos que o Radar vai deixando prontos",
   "meu-dia": "Os vídeos de hoje de cada canal, as thumbnails feitas e o link do canal de treino",
 };
 
@@ -255,21 +304,21 @@ async function salvarPainel() {
 }
 
 function menu(rota) {
-  document.getElementById("lateral").hidden = !EU;
-  if (!EU) return;
+  document.getElementById("lateral").hidden = !EU || rota === "radar";
+  if (!EU || rota === "radar") return;
   const aberto = grupoDa(rota);
-  const abertos = guardado("menu-aberto2", {});   // os outros grupos ficam como você deixou; o grupo da tela abre sozinho
   const atalho = MENU.flatMap(([, , subs]) => subs).find(([, , endereco]) => endereco && noEndereco(endereco));
   document.getElementById("menu").className = ORGANIZANDO ? "organizando" : "";
-  document.getElementById("menu").innerHTML = MENU.map(([g, nome, subs]) => {
+  // só a área em que a pessoa está, com o nome dela em cima; as outras ficam na porta (#/radar)
+  guardar("area-ultima", aberto);
+  document.getElementById("menu").innerHTML = MENU.filter(([g]) => g === aberto).map(([g, nome, subs]) => {
     const podem = subs.filter(([r]) => !["admin", "integracoes"].includes(r) || EU.admin);
     const naOrdem = ordemComAsNovas(podem.map(([r]) => r), PAINEL.abas_ordem)
       .map((r) => podem.find(([x]) => x === r)).filter(Boolean);
     const itens = ORGANIZANDO ? naOrdem : naOrdem.filter(([r]) => !abaEscondida(r));
-    const mostra = g === aberto || !!abertos[g] || (ORGANIZANDO && itens.length > 0);
-    if (!itens.length) return "";
-    return `<div class="aba ${mostra ? "aberta" : ""} ${g === aberto ? "dentro" : ""}" data-grupo="${g}">${icone(g)}<span>${nome}</span>${icone("seta", "seta")}</div>
-      <div class="subs" ${mostra ? "" : "hidden"} data-grupo="${g}">${itens.map(([r, t, endereco]) => {
+    return `<div class="area-atual"><span class="area-ic">${icone(g)}</span><div><small>Área</small><b>${esc(AREAS[g]?.nome || nome)}</b></div>
+        <a href="#/radar" class="trocar-area" title="Voltar para a escolha das três áreas">Trocar de área</a></div>
+      <div class="subs" data-grupo="${g}">${itens.map(([r, t, endereco]) => {
         const ativo = endereco ? atalho && atalho[0] === r
           : !atalho && (r === rota || ((rota === "canal" || rota === "perfil" || rota === "canais") && r === "inicio"));
         const fixa = PAINEL.fixas.includes(r);
@@ -279,11 +328,6 @@ function menu(rota) {
           ${ORGANIZANDO && !fixa ? `<button class="olho" data-esconder="${r}" title="${abaEscondida(r) ? "Mostrar esta aba" : "Esconder esta aba"}">${icone(abaEscondida(r) ? "olhoFechado" : "olho")}</button>` : ""}</a>`;
       }).join("")}</div>`;
   }).join("");
-  document.querySelectorAll("nav .aba").forEach((a) => (a.onclick = () => {
-    const g = a.dataset.grupo, subs = a.nextElementSibling, f = guardado("menu-aberto2", {});
-    f[g] = subs.hidden; guardar("menu-aberto2", f);
-    subs.hidden = !f[g]; a.classList.toggle("aberta", f[g]);
-  }));
   if (ORGANIZANDO) ligarOrganizar(rota);
   // acesso livre (sem e-mail e senha): não tem o que sair
   document.getElementById("conta").innerHTML = `<button class="organizar" id="organizar">${ORGANIZANDO ? "✓ Pronto" : "Organizar o menu"}</button>`
@@ -731,7 +775,7 @@ function entrar(criar) {
     e.preventDefault();
     try { await api(criar ? "/api/cadastro" : "/api/entrar", { method: "POST", body: { ...Object.fromEntries(new FormData(e.target)), convite } });
       esquecer();   // daqui em diante quem pergunta é outra pessoa
-      EU = await api("/api/eu"); PREFS = (await api("/api/prefs")).prefs; location.hash = "#/trabalho"; }
+      EU = await api("/api/eu"); PREFS = (await api("/api/prefs")).prefs; location.hash = "#/radar"; }
     catch (erro) { aviso(porque(erro)); }
   };
 }
@@ -806,6 +850,73 @@ function sincronizarClaude() {
     window.addEventListener("message", ouvir);
     window.postMessage({ radar: "sincronizar-claude" }, "*");
   });
+}
+
+// O padrão de postagem do canal (pedido do usuário em 2026-11-25): fica na extensão (diaConfig, o mesmo do Meu dia),
+// a página lê e grava pelo site.js. `postagem` vazio só lê
+let _pedidoPadrao = 0;
+function padraoDePostagem(canal, postagem = null) {
+  return new Promise((ok, falha) => {
+    if (!document.documentElement.dataset.radarExtensao) return falha(new Error("Instale a extensão do Radar neste Chrome."));
+    const pedido = ++_pedidoPadrao;
+    const prazo = setTimeout(() => { window.removeEventListener("message", ouvir); falha(new Error("A extensão não respondeu: recarregue a extensão e esta página.")); }, 4000);
+    const ouvir = (e) => {
+      if (e.source !== window || !e.data || e.data.radar !== "padrao-postagem" || e.data.pedido !== pedido) return;
+      window.removeEventListener("message", ouvir); clearTimeout(prazo);
+      const r = e.data.resposta || {};
+      r.erro ? falha(new Error(r.erro)) : ok(r);
+    };
+    window.addEventListener("message", ouvir);
+    window.postMessage({ radar: postagem ? "padrao-postagem-guardar" : "padrao-postagem-ler", pedido, canal, postagem }, "*");
+  });
+}
+
+const TELAS_FINAIS_PADRAO = { melhor: "Melhor vídeo + inscrever", ultimo: "Igual à do último", nenhuma: "Não mexer" };
+// O cartão "Publicação padrão" da configuração do canal: a hora de cada vídeo do dia e o postar sozinho. Quem põe a
+// hora nos vídeos e abre o Studio quando o vídeo fica pronto é a extensão (dia-dados.js, background.js)
+async function cartaoDaPostagem(alvo, canal) {
+  if (!alvo) return;
+  let d;
+  try { d = await padraoDePostagem(canal); }
+  catch (erro) { alvo.innerHTML = `<p class="pc-imagens-sub">${esc(erro.message)}</p>`; return; }
+  const desenhar = () => {
+    const p = d.postagem || {};
+    const horas = p.horas || [];
+    const quantos = Math.max(1, d.porDia || 0, horas.length);
+    const seletor = (i) => `<label class="pc-pp-item"><small>${quantos > 1 ? `${i + 1}º vídeo do dia` : "Hora"}</small>
+      <select data-hora="${i}"><option value="">sem hora</option>${Array.from({ length: 24 }, (_, hr) =>
+        `<option value="${hr}" ${horas[i] === hr ? "selected" : ""}>${hr}h</option>`).join("")}</select></label>`;
+    const marcadas = horas.filter((x) => x != null);
+    alvo.innerHTML = `<div class="pc-pp-linha">${Array.from({ length: quantos }, (_, i) => seletor(i)).join("")}
+        <button type="button" class="pc-link" id="pc-pp-mais">+ outra hora</button></div>
+      <label class="pc-pp-check"><input type="checkbox" id="pc-pp-auto" ${p.auto ? "checked" : ""}> Se eu não postar até a hora, postar sozinho</label>
+      <div class="pc-pp-linha">
+        <label class="pc-pp-item"><small>Anúncio</small><select id="pc-pp-anuncio">${[1, 2, 3, 5].map((n) =>
+          `<option value="${n}" ${(p.anuncioCada || 1) === n ? "selected" : ""}>a cada ${n} min</option>`).join("")}</select></label>
+        <label class="pc-pp-item"><small>Tela final</small><select id="pc-pp-tela">${Object.entries(TELAS_FINAIS_PADRAO).map(([k, t]) =>
+          `<option value="${k}" ${(p.telaFinal || "melhor") === k ? "selected" : ""}>${t}</option>`).join("")}</select></label></div>
+      <p class="pc-imagens-sub">${marcadas.length
+        ? `Os vídeos deste canal no Meu dia sem agendamento ganham ${marcadas.map((x) => `${x}h`).join(", ")}. Quando a fábrica terminar, o Radar abre o Studio do canal, sobe o vídeo, preenche as etapas e deixa a data e a hora `
+          + `prontas: quem aperta Agendar é você.${p.auto
+          ? " Se 15 minutos antes da hora o vídeo ainda não estiver postado, o Radar faz tudo e agenda sozinho."
+          : " Marque acima para o Radar agendar sozinho se você não postar até a hora."} Precisa da thumbnail no vídeo e do Chrome aberto.`
+        : "Sem hora padrão: escolha a hora em que os vídeos deste canal vão ao ar. Vale para os vídeos sem agendamento, hoje e no calendário."}</p>`;
+    const guardar = async (mudanca) => {
+      try { d = await padraoDePostagem(canal, mudanca); aviso("Publicação padrão guardada."); }
+      catch (erro) { aviso(erro.message); }
+      desenhar();
+    };
+    alvo.querySelectorAll("select[data-hora]").forEach((sel) => sel.onchange = () => {
+      const novas = Array.from({ length: quantos }, (_, k) => horas[k] ?? null);
+      novas[Number(sel.dataset.hora)] = sel.value === "" ? null : Number(sel.value);
+      guardar({ horas: novas });
+    });
+    alvo.querySelector("#pc-pp-mais").onclick = () => guardar({ horas: [...Array.from({ length: quantos }, (_, k) => horas[k] ?? null), null] });
+    alvo.querySelector("#pc-pp-auto").onchange = (e) => guardar({ auto: e.target.checked });
+    alvo.querySelector("#pc-pp-anuncio").onchange = (e) => guardar({ anuncioCada: Number(e.target.value) });
+    alvo.querySelector("#pc-pp-tela").onchange = (e) => guardar({ telaFinal: e.target.value });
+  };
+  desenhar();
 }
 
 function resumoDaSincronizacao(d) {
@@ -1512,7 +1623,10 @@ async function formProducao(caixa, canalId, depois = () => {}, perguntarDeNovo =
           <div class="pc-txt"><small>Quem gera as imagens de IA</small>
             <div class="segmentos pc-quem" id="pc-imagens" role="radiogroup" aria-label="Quem gera as imagens de IA">${Object.entries(p.imagens_quem || { api: "Chave de API" })
               .map(([v, nome]) => `<button type="button" role="radio" data-v="${esc(v)}" aria-checked="${quemAgora === v}"><b>${esc(nome)}</b></button>`).join("")}</div>
-            <div id="pc-imagens-sub" class="pc-imagens-sub">${htmlDaAssinatura(p)}</div></div></div></div></div>`;
+            <div id="pc-imagens-sub" class="pc-imagens-sub">${htmlDaAssinatura(p)}</div></div></div>
+        <div class="pc-cartao pc-imagens-cartao"><span class="pc-ic">${icone(ICONES.tempo)}</span>
+          <div class="pc-txt"><small>Publicação padrão</small><div id="pc-postagem" class="pc-imagens-sub">Lendo a extensão…</div></div></div></div></div>`;
+    cartaoDaPostagem(caixa.querySelector("#pc-postagem"), canalId);
     caixa.querySelector("#pc-editar").onclick = () => perguntas[0]();
     caixa.querySelector("#pc-editar-agente").onclick = async () => {
       const atual = P.prompts.find((x) => String(x.id) === String(p.prompt_id)) || null;
@@ -2792,19 +2906,38 @@ async function testeDoCanal(caixa, id) {
   if (!caixa) return;
   const r = await api(`/api/perfil/canais/${encodeURIComponent(id)}/teste`).catch(() => null);
   const t = r && r.teste;
-  if (!t || t.estado === "dispensado") { caixa.innerHTML = ""; return; }
+  if (!t) { caixa.innerHTML = ""; return; }
+  // não testar e testar de novo, aqui também (pedido do usuário em 2026-11-25)
+  const mandarAqui = (corpo, botao) => carregando(botao, "Um momento…", async () => {
+    await api(`/api/perfil/canais/${encodeURIComponent(id)}/teste`, { method: "POST", body: corpo });
+    esquecer("/api/teste");
+    testeDoCanal(caixa, id);
+  });
+  if (t.estado === "dispensado") {
+    caixa.innerHTML = `<div class="tc-cab-canal"><h3>Fora do teste</h3><button class="botao sec" id="teste-de-novo">Testar de novo</button></div>
+      <p class="sub">Você escolheu não testar este canal: o Radar não posta nada de teste nele.</p>`;
+    const de_novo = document.getElementById("teste-de-novo");
+    de_novo.onclick = () => mandarAqui({ voltar: true }, de_novo);
+    return;
+  }
 
   if (t.estado !== "pendente") {
-    caixa.innerHTML = `<h3>Teste deste canal</h3>
+    caixa.innerHTML = `<div class="tc-cab-canal"><h3>Teste deste canal</h3>
+      <button class="botao sec tc-nao-testar" id="teste-parar" title="Tira o canal do teste: o que não foi ao ar não é postado">Não testar</button></div>
       <p class="sub">${t.quantos} vídeos de ${t.minutos} min sobre o espaço, sem narração e sem thumbnail, em
-      ${esc(t.lingua)}. Eles só começam quando a fila estiver parada, e sobem agendados: um num dia, o outro no seguinte.</p>
+      ${esc(t.lingua)}. Quem posta é você, um a cada ${t.intervalo} dias, no dia marcado; o Radar confere no canal se saiu.
+      <a href="#/teste">Ver no Painel do teste</a></p>
       <ul style="list-style:none;padding:0;margin:8px 0">${t.videos.map(linhaDoTesteDoCanal).join("")}</ul>`;
+    const parar = document.getElementById("teste-parar");
+    parar.onclick = () => {
+      if (confirm("Não testar este canal? O que já foi ao ar fica no canal; os vídeos que faltam não são postados.")) mandarAqui({ dispensar: true }, parar);
+    };
     return;
   }
 
   caixa.innerHTML = `<h3>Testar este canal</h3>
     <p class="sub">O Radar faz ${t.quantos} vídeos de ${t.minutos} min sobre o espaço, sem narração (só música, nenhum
-    crédito de voz) e sem thumbnail, e agenda um para um dia e o outro para o seguinte. Nada é escrito, produzido ou
+    crédito de voz) e sem thumbnail, e agenda um a cada ${t.intervalo} dias, às ${t.hora}h. Nada é escrito, produzido ou
     postado sem este clique.</p>
     ${t.estoque ? `<p class="sub"><b>${t.estoque} ${t.estoque === 1 ? "vídeo pronto" : "vídeos prontos"} no estoque</b>
       em ${esc(t.lingua_padrao)}: nessa língua o teste já sai agendado, sem esperar produção.</p>` : ""}
@@ -2814,7 +2947,7 @@ async function testeDoCanal(caixa, id) {
           `<option value="${esc(l)}"${l === t.lingua ? " selected" : ""}>${esc(l)}</option>`).join("")}</select>
       </label>
       <button class="botao" id="teste-liberar">Fazer e postar os ${t.quantos}</button>
-      <button class="botao sec" id="teste-dispensar">Agora não</button>
+      <button class="botao sec" id="teste-dispensar">Não testar este canal</button>
     </div>
     <p class="sub">Para postar, este canal precisa estar conectado na fábrica: o login do Google é um por canal, porque
     o Google prende a autorização ao canal escolhido na tela de consentimento.</p>`;
@@ -4178,13 +4311,13 @@ async function painel(abrir) {
         <div class="feito-acoes">
           ${v.video_id ? `<a class="botao sec" href="https://studio.youtube.com/video/${esc(v.video_id)}/edit" target="_blank" rel="noopener">Abrir no Studio</a>
             <a class="botao sec" href="${esc(v.url)}" target="_blank" rel="noopener">Abrir no YouTube</a>` : ""}
-          ${v.estado === "publico" ? "" : `<button class="botao" data-conferir="${v.fid}" data-canal="${esc(atual.canal_id)}">Já está público</button>`}
+          ${v.estado === "publico" ? "" : `<button class="botao" data-conferir="${esc(v.chave || v.fid)}" data-canal="${esc(atual.canal_id)}">Já está público</button>`}
         </div></div>`).join("")}</div>`;
     corpo.querySelectorAll("[data-canal-teste]").forEach((b) => (b.onclick = () => {
       PAINEL_CANAL_TESTE = b.dataset.canalTeste; guardar("painel-canal-teste", PAINEL_CANAL_TESTE); painel();
     }));
     corpo.querySelectorAll("[data-conferir]").forEach((b) => (b.onclick = () => carregando(b, "Tirando…", async () => {
-      await api("/api/teste/privados", { method: "POST", body: { canal_id: b.dataset.canal, fid: +b.dataset.conferir } });
+      await api("/api/teste/privados", { method: "POST", body: { canal_id: b.dataset.canal, chave: b.dataset.conferir } });
       painel();
     })));
   } else if (modo === "feitos") {
@@ -5082,36 +5215,111 @@ function medir() {
   document.getElementById("ref").onkeydown = (e) => { if (e.key === "Enter") ir(); };
 }
 
-// ---------------------------------------------------------------- a aba Canal de teste (2026-11-17)
-// O teste inteiro numa tela só: ligar o canal no Google (um login por canal), colar o @ e escolher a língua do
-// título. Não há agente, perfil de produção nem fila para arrumar aqui: os dois vídeos já saem prontos do estoque
-// que o Radar vai fazendo com a fila parada, e sobem agendados, um num dia e o outro no seguinte.
+// ---------------------------------------------------------------- a área Canal de teste (2026-11-25)
+// Antes era uma aba só, longa e difícil de ler. Agora é uma área da porta, com quatro abas: o Painel (os canais em
+// teste, os três vídeos de cada um e as impressões), o Novo teste (ligar o canal e começar), o Banco de vídeos (os
+// vídeos de verdade que a pessoa sobe) e o Criar em massa (os assuntos baratos que o Radar vai deixando prontos).
+// Os três vídeos de um canal sobem todos na mesma hora, um a cada três dias. Um vídeo de teste que passa de mil
+// impressões acende o alerta de canal novo bom, no topo de todas as telas.
 
-async function canalDeTeste() {
-  TESTE_LIGADOS = null;        // entrando na aba, pergunta de novo quais canais estão ligados
-  tela.innerHTML = titulo("Canal de teste", "Conecte o canal, cole o @ e escolha a língua do título. O resto é com o Radar.")
-    + `<div id="teste-aba"><p class="sub">Carregando…</p></div>`;
-  desenharCanalDeTeste();
+const mil = (n) => Number(n).toLocaleString("pt-BR");
+const quandoCurto = (iso) => iso ? new Date(iso).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }) : "";
+const tamanhoDoArquivo = (b) => b >= 1024 ** 3 ? (b / 1024 ** 3).toFixed(1).replace(".", ",") + " GB" : Math.max(1, Math.round(b / 1024 ** 2)) + " MB";
+
+// em que pé está um vídeo de teste, numa palavra, e a cor dela
+function passoDoVideoDeTeste(v) {
+  // 2026-11-25: o Radar não posta mais nos canais de teste; quem posta é a pessoa, no dia marcado
+  if (v.url || v.postado) return ["no-ar", "Postado"];
+  if (v.agendado_para) return new Date(v.agendado_para.slice(0, 10) + "T00:00") <= new Date() ? ["erro", "Falta postar"] : ["agendado", "Você posta"];
+  if (v.erro && !v.enviado) return ["erro", "Deu erro"];
+  if (v.url && v.agendado_para && new Date(v.agendado_para) <= new Date()) return ["no-ar", "No ar"];
+  // com a extensão (2026-11-25): ela posta pelo Studio; o link é achado no canal depois
+  if (v.manual && !v.postado) return ["pronto", "Esperando o Studio"];
+  if (v.enviado && !v.url && v.agendado_para && new Date(v.agendado_para) <= new Date()) return ["fazendo", "Esperando o link"];
+  if (v.enviado) return ["agendado", "Agendado"];
+  if (v.estado === "entregue") return ["pronto", "Pronto, subindo"];
+  if (["excluído", "cancelado"].includes(v.estado)) return ["erro", ESTADO_TESTE[v.estado]];
+  return ["fazendo", ESTADO_TESTE[v.estado] || "Na fila"];
 }
 
-function cartaoDoTeste(t) {
-  const nome = t.nome || t.canal_id;
-  const feito = t.videos.length
-    ? `<ul style="list-style:none;padding:0;margin:8px 0">${t.videos.map(linhaDoTesteDoCanal).join("")}</ul>`
-    : `<p class="sub">Esperando a vez na fila.</p>`;
-  return `<div class="cp-bloco" style="margin-top:12px"><h3>${esc(nome)}</h3>
-    <p class="sub">${esc(t.canal_id)} · ${t.quantos} vídeos de ${t.minutos} min em ${esc(t.lingua)}</p>${feito}</div>`;
+function vagaDoTeste(v, i, t) {
+  if (!v) return `<div class="tc-vaga vazia"><small>Vídeo ${i + 1}</small><span>Ainda sem vídeo</span></div>`;
+  const [classe, rotulo] = passoDoVideoDeTeste(v);
+  const medida = v.impressoes != null ? v.impressoes : v.views;
+  const qual = v.impressoes != null ? "impressões" : "views";
+  const pct = medida != null ? Math.min(100, Math.round(medida / t.limite * 100)) : 0;
+  return `<div class="tc-vaga ${classe} ${v.alerta ? "bom" : ""}">
+    <div class="tc-vaga-topo"><small>Vídeo ${i + 1}${v.agendado_para ? " · " + esc(quandoCurto(v.agendado_para)) : ""}</small>
+      <span class="tc-etiqueta ${classe}">${esc(rotulo)}</span></div>
+    <b title="${esc(v.tema)}">${esc(v.tema)}</b>
+    <span class="tc-origem">${v.origem === "banco" ? "Do seu banco de vídeos" : "Feito pelo Radar"}</span>
+    ${medida != null ? `<div class="tc-medida"><div><b>${num(medida)}</b> ${qual}</div>
+        <div class="tc-barra"><i style="width:${pct}%"></i></div>
+        <small>${v.alerta ? "Passou de " + mil(t.limite) + ": canal bom" : `faltam ${mil(Math.max(0, t.limite - medida))} para ${mil(t.limite)}`}</small></div>`
+      : v.url ? `<small class="sub">Lendo as impressões de hora em hora.</small>` : ""}
+    ${v.erro ? `<small class="aviso">${esc(v.erro)}</small>` : ""}
+    ${v.url ? `<a class="tc-link" href="${esc(v.url)}" target="_blank" rel="noopener">Abrir no YouTube</a>` : ""}
+  </div>`;
+}
+
+function cartaoDoCanalEmTeste(t) {
+  // os testes de antes de 2026-11-25 tinham dois vídeos: aparecem só os que existem, sem vaga vazia
+  const vagas = Array.from({ length: t.videos.length || t.quantos }, (_, i) => vagaDoTeste(t.videos[i], i, t));
+  return `<article class="tc-canal ${t.bom ? "bom" : ""}">
+    <header><div><h3>${esc(t.nome || t.canal_id)}</h3><small>${esc(t.lingua)} · começou ${esc(quandoCurto(t.criado))}</small></div>
+      <div class="tc-cab-acoes">${t.bom ? `<span class="tc-selo">Canal bom</span>` : `<span class="tc-selo cinza">${t.estado === "feito" ? "Todos agendados" : t.estado === "pendente" ? "Esperando o sim" : "Em teste"}</span>`}
+        <button class="botao sec tc-nao-testar" data-nao-testar="${esc(t.canal_id)}" title="Tira o canal do teste: o que não foi ao ar não é postado">Não testar</button></div></header>
+    <div class="tc-vagas">${vagas.join("")}</div></article>`;
+}
+
+async function testePainel() {
+  tela.innerHTML = titulo("Painel do teste", "Os canais novos em teste e como vai cada vídeo.") + `<div id="tc-painel"><p class="sub">Carregando…</p></div>`;
+  const d = await api("/api/teste");
+  const n = d.numeros;
+  const caixa = document.getElementById("tc-painel");
+  if (!caixa) return;
+  const kpi = (valor, rotulo, classe = "") => `<div class="tc-kpi ${classe}"><b>${num(valor)}</b><span>${rotulo}</span></div>`;
+  caixa.innerHTML = `
+    <div class="tc-regra"><span>${d.quantos} vídeos por canal, um a cada ${d.intervalo} dias. Quem posta é você; o Radar confere e pinta de verde.</span>
+      <span>Passou de <b>${mil(d.limite)} views</b>, ou você marcou "É bom" na aba Canais de teste do YouTube, o Radar avisa em todas as telas.</span>
+      <a class="botao" href="#/teste-novo">Novo teste</a></div>
+    <div class="tc-kpis">${kpi(n.canais, "canais em teste")}${kpi(n.bons, "canais bons", n.bons ? "bom" : "")}
+      ${kpi(n.no_ar, "vídeos no ar")}${kpi(n.agendados, "agendados")}${kpi(n.banco, "no banco de vídeos")}${kpi(n.estoque, "prontos para usar")}</div>
+    ${d.testes.length ? `<div class="tc-canais">${[...d.testes].sort((a, b) => b.bom - a.bom).map(cartaoDoCanalEmTeste).join("")}</div>`
+      : `<div class="tc-vazio"><h3>Nenhum canal em teste ainda</h3><p class="sub">Comece um teste e o Radar marca os ${d.quantos} dias de postar; quem posta é você.</p>
+          <a class="botao" href="#/teste-novo">Começar o primeiro teste</a></div>`}
+    ${d.sem_teste.length ? `<section class="tc-sem-teste"><h3>Fora do teste</h3><p class="sub">Canais que você escolheu não testar. Nada é postado neles.</p>
+      ${d.sem_teste.map((c) => `<div class="tc-sem-linha"><span>${esc(c.nome)}</span>
+        <button class="botao sec" data-testar-de-novo="${esc(c.canal_id)}">Testar de novo</button></div>`).join("")}</section>` : ""}`;
+  // não testar e testar de novo (pedido do usuário em 2026-11-25)
+  const mandarTeste = (canal, corpo, botao) => carregando(botao, "Um momento…", async () => {
+    await api(`/api/perfil/canais/${encodeURIComponent(canal)}/teste`, { method: "POST", body: corpo });
+    esquecer("/api/teste");
+    testePainel();
+  });
+  caixa.querySelectorAll("[data-nao-testar]").forEach((b) => { b.onclick = () => {
+    if (confirm("Não testar este canal? O que já foi ao ar fica no canal; os vídeos que faltam não são postados.")) mandarTeste(b.dataset.naoTestar, { dispensar: true }, b);
+  }; });
+  caixa.querySelectorAll("[data-testar-de-novo]").forEach((b) => { b.onclick = () => mandarTeste(b.dataset.testarDeNovo, { voltar: true }, b); });
 }
 
 // os canais já ligados vêm num pedido à parte: a fábrica produzindo leva segundos para responder, e a tela não
 // espera por isso. Enquanto não chegam, o resto já está na mão da pessoa.
 let TESTE_LIGADOS = null;
 
+async function canalDeTeste() {
+  TESTE_LIGADOS = null;        // entrando na aba, pergunta de novo quais canais estão ligados
+  tela.innerHTML = titulo("Novo teste", "Escolha de onde vêm os vídeos, cole o @ do canal e comece. A extensão posta pelo Studio.")
+    + `<div id="teste-aba"><p class="sub">Carregando…</p></div>`;
+  desenharCanalDeTeste();
+}
+
 async function desenharCanalDeTeste() {
   const caixa = document.getElementById("teste-aba");
   if (!caixa) return;
   const antes = { arroba: (document.getElementById("teste-arroba") || {}).value || "",
-                  lingua: (document.getElementById("teste-lingua") || {}).value || "" };
+                  lingua: (document.getElementById("teste-lingua") || {}).value || "",
+                  origem: (document.querySelector("[name=teste-origem]:checked") || {}).value || "" };
   let d;
   try { d = await api("/api/teste"); }
   catch (e) { caixa.innerHTML = `<p class="sub aviso">${esc(porque(e))}</p>`; return; }
@@ -5119,51 +5327,34 @@ async function desenharCanalDeTeste() {
     api("/api/teste/contas").then((r) => { TESTE_LIGADOS = r.conectados || []; desenharCanalDeTeste(); })
       .catch(() => { TESTE_LIGADOS = []; desenharCanalDeTeste(); });
   }
-
   const ligados = TESTE_LIGADOS || [];
-  caixa.innerHTML = `
-    <div class="cp-bloco">
-      <h3>1. Ligar o canal no Google</h3>
-      <p class="sub">É um login por canal: o Google prende a autorização ao canal escolhido na tela de consentimento.
-      Ligou, o teste daquele canal começa sozinho em ${esc(d.lingua_padrao)} — para outra língua, comece ele aqui
-      embaixo antes de ligar.</p>
-      ${TESTE_LIGADOS === null ? `<p class="sub">Perguntando à fábrica quais canais já estão ligados…</p>`
-        : ligados.length
-          ? `<ul style="list-style:none;padding:0;margin:8px 0">${ligados.map((c) =>
-              `<li style="margin:4px 0">✓ <b>${esc(c.canal_nome || c.canal_id)}</b> <span class="sub">${esc(c.canal_id)}</span></li>`).join("")}</ul>`
-          : `<p class="sub">Nenhum canal ligado ainda.</p>`}
-      <div><button class="botao sec" id="teste-conectar">Ligar um canal</button></div>
-    </div>
+  const emTeste = new Set(d.testes.map((t) => t.canal_id));
+  const noBanco = d.numeros.banco;
+  const origem = antes.origem || (noBanco ? "banco" : "radar");
+  caixa.innerHTML = `<div class="tc-passos">
+    <section class="tc-passo"><span class="tc-num">1</span><div>
+      <h3>De onde vêm os vídeos</h3>
+      <div class="tc-origens">
+        <label class="tc-origem-op"><input type="radio" name="teste-origem" value="banco" ${origem === "banco" ? "checked" : ""}>
+          <div><b>Do meu banco de vídeos</b><span>${noBanco ? `${noBanco} ${noBanco === 1 ? "vídeo" : "vídeos"} seus. O que faltar o Radar completa.` : `Vazio. <a href="#/teste-banco">Subir um vídeo</a>`}</span></div></label>
+        <label class="tc-origem-op"><input type="radio" name="teste-origem" value="radar" ${origem === "radar" ? "checked" : ""}>
+          <div><b>Criados pelo Radar</b><span>${d.estoque ? `${d.estoque} prontos em ${esc(d.lingua_padrao)}: saem na hora.` : "Feitos quando a fila estiver parada."}
+            Sem narração, ${d.minutos} min. <a href="#/teste-massa">Escolher assuntos</a></span></div></label>
+      </div></div></section>
 
-    <div class="cp-bloco" style="margin-top:12px">
-      <h3>2. Começar o teste</h3>
-      <p class="sub">${d.quantos} vídeos de ${d.minutos} min sobre o espaço, sem narração (só música, nenhum crédito de
-      voz) e sem thumbnail. O primeiro sobe na hora que ficar pronto e o outro no dia seguinte, agendado pelo YouTube.
-      ${d.estoque ? `<b>${d.estoque} ${d.estoque === 1 ? "pronto" : "prontos"} no estoque</b> em ${esc(d.lingua_padrao)}: nessa língua o teste sai na hora.`
-        : "O estoque está vazio: os vídeos vão ser feitos quando a fila ficar parada."}</p>
-      <div style="display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap;margin:10px 0">
-        ${ligados.length ? `<label>Canal<br><select id="teste-qual">
-          <option value="">— escrever o @ —</option>
-          ${ligados.map((c) => `<option value="${esc(c.canal_id)}" data-nome="${esc(c.canal_nome || "")}">${esc(c.canal_nome || c.canal_id)}</option>`).join("")}
+    <section class="tc-passo"><span class="tc-num">2</span><div>
+      <h3>Começar</h3>
+      <div class="tc-form">
+        ${ligados.length ? `<label>Canal<select id="teste-qual"><option value="">Escrever o @</option>
+          ${ligados.filter((c) => !emTeste.has(c.canal_id)).map((c) => `<option value="${esc(c.canal_id)}" data-nome="${esc(c.canal_nome || "")}">${esc(c.canal_nome || c.canal_id)}</option>`).join("")}
         </select></label>` : ""}
-        <label>@ do canal<br><input id="teste-arroba" placeholder="@meucanal" value="${esc(antes.arroba)}"></label>
-        <label>Língua do título<br><select id="teste-lingua">${(d.linguas || []).map((l) =>
+        <label>@ do canal<input id="teste-arroba" placeholder="@meucanal" value="${esc(antes.arroba)}"></label>
+        <label>Língua do título<select id="teste-lingua">${(d.linguas || []).map((l) =>
           `<option value="${esc(l)}"${l === (antes.lingua || d.lingua_padrao) ? " selected" : ""}>${esc(l)}</option>`).join("")}</select></label>
         <button class="botao" id="teste-comecar">Começar o teste</button>
       </div>
-      <p class="sub">Achar o canal pelo @ gasta 1 da cota do YouTube. Escolhendo um canal já ligado, não gasta nada.</p>
-    </div>
-
-    ${(d.testes || []).map(cartaoDoTeste).join("")}`;
-
-  const conectar = document.getElementById("teste-conectar");
-  conectar.onclick = () => carregando(conectar, "Abrindo o Google…", async () => {
-    const janela = window.open("", "_blank");       // aberta antes do await: depois dele o navegador bloqueia
-    try {
-      const { url } = await api("/api/teste/conectar");
-      if (janela) janela.location = url; else location.href = url;
-    } catch (e) { if (janela) janela.close(); throw e; }
-  });
+      <p class="sub">${d.quantos} vídeos, um a cada ${d.intervalo} dias. Quem posta é você: a aba Canais de teste do YouTube mostra cada dia em vermelho até o canal postar. Achar o canal pelo @ gasta 1 da cota do YouTube.</p>
+    </div></section></div>`;
 
   const qual = document.getElementById("teste-qual");
   const arroba = document.getElementById("teste-arroba");
@@ -5171,16 +5362,173 @@ async function desenharCanalDeTeste() {
   const comecar = document.getElementById("teste-comecar");
   comecar.onclick = () => carregando(comecar, "Começando…", async () => {
     const escolhido = qual && qual.value ? qual.selectedOptions[0] : null;
-    const corpo = { lingua: document.getElementById("teste-lingua").value };
+    const corpo = { lingua: document.getElementById("teste-lingua").value,
+                    origem: (document.querySelector("[name=teste-origem]:checked") || {}).value || "radar" };
     if (escolhido) { corpo.canal_id = escolhido.value; corpo.nome = escolhido.dataset.nome || ""; }
     else {
       corpo.arroba = arroba.value.trim();
       if (!corpo.arroba) { aviso("Escreva o @ do canal."); return; }
     }
     await api("/api/teste", { method: "POST", body: corpo });
-    desenharCanalDeTeste();
+    aviso("Teste começado. Acompanhe no Painel.");
+    location.hash = "#/teste";
   });
 }
+
+// ---------------------------------------------------------------- o banco de vídeos
+async function testeBanco() {
+  tela.innerHTML = titulo("Banco de vídeos", "Vídeos de verdade para o Radar postar nos canais de teste.") + `
+    <section class="tc-subir">
+      <label class="tc-arquivo" id="tc-solta"><input type="file" id="tc-video" accept="video/*">
+        <b>Escolha um vídeo</b><span>ou arraste para cá. MP4, MOV ou WebM, até 2 GB.</span><em id="tc-escolhido"></em></label>
+      <div class="tc-subir-campos">
+        <label>Título com que ele vai ao ar<input id="tc-titulo" maxlength="100" placeholder="Meu cachorro aprendendo a nadar"></label>
+        <label>Descrição (opcional)<textarea id="tc-descricao" rows="3" maxlength="4900" placeholder="Se ficar vazia, vai o título."></textarea></label>
+        <div class="tc-subir-fim"><button class="botao" id="tc-subir">Subir para o banco</button>
+          <div class="tc-barra grande" hidden id="tc-progresso"><i></i></div></div>
+      </div>
+    </section>
+    <div id="tc-lista"><p class="sub">Carregando…</p></div>`;
+  const entrada = document.getElementById("tc-video"), solta = document.getElementById("tc-solta");
+  const escolher = (arquivo) => {
+    if (!arquivo) return;
+    solta.dataset.arquivo = "1"; solta._arquivo = arquivo;
+    document.getElementById("tc-escolhido").textContent = `${arquivo.name} · ${tamanhoDoArquivo(arquivo.size)}`;
+    const t = document.getElementById("tc-titulo");
+    if (!t.value) t.value = arquivo.name.replace(/\.[^.]+$/, "").replace(/[_-]+/g, " ").slice(0, 100);
+  };
+  entrada.onchange = () => escolher(entrada.files[0]);
+  solta.ondragover = (e) => { e.preventDefault(); solta.classList.add("sobre"); };
+  solta.ondragleave = () => solta.classList.remove("sobre");
+  solta.ondrop = (e) => { e.preventDefault(); solta.classList.remove("sobre"); escolher(e.dataTransfer.files[0]); };
+  document.getElementById("tc-subir").onclick = (e) => {
+    const arquivo = solta._arquivo, botao = e.currentTarget;
+    const titulo_ = document.getElementById("tc-titulo").value.trim();
+    if (!arquivo) return aviso("Escolha o vídeo primeiro.");
+    if (!titulo_) return aviso("Dê um título ao vídeo.");
+    const barra = document.getElementById("tc-progresso");
+    barra.hidden = false; botao.disabled = true; botao.textContent = "Subindo…";
+    // XMLHttpRequest e não fetch: só ele conta o andamento do envio, e um vídeo grande leva minutos
+    const pedido = new XMLHttpRequest();
+    pedido.open("POST", "/api/teste/banco?" + consulta({ titulo: titulo_, descricao: document.getElementById("tc-descricao").value.trim() }));
+    pedido.withCredentials = true;
+    pedido.setRequestHeader("Content-Type", arquivo.type || "application/octet-stream");
+    pedido.upload.onprogress = (ev) => { if (ev.lengthComputable) barra.firstElementChild.style.width = Math.round(ev.loaded / ev.total * 100) + "%"; };
+    pedido.onloadend = () => {
+      botao.disabled = false; botao.textContent = "Subir para o banco"; barra.hidden = true; barra.firstElementChild.style.width = "0";
+      let resposta = {}; try { resposta = JSON.parse(pedido.responseText); } catch {}
+      if (pedido.status >= 200 && pedido.status < 300) {
+        aviso("Vídeo guardado no banco.");
+        solta._arquivo = null; entrada.value = ""; document.getElementById("tc-escolhido").textContent = "";
+        document.getElementById("tc-titulo").value = ""; document.getElementById("tc-descricao").value = "";
+        esquecer("/api/teste/banco"); esquecer("/api/teste");
+        listaDoBanco();
+      } else aviso(resposta.detail || "Não deu para subir o vídeo.");
+    };
+    pedido.send(arquivo);
+  };
+  listaDoBanco();
+}
+
+async function listaDoBanco() {
+  const caixa = document.getElementById("tc-lista");
+  if (!caixa) return;
+  const { videos } = await api("/api/teste/banco");
+  caixa.innerHTML = videos.length ? `<h3 class="tc-secao">${videos.length} ${videos.length === 1 ? "vídeo" : "vídeos"} no banco</h3>
+    <div class="tc-banco">${videos.map((v) => `<article class="tc-bvideo" data-id="${v.id}">
+      ${v.existe ? `<video src="/api/teste/banco/${v.id}/video" preload="metadata" controls muted></video>` : `<div class="tc-sem">Arquivo não encontrado</div>`}
+      <input class="tc-btitulo" value="${esc(v.titulo)}" maxlength="100" aria-label="Título">
+      <textarea class="tc-bdesc" rows="2" maxlength="4900" placeholder="Descrição (vazia: vai o título)">${esc(v.descricao)}</textarea>
+      <small>${tamanhoDoArquivo(v.tamanho)} · ${v.canais.length ? `usado em ${esc(v.canais.join(", "))}` : "ainda não usado"}</small>
+      <div class="tc-bacoes"><button class="botao sec" data-salvar>Salvar</button><button class="botao sec perigo" data-apagar>Apagar</button></div>
+    </article>`).join("")}</div>`
+    : `<div class="tc-vazio"><h3>O banco está vazio</h3><p class="sub">Suba um vídeo seu (o do seu cachorro serve) e escolha "Do meu banco de vídeos" no Novo teste.</p></div>`;
+  caixa.querySelectorAll(".tc-bvideo").forEach((el) => {
+    const id = el.dataset.id;
+    el.querySelector("[data-salvar]").onclick = (e) => carregando(e.currentTarget, "Salvando…", async () => {
+      await api(`/api/teste/banco/${id}`, { method: "POST", body: { titulo: el.querySelector(".tc-btitulo").value, descricao: el.querySelector(".tc-bdesc").value } });
+      esquecer("/api/teste/banco"); aviso("Salvo.");
+    });
+    el.querySelector("[data-apagar]").onclick = (e) => {
+      if (!confirm("Apagar este vídeo do banco? O arquivo sai do Radar. O que já foi postado continua no canal.")) return;
+      carregando(e.currentTarget, "Apagando…", async () => {
+        await api(`/api/teste/banco/${id}`, { method: "DELETE" });
+        esquecer("/api/teste/banco"); esquecer("/api/teste"); listaDoBanco();
+      });
+    };
+  });
+}
+
+// ---------------------------------------------------------------- a criação em massa
+async function testeMassa() {
+  tela.innerHTML = titulo("Criar em massa", "O Radar vai deixando vídeos baratos prontos sobre os assuntos que você ligar.") + `<div id="tc-massa"><p class="sub">Carregando…</p></div>`;
+  desenharMassa(await api("/api/teste/massa"));
+}
+
+function desenharMassa(d) {
+  const caixa = document.getElementById("tc-massa");
+  if (!caixa) return;
+  const a = d.ajustes;
+  const ESTADO = { entregue: "pronto", erro: "deu erro", pausado: "pausado" };
+  caixa.innerHTML = `
+    <div class="tc-kpis">
+      <div class="tc-kpi"><b>${num(d.prontos)}</b><span>prontos para usar</span></div>
+      <div class="tc-kpi"><b>${num(d.fazendo)}</b><span>sendo feitos</span></div>
+      <div class="tc-kpi"><b>${num(a.meta)}</b><span>a meta</span></div>
+      <div class="tc-kpi"><b>${num(d.temas_livres)}</b><span>títulos ainda livres</span></div></div>
+    <section class="tc-bloco">
+      <div class="tc-linha-topo"><h3>Ligada</h3>
+        <label class="tc-chave"><input type="checkbox" id="tm-ligado" ${a.ligado ? "checked" : ""}><span></span></label></div>
+      <p class="sub">Formato mais barato: sem narração (só música, nenhum crédito de voz), ${d.minutos} min, sem thumbnail.
+      Um vídeo de cada vez, só com a fila parada: nunca toma a vez de um vídeo de verdade.</p>
+      <div class="tc-form">
+        <label>Quantos deixar prontos<input type="number" id="tm-meta" min="0" max="${d.maximo}" value="${a.meta}"></label>
+        <label>Língua do título<select id="tm-lingua">${d.linguas.map((l) => `<option${l === a.lingua ? " selected" : ""}>${esc(l)}</option>`).join("")}</select></label>
+      </div></section>
+    <section class="tc-bloco"><h3>Assuntos</h3>
+      <div class="tc-assuntos">${d.assuntos.map((s) => `<label class="tc-assunto ${a.assuntos.includes(s.chave) ? "ligado" : ""}">
+        <input type="checkbox" value="${esc(s.chave)}" ${a.assuntos.includes(s.chave) ? "checked" : ""}>
+        <b>${esc(s.nome)}</b><span>${s.quantos} títulos prontos</span><em>${esc(s.exemplo)}</em></label>`).join("")}</div></section>
+    <section class="tc-bloco"><h3>Seus títulos</h3>
+      <p class="sub">Um por linha. Entram antes dos títulos dos assuntos. Em inglês alcançam mais gente.</p>
+      <textarea id="tm-proprios" rows="5" placeholder="The Dog That Learned to Swim">${esc(a.proprios.join("\n"))}</textarea></section>
+    <div><button class="botao" id="tm-salvar">Salvar</button></div>
+    ${d.estoque.length ? `<section class="tc-bloco"><h3>No estoque</h3><ul class="tc-estoque">${d.estoque.map((v) =>
+      `<li><span>${esc(v.tema)}</span><small>${esc(v.lingua)} · ${esc(ESTADO[v.estado] || "sendo feito")}</small></li>`).join("")}</ul></section>` : ""}`;
+  caixa.querySelectorAll(".tc-assunto input").forEach((i) => (i.onchange = () => i.closest(".tc-assunto").classList.toggle("ligado", i.checked)));
+  document.getElementById("tm-salvar").onclick = (e) => carregando(e.currentTarget, "Salvando…", async () => {
+    const corpo = { ligado: document.getElementById("tm-ligado").checked, meta: +document.getElementById("tm-meta").value || 0,
+      lingua: document.getElementById("tm-lingua").value,
+      assuntos: [...caixa.querySelectorAll(".tc-assunto input:checked")].map((i) => i.value),
+      proprios: document.getElementById("tm-proprios").value.split("\n").map((t) => t.trim()).filter(Boolean) };
+    desenharMassa(await api("/api/teste/massa", { method: "POST", body: corpo }));
+    aviso("Salvo. O Radar começa quando a fila ficar parada.");
+  });
+}
+
+// ---------------------------------------------------------------- o alerta de canal novo bom, em todas as telas
+async function pintarAlertaBom() {
+  let faixa = document.getElementById("alerta-bom");
+  if (!faixa) {
+    faixa = document.createElement("div");
+    faixa.id = "alerta-bom";
+    document.getElementById("tela-casca")?.prepend(faixa);
+  }
+  if (!EU) { faixa.innerHTML = ""; return; }
+  let lista = [];
+  try { lista = (await umPedido("/api/teste/alertas", {})).alertas || []; } catch { return; }
+  faixa.innerHTML = lista.map((a) => `<div class="alerta-bom">
+    <span class="alerta-bom-ic">${icone("teste")}</span>
+    <div><b>Canal novo bom: ${esc(a.canal)}</b>
+      <span>"${esc(a.tema)}" passou de ${mil(a.pelas_views ? a.views : a.impressoes)} ${a.pelas_views ? "views" : "impressões"}.</span></div>
+    <a href="#/teste">Ver no Painel</a>${a.url ? `<a href="${esc(a.url)}" target="_blank" rel="noopener">Abrir o vídeo</a>` : ""}
+    <button type="button" data-canal="${esc(a.canal_id)}" data-chave="${esc(a.chave)}">Entendi</button></div>`).join("");
+  faixa.querySelectorAll("button[data-chave]").forEach((b) => (b.onclick = async () => {
+    await api("/api/teste/alertas", { method: "POST", body: { canal_id: b.dataset.canal, chave: b.dataset.chave } }).catch(() => {});
+    pintarAlertaBom();
+  }));
+}
+setInterval(pintarAlertaBom, 60 * 1000);
 
 // ---------------------------------------------------------------- depoimentos, na Administração
 // O print vai como data URL (o servidor confere tipo e tamanho e guarda em dados/depoimentos). Esconder tira da
@@ -5452,11 +5800,11 @@ async function meuDia() {
       : `<div class="vazio">O Meu dia mora na extensão do Radar (versão 0.48 ou mais nova).<br>Instale ou atualize a extensão e aperte F5 nesta página.</div>`}`;
 }
 
-const ROTAS = { entrar: () => entrar(false), criar: () => entrar(true), inicio, canais, perfil: canais, canal,
+const ROTAS = { entrar: () => entrar(false), criar: () => entrar(true), radar: telaAreas, inicio, canais, perfil: canais, canal,
   senha: telaSenha, "ideias-canal": ideiasCanal, treino, trabalho, acompanhar, resultados, titulo: () => { location.hash = "#/trabalho"; }, thumbnail: () => { location.hash = "#/trabalho"; },
   "meu-dia": meuDia, base: baseCanais, videos: videosLista, acharam, grupos, titulos, medir, extensao, bloqueados, admin, integracoes, custos, animacoes,
   entraram: () => { location.hash = "#/base?visao=entraram_hoje"; },
-  planos: telaPlanos, teste: canalDeTeste,
+  planos: telaPlanos, teste: testePainel, "teste-novo": canalDeTeste, "teste-banco": testeBanco, "teste-massa": testeMassa,
   ...Object.fromEntries(Object.entries(VELHAS).map(([de, para]) => [de, () => { location.hash = para; }])) };
 
 // os filtros que ficavam guardados no navegador agora moram no endereço: apaga o que sobrou de antes, uma vez,
@@ -5541,12 +5889,13 @@ setTimeout(pintarAvisos, 2000);
 async function rota() {
   const [nome, param, extra] = location.hash.replace(/^#\/?/, "").split("?")[0].split("/");
   if (!EU && !["entrar", "criar"].includes(nome)) { location.hash = "#/entrar"; return; }
-  if (EU && (!ROTAS[nome] || nome === "entrar" || nome === "criar")) { location.hash = "#/inicio"; return; }
+  if (EU && (!ROTAS[nome] || nome === "entrar" || nome === "criar")) { location.hash = "#/radar"; return; }
   menu(nome);
   document.body.dataset.tela = nome;   // o CSS precisa saber a tela: só o Roteiro usa a janela inteira
   tela.innerHTML = '<div class="vazio">Carregando…</div>';
   window.scrollTo(0, 0);
   painel();
+  pintarAlertaBom();
   try { await ROTAS[nome](param, extra); }
   catch (e) { tela.innerHTML = `<div class="vazio">${esc(porque(e))}</div>`; }
 }
@@ -5645,7 +5994,7 @@ aplicarCores();
   const p = await api("/api/resumo").catch(() => ({}));
   NOME = p.nome || NOME; NUMEROS = p;
   document.getElementById("nome-produto").textContent = NOME; document.title = NOME;
-  document.querySelector(".marca").setAttribute("href", "#/inicio");
+  document.querySelector(".marca").setAttribute("href", "#/radar");
   EU = await api("/api/eu").catch(() => null);
   if (EU) {
     const [p, painel] = await Promise.all([api("/api/prefs"), api("/api/painel").catch(() => null)]);

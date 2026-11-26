@@ -31,7 +31,7 @@
     const auto = pendenteAuto; pendenteAuto = false;   // o postar sozinho: o Meu dia sobe e o Studio faz as etapas
     // o canal do Studio aberto (2026-11-16): o Postar de um vídeo de outro canal abre o Studio do canal certo
     const canalStudio = NO_STUDIO ? ((location.pathname.match(/\/channel\/(UC[\w-]{22})/) || [])[1] || "") : "";
-    quadro.src = chrome.runtime.getURL("dia.html") + "?embutido=1" + (NO_STUDIO ? "&studio=1" : "") + (postar ? `&postar=${postar}` : "") + (postar && auto ? "&auto=1" : "")
+    quadro.src = chrome.runtime.getURL("dia.html") + "?embutido=1" + (NO_STUDIO ? "&studio=1" : "") + (postar ? `&postar=${postar}` : "") + (postar && auto ? `&auto=${auto === "ajudar" ? "ajudar" : "1"}` : "")
       + (canalStudio ? `&canalStudio=${canalStudio}` : "");
     quadro.title = "Meu dia";
     quadro.allow = "clipboard-write";
@@ -93,13 +93,20 @@
     const fim = Date.now() + 15000;
     while (!canalAqui() && Date.now() < fim) await new Promise((r) => setTimeout(r, 500));
     if (diaPostar.canal && canalAqui() && canalAqui() !== diaPostar.canal) {
+      // o Studio abriu no último canal usado, não no da conta: vai uma vez direto ao Studio do canal (2026-11-25)
+      const chave = `radar-studio-canal-${diaPostar.canal}-${diaPostar.quando}`;
+      if (!sessionStorage.getItem(chave)) {
+        sessionStorage.setItem(chave, "1");
+        location.href = `https://studio.youtube.com/channel/${diaPostar.canal}`;
+        return;
+      }
       avisoNoStudio("Meu dia: este Studio é de outro canal. Troque de conta e aperte Postar de novo (o vídeo não foi enviado).");
       if (diaPostar.auto) chrome.runtime.sendMessage({ tipo: "auto-fim", id: diaPostar.id, ok: false, motivo: "o Studio abriu em outro canal" }).catch(() => {});
       return;
     }
     chrome.storage.local.remove("diaPostar");
     pendente = diaPostar.id;
-    pendenteAuto = !!diaPostar.auto;
+    pendenteAuto = diaPostar.auto === "ajudar" ? "ajudar" : !!diaPostar.auto;
     if (painel) { painel.remove(); painel = null; }   // já aberto: monta de novo, com o pedido
     alternar(true);
   }).catch(() => {});

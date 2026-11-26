@@ -802,6 +802,8 @@ def _kit_com_modelo(usuario_id: int, pasta) -> dict:
     capítulos e o rodapé do canal no publicacao.json. Remontar aqui jogava fora os capítulos do vídeo e deixava
     duas descrições diferentes para o mesmo projeto."""
     k = publicar.kit(pasta)
+    if k.get("so_titulo"):          # o vídeo do Canal de teste: só o título, nada de rodapé nem modelo do canal
+        return {**k, "canal": "", "modelo": "teste", "padrao": {}}
     perfil = publicar.perfil_do_projeto(pasta)
     canal_id, canal = producao.canal_do_perfil(usuario_id, perfil)
     cfg = producao.config(usuario_id, canal_id) if canal_id else {}
@@ -852,36 +854,8 @@ def ext_publicar_legenda(nome: str, u: dict = Depends(exigir("extensao"))):
     return FileResponse(arquivo, media_type="application/x-subrip", filename=f"{nome}.srt")
 
 
-def _mp4_inteiro(arquivo: Path) -> bool:
-    """O .mp4 terminou de ser escrito: as caixas do topo cobrem o arquivo e uma delas é o moov (o índice, que o ffmpeg
-    grava no fim). Em 2026-11-21 o disco encheu no meio do render do vídeo coreano "12-999": o final.mp4 ficou com
-    1 GB mas sem o moov, o Meu dia dizia "é só postar" e o upload do Studio ficava carregando para sempre. Só lê os
-    cabeçalhos das caixas (uns poucos bytes), então pode rodar a cada consulta."""
-    try:
-        tamanho = arquivo.stat().st_size
-        tem_moov = False
-        with arquivo.open("rb") as f:
-            pos = 0
-            while pos < tamanho:
-                f.seek(pos)
-                cabeca = f.read(8)
-                if len(cabeca) < 8:
-                    return False
-                caixa, tipo = int.from_bytes(cabeca[:4], "big"), cabeca[4:]
-                if caixa == 1:
-                    grande = f.read(8)
-                    if len(grande) < 8:
-                        return False
-                    caixa = int.from_bytes(grande, "big")
-                elif caixa == 0:
-                    caixa = tamanho - pos
-                if caixa < 8 or pos + caixa > tamanho:
-                    return False
-                tem_moov = tem_moov or tipo == b"moov"
-                pos += caixa
-        return tem_moov
-    except OSError:
-        return False
+# a checagem mora na fabrica_api (2026-11-25): a lista de prontos da fábrica também precisa dela
+_mp4_inteiro = fabrica_api.mp4_inteiro
 
 
 def _video_final(pasta: Path) -> Path | None:
@@ -898,16 +872,101 @@ def _video_final(pasta: Path) -> Path | None:
 
 
 @app.get("/api/ext/postar")
-def ext_postar(titulo: str = "", u: dict = Depends(exigir("extensao"))):
+def ext_postar(titulo: str = "", nome: str = "", u: dict = Depends(exigir("extensao"))):
     """O botão Postar do Meu dia (pedido do usuário em 2026-11-15): acha na fábrica o projeto do vídeo pelo título e
-    diz se o vídeo já está pronto para subir."""
+    diz se o vídeo já está pronto para subir. `nome`: o projeto já sabido (o vídeo do Canal de teste)."""
     raiz = roteiro_claude.FABRICA / "projetos"
-    nome = publicar.achar(raiz, titulo[:300])
+    if nome and not re.fullmatch(r"[\w.-]+", nome):
+        nome = ""
+    nome = nome if nome and (raiz / nome).is_dir() else publicar.achar(raiz, titulo[:300])
     if not nome:
         return {"nome": None, "pronto": False}
     video = _video_final(raiz / nome)
+    # o vídeo parado com erro na fábrica (o render do ai-2 sem disco, 2026-11-25): o Meu dia dizia "na fila, ainda não
+    # começou"; agora mostra o motivo
+    parado = ""
+    if not video:
+        c = publicar._ler(raiz / nome / "criacao.json")
+        if c.get("status") == "erro" or c.get("precisa_voce"):
+            parado = " ".join(str(c.get("erro") or c.get("mensagem") or "A fábrica parou com erro.").split())[:200]
     return {"nome": nome, "pronto": bool(video), "titulo": publicar._titulo(raiz / nome),
-            "tamanho": video.stat().st_size if video else 0}
+            "tamanho": video.stat().st_size if video else 0, "parado": parado}
+
+
+@app.get("/api/ext/teste/pendentes")
+def ext_teste_pendentes(u: dict = Depends(exigir("extensao"))):
+    """Os vídeos do Canal de teste para a extensão postar pelo Studio (pedido do usuário em 2026-11-25): ela põe cada
+    um no Meu dia com o postar sozinho, e o Studio sobe com o título, a descrição e as tags do kit."""
+    return {"videos": teste_canal.pendentes_extensao(u["id"])}
+
+
+@app.get("/api/ext/teste/canais")
+def ext_teste_canais(u: dict = Depends(exigir("extensao"))):
+    """A aba Canais de teste da beirada direita do YouTube, por dia: vermelho quando chegou o dia e o canal não
+    postou, verde quando postou. Aberta, ela confere o canal (de 5 em 5 minutos no máximo) para o verde sair logo."""
+    teste_canal.conferir_postados(u["id"], teste_canal.CONFERIR_NA_ABA)
+    return teste_canal.resumo_extensao(u["id"])
+
+
+@app.post("/api/ext/teste/sozinho")
+async def ext_teste_sozinho(request: Request, u: dict = Depends(exigir("extensao"))):
+    """O botão "Postar sozinho" de um canal na aba Canais de teste (2026-11-25)."""
+    corpo = await request.json()
+    _na_fila(teste_canal.postar_sozinho, u["id"], str(corpo.get("canal_id") or ""), bool(corpo.get("ligado")))
+    return teste_canal.resumo_extensao(u["id"])
+
+
+@app.post("/api/ext/teste/olhou")
+async def ext_teste_olhou(request: Request, u: dict = Depends(exigir("extensao"))):
+    """O "Avaliar métricas" da aba (2026-11-25): abriu o Studio do canal, o aviso de avaliar hoje sai."""
+    corpo = await request.json()
+    teste_canal.olhou_metricas(u["id"], str(corpo.get("canal_id") or ""))
+    return teste_canal.resumo_extensao(u["id"])
+
+
+@app.post("/api/ext/teste/avaliacao")
+async def ext_teste_avaliacao(request: Request, u: dict = Depends(exigir("extensao"))):
+    corpo = await request.json()
+    _na_fila(teste_canal.avaliar, u["id"], str(corpo.get("canal_id") or ""), str(corpo.get("avaliacao") or ""))
+    return teste_canal.resumo_extensao(u["id"])
+
+
+@app.post("/api/ext/teste/parar")
+async def ext_teste_parar(request: Request, u: dict = Depends(exigir("extensao"))):
+    """O "Não testar" da aba Canais de teste do YouTube (2026-11-25)."""
+    corpo = await request.json()
+    try:
+        _na_fila(teste_canal.dispensar, u["id"], str(corpo.get("canal_id") or ""))
+    except ValueError as erro:
+        raise HTTPException(400, str(erro))
+    return teste_canal.resumo_extensao(u["id"])
+
+
+@app.post("/api/ext/troca-log")
+async def ext_troca_log(request: Request, u: dict = Depends(exigir("extensao"))):
+    """O registro da troca de conta da extensão (2026-11-26: o "Avaliar métricas" não trocava de conta e o registro
+    só ficava no Chrome). Cada passo cai no fim de dados/troca-log.txt, para conferir daqui."""
+    from .config import DADOS
+    corpo = await request.json()
+    linha = f"{corpo.get('t', '')} | {str(corpo.get('url', ''))[:200]} | {str(corpo.get('passo', ''))[:500]}\n"
+    arquivo = Path(DADOS) / "troca-log.txt"
+    with open(arquivo, "a", encoding="utf-8") as f:
+        f.write(linha)
+    if arquivo.stat().st_size > 512 * 1024:          # só o fim interessa
+        arquivo.write_text(arquivo.read_text(encoding="utf-8")[-256 * 1024:], encoding="utf-8")
+    return {"ok": True}
+
+
+@app.post("/api/ext/teste/falhou")
+async def ext_teste_falhou(request: Request, u: dict = Depends(exigir("extensao"))):
+    corpo = await request.json()
+    return {"ok": teste_canal.falhou_extensao(u["id"], str(corpo.get("id") or ""), str(corpo.get("motivo") or ""))}
+
+
+@app.post("/api/ext/teste/postado")
+async def ext_teste_postado(request: Request, u: dict = Depends(exigir("extensao"))):
+    corpo = await request.json()
+    return {"ok": teste_canal.postado_extensao(u["id"], str(corpo.get("id") or ""), str(corpo.get("titulo") or ""))}
 
 
 @app.get("/api/ext/pedidos-recentes")
@@ -1649,10 +1708,13 @@ def teste_do_canal(canal_id: str, u: dict = Depends(usuario)):
 async def liberar_teste_do_canal(canal_id: str, request: Request, u: dict = Depends(usuario)):
     """O sim da pessoa (com a língua) ou o não. Só aqui o Radar passa a poder produzir e postar neste canal."""
     corpo = await request.json()
-    if corpo.get("dispensar"):
-        return {"teste": teste_canal.dispensar(u["id"], canal_id)}
     try:
-        return {"teste": teste_canal.liberar(u["id"], canal_id, str(corpo.get("lingua") or ""))}
+        if corpo.get("dispensar"):
+            return {"teste": _na_fila(teste_canal.dispensar, u["id"], canal_id)}
+        if corpo.get("voltar"):
+            return {"teste": _na_fila(teste_canal.voltar, u["id"], canal_id)}
+        return {"teste": teste_canal.liberar(u["id"], canal_id, str(corpo.get("lingua") or ""),
+                                             str(corpo.get("origem") or ""))}
     except ValueError as erro:
         raise HTTPException(400, str(erro))
 
@@ -1665,10 +1727,85 @@ async def liberar_teste_do_canal(canal_id: str, request: Request, u: dict = Depe
 def teste_aba(u: dict = Depends(usuario)):
     # sem falar com a fábrica: ela leva segundos quando está produzindo, e a tela não pode esperar por isso. Os
     # canais já ligados vêm depois, em /api/teste/contas
-    return {"estoque": teste_canal.estoque_pronto(u["id"]),
-            "testes": teste_canal.todos(u["id"]), "linguas": list(fabrica_api.IDIOMA),
-            "lingua_padrao": teste_canal.LINGUA_PADRAO, "minutos": fila.MINUTOS_SEM_NARRACAO,
-            "quantos": teste_canal.POR_CANAL}
+    return {**teste_canal.painel(u["id"]), "estoque": teste_canal.estoque_pronto(u["id"]),
+            "linguas": list(fabrica_api.IDIOMA), "lingua_padrao": teste_canal.LINGUA_PADRAO,
+            "minutos": fila.MINUTOS_SEM_NARRACAO}
+
+
+# ---------------------------------------------------------------- a área Canal de teste (2026-11-25)
+# O alerta de canal novo bom (um vídeo de teste passou de mil impressões), o banco de vídeos que a pessoa sobe e a
+# criação em massa sobre os assuntos que ela ligou.
+
+@app.get("/api/teste/alertas")
+def teste_alertas(u: dict = Depends(usuario)):
+    return {"alertas": teste_canal.alertas(u["id"]), "limite": teste_canal.LIMITE_ALERTA}
+
+
+@app.post("/api/teste/alertas")
+async def teste_alerta_visto(request: Request, u: dict = Depends(usuario)):
+    corpo = await request.json()
+    return {"alertas": _na_fila(teste_canal.alerta_visto, u["id"], str(corpo.get("canal_id") or ""),
+                                str(corpo.get("chave") or ""))}
+
+
+@app.get("/api/teste/banco")
+def teste_banco(u: dict = Depends(usuario)):
+    return {"videos": teste_canal.banco_de_videos(u["id"]), "maximo_gb": teste_canal.TAMANHO_MAXIMO // 1024 ** 3}
+
+
+@app.post("/api/teste/banco")
+async def teste_banco_subir(request: Request, titulo: str = "", descricao: str = "", u: dict = Depends(usuario)):
+    """O vídeo vem cru no corpo do pedido (sem formulário): o título e a descrição vêm no endereço."""
+    tipo = request.headers.get("content-type", "")
+    if tipo and not tipo.startswith("video/") and tipo != "application/octet-stream":
+        raise HTTPException(400, "Mande um arquivo de vídeo (MP4, MOV ou WebM).")
+    temporario = teste_canal.arquivo_temporario(u["id"])
+    try:
+        tamanho = 0
+        with open(temporario, "wb") as saida:
+            async for pedaco in request.stream():
+                tamanho += len(pedaco)
+                if tamanho > teste_canal.TAMANHO_MAXIMO:
+                    raise HTTPException(400, "O vídeo passa de 2 GB. Mande um menor.")
+                saida.write(pedaco)
+        return _na_fila(teste_canal.guardar_no_banco, u["id"], titulo, descricao, temporario)
+    finally:
+        temporario.unlink(missing_ok=True)
+
+
+@app.post("/api/teste/banco/{banco_id}")
+async def teste_banco_mudar(banco_id: int, request: Request, u: dict = Depends(usuario)):
+    corpo = await request.json()
+    _na_fila(teste_canal.mudar_no_banco, u["id"], banco_id, str(corpo.get("titulo") or ""),
+             str(corpo.get("descricao") or ""))
+    return {"videos": teste_canal.banco_de_videos(u["id"])}
+
+
+@app.delete("/api/teste/banco/{banco_id}")
+def teste_banco_apagar(banco_id: int, u: dict = Depends(usuario)):
+    _na_fila(teste_canal.apagar_do_banco, u["id"], banco_id)
+    return {"videos": teste_canal.banco_de_videos(u["id"])}
+
+
+@app.get("/api/teste/banco/{banco_id}/video")
+def teste_banco_video(banco_id: int, u: dict = Depends(usuario)):
+    arquivo = teste_canal.arquivo_do_banco(u["id"], banco_id)
+    if not arquivo:
+        raise HTTPException(404, "Esse vídeo não está mais no banco.")
+    return FileResponse(arquivo, media_type="video/mp4")
+
+
+@app.get("/api/teste/massa")
+def teste_massa(u: dict = Depends(usuario)):
+    return teste_canal.massa(u["id"])
+
+
+@app.post("/api/teste/massa")
+async def teste_massa_salvar(request: Request, u: dict = Depends(usuario)):
+    corpo = await request.json()
+    teste_canal.salvar_ajustes(u["id"], {k: corpo[k] for k in ("assuntos", "proprios", "meta", "lingua", "ligado")
+                                         if k in corpo})
+    return teste_canal.massa(u["id"])
 
 
 @app.get("/api/teste/privados")
@@ -1680,8 +1817,9 @@ def teste_privados(u: dict = Depends(usuario)):
 @app.post("/api/teste/privados")
 async def teste_conferir(request: Request, u: dict = Depends(usuario)):
     corpo = await request.json()
-    return {"canais": _na_fila(teste_canal.conferir, u["id"], str(corpo.get("canal_id") or ""),
-                               int(corpo.get("fid") or 0))}
+    # o vídeo do banco não tem pedido na fila: ele vem pela chave ("banco-7")
+    qual = corpo.get("chave") or int(corpo.get("fid") or 0)
+    return {"canais": _na_fila(teste_canal.conferir, u["id"], str(corpo.get("canal_id") or ""), qual)}
 
 
 @app.get("/api/teste/contas")
@@ -1713,7 +1851,8 @@ async def teste_comecar(request: Request, u: dict = Depends(dono_da_fabrica)):
         if not achado:
             raise HTTPException(404, "Canal não encontrado. Confira o @.")
         canal_id, nome = achado["id"], achado["titulo"]
-    return _na_fila(teste_canal.comecar, u["id"], canal_id, str(corpo.get("lingua") or ""), nome)
+    return _na_fila(teste_canal.comecar, u["id"], canal_id, str(corpo.get("lingua") or ""), nome,
+                    str(corpo.get("origem") or ""))
 
 
 @app.get("/api/perfil/canal/{canal_id}")
