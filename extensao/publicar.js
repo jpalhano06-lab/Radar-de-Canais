@@ -48,6 +48,43 @@
   }, true);
   document.addEventListener("drop", (e) => { const f = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0]; if (f) novoArquivo(f.name); }, true);
 
+  // ------------------------------------------------------------ o vídeo ainda subindo (2026-11-27)
+  // Visto no troca-log: o 한국의 미래 foi publicado às 02:31:39 com o arquivo ainda subindo, e 34 s depois a extensão
+  // trocou a conta do Chrome para o 日本の革新. A troca vale para todas as abas e o upload morreu ("Upload
+  // interrupted"). Agora esta aba avisa o background enquanto o vídeo sobe, e a troca de conta espera
+  // (background.js, esperarUploads). Vale pelo texto de progresso do Studio e, como reserva, por um tempo estimado
+  // pelo tamanho do arquivo (até o Studio dizer que acabou).
+  let subida = null;
+  document.addEventListener("change", (e) => {
+    const f = e.target && e.target.files && e.target.files[0];
+    if (f && (/^video\//.test(f.type) || EXTENSOES.test(f.name))) subida = { comeco: Date.now(), tamanho: f.size || 0, nome: f.name };
+  }, true);
+  const SUBINDO = /^(Uploading|Enviando|Carregando|A carregar|Subiendo|Cargando)\b.*\d{1,3}\s?%|\d{1,3}\s?%\s*(uploaded|enviados?|carregados?)|^(Uploading|Enviando|Carregando|A carregar)\s+\d+\s+(videos?|v[íi]deos?)/i;
+  const SUBIU = /^(Uploads? complete|Upload conclu[íi]do|Envio conclu[íi]do|Carregamento conclu[íi]do|Upload interrupted|Upload interrompido|Envio interrompido|Carregamento interrompido)/i;
+  const ONDE_SOBE = "ytcp-uploads-dialog, ytcp-multi-progress-monitor, ytcp-video-upload-progress, ytcp-video-row";
+  let avisouSubindo = false;
+  setInterval(() => {
+    let viu = false, acabou = false;
+    try {
+      for (const onde of document.querySelectorAll(ONDE_SOBE)) {
+        if (!viu && folhas(SUBINDO, onde).length) viu = true;
+        if (!acabou && folhas(SUBIU, onde).length) acabou = true;
+      }
+    } catch { /* a tela mudou no meio */ }
+    if (acabou && !viu) subida = null;
+    // reserva: 1,5 MB/s, entre 3 e 40 minutos a partir do arquivo entrar
+    const estimado = subida ? Math.min(40 * 60e3, Math.max(3 * 60e3, subida.tamanho / 1.5e6 * 1000)) : 0;
+    const andando = viu || (!!subida && Date.now() < subida.comeco + estimado);
+    if (andando) {
+      avisouSubindo = true;
+      pedir({ tipo: "subindo", ate: Date.now() + 15000, titulo: (subida && subida.nome) || estado.arquivo || "" });
+    } else if (avisouSubindo) {
+      avisouSubindo = false;
+      subida = null;
+      pedir({ tipo: "subindo", ate: 0 });
+    }
+  }, 3000);
+
   // reserva: o nome que o Studio mostra ("Nome do arquivo" na tela de upload e na de edição)
   function arquivoDaTela() {
     const onde = document.querySelector("ytcp-uploads-dialog") || document.querySelector("ytcp-app") || document.body;

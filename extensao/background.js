@@ -47,10 +47,49 @@ function registrarTrocaBg(passo, url = "background") {
   }).catch(() => {});
 }
 
+// O vídeo ainda subindo no Studio (2026-11-27): a troca de conta vale para o Chrome inteiro e derrubava o upload que
+// estava andando em outra aba ("Upload interrupted": o 한국의 미래 morreu 34 s depois de publicado, quando o Postar do
+// 日本の革新 trocou a conta). publicar.js avisa a cada 3 s enquanto sobe (subindoPorAba, com validade curta); a troca
+// espera até nenhuma aba estar subindo, no máximo 90 minutos. Os avisos da aba mantêm o background acordado.
+async function marcarSubindo(abaId, { ate = 0, titulo = "" }) {
+  if (abaId == null) return;
+  const { subindoPorAba = {} } = await chrome.storage.session.get("subindoPorAba");
+  if (ate > Date.now()) subindoPorAba[abaId] = { ate, titulo };
+  else delete subindoPorAba[abaId];
+  await chrome.storage.session.set({ subindoPorAba });
+}
+chrome.tabs.onRemoved.addListener((abaId) => { marcarSubindo(abaId, {}).catch(() => {}); });
+
+let filaDeTrocas = Promise.resolve();
+function esperarUploads(alvo) {
+  // uma troca por vez: a segunda espera a primeira sair daqui
+  const vez = filaDeTrocas.then(async () => {
+    const fim = Date.now() + 90 * 60 * 1000;
+    let avisou = false;
+    for (;;) {
+      const { subindoPorAba = {} } = await chrome.storage.session.get("subindoPorAba");
+      const subindo = Object.values(subindoPorAba).filter((s) => s.ate > Date.now());
+      if (!subindo.length) { if (avisou) registrarTrocaBg(`o upload terminou: trocando para ${alvo}`); return; }
+      if (Date.now() > fim) { registrarTrocaBg(`esperei 90 minutos o upload e vou trocar para ${alvo} assim mesmo`); return; }
+      if (!avisou) {
+        avisou = true;
+        const nomes = subindo.map((s) => s.titulo).filter(Boolean).join(", ") || "um vídeo";
+        registrarTrocaBg(`esperando ${nomes} terminar de subir antes de trocar para ${alvo}`);
+        notificar(`espera-upload-${Date.now()}`, "Radar: esperando o upload",
+          `${nomes} ainda está subindo no Studio. Troco para ${alvo} quando terminar, para não interromper o envio.`);
+      }
+      await pausa(3000);
+    }
+  });
+  filaDeTrocas = vez.catch(() => {});
+  return vez;
+}
+
 // abre o YouTube ao lado da aba do clique (na mesma janela: sem windowId ia para a última janela em foco, às vezes
 // escondida atrás, onde o YouTube não desenha o menu) e guarda pelo id da aba a conta para trocar e, se houver, para
 // onde ir depois (content.js pede com "troca-pendente")
 async function abrirParaTrocar(de, alvo, depois) {
+  await esperarUploads(alvo);
   // `de` vazio é o postar sozinho (sem aba de origem): abre na janela em foco
   const aba = await chrome.tabs.create({ url: "https://www.youtube.com/", active: true,
     ...(de && de.windowId >= 0 ? { windowId: de.windowId, index: de.index + 1 } : {}) });
@@ -151,6 +190,10 @@ chrome.runtime.onMessage.addListener((msg, _remetente, responder) => {
   }
   if (msg && msg.tipo === "canva-canal") {             // a caixinha do Canva: o canal escolhido para o PNG baixado
     mandarDoCanva(_remetente.tab && _remetente.tab.id, msg.canal).then(responder, (e) => responder({ erro: String(e) }));
+    return true;
+  }
+  if (msg && msg.tipo === "subindo") {                  // o vídeo ainda subindo no Studio (publicar.js)
+    marcarSubindo(_remetente.tab && _remetente.tab.id, msg).then(() => responder({ ok: true }), () => responder({ ok: false }));
     return true;
   }
   if (msg && msg.tipo === "troca-log") { registrarTrocaBg(msg.passo, `aba ${_remetente.tab ? _remetente.tab.id : "?"} ${msg.url || ""}`); return; }
