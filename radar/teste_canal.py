@@ -966,6 +966,15 @@ def _conferir_canal(linha: dict) -> bool:
             livres.remove(achado)
             p |= {"url": f"https://youtu.be/{achado['id']}", "video_id": achado["id"], "enviado": True}
             mexeu = True
+    # 2026-11-27: a extensão disse "postado" e o vídeo não apareceu público no canal (maicon nada: 3 verdes, 1 no ar).
+    # Passadas 3 horas da hora marcada, o dia volta a faltar: vermelho na aba, com o Postar de novo
+    limite = (datetime.now() - timedelta(hours=3)).isoformat(timespec="minutes")
+    for p in sem_link:
+        if not p.get("url") and (p.get("agendado_para") or "9") <= limite:
+            p |= {"postado": False, "enviado": False, "sumiu": agora}
+            vez.append(p)
+            mexeu = True
+    vez.sort(key=lambda p: p["agendado_para"])
     for p, v in zip(vez, livres):
         p |= {"url": f"https://youtu.be/{v['id']}", "video_id": v["id"], "postado": True, "enviado": True,
               "postado_em": _local(v["publicado"]).isoformat(timespec="minutes"),
@@ -1062,7 +1071,7 @@ def pendentes_extensao(usuario_id: int) -> list[dict]:
                               "canal": linha["canal_id"], "canalNome": linha["nome"] or "",
                               "agendar": p["agendado_para"][:16], "projeto": p["projeto"], "auto": auto,
                               # com a pessoa postando, o sozinho publica no dia e na hora, sem agendar no Studio
-                              "naHora": auto and not O_RADAR_POSTA})
+                              "naHora": auto and not O_RADAR_POSTA, "sumiu": p.get("sumiu", "")})
     return saida
 
 
@@ -1097,9 +1106,14 @@ def resumo_extensao(usuario_id: int) -> dict:
         videos = []
         for k, p in enumerate(pedidos, 1):
             quando = (p.get("agendado_para") or "")[:16]
-            cor = ("verde" if _fixo(p) else "" if not quando else "vermelho" if quando[:10] <= hoje else "azul")
+            # subido pela extensão e ainda não público no canal (agendado no Studio): azul até o Radar achar no ar
+            # (2026-11-27: verde sem o vídeo no canal enganava)
+            no_studio = bool(p.get("postado") and not p.get("url") and quando and quando > agora)
+            cor = ("azul" if no_studio else "verde" if _fixo(p) else "" if not quando
+                   else "vermelho" if quando[:10] <= hoje else "azul")
             videos.append({"numero": k, "tema": p.get("tema", ""), "quando": quando, "cor": cor,
                            "url": p.get("url", ""), "pronto": bool(p.get("projeto")), "views": p.get("views"),
+                           "sumiu": bool(p.get("sumiu")) and not _fixo(p), "no_studio": no_studio,
                            "id": f"{c['canal_id']}:{_chave(p)}" if p.get("projeto") and not _fixo(p) else ""})
         canal = banco.um("SELECT handle FROM canais WHERE id=?", c["canal_id"]) or {}
         canais.append({"canal_id": c["canal_id"], "nome": c["nome"] or c["canal_id"], "avaliar_hoje": avaliar_hoje,

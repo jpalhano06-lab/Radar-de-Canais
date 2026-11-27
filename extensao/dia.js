@@ -46,7 +46,7 @@ async function guardarConfig(canal, mudanca) {
 }
 
 async function carregarImagens() {
-  const faltam = [...dia.thumbs, ...vista.thumbs].map((t) => t.id).filter((id) => !(id in imagens));
+  const faltam = [...dia.thumbs, ...vista.thumbs, ...((ontem && ontem.thumbs) || [])].map((t) => t.id).filter((id) => !(id in imagens));
   if (!faltam.length) return;
   const g = await chrome.storage.local.get(faltam.map((id) => DIA_THUMB + id));
   for (const id of faltam) imagens[id] = g[DIA_THUMB + id] || "";
@@ -62,11 +62,12 @@ async function recarregar() {
   dia = semTeste(await lerDia());
   if (diaVisto && diaVisto <= hojeLocal()) diaVisto = "";  // virou o dia: o dia visto passou a ser hoje
   vista = diaVisto ? semTeste(await lerDiaDe(diaVisto)) : dia;
+  ontem = await lerOntem().catch(() => null);
   const g = await chrome.storage.local.get([DIA_CONFIG, "diaCanais", DIA_AMANHA]);
   config = g[DIA_CONFIG] || {};
   amanha = (g[DIA_AMANHA] || []).filter((v) => !v.teste);
   if (!canais.length) canais = g.diaCanais || [];
-  for (const id of Object.keys(imagens)) if (![...dia.thumbs, ...vista.thumbs].some((t) => t.id === id)) delete imagens[id];
+  for (const id of Object.keys(imagens)) if (![...dia.thumbs, ...vista.thumbs, ...((ontem && ontem.thumbs) || [])].some((t) => t.id === id)) delete imagens[id];
   await carregarImagens();
   desenhar();
 }
@@ -404,22 +405,87 @@ let pedidosFabrica = [], pedidosLidos = 0;
 function lerPedidosDaFabrica() {
   if (Date.now() - pedidosLidos < 60 * 1000) return;
   pedidosLidos = Date.now();
-  api("/api/ext/pedidos-recentes?horas=36").then((r) => {
+  api("/api/ext/pedidos-recentes?horas=60").then((r) => {
     if (r && r.dados && Array.isArray(r.dados.pedidos)) { pedidosFabrica = r.dados.pedidos; desenhar(); }
   }, () => {});
 }
 const meiaNoiteLocal = () => { const d = new Date(); d.setHours(0, 0, 0, 0); return d.getTime(); };
-function foraDoMeuDia(c) {
+function foraDoMeuDia(c, desde, ate = Infinity) {
   const no = new Set([...dia.videos, ...amanha].map((v) => tituloNormal(v.titulo)));
-  return pedidosFabrica.filter((p) => p.canal_id === c.id && Date.parse(p.criado) >= meiaNoiteLocal() && !no.has(tituloNormal(p.titulo)));
+  const vistos = new Set();
+  return pedidosFabrica.filter((p) => {
+    const t = tituloNormal(p.titulo), quando = Date.parse(p.criado);
+    if (p.canal_id !== c.id || p.estado === "cancelado" || quando < desde || quando >= ate || no.has(t) || vistos.has(t)) return false;
+    vistos.add(t);
+    return true;
+  });
 }
 function linhaForaDoMeuDia(c) {
-  const fora = foraDoMeuDia(c);
+  const fora = foraDoMeuDia(c, meiaNoiteLocal());
   if (!fora.length) return null;
   return h("div", { class: "fora" }, h("b", {}, "Pedido hoje na fábrica, fora do Meu dia:"),
     ...fora.map((p) => h("div", { class: "fora-item" }, h("span", { class: "fora-titulo", title: p.titulo }, p.titulo),
       h("button", { type: "button", title: "Volta para o Meu dia de hoje", onclick: () => diaVoltarDaFabrica({ canal: c.id, canalNome: c.titulo,
-        titulo: p.titulo, link: p.link, fila: p.id }) }, "Pôr de volta"))));
+        titulo: p.titulo, link: p.link, fila: p.id, projeto: p.projeto }) }, "Pôr de volta"))));
+}
+
+// ------------------------------------------------------------ o dia anterior (pedido do usuário em 2026-11-27)
+// "Deixe lá em cima a data anterior, mais fácil, deixe sempre a de um dia atrás": a primeira casinha do calendário é
+// o dia anterior (dia-dados.js guarda ele inteiro ao virar o dia, `diaOntem`). A tela dele é uma lista simples por
+// canal: cada vídeo com a thumbnail, se foi postado, e "Trazer para hoje". Entram também os pedidos daquele dia na
+// fábrica que não estão na lista (serve para o dia que virou antes de existir o `diaOntem`).
+let ontem = null, vendoOntem = false;
+const ontemData = () => (ontem && ontem.data) || diaDaqui(-1);
+function inicioDoDia(iso) { const [a, m, d] = iso.split("-").map(Number); return new Date(a, m - 1, d).getTime(); }
+function abrirOntem(abrir) { vendoOntem = abrir; if (abrir) diaVisto = ""; recarregar(); window.scrollTo({ top: 0 }); }
+
+function linhaDeOntem(v, jaHoje, trazer) {
+  const thumb = v.thumb && ontem && ontem.thumbs.find((t) => t.id === v.thumb);
+  const img = thumb && imagens[thumb.id] ? h("img", { class: "ontem-thumb", src: imagens[thumb.id], alt: "" })
+    : h("div", { class: "ontem-thumb vazia" }, "sem thumbnail");
+  const situacao = v.daFabrica ? "pedido na fábrica, não estava no Meu dia" : v.postado ? "marcado como postado" : "não postado";
+  return h("div", { class: `ontem-video${v.postado ? " postado" : ""}` }, img,
+    h("div", { class: "ontem-texto" }, h("b", { class: "ontem-titulo", title: v.titulo }, v.titulo || "vídeo sem título"),
+      h("span", { class: "fraco" }, situacao)),
+    jaHoje ? h("span", { class: "fraco" }, "Já está hoje")
+      : h("button", { type: "button", class: "vermelho", title: "Volta para o Meu dia de hoje, com a thumbnail, para postar de novo",
+        onclick: async () => { await trazer(); abrirOntem(false); } }, "Trazer para hoje"));
+}
+
+function telaDeOntem() {
+  const desde = inicioDoDia(ontemData()), ate = inicioDoDia(diaDaqui(0));
+  const videos = ((ontem && ontem.videos) || []).filter((v) => !v.teste);
+  const hojeIds = new Set(dia.videos.map((v) => v.id)), hojeTitulos = new Set(dia.videos.map((v) => tituloNormal(v.titulo)));
+  const lista = [...canais];
+  for (const v of videos) if (!lista.some((c) => c.id === (v.canal || ""))) lista.push({ id: v.canal || "", titulo: v.canalNome || "Sem canal" });
+  const blocos = lista.map((c) => {
+    const doCanal = videos.filter((v) => (v.canal || "") === c.id);
+    const titulos = new Set(doCanal.map((v) => tituloNormal(v.titulo)));
+    const vistos = new Set();
+    const daFabrica = pedidosFabrica.filter((p) => {
+      const t = tituloNormal(p.titulo), quando = Date.parse(p.criado);
+      if (p.canal_id !== c.id || p.estado === "cancelado" || quando < desde || quando >= ate || titulos.has(t) || vistos.has(t)) return false;
+      vistos.add(t);
+      return true;
+    });
+    if (!doCanal.length && !daFabrica.length) return null;
+    return h("article", { class: "canal ontem" }, h("div", { class: "canal-cab" }, h("b", {}, c.titulo)),
+      ...doCanal.map((v) => linhaDeOntem(v, hojeIds.has(v.id) || hojeTitulos.has(tituloNormal(v.titulo)), () => diaTrazerDeOntem(v.id))),
+      ...daFabrica.map((p) => linhaDeOntem({ titulo: p.titulo, daFabrica: true }, hojeTitulos.has(tituloNormal(p.titulo)),
+        () => diaVoltarDaFabrica({ canal: c.id, canalNome: c.titulo, titulo: p.titulo, link: p.link, fila: p.id, projeto: p.projeto }))));
+  }).filter(Boolean);
+  return blocos.length ? blocos : [h("div", { class: "vazio" }, `Nada guardado de ${dataCurta(ontemData())}.`)];
+}
+
+function desenharOntem() {
+  $("data").replaceChildren(h("span", {}, `Dia anterior: ${dataLonga(ontemData())}`), " ",
+    h("button", { type: "button", class: "voltar-hoje", onclick: () => abrirOntem(false) }, "← Voltar para hoje"));
+  $("resumo").replaceChildren();
+  $("legenda").replaceChildren();
+  $("calendario").replaceChildren(...calendario());
+  $("canais").replaceChildren(...telaDeOntem());
+  $("tirados").replaceChildren();
+  lerPedidosDaFabrica();
 }
 function secaoTirados() {
   const lista = [...(dia.tirados || [])].reverse();
@@ -870,21 +936,27 @@ function calendario() {
     const ehHoje = iso === hoje;
     const n = ehHoje ? dia.videos.length : pedidosDoDia(iso).length;
     const cor = !meta ? (n ? "ok" : "") : n >= meta ? "ok" : n ? "meio" : "falta";
-    const aberto = ehHoje ? !diaVisto : diaVisto === iso;
+    const aberto = !vendoOntem && (ehHoje ? !diaVisto : diaVisto === iso);
     const lista = ehHoje ? dia.videos : pedidosDoDia(iso);
     return h("button", { type: "button", class: `cal-dia ${cor}${aberto ? " aberto" : ""}`,
       title: lista.map((v) => `${v.canalNome || ""} · ${v.titulo}`).join("\n") || "Nada pedido",
-      onclick: () => { diaVisto = ehHoje ? "" : iso; recarregar(); window.scrollTo({ top: 0 }); } },
+      onclick: () => { vendoOntem = false; diaVisto = ehHoje ? "" : iso; recarregar(); window.scrollTo({ top: 0 }); } },
     h("span", { class: "cal-sem" }, ehHoje ? "Hoje" : nomeDoDia(iso)), h("b", {}, dataCurta(iso)),
     h("span", { class: "cal-conta" }, meta ? `${n}/${meta}` : String(n)));
   };
-  return [h("h2", {}, "Calendário"), h("div", { class: "cal-faixa" }, ...[hoje, ...dias, ...alem].map(celula))];
+  const anterior = ontemData(), doOntem = ((ontem && ontem.videos) || []).filter((v) => !v.teste);
+  const celulaOntem = h("button", { type: "button", class: `cal-dia anterior${vendoOntem ? " aberto" : ""}`,
+    title: "O dia anterior: traga de volta para hoje um vídeo que deu errado", onclick: () => abrirOntem(true) },
+  h("span", { class: "cal-sem" }, anterior === diaDaqui(-1) ? "Ontem" : nomeDoDia(anterior)), h("b", {}, dataCurta(anterior)),
+  h("span", { class: "cal-conta" }, String(doOntem.length)));
+  return [h("h2", {}, "Calendário"), h("div", { class: "cal-faixa" }, celulaOntem, ...[hoje, ...dias, ...alem].map(celula))];
 }
 
 // todos os dias com os mesmos cartões (pedido do usuário em 2026-11-24): o dia do calendário escolhido (`vista`) é
 // desenhado igual a hoje, com thumbnail, teste A/B, Postar e agendamento
 function desenhar() {
   if (diaVisto && vista.data !== diaVisto) return void recarregar();  // trocou de dia e o dia novo ainda não foi lido
+  if (vendoOntem) return void desenharOntem();
   const ehHoje = vista.data === hojeLocal();
   if (ehHoje) $("data").textContent = new Date().toLocaleDateString("pt-BR", { weekday: "long", day: "numeric", month: "long" });
   else $("data").replaceChildren(h("span", {}, dataLonga(vista.data)), " ",

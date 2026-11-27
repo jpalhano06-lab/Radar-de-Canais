@@ -52,6 +52,14 @@
   .cal-dia.meio { border-color: rgba(245,179,1,.6); } .cal-dia.meio .cal-conta { color: var(--amarelo); }
   .cal-dia.falta { border-color: rgba(255,0,0,.35); }
   .cal-dia.aberto { outline: 2px solid var(--texto); outline-offset: 1px; }
+  .cal-dia.anterior { border-style: dashed; }
+  .canal.ontem { display: grid; gap: 8px; }
+  .ontem-video { display: grid; grid-template-columns: 96px 1fr auto; align-items: center; gap: 10px; }
+  .ontem-video.postado { opacity: .75; }
+  .ontem-thumb { width: 96px; aspect-ratio: 16 / 9; object-fit: cover; border-radius: 6px; }
+  .ontem-thumb.vazia { display: grid; place-items: center; border: 1px dashed #666; font-size: 10.5px; color: var(--fraco); }
+  .ontem-texto { display: grid; gap: 2px; min-width: 0; }
+  .ontem-titulo { font-size: 12.5px; line-height: 1.3; overflow-wrap: anywhere; }
   .cal-aberto { display: grid; gap: 8px; margin-top: 8px; padding: 12px 14px; background: var(--caixa); border: 1px solid var(--linha); border-radius: 14px; }
   .cal-planejar select { max-width: 180px; }
   .cal-titulo { flex: 1; min-width: 160px; }
@@ -229,7 +237,7 @@
     <div>
       <h1><i></i>Meu dia</h1>
       <div class="fraco" id="data"></div>
-      <div class="fraco so-aba">Quando vira o dia, o que não foi postado passa para o dia seguinte; o resto se apaga. A meta de cada canal e a conta de treino ficam.</div>
+      <div class="fraco so-aba">Quando vira o dia, o que não foi postado passa para o dia seguinte, e o dia velho fica inteiro na casinha Ontem do calendário até o próximo virar. A meta de cada canal e a conta de treino ficam.</div>
     </div>
     <div class="resumo" id="resumo"></div>
   </header>

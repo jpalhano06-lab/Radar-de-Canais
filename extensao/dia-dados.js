@@ -16,6 +16,10 @@ const DIA_AMANHA = "diaAmanha", DIA_DESTINO = "diaDestino";
 // não mora num vídeo da fila (as thumbnails feitas do canal e o "não vou postar") fica em `diaFuturo`
 // { [AAAA-MM-DD]: { thumbs: [], semPostar: [] } } e entra no `dia` quando ele vira hoje
 const DIA_FUTURO = "diaFuturo";
+// o dia anterior (pedido do usuário em 2026-11-27: "deixe sempre a de um dia atrás"): virou o dia, o dia velho fica
+// inteiro em `diaOntem` { data, videos, thumbs }, com as imagens, até o próximo virar. O vídeo de ontem que deu
+// errado no Studio (marcado postado no clique de Publicar, mas o upload morreu) volta para hoje com a thumbnail
+const DIA_ONTEM = "diaOntem";
 const DESTINO_VALE = 20 * 60 * 60 * 1000;
 
 function hojeLocal() {
@@ -83,7 +87,8 @@ async function diaPlanejar({ canal, canalNome, titulo, data }) {
  *  fica direto para o outro dia"), com a thumbnail e o teste A/B deles; `veioDe` diz de que dia vieram. O resto do
  *  dia velho (postados, thumbnails soltas, tirados) e as imagens dele são apagados. */
 async function lerDia() {
-  const { dia, [DIA_AMANHA]: fila = [], [DIA_FUTURO]: futuro = {} } = await chrome.storage.local.get([DIA_CHAVE, DIA_AMANHA, DIA_FUTURO]);
+  const { dia, [DIA_AMANHA]: fila = [], [DIA_FUTURO]: futuro = {}, [DIA_ONTEM]: ontemVelho } =
+    await chrome.storage.local.get([DIA_CHAVE, DIA_AMANHA, DIA_FUTURO, DIA_ONTEM]);
   const hoje = hojeLocal();
   if (dia && dia.data === hoje) return dia;
   // o que foi guardado para hoje (ou para um dia que passou sem o Meu dia aberto) no dia do calendário
@@ -93,15 +98,45 @@ async function lerDia() {
   const ficam = ((dia && dia.videos) || []).filter((v) => !v.postado).map((v) => ({ ...v, veioDe: v.veioDe || dia.data }));
   const imagensQueFicam = new Set(ficam.flatMap((v) => [v.thumb, ...(v.ab || [])]).filter(Boolean));
   const thumbsQueFicam = ((dia && dia.thumbs) || []).filter((t) => imagensQueFicam.has(t.id));
-  for (const v of fila) for (const t of v.thumbsGuardadas || []) imagensQueFicam.add(t.id);
-  const apagar = ((dia && dia.thumbs) || []).filter((t) => !imagensQueFicam.has(t.id));
-  if (apagar.length) await chrome.storage.local.remove(apagar.map((t) => DIA_THUMB + t.id));
   const entram = fila.filter((v) => (v.para || "") <= hoje);
   const novo = { data: hoje, videos: [...ficam, ...entram.map(({ para, thumbsGuardadas, ...v }) => v)],
     thumbs: [...thumbsQueFicam, ...entram.flatMap((v) => v.thumbsGuardadas || []), ...doFuturo.flatMap((f) => f.thumbs || [])],
     semPostar: [...new Set(doFuturo.flatMap((f) => f.semPostar || []))] };
-  await chrome.storage.local.set({ [DIA_CHAVE]: novo, [DIA_AMANHA]: fila.filter((v) => !entram.includes(v)), [DIA_FUTURO]: futuro });
+  // o dia velho vira o dia anterior, com as imagens; saem as imagens do anterior de antes que ninguém mais usa
+  const anterior = dia && dia.data ? { data: dia.data, videos: dia.videos || [], thumbs: dia.thumbs || [] } : null;
+  if (anterior) {
+    const usadas = new Set([...novo.thumbs, ...anterior.thumbs, ...fila.flatMap((v) => v.thumbsGuardadas || []),
+      ...Object.values(futuro).flatMap((f) => f.thumbs || [])].map((t) => t.id));
+    const apagar = ((ontemVelho && ontemVelho.thumbs) || []).filter((t) => !usadas.has(t.id));
+    if (apagar.length) await chrome.storage.local.remove(apagar.map((t) => DIA_THUMB + t.id));
+  }
+  await chrome.storage.local.set({ [DIA_CHAVE]: novo, [DIA_AMANHA]: fila.filter((v) => !entram.includes(v)), [DIA_FUTURO]: futuro,
+    ...(anterior ? { [DIA_ONTEM]: anterior } : {}) });
   return novo;
+}
+
+/** O dia anterior guardado (ou null): { data, videos, thumbs }. */
+async function lerOntem() {
+  await lerDia();   // vira o dia, se for o caso
+  const { [DIA_ONTEM]: ontem } = await chrome.storage.local.get(DIA_ONTEM);
+  return ontem && ontem.data ? ontem : null;
+}
+
+/** Traz um vídeo do dia anterior para hoje, com a thumbnail e o teste A/B, como não postado. */
+async function diaTrazerDeOntem(id) {
+  const ontem = await lerOntem();
+  const v = ontem && ontem.videos.find((x) => x.id === id);
+  if (!v) return null;
+  return mudarDia((d) => {
+    if (d.videos.some((x) => x.id === id)) return null;
+    const ids = new Set([v.thumb, ...(v.ab || [])].filter(Boolean));
+    for (const t of ontem.thumbs) if (ids.has(t.id) && !d.thumbs.some((x) => x.id === t.id)) d.thumbs.push(t);
+    const { agendar, ajudado, autoFalhou, postadoHora, ...resto } = v;
+    const novo = { ...resto, postado: false, veioDe: ontem.data, hora: Date.now(),
+      ...(agendar && new Date(agendar).getTime() > Date.now() ? { agendar } : {}) };
+    d.videos.push(novo);
+    return novo;
+  });
 }
 
 /** Um dia qualquer no mesmo formato do `dia` de hoje ({ data, videos, thumbs, semPostar }). Hoje (ou antes) é o
@@ -239,10 +274,11 @@ function diaVoltarVideo(id) {
 }
 /** Um pedido da fábrica que não está no Meu dia volta para hoje (o "Pôr de volta" do canal). Não passa pelo destino
  *  "para amanhã": é um vídeo que já era de hoje. */
-function diaVoltarDaFabrica({ canal, canalNome, titulo, link = "", fila = null }) {
+function diaVoltarDaFabrica({ canal, canalNome, titulo, link = "", fila = null, projeto = "" }) {
   return mudarDia((d) => {
+    // `projeto`: a pasta da fábrica, para o Postar achar o vídeo certo mesmo com título repetido
     const novo = { id: novoIdDia(), hora: Date.now(), postado: false, thumb: null, canal, canalNome, titulo,
-      ...(link ? { referencia: link } : {}), ...(fila ? { fila } : {}) };
+      ...(link ? { referencia: link } : {}), ...(fila ? { fila } : {}), ...(projeto ? { projeto } : {}) };
     d.videos.push(novo);
     return novo;
   });
@@ -350,7 +386,10 @@ async function diaTesteSincronizar(lista) {
     const existe = dia.videos.find((v) => v.testeId === t.id) || fila.find((v) => v.testeId === t.id);
     if (existe) {
       const igual = (existe.testeQuando || existe.agendar) === t.agendar;
-      if (existe.postado || (igual && existe.agendar === agendar && !!existe.auto === auto && !!existe.naHora === !!t.naHora)) continue;
+      // o Radar não achou no canal o que a extensão deu por postado (`sumiu`, 2026-11-27): volta a faltar postar
+      const sumiu = existe.postado && t.sumiu && existe.sumiu !== t.sumiu;
+      if (sumiu) await diaMudarVideo(existe.id, (v) => { v.postado = false; v.sumiu = t.sumiu; delete v.autoFalhou; delete v.ajudado; });
+      if ((existe.postado && !sumiu) || (!sumiu && igual && existe.agendar === agendar && !!existe.auto === auto && !!existe.naHora === !!t.naHora)) continue;
       await diaMudarVideo(existe.id, (v) => {
         v.agendar = agendar; v.testeQuando = t.agendar; v.auto = auto; v.naHora = !!t.naHora;
         // a falha só se apaga com hora nova: senão o sozinho tentaria de novo a cada volta

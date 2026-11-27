@@ -96,12 +96,15 @@
 
   function cartaoDoVideo(c, v) {
     const aviso = v.cor === "verde" ? "Postado"
+      // a extensão deu por postado e o vídeo não apareceu público no canal (2026-11-27)
+      : v.sumiu ? "Não está público no canal: confira no Studio ou poste de novo"
+      : v.no_studio ? `Já subido no Studio · deve ir ao ar ${quandoPostar(v.quando)}`
       : !v.quando ? "Ainda sem dia: o vídeo está sendo feito"
       : c.sozinho ? (v.cor === "vermelho" ? `O Radar publica ${quandoPostar(v.quando)}` : `Ainda não é a hora · o Radar publica ${quandoPostar(v.quando)}`)
       : v.cor === "vermelho" ? `Postar ${quandoPostar(v.quando)}` : `Ainda não é a hora · postar ${quandoPostar(v.quando)}`;
     const botoes = [];
     if (v.cor === "verde" && v.url) botoes.push(el("a", { className: "radar-teste-botao", textContent: "Ver", href: v.url, target: "_blank", rel: "noreferrer" }));
-    if (v.cor !== "verde" && v.quando) {
+    if (v.cor !== "verde" && v.quando && !v.no_studio) {
       const postar = el("button", { className: `radar-teste-botao ${v.cor === "vermelho" ? "forte-vermelho" : ""}`, textContent: "Postar",
         disabled: !v.id, title: v.id ? "Abre o Studio do canal com este vídeo" : "O vídeo ainda está sendo feito" });
       postar.onclick = async () => {

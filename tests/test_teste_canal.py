@@ -718,3 +718,24 @@ def test_o_botao_postar_sozinho_publica_na_hora_sem_agendar(db, monkeypatch):
     assert not teste_canal.resumo_extensao(1)["canais"][0]["sozinho"]
     with pytest.raises(ValueError):
         teste_canal.postar_sozinho(1, "UC9", True)
+
+
+def test_postado_pela_extensao_que_nao_aparece_no_canal_volta_a_faltar(db, monkeypatch):
+    """2026-11-27: a extensão deu 3 vídeos por postados no maicon nada e só 1 estava público no canal."""
+    from radar import youtube
+    monkeypatch.setattr(teste_canal, "O_RADAR_POSTA", False)
+    monkeypatch.setattr(teste_canal, "_CONFERIDO", {})
+    monkeypatch.setattr(fabrica_api, "youtube_publicar", lambda *a, **k: {})
+    teste_canal.comecar(1, "UC1", "inglês", "Um")
+    teste_canal._publicar_prontos()
+    pedidos = teste_canal._pedidos(teste_canal._linha(1, "UC1"))
+    pedidos[0] |= {"agendado_para": (datetime.now() - timedelta(hours=5)).isoformat(timespec="minutes"),
+                   "postado": True, "manual": True, "titulo_postado": pedidos[0]["tema"]}
+    pedidos[1] |= {"agendado_para": (datetime.now() - timedelta(hours=1)).isoformat(timespec="minutes"),
+                   "postado": True, "manual": True, "titulo_postado": pedidos[1]["tema"]}
+    teste_canal._gravar_pedidos(1, "UC1", pedidos)
+    monkeypatch.setattr(youtube, "envios", lambda canal, n: [])
+    teste_canal.conferir_postados(1, 0)
+    r = teste_canal.resumo_extensao(1)["canais"][0]["videos"]
+    # o de 5 horas atrás não está no canal: vermelho de novo; o de 1 hora ainda pode estar subindo
+    assert r[0]["cor"] == "vermelho" and r[0]["sumiu"] and r[1]["cor"] == "verde"
